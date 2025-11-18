@@ -1,4 +1,4 @@
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 
 // JWT secret key (should be stored in .env)
 const JWT_SECRET =
@@ -7,7 +7,7 @@ const JWT_SECRET =
 
 // Generate JWT token for a user
 export const generateToken = (userId: string, expiresIn: string = "7d") => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn });
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn } as SignOptions);
 };
 
 // Verify JWT token
