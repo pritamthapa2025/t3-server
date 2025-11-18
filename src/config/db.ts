@@ -15,6 +15,8 @@ const pool = new Pool({
 //  Create Drizzle ORM instance
 export const db = drizzle(pool);
 
+export { pool };
+
 //  Helper to test DB connection
 export const initDB = async () => {
   try {
