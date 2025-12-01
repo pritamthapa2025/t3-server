@@ -10,6 +10,12 @@ if (!process.env.REDIS_URL) {
 const redis = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
   retryStrategy: () => null,
+  enableReadyCheck: true,
+  lazyConnect: false,
+  connectTimeout: 3000,
+  commandTimeout: 300,
+  keepAlive: 30000,
+  enableOfflineQueue: false,
 });
 
 redis.on("error", (err: Error) => {
@@ -18,6 +24,17 @@ redis.on("error", (err: Error) => {
 
 redis.on("connect", () => {
   console.log("✅ Redis connected successfully");
+});
+
+redis.on("ready", () => {
+  console.log("✅ Redis ready to accept commands");
+});
+
+// Test Redis connection on startup (wait for ready state to avoid errors)
+redis.once("ready", () => {
+  redis.ping().catch((err) => {
+    console.warn("⚠️ Redis ping failed:", err.message);
+  });
 });
 
 export default redis;

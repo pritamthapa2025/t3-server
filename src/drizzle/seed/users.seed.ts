@@ -5,7 +5,7 @@ import { hashPassword } from "../../utils/hash.js"; // Hashing utility for passw
 
 export const seedUsers = async () => {
   try {
-    const hashedPassword = await hashPassword("password"); // You can hash the password here
+    const hashedPassword = await hashPassword("password");
 
     await db.insert(users).values([
       {

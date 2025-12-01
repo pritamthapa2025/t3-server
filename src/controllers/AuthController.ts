@@ -235,9 +235,11 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id);
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Login successful", data: { token } });
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: { token },
+    });
   } catch (err: any) {
     console.error(err);
     return res

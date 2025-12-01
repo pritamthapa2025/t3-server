@@ -15,6 +15,13 @@
       "when": 1762847242539,
       "tag": "0001_warm_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764140033590,
+      "tag": "0002_lethal_dreadnoughts",
+      "breakpoints": true
     }
   ]
 }

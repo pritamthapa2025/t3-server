@@ -21,7 +21,7 @@ export const getUserByEmail = async (email: string) => {
   return user || null;
 };
 
-// Fetch user by ID
+// Fetch user by ID (full user data - for password operations)
 export const getUserById = async (userId: string) => {
   // Find user by ID
   const [user] = await db
@@ -32,6 +32,21 @@ export const getUserById = async (userId: string) => {
       passwordHash: users.passwordHash,
       isActive: users.isActive,
       isVerified: users.isVerified,
+      isDeleted: users.isDeleted,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+
+  return user || null;
+};
+
+// Lightweight user fetch for authentication (only needed fields, no password)
+export const getUserByIdForAuth = async (userId: string) => {
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      isActive: users.isActive,
       isDeleted: users.isDeleted,
     })
     .from(users)

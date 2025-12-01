@@ -10,6 +10,7 @@ import { createEmployee } from "../services/employee.service.js";
 import { getDepartmentById } from "../services/department.service.js";
 import { getPositionById } from "../services/position.service.js";
 import { hashPassword } from "../utils/hash.js";
+import { createBankAccount } from "../services/bankAccount.service.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -49,11 +50,52 @@ export const getUserByIdHandler = async (req: Request, res: Response) => {
 export const createUserHandler = async (req: Request, res: Response) => {
   let createdUser = null;
   try {
-    const { fullName, email, phone, departmentId, positionId, reportsTo } =
-      req.body;
+    const {
+      fullName,
+      email,
+      phone,
+      departmentId,
+      positionId,
+      reportsTo,
+      accountHolderName,
+      bankName,
+      accountNumber,
+      routingNumber,
+      accountType,
+      branchName,
+    } = req.body;
 
     if (!fullName || !email) {
       return res.status(400).send("Full name and email are required");
+    }
+
+    // Validate bank account fields if provided
+    if (accountHolderName || bankName || accountNumber || accountType) {
+      if (!accountHolderName || !bankName || !accountNumber || !accountType) {
+        return res
+          .status(400)
+          .send(
+            "providing bank account details, accountHolderName, bankName, accountNumber, and accountType are required"
+          );
+      }
+
+      // Validate accountType enum
+      const validAccountTypes = [
+        "savings",
+        "current",
+        "salary",
+        "checking",
+        "business",
+      ];
+      if (!validAccountTypes.includes(accountType)) {
+        return res
+          .status(400)
+          .send(
+            `Invalid accountType. Must be one of: ${validAccountTypes.join(
+              ", "
+            )}`
+          );
+      }
     }
 
     // Validate departmentId if provided
@@ -105,11 +147,36 @@ export const createUserHandler = async (req: Request, res: Response) => {
         reportsTo,
       });
     } catch (employeeError: any) {
-      // If employee creation fails, delete the user to prevent orphaned data
       if (createdUser) {
         await deleteUser(createdUser.id);
       }
       throw employeeError;
+    }
+
+    // Create bank account if provided
+    if (accountHolderName && bankName && accountNumber && accountType) {
+      try {
+        await createBankAccount({
+          userId: createdUser.id,
+          accountHolderName,
+          bankName,
+          accountNumber,
+          routingNumber,
+          accountType,
+          branchName,
+          isPrimary: true, // Set as primary if it's the first account
+        });
+      } catch (bankAccountError: any) {
+        // If bank account creation fails, clean up user and employee
+        if (createdUser) {
+          try {
+            await deleteUser(createdUser.id);
+          } catch (cleanupError) {
+            console.error("Failed to cleanup user:", cleanupError);
+          }
+        }
+        throw bankAccountError;
+      }
     }
 
     return res.status(201).send("user created successfully");
