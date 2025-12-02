@@ -1,4 +1,5 @@
 CREATE SCHEMA IF NOT EXISTS "auth";
+
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "auth"."audit_logs" (
 	"id" bigint PRIMARY KEY NOT NULL,
