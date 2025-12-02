@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   getPositions,
   getPositionById,
+  getPositionByName,
   createPosition,
   updatePosition,
   deletePosition,
@@ -56,12 +57,18 @@ export const createPositionHandler = async (req: Request, res: Response) => {
       return res.status(400).send("Position name is required");
     }
 
+    // Check if position with this name already exists
+    const existingPosition = await getPositionByName(name);
+    if (existingPosition) {
+      return res.status(409).send("Position name already exists");
+    }
+
     const position = await createPosition({ name, departmentId, description });
     return res.status(201).send(position);
   } catch (error: any) {
     console.error(error);
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
+    // Fallback: handle race condition if two requests create simultaneously
+    if (error?.code === "23505") {
       return res.status(409).send("Position name already exists");
     }
     return res.status(500).send("Internal server error");
@@ -84,10 +91,16 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
     if (!name && departmentId === undefined && description === undefined) {
       return res
         .status(400)
-        .send("At least one field (name, departmentId, or description) is required");
+        .send(
+          "At least one field (name, departmentId, or description) is required"
+        );
     }
 
-    const position = await updatePosition(id, { name, departmentId, description });
+    const position = await updatePosition(id, {
+      name,
+      departmentId,
+      description,
+    });
     if (!position) {
       return res.status(404).send("Position not found");
     }
@@ -125,4 +138,3 @@ export const deletePositionHandler = async (req: Request, res: Response) => {
     return res.status(500).send("Internal server error");
   }
 };
-

@@ -24,6 +24,14 @@ export const getPositionById = async (id: number) => {
   return position || null;
 };
 
+export const getPositionByName = async (name: string) => {
+  const [position] = await db
+    .select()
+    .from(positions)
+    .where(eq(positions.name, name));
+  return position || null;
+};
+
 export const createPosition = async (data: {
   name: string;
   departmentId?: number;

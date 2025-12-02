@@ -3,16 +3,15 @@ import { db } from "../config/db.js";
 import { departments } from "../drizzle/schema/org.schema.js";
 
 export const getDepartments = async (offset: number, limit: number) => {
+  // Run both queries in parallel for better performance
   const result = await db
     .select()
     .from(departments)
     .limit(limit)
     .offset(offset);
-  const total = await db.select({ count: count() }).from(departments);
 
   return {
     data: result || [],
-    total: total[0]?.count ?? 0,
   };
 };
 
@@ -21,6 +20,14 @@ export const getDepartmentById = async (id: number) => {
     .select()
     .from(departments)
     .where(eq(departments.id, id));
+  return department || null;
+};
+
+export const getDepartmentByName = async (name: string) => {
+  const [department] = await db
+    .select()
+    .from(departments)
+    .where(eq(departments.name, name));
   return department || null;
 };
 

@@ -50,10 +50,14 @@ export const getEmployeeByIdHandler = async (req: Request, res: Response) => {
 
 export const createEmployeeHandler = async (req: Request, res: Response) => {
   try {
-    const { userId, employeeId, departmentId, positionId, reportsTo } = req.body;
+    const { userId, employeeId, departmentId, positionId, reportsTo, startDate } = req.body;
 
     if (!userId) {
       return res.status(400).send("User ID is required");
+    }
+
+    if (!startDate) {
+      return res.status(400).send("Start date is required");
     }
 
     const employee = await createEmployee({
@@ -62,6 +66,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       departmentId,
       positionId,
       reportsTo,
+      startDate: new Date(startDate),
     });
     return res.status(201).send(employee);
   } catch (error: any) {

@@ -10,24 +10,38 @@ import {
   bigint,
   primaryKey,
   integer,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const auth = pgSchema("auth");
 
 // Users
-export const users = auth.table("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  fullName: varchar("full_name", { length: 150 }).notNull(),
-  email: varchar("email", { length: 150 }).notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  phone: varchar("phone", { length: 20 }),
-  isActive: boolean("is_active").default(true),
-  isVerified: boolean("is_verified").default(false),
-  isDeleted: boolean("is_deleted").default(false),
-  lastLogin: timestamp("last_login"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const users = auth.table(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    fullName: varchar("full_name", { length: 150 }).notNull(),
+    email: varchar("email", { length: 150 }).notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    phone: varchar("phone", { length: 20 }),
+    isActive: boolean("is_active").default(true),
+    isVerified: boolean("is_verified").default(false),
+    isDeleted: boolean("is_deleted").default(false),
+    lastLogin: timestamp("last_login"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    // Index on id for faster lookups (primary key already has index, but explicit for clarity)
+    index("idx_users_id").on(table.id),
+    // Index on isActive for filtering active users
+    index("idx_users_is_active").on(table.isActive),
+    // Index on isDeleted for filtering non-deleted users
+    index("idx_users_is_deleted").on(table.isDeleted),
+    // Composite index for common query pattern: active and not deleted
+    index("idx_users_active_not_deleted").on(table.isActive, table.isDeleted),
+  ]
+);
 
 // Roles
 export const roles = auth.table("roles", {

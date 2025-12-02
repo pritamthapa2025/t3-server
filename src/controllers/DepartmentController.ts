@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   getDepartments,
   getDepartmentById,
+  getDepartmentByName,
   createDepartment,
   updateDepartment,
   deleteDepartment,
@@ -16,9 +17,7 @@ export const getDepartmentsHandler = async (req: Request, res: Response) => {
 
     const departments = await getDepartments(offset, limit);
 
-    return res
-      .status(200)
-      .send({ data: departments.data, total: departments.total });
+    return res.status(200).send({ data: departments.data });
   } catch (error) {
     console.error(error);
     return res.status(500).send("Internal server error");
@@ -56,12 +55,18 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
       return res.status(400).send("Department name is required");
     }
 
+    // Check if department with this name already exists
+    const existingDepartment = await getDepartmentByName(name);
+    if (existingDepartment) {
+      return res.status(409).send("Department name already exists");
+    }
+
     const department = await createDepartment({ name, description });
     return res.status(201).send(department);
   } catch (error: any) {
     console.error(error);
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
+    // Fallback: handle race condition if two requests create simultaneously
+    if (error?.code === "23505") {
       return res.status(409).send("Department name already exists");
     }
     return res.status(500).send("Internal server error");
