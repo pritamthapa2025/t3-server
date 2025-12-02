@@ -1,6 +1,6 @@
-CREATE SCHEMA "org";
+CREATE SCHEMA IF NOT EXISTS "org";
 --> statement-breakpoint
-CREATE TABLE "org"."departments" (
+CREATE TABLE IF NOT EXISTS "org"."departments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(100) NOT NULL,
 	"description" text,
@@ -9,7 +9,7 @@ CREATE TABLE "org"."departments" (
 	CONSTRAINT "departments_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
-CREATE TABLE "org"."employees" (
+CREATE TABLE IF NOT EXISTS "org"."employees" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" uuid,
 	"employee_id" varchar(50),
@@ -21,7 +21,7 @@ CREATE TABLE "org"."employees" (
 	CONSTRAINT "employees_employee_id_unique" UNIQUE("employee_id")
 );
 --> statement-breakpoint
-CREATE TABLE "org"."positions" (
+CREATE TABLE IF NOT EXISTS "org"."positions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(100) NOT NULL,
 	"department_id" integer,
@@ -31,8 +31,50 @@ CREATE TABLE "org"."positions" (
 	CONSTRAINT "positions_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
-ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "org"."departments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_position_id_positions_id_fk" FOREIGN KEY ("position_id") REFERENCES "org"."positions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_reports_to_users_id_fk" FOREIGN KEY ("reports_to") REFERENCES "auth"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."positions" ADD CONSTRAINT "positions_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "org"."departments"("id") ON DELETE set null ON UPDATE no action;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'org' 
+        AND constraint_name = 'employees_user_id_users_id_fk'
+    ) THEN
+        ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_user_id_users_id_fk" 
+        FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'org' 
+        AND constraint_name = 'employees_department_id_departments_id_fk'
+    ) THEN
+        ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_department_id_departments_id_fk" 
+        FOREIGN KEY ("department_id") REFERENCES "org"."departments"("id") ON DELETE set null ON UPDATE no action;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'org' 
+        AND constraint_name = 'employees_position_id_positions_id_fk'
+    ) THEN
+        ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_position_id_positions_id_fk" 
+        FOREIGN KEY ("position_id") REFERENCES "org"."positions"("id") ON DELETE set null ON UPDATE no action;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'org' 
+        AND constraint_name = 'employees_reports_to_users_id_fk'
+    ) THEN
+        ALTER TABLE "org"."employees" ADD CONSTRAINT "employees_reports_to_users_id_fk" 
+        FOREIGN KEY ("reports_to") REFERENCES "auth"."users"("id") ON DELETE set null ON UPDATE no action;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_schema = 'org' 
+        AND constraint_name = 'positions_department_id_departments_id_fk'
+    ) THEN
+        ALTER TABLE "org"."positions" ADD CONSTRAINT "positions_department_id_departments_id_fk" 
+        FOREIGN KEY ("department_id") REFERENCES "org"."departments"("id") ON DELETE set null ON UPDATE no action;
+    END IF;
+END $$;
