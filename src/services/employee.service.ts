@@ -35,6 +35,7 @@ export const createEmployee = async (data: {
   departmentId?: number;
   positionId?: number;
   reportsTo?: string;
+  startDate: Date;
 }) => {
   // Auto-generate employeeId if not provided
   const employeeId = data.employeeId || (await generateEmployeeId());
@@ -47,6 +48,7 @@ export const createEmployee = async (data: {
       departmentId: data.departmentId || null,
       positionId: data.positionId || null,
       reportsTo: data.reportsTo || null,
+      startDate: data.startDate || null,
     })
     .returning();
   return employee;

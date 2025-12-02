@@ -57,6 +57,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
       departmentId,
       positionId,
       reportsTo,
+      startDate,
       accountHolderName,
       bankName,
       accountNumber,
@@ -67,6 +68,10 @@ export const createUserHandler = async (req: Request, res: Response) => {
 
     if (!fullName || !email) {
       return res.status(400).send("Full name and email are required");
+    }
+
+    if (!startDate) {
+      return res.status(400).send("Start date is required");
     }
 
     // Validate bank account fields if provided
@@ -145,6 +150,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
         departmentId,
         positionId,
         reportsTo,
+        startDate: new Date(startDate),
       });
     } catch (employeeError: any) {
       if (createdUser) {

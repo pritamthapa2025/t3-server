@@ -25,6 +25,7 @@ export const accountTypeEnum = pgEnum("account_type_enum", [
 export const employeeStatusEnum = pgEnum("employee_status_enum", [
   "available",
   "on_leave",
+  "in_field",
   "terminated",
   "suspended",
 ]);
@@ -66,7 +67,8 @@ export const employees = org.table("employees", {
   reportsTo: uuid("reports_to").references(() => users.id, {
     onDelete: "set null",
   }),
-  startDate: timestamp("start_date"), // joining date
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
   performance: integer("performance").default(0), // percentage or score
   violations: integer("violations").default(0), // number of violations
   status: employeeStatusEnum("status").notNull().default("available"),
