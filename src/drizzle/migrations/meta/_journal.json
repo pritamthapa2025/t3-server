@@ -29,6 +29,20 @@
       "when": 1764571346015,
       "tag": "0003_careful_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765000000000,
+      "tag": "0004_add_note_to_employees",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1765100000000,
+      "tag": "0005_add_profile_picture_to_users",
+      "breakpoints": true
     }
   ]
 }

@@ -28,14 +28,7 @@ export const getPositionsHandler = async (req: Request, res: Response) => {
 
 export const getPositionByIdHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Position ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid position ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const position = await getPositionById(id);
     if (!position) {
@@ -52,10 +45,6 @@ export const getPositionByIdHandler = async (req: Request, res: Response) => {
 export const createPositionHandler = async (req: Request, res: Response) => {
   try {
     const { name, departmentId, description } = req.body;
-
-    if (!name) {
-      return res.status(400).send("Position name is required");
-    }
 
     // Check if position with this name already exists
     const existingPosition = await getPositionByName(name);
@@ -77,24 +66,8 @@ export const createPositionHandler = async (req: Request, res: Response) => {
 
 export const updatePositionHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Position ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid position ID");
-    }
-
+    const id = parseInt(req.params.id as string);
     const { name, departmentId, description } = req.body;
-
-    if (!name && departmentId === undefined && description === undefined) {
-      return res
-        .status(400)
-        .send(
-          "At least one field (name, departmentId, or description) is required"
-        );
-    }
 
     const position = await updatePosition(id, {
       name,
@@ -118,14 +91,7 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
 
 export const deletePositionHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Position ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid position ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const position = await deletePosition(id);
     if (!position) {

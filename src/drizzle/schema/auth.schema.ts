@@ -24,6 +24,7 @@ export const users = auth.table(
     email: varchar("email", { length: 150 }).notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     phone: varchar("phone", { length: 20 }),
+    profilePicture: varchar("profile_picture", { length: 500 }),
     isActive: boolean("is_active").default(true),
     isVerified: boolean("is_verified").default(false),
     isDeleted: boolean("is_deleted").default(false),

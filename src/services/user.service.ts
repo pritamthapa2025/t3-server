@@ -78,6 +78,7 @@ export const createUser = async (data: {
   email: string;
   passwordHash: string;
   phone?: string;
+  profilePicture?: string;
   isActive?: boolean;
   isVerified?: boolean;
 }) => {
@@ -88,6 +89,7 @@ export const createUser = async (data: {
       email: data.email,
       passwordHash: data.passwordHash,
       phone: data.phone || null,
+      profilePicture: data.profilePicture || null,
       isActive: data.isActive !== undefined ? data.isActive : true,
       isVerified: data.isVerified !== undefined ? data.isVerified : false,
     })
