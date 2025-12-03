@@ -27,14 +27,7 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
 
 export const getEmployeeByIdHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Employee ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid employee ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const employee = await getEmployeeById(id);
     if (!employee) {
@@ -52,21 +45,13 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
   try {
     const { userId, employeeId, departmentId, positionId, reportsTo, startDate } = req.body;
 
-    if (!userId) {
-      return res.status(400).send("User ID is required");
-    }
-
-    if (!startDate) {
-      return res.status(400).send("Start date is required");
-    }
-
     const employee = await createEmployee({
       userId,
       employeeId,
       departmentId,
       positionId,
       reportsTo,
-      startDate: new Date(startDate),
+      startDate,
     });
     return res.status(201).send(employee);
   } catch (error: any) {
@@ -81,30 +66,8 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
 
 export const updateEmployeeHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Employee ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid employee ID");
-    }
-
+    const id = parseInt(req.params.id as string);
     const { userId, employeeId, departmentId, positionId, reportsTo } = req.body;
-
-    if (
-      !userId &&
-      employeeId === undefined &&
-      departmentId === undefined &&
-      positionId === undefined &&
-      reportsTo === undefined
-    ) {
-      return res
-        .status(400)
-        .send(
-          "At least one field (userId, employeeId, departmentId, positionId, or reportsTo) is required"
-        );
-    }
 
     const employee = await updateEmployee(id, {
       userId,
@@ -130,14 +93,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
 
 export const deleteEmployeeHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Employee ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid employee ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const employee = await deleteEmployee(id);
     if (!employee) {

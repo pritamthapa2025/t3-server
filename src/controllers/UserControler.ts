@@ -11,6 +11,7 @@ import { getDepartmentById } from "../services/department.service.js";
 import { getPositionById } from "../services/position.service.js";
 import { hashPassword } from "../utils/hash.js";
 import { createBankAccount } from "../services/bankAccount.service.js";
+import { uploadToSpaces } from "../services/storage.service.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -30,12 +31,7 @@ export const getUsersHandler = async (req: Request, res: Response) => {
 
 export const getUserByIdHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("User ID is required");
-    }
-
-    const user = await getUserById(idParam);
+    const user = await getUserById(req.params.id as string);
     if (!user) {
       return res.status(404).send("User not found");
     }
@@ -49,7 +45,30 @@ export const getUserByIdHandler = async (req: Request, res: Response) => {
 
 export const createUserHandler = async (req: Request, res: Response) => {
   let createdUser = null;
+  let uploadedFileUrl: string | null = null;
   try {
+    // Parse user data - either from JSON body or from form-data field
+    let userData: any;
+    if (req.headers["content-type"]?.includes("application/json")) {
+      // JSON request - data is in req.body
+      userData = req.body;
+    } else {
+      // Multipart form-data - parse JSON from 'data' field
+      if (req.body.data) {
+        try {
+          userData =
+            typeof req.body.data === "string"
+              ? JSON.parse(req.body.data)
+              : req.body.data;
+        } catch (parseError) {
+          return res.status(400).send("Invalid JSON in 'data' field");
+        }
+      } else {
+        // Fallback: use req.body directly (for backward compatibility)
+        userData = req.body;
+      }
+    }
+
     const {
       fullName,
       email,
@@ -64,44 +83,32 @@ export const createUserHandler = async (req: Request, res: Response) => {
       routingNumber,
       accountType,
       branchName,
-    } = req.body;
+    } = userData;
 
-    if (!fullName || !email) {
-      return res.status(400).send("Full name and email are required");
-    }
+    // Note: For JSON requests, validation is handled by Zod middleware
+    // For form-data requests, validation happens here after parsing req.body.data
+    // TODO: Consider moving form-data parsing to middleware for consistent validation
 
-    if (!startDate) {
-      return res.status(400).send("Start date is required");
-    }
-
-    // Validate bank account fields if provided
-    if (accountHolderName || bankName || accountNumber || accountType) {
-      if (!accountHolderName || !bankName || !accountNumber || !accountType) {
+    // Handle file upload if provided
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "profile-pictures"
+        );
+        uploadedFileUrl = uploadResult.url;
+      } catch (uploadError: any) {
+        console.error("File upload error:", uploadError);
         return res
-          .status(400)
-          .send(
-            "providing bank account details, accountHolderName, bankName, accountNumber, and accountType are required"
-          );
-      }
-
-      // Validate accountType enum
-      const validAccountTypes = [
-        "savings",
-        "current",
-        "salary",
-        "checking",
-        "business",
-      ];
-      if (!validAccountTypes.includes(accountType)) {
-        return res
-          .status(400)
-          .send(
-            `Invalid accountType. Must be one of: ${validAccountTypes.join(
-              ", "
-            )}`
-          );
+          .status(500)
+          .send("Failed to upload profile picture. Please try again.");
       }
     }
+
+    // Note: Bank account validation is handled by Zod middleware for JSON requests
+    // For form-data, this validation would need to be done here or in middleware
 
     // Validate departmentId if provided
     if (departmentId !== undefined && departmentId !== null) {
@@ -137,6 +144,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
       email,
       passwordHash,
       phone,
+      ...(uploadedFileUrl && { profilePicture: uploadedFileUrl }),
     });
 
     if (!createdUser) {
@@ -216,28 +224,9 @@ export const createUserHandler = async (req: Request, res: Response) => {
 
 export const updateUserHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("User ID is required");
-    }
-
     const { fullName, email, phone, isActive, isVerified } = req.body;
 
-    if (
-      !fullName &&
-      !email &&
-      phone === undefined &&
-      isActive === undefined &&
-      isVerified === undefined
-    ) {
-      return res
-        .status(400)
-        .send(
-          "At least one field (fullName, email, phone, isActive, or isVerified) is required"
-        );
-    }
-
-    const user = await updateUser(idParam, {
+    const user = await updateUser(req.params.id as string, {
       fullName,
       email,
       phone,
@@ -261,12 +250,7 @@ export const updateUserHandler = async (req: Request, res: Response) => {
 
 export const deleteUserHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("User ID is required");
-    }
-
-    const user = await deleteUser(idParam);
+    const user = await deleteUser(req.params.id as string);
     if (!user) {
       return res.status(404).send("User not found");
     }

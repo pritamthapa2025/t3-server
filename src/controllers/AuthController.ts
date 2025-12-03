@@ -1,7 +1,10 @@
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
 import { generateToken, verifyToken } from "../utils/jwt.js";
+import { db } from "../config/db.js";
+import { userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
 import {
   generate2FACode,
@@ -22,11 +25,6 @@ import {
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email and password are required" });
-    }
 
     const user = await getUserByEmail(email);
     if (!user) {
@@ -67,12 +65,6 @@ export const requestPasswordResetHandler = async (
 ) => {
   const { email } = req.body;
 
-  if (!email) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Email is required" });
-  }
-
   try {
     // Check if the user exists
     const user = await getUserByEmail(email);
@@ -105,12 +97,6 @@ export const requestPasswordResetHandler = async (
 
 export const resetPasswordHandler = async (req: Request, res: Response) => {
   const { token, oldPassword, newPassword } = req.body;
-
-  if (!token || !oldPassword || !newPassword) {
-    return res
-      .status(400)
-      .json({ success: false, message: "All fields are required" });
-  }
 
   try {
     // Verify the reset token
@@ -166,13 +152,6 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
 
   const userId = req.user.id;
 
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({
-      success: false,
-      message: "Current and new passwords are required",
-    });
-  }
-
   try {
     // Find the user from the database
     const user = await getUserById(userId);
@@ -213,11 +192,6 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
 export const verify2FAHandler = async (req: Request, res: Response) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email and code are required" });
-    }
 
     const valid = await verify2FACode(email, code);
     if (!valid) {
@@ -233,12 +207,30 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "User not found" });
     }
 
+    // Fetch user's role
+    const [userRole] = await db
+      .select({
+        roleName: roles.name,
+      })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, user.id))
+      .limit(1);
+
     const token = generateToken(user.id);
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
-      data: { token },
+      message: "Verification successful",
+      data: {
+        token,
+        user: {
+          id: user.id,
+          name: user.fullName,
+          email: user.email,
+          role: userRole?.roleName || null,
+        },
+      },
     });
   } catch (err: any) {
     console.error(err);
@@ -250,12 +242,6 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
 export const resend2FAHandler = async (req: Request, res: Response) => {
   const { email } = req.body;
-
-  if (!email) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Email is required" });
-  }
 
   try {
     // Check if the user exists

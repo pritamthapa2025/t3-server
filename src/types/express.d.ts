@@ -7,6 +7,8 @@ declare global {
         id: string;
         email?: string;
       };
+      file?: Express.Multer.File;
+      files?: Express.Multer.File[];
     }
   }
 }

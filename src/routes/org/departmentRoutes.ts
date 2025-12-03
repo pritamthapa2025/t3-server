@@ -7,6 +7,14 @@ import {
   deleteDepartmentHandler,
 } from "../../controllers/DepartmentController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { validate } from "../../middleware/validate.js";
+import {
+  getDepartmentsQuerySchema,
+  getDepartmentByIdSchema,
+  createDepartmentSchema,
+  updateDepartmentSchema,
+  deleteDepartmentSchema,
+} from "../../validations/department.validations.js";
 
 const router = Router();
 
@@ -15,12 +23,12 @@ router.use(authenticate);
 
 router
   .route("/department")
-  .get(getDepartmentsHandler)
-  .post(createDepartmentHandler);
+  .get(validate(getDepartmentsQuerySchema), getDepartmentsHandler)
+  .post(validate(createDepartmentSchema), createDepartmentHandler);
 router
   .route("/department/:id")
-  .get(getDepartmentByIdHandler)
-  .put(updateDepartmentHandler)
-  .delete(deleteDepartmentHandler);
+  .get(validate(getDepartmentByIdSchema), getDepartmentByIdHandler)
+  .put(validate(updateDepartmentSchema), updateDepartmentHandler)
+  .delete(validate(deleteDepartmentSchema), deleteDepartmentHandler);
 
 export default router;

@@ -10,6 +10,9 @@ import {
   primaryKey,
   integer,
   jsonb,
+  numeric,
+  date,
+  unique,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 import { pgEnum } from "drizzle-orm/pg-core";
@@ -28,6 +31,13 @@ export const employeeStatusEnum = pgEnum("employee_status_enum", [
   "in_field",
   "terminated",
   "suspended",
+]);
+
+export const timesheetStatusEnum = pgEnum("timesheet_status_enum", [
+  "pending",
+  "submitted",
+  "approved",
+  "rejected",
 ]);
 
 export const org = pgSchema("org");
@@ -71,6 +81,7 @@ export const employees = org.table("employees", {
   endDate: timestamp("end_date"),
   performance: integer("performance").default(0), // percentage or score
   violations: integer("violations").default(0), // number of violations
+  note: jsonb("note"),
   status: employeeStatusEnum("status").notNull().default("available"),
   isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -108,4 +119,59 @@ export const employeeReviews = org.table("employee_reviews", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const timesheets = org.table(
+  "timesheets",
+  {
+    id: serial("id").primaryKey(),
+
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employees.id),
+
+    sheetDate: date("sheet_date").notNull(),
+
+    clockIn: timestamp("clock_in").notNull(),
+    clockOut: timestamp("clock_out").notNull(),
+
+    breakMinutes: integer("break_minutes").default(0),
+
+    totalHours: numeric("total_hours", { precision: 5, scale: 2 }).default("0"),
+    overtimeHours: numeric("overtime_hours", {
+      precision: 5,
+      scale: 2,
+    }).default("0"),
+
+    notes: text("notes"),
+
+    status: timesheetStatusEnum("status").notNull().default("pending"),
+
+    submittedBy: uuid("submitted_by").references(() => users.id),
+    approvedBy: uuid("approved_by").references(() => users.id),
+
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    unique("unique_employee_day").on(table.employeeId, table.sheetDate),
+  ]
+);
+
+export const timesheetApprovals = org.table("timesheet_approvals", {
+  id: serial("id").primaryKey(),
+
+  timesheetId: integer("timesheet_id")
+    .notNull()
+    .references(() => timesheets.id),
+
+  action: varchar("action", { length: 50 }).notNull(),
+
+  performedBy: uuid("performed_by")
+    .notNull()
+    .references(() => users.id),
+
+  remarks: text("remarks"),
+
+  createdAt: timestamp("created_at").defaultNow(),
 });

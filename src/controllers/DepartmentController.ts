@@ -26,14 +26,7 @@ export const getDepartmentsHandler = async (req: Request, res: Response) => {
 
 export const getDepartmentByIdHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Department ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid department ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const department = await getDepartmentById(id);
     if (!department) {
@@ -50,10 +43,6 @@ export const getDepartmentByIdHandler = async (req: Request, res: Response) => {
 export const createDepartmentHandler = async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
-
-    if (!name) {
-      return res.status(400).send("Department name is required");
-    }
 
     // Check if department with this name already exists
     const existingDepartment = await getDepartmentByName(name);
@@ -75,22 +64,8 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
 
 export const updateDepartmentHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Department ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid department ID");
-    }
-
+    const id = parseInt(req.params.id as string);
     const { name, description } = req.body;
-
-    if (!name && description === undefined) {
-      return res
-        .status(400)
-        .send("At least one field (name or description) is required");
-    }
 
     const department = await updateDepartment(id, { name, description });
     if (!department) {
@@ -110,14 +85,7 @@ export const updateDepartmentHandler = async (req: Request, res: Response) => {
 
 export const deleteDepartmentHandler = async (req: Request, res: Response) => {
   try {
-    const idParam = req.params.id;
-    if (!idParam) {
-      return res.status(400).send("Department ID is required");
-    }
-    const id = parseInt(idParam);
-    if (isNaN(id)) {
-      return res.status(400).send("Invalid department ID");
-    }
+    const id = parseInt(req.params.id as string);
 
     const department = await deleteDepartment(id);
     if (!department) {
