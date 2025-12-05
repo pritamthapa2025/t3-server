@@ -1,6 +1,7 @@
 import http from "http";
 import app from "./app.js";
-import { initDB } from "./config/db.js";
+import { initDB, pool } from "./config/db.js";
+import redis from "./config/redis.js";
 
 import dotenv from "dotenv";
 
@@ -10,11 +11,87 @@ const PORT = process.env.PORT || 4000;
 
 const server = http.createServer(app);
 
+// Graceful shutdown handler
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  server.close(async () => {
+    console.log("HTTP server closed");
+    
+    try {
+      // Close database connection pool
+      await pool.end();
+      console.log("Database connection pool closed");
+    } catch (error) {
+      console.error("Error closing database pool:", error);
+    }
+    
+    try {
+      // Close Redis connection
+      await redis.quit();
+      console.log("Redis connection closed");
+    } catch (error) {
+      console.error("Error closing Redis connection:", error);
+    }
+    
+    console.log("Graceful shutdown completed");
+    process.exit(0);
+  });
+  
+  // Force shutdown after 30 seconds
+  setTimeout(() => {
+    console.error("Forced shutdown after timeout");
+    process.exit(1);
+  }, 30000);
+};
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason: Error | unknown, promise: Promise<unknown>) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  // Don't exit in production, just log the error
+  if (process.env.NODE_ENV === "production") {
+    console.error("Unhandled rejection logged, continuing...");
+  }
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error: Error) => {
+  console.error("Uncaught Exception:", error);
+  gracefulShutdown("SIGTERM");
+});
+
+// Handle termination signals
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 // Initialize database connection before starting server
 initDB()
   .then(() => {
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
+    });
+    
+    // Handle server errors
+    server.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.syscall !== "listen") {
+        throw error;
+      }
+      
+      const bind = typeof PORT === "string" ? `Pipe ${PORT}` : `Port ${PORT}`;
+      
+      switch (error.code) {
+        case "EACCES":
+          console.error(`${bind} requires elevated privileges`);
+          process.exit(1);
+          break;
+        case "EADDRINUSE":
+          console.error(`${bind} is already in use`);
+          process.exit(1);
+          break;
+        default:
+          throw error;
+      }
     });
   })
   .catch((error) => {
