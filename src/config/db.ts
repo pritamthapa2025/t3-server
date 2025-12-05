@@ -14,7 +14,7 @@ const pool = new Pool({
   max: 20, // Maximum number of clients in the pool
   min: 5, // Minimum number of clients in the pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection cannot be established
+  connectionTimeoutMillis: 30000, // Return an error after 30 seconds if connection cannot be established (increased for production)
 });
 
 //  Create Drizzle ORM instance
@@ -22,14 +22,24 @@ export const db = drizzle(pool);
 
 export { pool };
 
-//  Helper to test DB connection
-export const initDB = async () => {
-  try {
-    const client = await pool.connect();
-    console.log("PostgreSQL connected successfully");
-    client.release();
-  } catch (error) {
-    console.error("Database connection failed:", error);
-    process.exit(1);
+//  Helper to test DB connection with retry logic
+export const initDB = async (retries = 5, delay = 5000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const client = await pool.connect();
+      console.log("✅ PostgreSQL connected successfully");
+      client.release();
+      return;
+    } catch (error) {
+      console.error(`Database connection failed (attempt ${i + 1}/${retries}):`, error);
+      
+      if (i < retries - 1) {
+        console.log(`Retrying in ${delay / 1000} seconds...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        console.error("❌ Database connection failed after all retries");
+        process.exit(1);
+      }
+    }
   }
 };
