@@ -29,8 +29,8 @@ export const errorHandler = (
     message,
   };
 
-  // Include stack trace in development
-  if (process.env.NODE_ENV === "development") {
+  // Include stack trace in development (only if it exists)
+  if (process.env.NODE_ENV === "development" && err.stack) {
     errorResponse.stack = err.stack;
   }
 
