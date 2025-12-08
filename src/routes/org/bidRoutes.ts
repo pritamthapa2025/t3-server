@@ -74,7 +74,6 @@ import {
 
 const router = Router();
 
-// Apply authentication middleware to all bid routes
 router.use(authenticate);
 
 // Main Bid Routes
