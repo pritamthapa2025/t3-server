@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   changePasswordHandler,
+  getCurrentUserHandler,
   loginUserHandler,
   requestPasswordResetHandler,
   resend2FAHandler,
@@ -31,9 +32,11 @@ router
 router.route("/verify-2fa").post(validate(verify2FASchema), verify2FAHandler);
 router.route("/resend-2fa").post(validate(resend2FASchema), resend2FAHandler);
 
-// Protected route (authentication required)
+// Protected routes (authentication required)
 router
   .route("/change-password")
   .post(authenticate, validate(changePasswordSchema), changePasswordHandler);
+
+router.route("/me").get(authenticate, getCurrentUserHandler);
 
 export default router;

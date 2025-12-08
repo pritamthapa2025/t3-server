@@ -23,11 +23,11 @@ redis.on("error", (err: Error) => {
 });
 
 redis.on("connect", () => {
-  console.log("✅ Redis connected successfully");
+  // Connection successful - log removed
 });
 
 redis.on("ready", () => {
-  console.log("✅ Redis ready to accept commands");
+  // Redis ready - log removed
 });
 
 // Test Redis connection on startup (wait for ready state to avoid errors)

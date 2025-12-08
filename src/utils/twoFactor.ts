@@ -94,6 +94,9 @@ export const verify2FACode = async (
   email: string,
   code: string
 ): Promise<boolean> => {
+  // Normalize the input code (trim whitespace and ensure it's a string)
+  const normalizedCode = String(code).trim();
+
   // Retrieve the encrypted code from Redis
   const encryptedCode = await redisClient.get(email);
 
@@ -110,8 +113,8 @@ export const verify2FACode = async (
     return false;
   }
 
-  // Compare codes
-  if (storedCode === code) {
+  // Compare codes (both should be strings at this point)
+  if (storedCode === normalizedCode) {
     // Remove the code from Redis once it's verified (one-time use)
     await redisClient.del(email);
     return true;

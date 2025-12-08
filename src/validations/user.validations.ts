@@ -34,7 +34,7 @@ export const createUserSchema = z
         .string()
         .min(1, "Full name is required")
         .max(150, "Full name must be less than 150 characters"),
-      email: z.string().email("Invalid email format"),
+      email: z.email("Invalid email format"),
       phone: z
         .string()
         .optional()
@@ -114,7 +114,7 @@ export const updateUserSchema = z.object({
         .min(1, "Full name cannot be empty")
         .max(150, "Full name must be less than 150 characters")
         .optional(),
-      email: z.string().email("Invalid email format").optional(),
+      email: z.email("Invalid email format").optional(),
       phone: z
         .string()
         .optional()
