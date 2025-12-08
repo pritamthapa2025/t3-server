@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import {
   getUsers,
   getUserById,
@@ -12,6 +13,7 @@ import { getPositionById } from "../services/position.service.js";
 import { hashPassword } from "../utils/hash.js";
 import { createBankAccount } from "../services/bankAccount.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -107,9 +109,6 @@ export const createUserHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Note: Bank account validation is handled by Zod middleware for JSON requests
-    // For form-data, this validation would need to be done here or in middleware
-
     // Validate departmentId if provided
     if (departmentId !== undefined && departmentId !== null) {
       const department = await getDepartmentById(departmentId);
@@ -135,7 +134,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
     }
 
     // Hash default password for all new users
-    const defaultPassword = "t3-setLaterPassword2025";
+    const defaultPassword = "TempPass2025!ChangeMe";
     const passwordHash = await hashPassword(defaultPassword);
 
     // Create user with default password (user can change it later)
@@ -191,6 +190,30 @@ export const createUserHandler = async (req: Request, res: Response) => {
         }
         throw bankAccountError;
       }
+    }
+
+    // Generate secure token for password setup (valid for 24 hours)
+    const setupToken = jwt.sign(
+      {
+        email: createdUser.email,
+        purpose: "new-user-password-setup",
+        userId: createdUser.id,
+      },
+      process.env.JWT_SECRET || "",
+      { expiresIn: "24h" }
+    );
+
+    // Send password setup email to the new user
+    try {
+      await sendNewUserPasswordSetupEmail(
+        createdUser.email,
+        fullName,
+        setupToken
+      );
+    } catch (emailError: any) {
+      console.error("Failed to send password setup email:", emailError.message);
+      // Note: We don't fail user creation if email fails - log and continue
+      // The user can still use the default password to login if needed
     }
 
     return res.status(201).send("user created successfully");
