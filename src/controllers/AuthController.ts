@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
 import { generateToken, verifyToken } from "../utils/jwt.js";
 import { db } from "../config/db.js";
-import { userRoles, roles } from "../drizzle/schema/auth.schema.js";
+import { userRoles, roles, users } from "../drizzle/schema/auth.schema.js";
 
 import {
   generate2FACode,
@@ -19,6 +19,7 @@ import {
 import {
   getUserByEmail,
   getUserById,
+  getUserByIdForProfile,
   updatePassword,
 } from "../services/auth.service.js";
 
@@ -193,7 +194,18 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
   try {
     const { email, code } = req.body;
 
-    const valid = await verify2FACode(email, code);
+    // Ensure code is a string and trim any whitespace
+    const codeString = String(code).trim();
+
+    // Validate code format before verification
+    if (!/^\d{6}$/.test(codeString)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid 2FA code format. Code must be exactly 6 digits",
+      });
+    }
+
+    const valid = await verify2FACode(email, codeString);
     if (!valid) {
       return res
         .status(400)
@@ -272,5 +284,59 @@ export const resend2FAHandler = async (req: Request, res: Response) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to resend 2FA code" });
+  }
+};
+
+export const getCurrentUserHandler = async (req: Request, res: Response) => {
+  try {
+    // User is already authenticated by middleware and attached to req.user
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // Get full user data for profile
+    const user = await getUserByIdForProfile(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Fetch user's role
+    const [userRole] = await db
+      .select({
+        roleName: roles.name,
+      })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, user.id))
+      .limit(1);
+
+    return res.status(200).json({
+      success: true,
+      message: "User retrieved successfully",
+      data: {
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        phone: user.phone || null,
+        profilePicture: user.profilePicture || null,
+        isActive: user.isActive,
+        isVerified: user.isVerified,
+        role: userRole?.roleName || null,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    });
+  } catch (err: any) {
+    console.error("Get current user error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to retrieve user data" });
   }
 };

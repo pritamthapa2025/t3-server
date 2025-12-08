@@ -3,7 +3,7 @@ import { z } from "zod";
 // Login validation
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: z.email("Invalid email format"),
     password: z.string().min(1, "Password is required"),
   }),
 });
@@ -11,15 +11,23 @@ export const loginSchema = z.object({
 // Verify 2FA validation
 export const verify2FASchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
-    code: z.string().length(6, "2FA code must be 6 digits"),
+    email: z.email("Invalid email format"),
+    code: z
+      .union([z.string(), z.number()])
+      .transform((val) => String(val))
+      .pipe(
+        z
+          .string()
+          .length(6, "2FA code must be 6 digits")
+          .regex(/^\d+$/, "2FA code must contain only digits")
+      ),
   }),
 });
 
 // Request password reset validation
 export const requestPasswordResetSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: z.email("Invalid email format"),
   }),
 });
 
@@ -55,6 +63,6 @@ export const changePasswordSchema = z.object({
 // Resend 2FA validation
 export const resend2FASchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: z.email("Invalid email format"),
   }),
 });

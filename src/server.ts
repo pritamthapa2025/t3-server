@@ -69,7 +69,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 initDB()
   .then(() => {
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      // Server started - log removed
     });
     
     // Handle server errors

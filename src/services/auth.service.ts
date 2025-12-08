@@ -55,6 +55,28 @@ export const getUserByIdForAuth = async (userId: string) => {
   return user || null;
 };
 
+// Full user fetch for profile (all fields except password)
+export const getUserByIdForProfile = async (userId: string) => {
+  const [user] = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      phone: users.phone,
+      profilePicture: users.profilePicture,
+      isActive: users.isActive,
+      isVerified: users.isVerified,
+      isDeleted: users.isDeleted,
+      lastLogin: users.lastLogin,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+
+  return user || null;
+};
+
 // Update user password
 export const updatePassword = async (userId: string, passwordHash: string) => {
   await db
