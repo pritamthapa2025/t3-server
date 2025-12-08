@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc } from "drizzle-orm";
+import { count, eq, and, desc, asc, max, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   bidsTable,
@@ -39,16 +39,28 @@ export const getBids = async (
   );
 
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(bidsTable.status, filters.status as any));
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.status, filters.status as any)
+    );
   }
   if (filters?.jobType) {
-    whereCondition = and(whereCondition, eq(bidsTable.jobType, filters.jobType as any));
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.jobType, filters.jobType as any)
+    );
   }
   if (filters?.priority) {
-    whereCondition = and(whereCondition, eq(bidsTable.priority, filters.priority as any));
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.priority, filters.priority as any)
+    );
   }
   if (filters?.assignedTo) {
-    whereCondition = and(whereCondition, eq(bidsTable.assignedTo, filters.assignedTo));
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.assignedTo, filters.assignedTo)
+    );
   }
 
   const result = await db
@@ -103,39 +115,71 @@ export const createBid = async (data: {
   bidAmount?: string;
   createdBy: string;
 }) => {
-  // Generate bid number
-  const bidNumber = await generateBidNumber(data.organizationId);
+  const maxRetries = 5;
+  let attempt = 0;
 
-  const [bid] = await db
-    .insert(bidsTable)
-    .values({
-      bidNumber,
-      title: data.title,
-      jobType: data.jobType,
-      organizationId: data.organizationId,
-      createdBy: data.createdBy,
-      status: (data.status as any) || "draft",
-      priority: (data.priority as any) || "medium",
-      clientName: data.clientName,
-      clientEmail: data.clientEmail,
-      clientPhone: data.clientPhone,
-      city: data.city,
-      projectName: data.projectName,
-      siteAddress: data.siteAddress,
-      scopeOfWork: data.scopeOfWork,
-      description: data.description,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      bidAmount: data.bidAmount || "0",
-    })
-    .returning();
+  while (attempt < maxRetries) {
+    try {
+      // Generate bid number
+      const bidNumber = await generateBidNumber(data.organizationId);
 
-  // Create related records based on job type
-  if (bid) {
-    await createRelatedRecords(bid.id, data.organizationId, data.jobType);
+      const [bid] = await db
+        .insert(bidsTable)
+        .values({
+          bidNumber,
+          title: data.title,
+          jobType: data.jobType,
+          organizationId: data.organizationId,
+          createdBy: data.createdBy,
+          status: (data.status as any) || "draft",
+          priority: (data.priority as any) || "medium",
+          clientName: data.clientName,
+          clientEmail: data.clientEmail,
+          clientPhone: data.clientPhone,
+          city: data.city,
+          projectName: data.projectName,
+          siteAddress: data.siteAddress,
+          scopeOfWork: data.scopeOfWork,
+          description: data.description,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          bidAmount: data.bidAmount || "0",
+        })
+        .returning();
+
+      // Create related records based on job type
+      if (bid) {
+        await createRelatedRecords(bid.id, data.organizationId, data.jobType);
+      }
+
+      return bid;
+    } catch (error: any) {
+      attempt++;
+
+      // Check if it's a unique constraint violation on bidNumber
+      const isUniqueConstraintError =
+        error?.code === "23505" || // PostgreSQL unique violation
+        error?.code === "SQLITE_CONSTRAINT" || // SQLite constraint
+        (error?.message && error.message.includes("UNIQUE constraint failed"));
+
+      if (isUniqueConstraintError && attempt < maxRetries) {
+        console.warn(
+          `Bid number collision detected, retrying... (attempt ${attempt}/${maxRetries})`
+        );
+        // Small random delay to reduce collision probability
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
+        continue;
+      }
+
+      // If it's not a unique constraint error or we've exceeded retries, throw the error
+      console.error(`Failed to create bid after ${attempt} attempts:`, error);
+      throw error;
+    }
   }
 
-  return bid;
+  throw new Error(
+    `Failed to create bid after ${maxRetries} attempts due to bid number collisions`
+  );
 };
 
 export const updateBid = async (
@@ -272,7 +316,10 @@ export const updateBidFinancialBreakdown = async (
 // Materials Operations
 // ============================
 
-export const getBidMaterials = async (bidId: string, organizationId: string) => {
+export const getBidMaterials = async (
+  bidId: string,
+  organizationId: string
+) => {
   const materials = await db
     .select()
     .from(bidMaterials)
@@ -295,10 +342,7 @@ export const createBidMaterial = async (data: {
   markup: string;
   totalCost: string;
 }) => {
-  const [material] = await db
-    .insert(bidMaterials)
-    .values(data)
-    .returning();
+  const [material] = await db.insert(bidMaterials).values(data).returning();
   return material;
 };
 
@@ -379,10 +423,7 @@ export const createBidLabor = async (data: {
   totalCost: string;
   totalPrice: string;
 }) => {
-  const [labor] = await db
-    .insert(bidLabor)
-    .values(data)
-    .returning();
+  const [labor] = await db.insert(bidLabor).values(data).returning();
   return labor;
 };
 
@@ -469,10 +510,7 @@ export const createBidTravel = async (data: {
   totalCost: string;
   totalPrice: string;
 }) => {
-  const [travel] = await db
-    .insert(bidTravel)
-    .values(data)
-    .returning();
+  const [travel] = await db.insert(bidTravel).values(data).returning();
   return travel;
 };
 
@@ -532,7 +570,10 @@ export const deleteBidTravel = async (id: string, organizationId: string) => {
 // Job-Type Specific Data Operations
 // ============================
 
-export const getBidSurveyData = async (bidId: string, organizationId: string) => {
+export const getBidSurveyData = async (
+  bidId: string,
+  organizationId: string
+) => {
   const [surveyData] = await db
     .select()
     .from(bidSurveyData)
@@ -594,7 +635,10 @@ export const updateBidSurveyData = async (
   }
 };
 
-export const getBidPlanSpecData = async (bidId: string, organizationId: string) => {
+export const getBidPlanSpecData = async (
+  bidId: string,
+  organizationId: string
+) => {
   const [planSpecData] = await db
     .select()
     .from(bidPlanSpecData)
@@ -815,10 +859,7 @@ export const createBidNote = async (data: {
   createdBy: string;
   isInternal?: boolean;
 }) => {
-  const [note] = await db
-    .insert(bidNotes)
-    .values(data)
-    .returning();
+  const [note] = await db.insert(bidNotes).values(data).returning();
   return note;
 };
 
@@ -892,10 +933,7 @@ export const createBidHistoryEntry = async (data: {
   description?: string;
   performedBy: string;
 }) => {
-  const [historyEntry] = await db
-    .insert(bidHistory)
-    .values(data)
-    .returning();
+  const [historyEntry] = await db.insert(bidHistory).values(data).returning();
   return historyEntry;
 };
 
@@ -904,14 +942,27 @@ export const createBidHistoryEntry = async (data: {
 // ============================
 
 const generateBidNumber = async (organizationId: string): Promise<string> => {
-  const totalResult = await db
-    .select({ count: count() })
+  // Get the highest existing bid number for this organization
+  const maxResult = await db
+    .select({
+      maxBidNumber: max(bidsTable.bidNumber),
+    })
     .from(bidsTable)
     .where(eq(bidsTable.organizationId, organizationId));
 
-  const total = totalResult[0]?.count ?? 0;
-  const nextNumber = total + 1;
-  
+  const maxBidNumber = maxResult[0]?.maxBidNumber;
+
+  let nextNumber = 1;
+
+  if (maxBidNumber) {
+    // Extract numeric part from BID-00001 format
+    const match = maxBidNumber.match(/BID-(\d+)/);
+    if (match && match[1]) {
+      const currentNumber = parseInt(match[1], 10);
+      nextNumber = currentNumber + 1;
+    }
+  }
+
   // Format: BID-00001, BID-00002, etc. (5 digits padding)
   const bidNumber = `BID-${String(nextNumber).padStart(5, "0")}`;
   return bidNumber;
