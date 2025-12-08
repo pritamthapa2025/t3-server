@@ -175,3 +175,156 @@ export const timesheetApprovals = org.table("timesheet_approvals", {
 
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Add organizations table first (referenced by financial tables)
+export const organizations = org.table("organizations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const jobs = org.table("jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Financial summary tables
+export const financialSummary = org.table("financial_summary", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  // Revenue metrics
+  totalContractValue: numeric("total_contract_value", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalInvoiced: numeric("total_invoiced", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalPaid: numeric("total_paid", { precision: 15, scale: 2 }).notNull().default("0"),
+  // Expense metrics
+  totalJobExpenses: numeric("total_job_expenses", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalOperatingExpenses: numeric("total_operating_expenses", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull().default("0"),
+  // Profit metrics
+  projectedProfit: numeric("projected_profit", { precision: 15, scale: 2 }).notNull().default("0"),
+  actualProfit: numeric("actual_profit", { precision: 15, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const jobFinancialSummary = org.table("job_financial_summary", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  contractValue: numeric("contract_value", { precision: 15, scale: 2 }).notNull(),
+  totalInvoiced: numeric("total_invoiced", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalPaid: numeric("total_paid", { precision: 15, scale: 2 }).notNull().default("0"),
+  vendorsOwed: numeric("vendors_owed", { precision: 15, scale: 2 }).notNull().default("0"),
+  laborPaidToDate: numeric("labor_paid_to_date", { precision: 15, scale: 2 }).notNull().default("0"),
+  jobCompletionRate: numeric("job_completion_rate", { precision: 5, scale: 2 }),
+  profitability: numeric("profitability", { precision: 5, scale: 2 }),
+  profitMargin: numeric("profit_margin", { precision: 5, scale: 2 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("unique_job_financial").on(table.jobId)
+]);
+
+export const financialCostCategories = org.table("financial_cost_categories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  categoryKey: varchar("category_key", { length: 50 }).notNull(),
+  categoryLabel: varchar("category_label", { length: 255 }).notNull(),
+  spent: numeric("spent", { precision: 15, scale: 2 }).notNull().default("0"),
+  budget: numeric("budget", { precision: 15, scale: 2 }).notNull().default("0"),
+  percentOfTotal: numeric("percent_of_total", { precision: 5, scale: 2 }).notNull().default("0"),
+  status: varchar("status", { length: 20 }).notNull().default("on-track"),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const profitTrend = org.table("profit_trend", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  period: varchar("period", { length: 50 }).notNull(),
+  periodDate: date("period_date").notNull(),
+  revenue: numeric("revenue", { precision: 15, scale: 2 }).notNull().default("0"),
+  expenses: numeric("expenses", { precision: 15, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cashFlowProjection = org.table("cash_flow_projection", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  projectionDate: date("projection_date").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  projectedIncome: numeric("projected_income", { precision: 15, scale: 2 }).notNull().default("0"),
+  projectedExpenses: numeric("projected_expenses", { precision: 15, scale: 2 }).notNull().default("0"),
+  pipelineCoverageMonths: numeric("pipeline_coverage_months", { precision: 5, scale: 2 }).notNull().default("0"),
+  openInvoicesCount: integer("open_invoices_count").notNull().default(0),
+  averageCollectionDays: integer("average_collection_days").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const cashFlowScenarios = org.table("cash_flow_scenarios", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  projectionId: uuid("projection_id")
+    .notNull()
+    .references(() => cashFlowProjection.id, { onDelete: "cascade" }),
+  scenarioType: varchar("scenario_type", { length: 20 }).notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  description: text("description"),
+  projectedIncome: numeric("projected_income", { precision: 15, scale: 2 }).notNull().default("0"),
+  projectedExpenses: numeric("projected_expenses", { precision: 15, scale: 2 }).notNull().default("0"),
+  changeDescription: varchar("change_description", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const revenueForecast = org.table("revenue_forecast", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  month: varchar("month", { length: 10 }).notNull(),
+  monthDate: date("month_date").notNull(),
+  committed: numeric("committed", { precision: 15, scale: 2 }).notNull().default("0"),
+  pipeline: numeric("pipeline", { precision: 15, scale: 2 }).notNull().default("0"),
+  probability: numeric("probability", { precision: 5, scale: 4 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const financialReports = org.table("financial_reports", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  reportKey: varchar("report_key", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull(),
+  reportConfig: jsonb("report_config"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("unique_org_report").on(table.organizationId, table.reportKey)
+]);
