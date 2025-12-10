@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../utils/jwt.js";
-import { getUserByIdForAuth } from "../services/auth.service.js";
+import { getUserByIdForAuth, getUserOrganizationId } from "../services/auth.service.js";
 
 export const authenticate = async (
   req: Request,
@@ -76,10 +76,14 @@ export const authenticate = async (
       });
     }
 
+    // Get user's organization ID
+    const organizationId = await getUserOrganizationId(user.id);
+
     // Attach user info to request object
     req.user = {
       id: user.id,
       ...(user.email && { email: user.email }),
+      ...(organizationId && { organizationId }),
     };
 
     // Proceed to next middleware/route handler

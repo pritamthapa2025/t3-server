@@ -13,6 +13,21 @@ import { getPositionById } from "../services/position.service.js";
 import { hashPassword } from "../utils/hash.js";
 import { createBankAccount } from "../services/bankAccount.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+
+const validateOrganizationAccess = (req: Request, res: Response): string | null => {
+  const organizationId = req.user?.organizationId;
+  const userId = req.user?.id;
+
+  if (!organizationId || !userId) {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Organization context required.",
+    });
+    return null;
+  }
+
+  return organizationId;
+};
 import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
@@ -87,6 +102,9 @@ export const createUserHandler = async (req: Request, res: Response) => {
       branchName,
     } = userData;
 
+    const organizationId = validateOrganizationAccess(req, res);
+    if (!organizationId) return;
+
     // Note: For JSON requests, validation is handled by Zod middleware
     // For form-data requests, validation happens here after parsing req.body.data
     // TODO: Consider moving form-data parsing to middleware for consistent validation
@@ -158,6 +176,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
         positionId,
         reportsTo,
         startDate: new Date(startDate),
+        organizationId,
       });
     } catch (employeeError: any) {
       if (createdUser) {

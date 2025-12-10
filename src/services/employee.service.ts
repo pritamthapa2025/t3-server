@@ -20,8 +20,13 @@ export const getEmployeeById = async (id: number) => {
   return employee || null;
 };
 
-export const generateEmployeeId = async (): Promise<string> => {
-  const totalResult = await db.select({ count: count() }).from(employees);
+export const generateEmployeeId = async (
+  organizationId: string
+): Promise<string> => {
+  const totalResult = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(eq(employees.organizationId, organizationId));
   const total = totalResult[0]?.count ?? 0;
   const nextNumber = total + 1;
   // Format: T3-00001, T3-00002, etc. (5 digits padding)
@@ -36,9 +41,11 @@ export const createEmployee = async (data: {
   positionId?: number;
   reportsTo?: string;
   startDate: Date;
+  organizationId: string;
 }) => {
   // Auto-generate employeeId if not provided
-  const employeeId = data.employeeId || (await generateEmployeeId());
+  const employeeId =
+    data.employeeId || (await generateEmployeeId(data.organizationId));
 
   const [employee] = await db
     .insert(employees)
@@ -49,6 +56,7 @@ export const createEmployee = async (data: {
       positionId: data.positionId || null,
       reportsTo: data.reportsTo || null,
       startDate: data.startDate || null,
+      organizationId: data.organizationId,
     })
     .returning();
   return employee;

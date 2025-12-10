@@ -1,6 +1,7 @@
 import { eq, is } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { employees, organizations } from "../drizzle/schema/org.schema.js";
 import { comparePassword } from "../utils/hash.js";
 
 // Fetch user by email
@@ -88,4 +89,23 @@ export const updatePassword = async (userId: string, passwordHash: string) => {
 // Verify the user's password
 export const verifyPassword = async (user: any, password: string) => {
   return comparePassword(password, user.passwordHash);
+};
+
+// Get user's organization ID
+export const getUserOrganizationId = async (
+  userId: string
+): Promise<string | null> => {
+  try {
+    // Get organizationId from employee record
+    const [employee] = await db
+      .select({ organizationId: employees.organizationId })
+      .from(employees)
+      .where(eq(employees.userId, userId))
+      .limit(1);
+
+    return employee?.organizationId || null;
+  } catch (error) {
+    console.error("Error getting user organization:", error);
+    return null;
+  }
 };

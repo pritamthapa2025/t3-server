@@ -7,6 +7,21 @@ import {
   deleteEmployee,
 } from "../services/employee.service.js";
 
+const validateOrganizationAccess = (req: Request, res: Response): string | null => {
+  const organizationId = req.user?.organizationId;
+  const userId = req.user?.id;
+
+  if (!organizationId || !userId) {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Organization context required.",
+    });
+    return null;
+  }
+
+  return organizationId;
+};
+
 export const getEmployeesHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -45,6 +60,9 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
   try {
     const { userId, employeeId, departmentId, positionId, reportsTo, startDate } = req.body;
 
+    const organizationId = validateOrganizationAccess(req, res);
+    if (!organizationId) return;
+
     const employee = await createEmployee({
       userId,
       employeeId,
@@ -52,6 +70,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       positionId,
       reportsTo,
       startDate,
+      organizationId,
     });
     return res.status(201).send(employee);
   } catch (error: any) {

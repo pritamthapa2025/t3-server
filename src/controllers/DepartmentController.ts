@@ -8,6 +8,24 @@ import {
   deleteDepartment,
 } from "../services/department.service.js";
 
+const validateOrganizationAccess = (
+  req: Request,
+  res: Response
+): string | null => {
+  const organizationId = req.user?.organizationId;
+  const userId = req.user?.id;
+
+  if (!organizationId || !userId) {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Organization context required.",
+    });
+    return null;
+  }
+
+  return organizationId;
+};
+
 export const getDepartmentsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -44,13 +62,20 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
 
-    // Check if department with this name already exists
-    const existingDepartment = await getDepartmentByName(name);
+    const organizationId = validateOrganizationAccess(req, res);
+    if (!organizationId) return;
+
+    // Check if department with this name already exists in this organization
+    const existingDepartment = await getDepartmentByName(name, organizationId);
     if (existingDepartment) {
       return res.status(409).send("Department name already exists");
     }
 
-    const department = await createDepartment({ name, description });
+    const department = await createDepartment({
+      name,
+      description,
+      organizationId,
+    });
     return res.status(201).send(department);
   } catch (error: any) {
     console.error(error);
