@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { count, eq, and } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { departments } from "../drizzle/schema/org.schema.js";
 
@@ -23,23 +23,30 @@ export const getDepartmentById = async (id: number) => {
   return department || null;
 };
 
-export const getDepartmentByName = async (name: string) => {
+export const getDepartmentByName = async (name: string, organizationId: string) => {
   const [department] = await db
     .select()
     .from(departments)
-    .where(eq(departments.name, name));
+    .where(
+      and(
+        eq(departments.name, name),
+        eq(departments.organizationId, organizationId)
+      )
+    );
   return department || null;
 };
 
 export const createDepartment = async (data: {
   name: string;
   description?: string;
+  organizationId: string;
 }) => {
   const [department] = await db
     .insert(departments)
     .values({
       name: data.name,
       description: data.description || null,
+      organizationId: data.organizationId,
     })
     .returning();
   return department;

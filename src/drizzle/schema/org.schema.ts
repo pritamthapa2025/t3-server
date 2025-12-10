@@ -46,11 +46,17 @@ export const org = pgSchema("org");
 // Departments table
 export const departments = org.table("departments", {
   id: serial("id").primaryKey(),
-  name: varchar("name", { length: 100 }).notNull().unique(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Unique constraint: department names unique per organization
+  unique("unique_dept_per_org").on(table.organizationId, table.name),
+]);
 
 // Positions table
 export const positions = org.table("positions", {
@@ -68,7 +74,10 @@ export const positions = org.table("positions", {
 export const employees = org.table("employees", {
   id: serial("id").primaryKey(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-  employeeId: varchar("employee_id", { length: 50 }).unique(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  employeeId: varchar("employee_id", { length: 50 }),
   departmentId: integer("department_id").references(() => departments.id, {
     onDelete: "set null",
   }),
@@ -87,7 +96,10 @@ export const employees = org.table("employees", {
   isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Unique constraint: employeeId unique per organization
+  unique("unique_employee_per_org").on(table.organizationId, table.employeeId),
+]);
 
 export const userBankAccounts = org.table("user_bank_accounts", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -444,7 +456,7 @@ export const bidsTable = org.table(
   "bids",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    bidNumber: varchar("bid_number", { length: 100 }).notNull().unique(),
+    bidNumber: varchar("bid_number", { length: 100 }).notNull(),
     // Basic Information
     title: varchar("title", { length: 255 }).notNull(),
     jobType: bidJobTypeEnum("job_type").notNull(),
@@ -529,6 +541,9 @@ export const bidsTable = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
+    // Unique constraint: bidNumber unique per organization
+    unique("unique_bid_number_per_org").on(table.organizationId, table.bidNumber),
+    // Indexes for performance
     index("idx_bids_org").on(table.organizationId),
     index("idx_bids_status").on(table.status),
     index("idx_bids_org_status").on(table.organizationId, table.status),

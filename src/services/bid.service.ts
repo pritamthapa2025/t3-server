@@ -112,16 +112,21 @@ export const createBid = async (data: {
   description?: string;
   startDate?: string;
   endDate?: string;
+  plannedStartDate?: string;
+  estimatedCompletion?: string;
+  expiresDate?: string;
+  removalDate?: string;
   bidAmount?: string;
   createdBy: string;
 }) => {
   const maxRetries = 5;
   let attempt = 0;
 
+  // Generate initial bid number outside the retry loop
+  let bidNumber = await generateBidNumber(data.organizationId);
+
   while (attempt < maxRetries) {
     try {
-      // Generate bid number
-      const bidNumber = await generateBidNumber(data.organizationId);
 
       const [bid] = await db
         .insert(bidsTable)
@@ -141,8 +146,12 @@ export const createBid = async (data: {
           siteAddress: data.siteAddress,
           scopeOfWork: data.scopeOfWork,
           description: data.description,
-          startDate: data.startDate,
-          endDate: data.endDate,
+          startDate: data.startDate ? new Date(data.startDate).toISOString().split('T')[0] : null,
+          endDate: data.endDate ? new Date(data.endDate).toISOString().split('T')[0] : null,
+          plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate).toISOString().split('T')[0] : null,
+          estimatedCompletion: data.estimatedCompletion ? new Date(data.estimatedCompletion).toISOString().split('T')[0] : null,
+          expiresDate: data.expiresDate ? new Date(data.expiresDate) : null,
+          removalDate: data.removalDate ? new Date(data.removalDate).toISOString().split('T')[0] : null,
           bidAmount: data.bidAmount || "0",
         })
         .returning();
@@ -163,8 +172,16 @@ export const createBid = async (data: {
         (error?.message && error.message.includes("UNIQUE constraint failed"));
 
       if (isUniqueConstraintError && attempt < maxRetries) {
+        // Increment bid number for retry
+        const match = bidNumber.match(/BID-(\d+)/);
+        if (match && match[1]) {
+          const currentNumber = parseInt(match[1], 10);
+          const nextNumber = currentNumber + 1;
+          bidNumber = `BID-${nextNumber.toString().padStart(5, "0")}`;
+        }
+        
         console.warn(
-          `Bid number collision detected, retrying... (attempt ${attempt}/${maxRetries})`
+          `Bid number collision detected, retrying with ${bidNumber}... (attempt ${attempt}/${maxRetries})`
         );
         // Small random delay to reduce collision probability
         await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
@@ -199,6 +216,10 @@ export const updateBid = async (
     description: string;
     startDate: string;
     endDate: string;
+    plannedStartDate: string;
+    estimatedCompletion: string;
+    expiresDate: string;
+    removalDate: string;
     bidAmount: string;
     assignedTo: string;
   }>
@@ -217,8 +238,12 @@ export const updateBid = async (
       siteAddress: data.siteAddress,
       scopeOfWork: data.scopeOfWork,
       description: data.description,
-      startDate: data.startDate,
-      endDate: data.endDate,
+      startDate: data.startDate ? new Date(data.startDate).toISOString().split('T')[0] : undefined,
+      endDate: data.endDate ? new Date(data.endDate).toISOString().split('T')[0] : undefined,
+      plannedStartDate: data.plannedStartDate ? new Date(data.plannedStartDate).toISOString().split('T')[0] : undefined,
+      estimatedCompletion: data.estimatedCompletion ? new Date(data.estimatedCompletion).toISOString().split('T')[0] : undefined,
+      expiresDate: data.expiresDate ? new Date(data.expiresDate) : undefined,
+      removalDate: data.removalDate ? new Date(data.removalDate).toISOString().split('T')[0] : undefined,
       bidAmount: data.bidAmount,
       assignedTo: data.assignedTo,
       updatedAt: new Date(),

@@ -1,14 +1,17 @@
 import type { Request, Response } from "express";
 
 // Helper function to validate organization access
-const validateOrganizationAccess = (req: Request, res: Response): string | null => {
+const validateOrganizationAccess = (
+  req: Request,
+  res: Response
+): string | null => {
   const organizationId = req.user?.organizationId;
   const userId = req.user?.id;
 
   if (!organizationId || !userId) {
-    res.status(400).json({
+    res.status(403).json({
       success: false,
-      message: "Organization ID and user ID are required",
+      message: "Access denied. Organization context required.",
     });
     return null;
   }
@@ -17,7 +20,11 @@ const validateOrganizationAccess = (req: Request, res: Response): string | null 
 };
 
 // Helper function to validate required params
-const validateParams = (req: Request, res: Response, paramNames: string[]): boolean => {
+const validateParams = (
+  req: Request,
+  res: Response,
+  paramNames: string[]
+): boolean => {
   for (const paramName of paramNames) {
     if (!req.params[paramName]) {
       res.status(400).json({
@@ -77,7 +84,7 @@ export const getBidsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
@@ -91,7 +98,7 @@ export const getBidsHandler = async (req: Request, res: Response) => {
     };
 
     // Remove undefined values
-    Object.keys(filters).forEach(key => {
+    Object.keys(filters).forEach((key) => {
       if (filters[key as keyof typeof filters] === undefined) {
         delete filters[key as keyof typeof filters];
       }
@@ -117,9 +124,9 @@ export const getBidsHandler = async (req: Request, res: Response) => {
 
 export const getBidByIdHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['id'])) return;
+    if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
@@ -149,7 +156,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
   try {
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const createdBy = req.user!.id;
 
     const bidData = {
@@ -193,12 +200,12 @@ export const createBidHandler = async (req: Request, res: Response) => {
 
 export const updateBidHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['id'])) return;
+    if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     // Get original bid for history tracking
@@ -251,12 +258,12 @@ export const updateBidHandler = async (req: Request, res: Response) => {
 
 export const deleteBidHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['id'])) return;
+    if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const deletedBid = await deleteBid(id!, organizationId);
@@ -294,12 +301,14 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
 // Financial Breakdown Operations
 // ============================
 
-export const getBidFinancialBreakdownHandler = async (req: Request, res: Response) => {
+export const getBidFinancialBreakdownHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    if (!validateParams(req, res, ['bidId'])) return;
-    if (!validateParams(req, res, ['bidId'])) return;
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
@@ -318,17 +327,31 @@ export const getBidFinancialBreakdownHandler = async (req: Request, res: Respons
   }
 };
 
-export const updateBidFinancialBreakdownHandler = async (req: Request, res: Response) => {
+export const updateBidFinancialBreakdownHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    if (!validateParams(req, res, ['bidId'])) return;
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const breakdown = await updateBidFinancialBreakdown(bidId!, organizationId, req.body);
+    const breakdown = await updateBidFinancialBreakdown(
+      bidId!,
+      organizationId,
+      req.body
+    );
+
+    if (!breakdown) {
+      return res.status(404).json({
+        success: false,
+        message: "Financial breakdown not found",
+      });
+    }
 
     // Create history entry
     await createBidHistoryEntry({
@@ -359,9 +382,9 @@ export const updateBidFinancialBreakdownHandler = async (req: Request, res: Resp
 
 export const getBidMaterialsHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['bidId'])) return;
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
@@ -382,12 +405,12 @@ export const getBidMaterialsHandler = async (req: Request, res: Response) => {
 
 export const createBidMaterialHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['bidId'])) return;
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const materialData = {
@@ -398,13 +421,20 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
 
     const material = await createBidMaterial(materialData);
 
+    if (!material) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create material",
+      });
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
       organizationId,
       action: "material_added",
-      newValue: material?.description || "Material",
-      description: `Material "${material?.description || "Unknown"}" was added`,
+      newValue: material.description || "Material",
+      description: `Material "${material.description}" was added`,
       performedBy: performedBy,
     });
 
@@ -424,15 +454,19 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
 
 export const updateBidMaterialHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['materialId', 'bidId'])) return;
+    if (!validateParams(req, res, ["materialId", "bidId"])) return;
     const { materialId, bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const material = await updateBidMaterial(materialId!, organizationId, req.body);
+    const material = await updateBidMaterial(
+      materialId!,
+      organizationId,
+      req.body
+    );
 
     if (!material) {
       return res.status(404).json({
@@ -466,12 +500,12 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
 
 export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
   try {
-    if (!validateParams(req, res, ['materialId', 'bidId'])) return;
+    if (!validateParams(req, res, ["materialId", "bidId"])) return;
     const { materialId, bidId } = req.params;
-    
+
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const material = await deleteBidMaterial(materialId!, organizationId);
@@ -511,6 +545,7 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
 
 export const getBidLaborHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -532,10 +567,11 @@ export const getBidLaborHandler = async (req: Request, res: Response) => {
 
 export const createBidLaborHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const laborData = {
@@ -546,13 +582,20 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
 
     const labor = await createBidLabor(laborData);
 
+    if (!labor) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create labor entry",
+      });
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
       organizationId,
       action: "labor_added",
-      newValue: labor?.role || "Unknown",
-      description: `Labor role "${labor?.role || "Unknown"}" was added`,
+      newValue: labor.role || "Unknown",
+      description: `Labor role "${labor.role}" was added`,
       performedBy: performedBy,
     });
 
@@ -572,11 +615,12 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
 
 export const updateBidLaborHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["laborId", "bidId"])) return;
     const { laborId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const labor = await updateBidLabor(laborId!, organizationId, req.body);
@@ -613,11 +657,12 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
 
 export const deleteBidLaborHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["laborId", "bidId"])) return;
     const { laborId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const labor = await deleteBidLabor(laborId!, organizationId);
@@ -657,6 +702,7 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
 
 export const getBidTravelHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -678,10 +724,11 @@ export const getBidTravelHandler = async (req: Request, res: Response) => {
 
 export const createBidTravelHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const travelData = {
@@ -692,12 +739,19 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
 
     const travel = await createBidTravel(travelData);
 
+    if (!travel) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create travel entry",
+      });
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
       organizationId,
       action: "travel_added",
-      newValue: travel?.employeeName || travel?.vehicleName || "Travel entry",
+      newValue: travel.employeeName || travel.vehicleName || "Travel entry",
       description: "Travel entry was added",
       performedBy: performedBy,
     });
@@ -718,11 +772,12 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
 
 export const updateBidTravelHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["travelId", "bidId"])) return;
     const { travelId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const travel = await updateBidTravel(travelId!, organizationId, req.body);
@@ -759,11 +814,12 @@ export const updateBidTravelHandler = async (req: Request, res: Response) => {
 
 export const deleteBidTravelHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["travelId", "bidId"])) return;
     const { travelId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const travel = await deleteBidTravel(travelId!, organizationId);
@@ -803,6 +859,7 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
 
 export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -822,15 +879,30 @@ export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const updateBidSurveyDataHandler = async (req: Request, res: Response) => {
+export const updateBidSurveyDataHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const surveyData = await updateBidSurveyData(bidId!, organizationId, req.body);
+    const surveyData = await updateBidSurveyData(
+      bidId!,
+      organizationId,
+      req.body
+    );
+
+    if (!surveyData) {
+      return res.status(404).json({
+        success: false,
+        message: "Survey data not found",
+      });
+    }
 
     // Create history entry
     await createBidHistoryEntry({
@@ -855,8 +927,12 @@ export const updateBidSurveyDataHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const getBidPlanSpecDataHandler = async (req: Request, res: Response) => {
+export const getBidPlanSpecDataHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -876,15 +952,30 @@ export const getBidPlanSpecDataHandler = async (req: Request, res: Response) => 
   }
 };
 
-export const updateBidPlanSpecDataHandler = async (req: Request, res: Response) => {
+export const updateBidPlanSpecDataHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const planSpecData = await updateBidPlanSpecData(bidId!, organizationId, req.body);
+    const planSpecData = await updateBidPlanSpecData(
+      bidId!,
+      organizationId,
+      req.body
+    );
+
+    if (!planSpecData) {
+      return res.status(404).json({
+        success: false,
+        message: "Plan & Spec data not found",
+      });
+    }
 
     // Create history entry
     await createBidHistoryEntry({
@@ -909,8 +1000,12 @@ export const updateBidPlanSpecDataHandler = async (req: Request, res: Response) 
   }
 };
 
-export const getBidDesignBuildDataHandler = async (req: Request, res: Response) => {
+export const getBidDesignBuildDataHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -930,15 +1025,30 @@ export const getBidDesignBuildDataHandler = async (req: Request, res: Response) 
   }
 };
 
-export const updateBidDesignBuildDataHandler = async (req: Request, res: Response) => {
+export const updateBidDesignBuildDataHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const designBuildData = await updateBidDesignBuildData(bidId!, organizationId, req.body);
+    const designBuildData = await updateBidDesignBuildData(
+      bidId!,
+      organizationId,
+      req.body
+    );
+
+    if (!designBuildData) {
+      return res.status(404).json({
+        success: false,
+        message: "Design Build data not found",
+      });
+    }
 
     // Create history entry
     await createBidHistoryEntry({
@@ -969,6 +1079,7 @@ export const updateBidDesignBuildDataHandler = async (req: Request, res: Respons
 
 export const getBidTimelineHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -988,12 +1099,16 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const createBidTimelineEventHandler = async (req: Request, res: Response) => {
+export const createBidTimelineEventHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const eventData = {
@@ -1005,13 +1120,20 @@ export const createBidTimelineEventHandler = async (req: Request, res: Response)
 
     const event = await createBidTimelineEvent(eventData);
 
+    if (!event) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create timeline event",
+      });
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
       organizationId,
       action: "timeline_event_added",
-      newValue: event?.event || "Unknown",
-      description: `Timeline event "${event?.event || "Unknown"}" was added`,
+      newValue: event.event || "Unknown",
+      description: `Timeline event "${event.event}" was added`,
       performedBy: performedBy,
     });
 
@@ -1029,16 +1151,24 @@ export const createBidTimelineEventHandler = async (req: Request, res: Response)
   }
 };
 
-export const updateBidTimelineEventHandler = async (req: Request, res: Response) => {
+export const updateBidTimelineEventHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["eventId", "bidId"])) return;
     const { eventId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
-    const event = await updateBidTimelineEvent(eventId!, organizationId, req.body);
+    const event = await updateBidTimelineEvent(
+      eventId!,
+      organizationId,
+      req.body
+    );
 
     if (!event) {
       return res.status(404).json({
@@ -1070,13 +1200,17 @@ export const updateBidTimelineEventHandler = async (req: Request, res: Response)
   }
 };
 
-export const deleteBidTimelineEventHandler = async (req: Request, res: Response) => {
+export const deleteBidTimelineEventHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
+    if (!validateParams(req, res, ["eventId", "bidId"])) return;
     const { eventId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const event = await deleteBidTimelineEvent(eventId!, organizationId);
@@ -1116,6 +1250,7 @@ export const deleteBidTimelineEventHandler = async (req: Request, res: Response)
 
 export const getBidNotesHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -1137,10 +1272,11 @@ export const getBidNotesHandler = async (req: Request, res: Response) => {
 
 export const createBidNoteHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const noteData = {
@@ -1151,6 +1287,13 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
     };
 
     const note = await createBidNote(noteData);
+
+    if (!note) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create note",
+      });
+    }
 
     // Create history entry
     await createBidHistoryEntry({
@@ -1177,11 +1320,12 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
 
 export const updateBidNoteHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["noteId", "bidId"])) return;
     const { noteId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const note = await updateBidNote(noteId!, organizationId, req.body);
@@ -1218,11 +1362,12 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
 
 export const deleteBidNoteHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["noteId", "bidId"])) return;
     const { noteId } = req.params;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
-    
+
     const performedBy = req.user!.id;
 
     const note = await deleteBidNote(noteId!, organizationId);
@@ -1262,6 +1407,7 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
 
 export const getBidHistoryHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
@@ -1287,6 +1433,7 @@ export const getBidHistoryHandler = async (req: Request, res: Response) => {
 
 export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
   try {
+    if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;

@@ -92,18 +92,18 @@ export const verifyPassword = async (user: any, password: string) => {
 };
 
 // Get user's organization ID
-export const getUserOrganizationId = async (userId: string): Promise<string | null> => {
+export const getUserOrganizationId = async (
+  userId: string
+): Promise<string | null> => {
   try {
-    // Try to get organizationId from employee record first
-    // Note: This is a temporary solution - in the future we'll have proper user-org relationships
-    
-    // For now, get the first organization in the system as a fallback
-    const [organization] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
+    // Get organizationId from employee record
+    const [employee] = await db
+      .select({ organizationId: employees.organizationId })
+      .from(employees)
+      .where(eq(employees.userId, userId))
       .limit(1);
 
-    return organization?.id || null;
+    return employee?.organizationId || null;
   } catch (error) {
     console.error("Error getting user organization:", error);
     return null;
