@@ -249,6 +249,143 @@ export const requestPasswordResetHandler = async (
   }
 };
 
+export const verifyResetTokenHandler = async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+
+  try {
+    // Ensure OTP is a string and trim any whitespace
+    const otpString = String(otp).trim();
+
+    // Validate OTP format before verification
+    if (!/^\d{6}$/.test(otpString)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP format. OTP must be exactly 6 digits",
+      });
+    }
+
+    // Verify the reset OTP using the same key format as request
+    const isValidOTP = await verify2FACode(`reset_${email}`, otpString);
+    if (!isValidOTP) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
+    }
+
+    // Find user by email
+    const user = await getUserByEmail(email);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    // Generate a short-lived verification token (10 minutes)
+    const verificationToken = jwt.sign(
+      {
+        email: user.email,
+        userId: user.id,
+        purpose: "password-reset-token-verified",
+      },
+      process.env.JWT_SECRET || "",
+      { expiresIn: "10m" }
+    );
+
+    // Delete the OTP since it's been verified (prevent reuse)
+    await delete2FACode(`reset_${email}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Reset token verified successfully",
+      data: {
+        verificationToken,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to verify reset token" });
+  }
+};
+
+export const confirmPasswordResetHandler = async (
+  req: Request,
+  res: Response
+) => {
+  const { verificationToken, newPassword } = req.body;
+
+  try {
+    // Verify the verification token
+    const decoded = jwt.verify(
+      verificationToken,
+      process.env.JWT_SECRET || ""
+    ) as {
+      email: string;
+      purpose: string;
+      userId: string;
+    };
+
+    // Validate token purpose
+    if (decoded.purpose !== "password-reset-token-verified") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification token purpose",
+      });
+    }
+
+    // Find user by email from token
+    const user = await getUserByEmail(decoded.email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Verify user ID matches token
+    if (user.id !== decoded.userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification token",
+      });
+    }
+
+    // Hash the new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update the password in the database
+    await updatePassword(user.id, hashedPassword);
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Password reset successfully" });
+  } catch (err: any) {
+    console.error(err);
+
+    // Handle JWT specific errors
+    if (err.name === "TokenExpiredError") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Verification token has expired. Please verify your OTP again.",
+      });
+    }
+
+    if (err.name === "JsonWebTokenError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification token.",
+      });
+    }
+
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to reset password" });
+  }
+};
+
+// Keep the original for backward compatibility if needed
 export const resetPasswordHandler = async (req: Request, res: Response) => {
   const { email, otp, newPassword } = req.body;
 
