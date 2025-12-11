@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   changePasswordHandler,
+  confirmPasswordResetHandler,
   getCurrentUserHandler,
   loginUserHandler,
   requestChangePasswordHandler,
@@ -11,6 +12,7 @@ import {
   resetPasswordHandler,
   setupNewPasswordHandler,
   verify2FAHandler,
+  verifyResetTokenHandler,
 } from "../../controllers/AuthController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -19,6 +21,8 @@ import {
   verify2FASchema,
   requestPasswordResetSchema,
   resetPasswordSchema,
+  verifyResetTokenSchema,
+  confirmPasswordResetSchema,
   requestChangePasswordSchema,
   changePasswordSchema,
   resend2FASchema,
@@ -37,9 +41,19 @@ router.route("/resend-2fa").post(validate(resend2FASchema), resend2FAHandler);
 router
   .route("/request-password-reset")
   .post(validate(requestPasswordResetSchema), requestPasswordResetHandler);
+
 router
-  .route("/reset-password")
-  .post(validate(resetPasswordSchema), resetPasswordHandler);
+  .route("/verify-reset-token")
+  .post(validate(verifyResetTokenSchema), verifyResetTokenHandler);
+
+router
+  .route("/confirm-password-reset")
+  .post(validate(confirmPasswordResetSchema), confirmPasswordResetHandler);
+
+// Keep original endpoint for backward compatibility
+// router
+//   .route("/reset-password")
+//   .post(validate(resetPasswordSchema), resetPasswordHandler);
 
 router
   .route("/resend-password-reset-otp")

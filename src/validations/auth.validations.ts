@@ -100,6 +100,36 @@ export const resendChangePasswordOTPSchema = z.object({
   body: z.object({}), // No body needed since user is authenticated
 });
 
+// Verify reset token validation (first step of password reset)
+export const verifyResetTokenSchema = z.object({
+  body: z.object({
+    email: z.email("Invalid email format"),
+    otp: z
+      .union([z.string(), z.number()])
+      .transform((val) => String(val))
+      .pipe(
+        z
+          .string()
+          .length(6, "OTP must be 6 digits")
+          .regex(/^\d+$/, "OTP must contain only digits")
+      ),
+  }),
+});
+
+// Confirm password reset validation (second step of password reset)
+export const confirmPasswordResetSchema = z.object({
+  body: z.object({
+    verificationToken: z.string().min(1, "Verification token is required"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters")
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      ),
+  }),
+});
+
 // Setup new password validation (for new users with token)
 export const setupNewPasswordSchema = z.object({
   body: z.object({
