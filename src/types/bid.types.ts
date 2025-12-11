@@ -356,3 +356,4 @@ export type CreateNoteData = Omit<BidNote, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateNoteData = Partial<Omit<BidNote, 'id' | 'bidId' | 'organizationId' | 'createdBy' | 'createdAt' | 'updatedAt'>>;
 
 
+
