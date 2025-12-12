@@ -7,21 +7,27 @@ import {
   updatePosition,
   deletePosition,
 } from "../services/position.service.js";
+import { logger } from "../utils/logger.js";
 
 export const getPositionsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string | undefined;
 
     const offset = (page - 1) * limit;
 
-    const positions = await getPositions(offset, limit);
+    const positions = await getPositions(offset, limit, search);
 
-    return res
-      .status(200)
-      .send({ data: positions.data, total: positions.total });
+    logger.info("Positions fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: positions.data,
+      total: positions.total,
+      pagination: positions.pagination,
+    });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Error fetching positions", error, req);
     return res.status(500).send("Internal server error");
   }
 };
@@ -35,9 +41,10 @@ export const getPositionByIdHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Position not found");
     }
 
+    logger.info("Position fetched successfully");
     return res.status(200).send(position);
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Error fetching position by ID", error, req);
     return res.status(500).send("Internal server error");
   }
 };
@@ -53,9 +60,10 @@ export const createPositionHandler = async (req: Request, res: Response) => {
     }
 
     const position = await createPosition({ name, departmentId, description });
+    logger.info("Position created successfully");
     return res.status(201).send(position);
   } catch (error: any) {
-    console.error(error);
+    logger.logApiError("Error creating position", error, req);
     // Fallback: handle race condition if two requests create simultaneously
     if (error?.code === "23505") {
       return res.status(409).send("Position name already exists");
@@ -78,9 +86,10 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Position not found");
     }
 
+    logger.info("Position updated successfully");
     return res.status(200).send(position);
   } catch (error: any) {
-    console.error(error);
+    logger.logApiError("Error updating position", error, req);
     if (error.code === "23505") {
       // PostgreSQL unique constraint violation
       return res.status(409).send("Position name already exists");
@@ -98,9 +107,10 @@ export const deletePositionHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Position not found");
     }
 
+    logger.info("Position deleted successfully");
     return res.status(200).send("Position deleted successfully");
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Error deleting position", error, req);
     return res.status(500).send("Internal server error");
   }
 };

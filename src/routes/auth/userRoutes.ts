@@ -77,7 +77,24 @@ router
 router
   .route("/users/:id")
   .get(validate(getUserByIdSchema), getUserByIdHandler)
-  .put(validate(updateUserSchema), updateUserHandler)
+  .put(
+    (req, res, next) => {
+      // Apply multer only if Content-Type is multipart/form-data
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        upload(req, res, (err) => {
+          if (err) {
+            return handleMulterError(err, req, res, next);
+          }
+          next();
+        });
+      } else {
+        // Skip multer for JSON requests
+        next();
+      }
+    },
+    validate(updateUserSchema),
+    updateUserHandler
+  )
   .delete(validate(deleteUserSchema), deleteUserHandler);
 
 export default router;

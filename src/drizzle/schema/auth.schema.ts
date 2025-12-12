@@ -11,11 +11,28 @@ import {
   primaryKey,
   integer,
   index,
+  date,
+  jsonb,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 
 export const auth = pgSchema("auth");
 
-// Users
+// Permission Module Enum
+export const permissionModuleEnum = pgEnum("permission_module_enum", [
+  "dashboard",
+  "bids",
+  "jobs",
+  "clients",
+  "properties",
+  "fleet",
+  "team",
+  "financial",
+  "settings",
+  "reports",
+]);
+
+// Enhanced Users Table
 export const users = auth.table(
   "users",
   {
@@ -24,23 +41,42 @@ export const users = auth.table(
     email: varchar("email", { length: 150 }).notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     phone: varchar("phone", { length: 20 }),
+    
+    // Address Information
+    address: text("address"),
+    city: varchar("city", { length: 100 }),
+    state: varchar("state", { length: 50 }),
+    zipCode: varchar("zip_code", { length: 20 }),
+    
+    // Personal Information
+    dateOfBirth: date("date_of_birth"),
+    
+    // Emergency Contact
+    emergencyContactName: varchar("emergency_contact_name", { length: 150 }),
+    emergencyContactPhone: varchar("emergency_contact_phone", { length: 20 }),
+    
     profilePicture: varchar("profile_picture", { length: 500 }),
+    
+    // Email verification
+    emailVerifiedAt: timestamp("email_verified_at"), // Better than boolean
+    
     isActive: boolean("is_active").default(true),
     isVerified: boolean("is_verified").default(false),
     isDeleted: boolean("is_deleted").default(false),
     lastLogin: timestamp("last_login"),
+    
+    // Password change tracking
+    passwordChangedAt: timestamp("password_changed_at"),
+    
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    // Index on id for faster lookups (primary key already has index, but explicit for clarity)
     index("idx_users_id").on(table.id),
-    // Index on isActive for filtering active users
     index("idx_users_is_active").on(table.isActive),
-    // Index on isDeleted for filtering non-deleted users
     index("idx_users_is_deleted").on(table.isDeleted),
-    // Composite index for common query pattern: active and not deleted
     index("idx_users_active_not_deleted").on(table.isActive, table.isDeleted),
+    index("idx_users_city_state").on(table.city, table.state),
   ]
 );
 
@@ -54,15 +90,19 @@ export const roles = auth.table("roles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Permissions
+// Enhanced Permissions with Module Categorization
 export const permissions = auth.table("permissions", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 100 }).notNull().unique(),
   description: text("description"),
-  module: varchar("module", { length: 50 }),
+  module: permissionModuleEnum("module").notNull(), // Use enum instead of varchar
+  action: varchar("action", { length: 50 }).notNull(), // create, read, update, delete, export, etc.
   isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_permissions_module").on(table.module),
+  index("idx_permissions_action").on(table.action),
+]);
 
 // Role Permissions (Many-to-Many)
 export const rolePermissions = auth.table(
@@ -92,15 +132,20 @@ export const userRoles = auth.table(
   (table) => [primaryKey({ columns: [table.userId, table.roleId] })]
 );
 
-// Audit Logs
+// Fixed Audit Logs
 export const auditLogs = auth.table("audit_logs", {
-  id: bigint("id", { mode: "number" }).primaryKey().notNull(),
+  id: serial("id").primaryKey(), // ✅ Fixed - Now auto-incrementing
   userId: uuid("user_id").references(() => users.id, {
     onDelete: "set null",
   }),
-  eventType: varchar("event_type", { length: 100 }),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
   description: text("description"),
   ipAddress: varchar("ip_address", { length: 50 }),
+  metadata: jsonb("metadata"), // Additional context
   isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_audit_logs_user_id").on(table.userId),
+  index("idx_audit_logs_event_type").on(table.eventType),
+  index("idx_audit_logs_created_at").on(table.createdAt),
+]);

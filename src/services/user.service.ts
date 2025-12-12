@@ -1,74 +1,56 @@
-import { alias } from "drizzle-orm/pg-core";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import {
-  employees,
-  departments,
-  positions,
-} from "../drizzle/schema/org.schema.js";
 
-const managerUsers = alias(users, "manager_users");
+export const getUsers = async (
+  offset: number,
+  limit: number,
+  search?: string
+) => {
+  let whereConditions = [eq(users.isDeleted, false)];
 
-export const getUsers = async (offset: number, limit: number) => {
+  // Add search filter if provided
+  if (search) {
+    whereConditions.push(
+      or(
+        ilike(users.fullName, `%${search}%`),
+        ilike(users.email, `%${search}%`),
+        ilike(users.phone, `%${search}%`)
+      )!
+    );
+  }
+
   const result = await db
-    .select({
-      id: users.id,
-      fullName: users.fullName,
-      email: users.email,
-      phone: users.phone,
-      isActive: users.isActive,
-      isVerified: users.isVerified,
-      isDeleted: users.isDeleted,
-      lastLogin: users.lastLogin,
-      employeeId: employees.employeeId,
-      departmentName: departments.name,
-      positionName: positions.name,
-      reportsToName: managerUsers.fullName,
-    })
+    .select()
     .from(users)
-    .leftJoin(employees, eq(users.id, employees.userId))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(positions, eq(employees.positionId, positions.id))
-    .leftJoin(managerUsers, eq(employees.reportsTo, managerUsers.id))
-    .where(eq(users.isDeleted, false))
+    .where(and(...whereConditions))
     .limit(limit)
     .offset(offset);
+
   const total = await db
     .select({ count: count() })
     .from(users)
-    .where(eq(users.isDeleted, false));
+    .where(and(...whereConditions));
+
+  const totalCount = total[0]?.count ?? 0;
 
   return {
     data: result || [],
-    total: total[0]?.count ?? 0,
+    total: totalCount,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit: limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
   };
 };
 
 export const getUserById = async (userId: string) => {
   const [user] = await db
-    .select({
-      id: users.id,
-      fullName: users.fullName,
-      email: users.email,
-      phone: users.phone,
-      isActive: users.isActive,
-      isVerified: users.isVerified,
-      isDeleted: users.isDeleted,
-      lastLogin: users.lastLogin,
-      employeeId: employees.employeeId,
-      departmentName: departments.name,
-      positionName: positions.name,
-      reportsToName: managerUsers.fullName,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-    })
+    .select()
     .from(users)
-    .leftJoin(employees, eq(users.id, employees.userId))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(positions, eq(employees.positionId, positions.id))
-    .leftJoin(managerUsers, eq(employees.reportsTo, managerUsers.id))
-    .where(and(eq(users.id, userId), eq(users.isDeleted, false)));
+    .where(and(eq(users.id, userId), eq(users.isDeleted, false)))
+    .limit(1);
 
   return user || null;
 };
@@ -78,6 +60,13 @@ export const createUser = async (data: {
   email: string;
   passwordHash: string;
   phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  dateOfBirth?: Date | string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
   profilePicture?: string;
   isActive?: boolean;
   isVerified?: boolean;
@@ -89,6 +78,17 @@ export const createUser = async (data: {
       email: data.email,
       passwordHash: data.passwordHash,
       phone: data.phone || null,
+      address: data.address || null,
+      city: data.city || null,
+      state: data.state || null,
+      zipCode: data.zipCode || null,
+      dateOfBirth: data.dateOfBirth
+        ? typeof data.dateOfBirth === "string"
+          ? data.dateOfBirth
+          : data.dateOfBirth.toISOString().split("T")[0]
+        : null,
+      emergencyContactName: data.emergencyContactName || null,
+      emergencyContactPhone: data.emergencyContactPhone || null,
       profilePicture: data.profilePicture || null,
       isActive: data.isActive !== undefined ? data.isActive : true,
       isVerified: data.isVerified !== undefined ? data.isVerified : false,
@@ -103,18 +103,19 @@ export const updateUser = async (
     fullName?: string;
     email?: string;
     phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    dateOfBirth?: Date | string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+    profilePicture?: string;
     isActive?: boolean;
     isVerified?: boolean;
   }
 ) => {
-  const updateData: {
-    fullName?: string;
-    email?: string;
-    phone?: string | null;
-    isActive?: boolean;
-    isVerified?: boolean;
-    updatedAt: Date;
-  } = {
+  const updateData: any = {
     updatedAt: new Date(),
   };
 
@@ -126,6 +127,34 @@ export const updateUser = async (
   }
   if (data.phone !== undefined) {
     updateData.phone = data.phone || null;
+  }
+  if (data.address !== undefined) {
+    updateData.address = data.address || null;
+  }
+  if (data.city !== undefined) {
+    updateData.city = data.city || null;
+  }
+  if (data.state !== undefined) {
+    updateData.state = data.state || null;
+  }
+  if (data.zipCode !== undefined) {
+    updateData.zipCode = data.zipCode || null;
+  }
+  if (data.dateOfBirth !== undefined) {
+    updateData.dateOfBirth = data.dateOfBirth
+      ? typeof data.dateOfBirth === "string"
+        ? data.dateOfBirth
+        : data.dateOfBirth.toISOString().split("T")[0]
+      : null;
+  }
+  if (data.emergencyContactName !== undefined) {
+    updateData.emergencyContactName = data.emergencyContactName || null;
+  }
+  if (data.emergencyContactPhone !== undefined) {
+    updateData.emergencyContactPhone = data.emergencyContactPhone || null;
+  }
+  if (data.profilePicture !== undefined) {
+    updateData.profilePicture = data.profilePicture || null;
   }
   if (data.isActive !== undefined) {
     updateData.isActive = data.isActive;

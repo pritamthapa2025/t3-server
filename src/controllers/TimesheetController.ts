@@ -6,21 +6,27 @@ import {
   updateTimesheet,
   deleteTimesheet,
 } from "../services/timesheet.service.js";
+import { logger } from "../utils/logger.js";
 
 export const getTimesheetsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string | undefined;
 
     const offset = (page - 1) * limit;
 
-    const timesheets = await getTimesheets(offset, limit);
+    const timesheets = await getTimesheets(offset, limit, search);
 
-    return res
-      .status(200)
-      .send({ data: timesheets.data, total: timesheets.total });
+    logger.info("Timesheets fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: timesheets.data,
+      total: timesheets.total,
+      pagination: timesheets.pagination,
+    });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Timesheet error", error, req);
     return res.status(500).send("Internal server error");
   }
 };
@@ -34,9 +40,10 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Timesheet not found");
     }
 
+    logger.info("Timesheet fetched successfully");
     return res.status(200).send(timesheet);
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Timesheet error", error, req);
     return res.status(500).send("Internal server error");
   }
 };
@@ -70,9 +77,10 @@ export const createTimesheetHandler = async (req: Request, res: Response) => {
       submittedBy,
       approvedBy,
     });
+    logger.info("Timesheet created successfully");
     return res.status(201).send(timesheet);
   } catch (error: any) {
-    console.error(error);
+    logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
       // PostgreSQL unique constraint violation
       return res
@@ -119,9 +127,10 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Timesheet not found");
     }
 
+    logger.info("Timesheet updated successfully");
     return res.status(200).send(timesheet);
   } catch (error: any) {
-    console.error(error);
+    logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
       // PostgreSQL unique constraint violation
       return res
@@ -141,9 +150,10 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
       return res.status(404).send("Timesheet not found");
     }
 
+    logger.info("Timesheet deleted successfully");
     return res.status(200).send("Timesheet deleted successfully");
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Timesheet error", error, req);
     return res.status(500).send("Internal server error");
   }
 };

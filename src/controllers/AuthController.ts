@@ -24,6 +24,7 @@ import {
   getUserByIdForProfile,
   updatePassword,
 } from "../services/auth.service.js";
+import { logger } from "../utils/logger.js";
 
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
@@ -49,15 +50,16 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
     // send to user via email (fire and forget - don't wait for it)
     send2FACode(email, code).catch((err) => {
-      console.error("Failed to send 2FA email:", err.message);
+      logger.logApiError("Failed to send 2FA email", err, req);
     });
 
     // Return response immediately without waiting for email
+    logger.info("2FA code sent to email");
     return res
       .status(200)
       .json({ success: true, message: "2FA code sent to email" });
   } catch (err: any) {
-    console.error(err);
+    logger.logApiError("Login error", err, req);
     return res.status(500).json({ success: false, message: "Login failed" });
   }
 };
@@ -103,6 +105,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id);
 
+    logger.info("2FA verification successful");
     return res.status(200).json({
       success: true,
       message: "Verification successful",
@@ -117,7 +120,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error(err);
+    logger.logApiError("2FA verification error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "2FA verification failed" });
@@ -145,14 +148,15 @@ export const resend2FAHandler = async (req: Request, res: Response) => {
 
     // Send the 2FA code to the user's email
     send2FACode(email, code).catch((err) => {
-      console.error("Failed to send 2FA email:", err.message);
+      logger.logApiError("Failed to send 2FA email", err, req);
     });
 
+    logger.info("2FA code resent to email");
     return res
       .status(200)
       .json({ success: true, message: "2FA code resent to email" });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Resend 2FA error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to resend 2FA code" });
@@ -188,6 +192,7 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       .where(eq(userRoles.userId, user.id))
       .limit(1);
 
+    logger.info("Current user retrieved successfully");
     return res.status(200).json({
       success: true,
       message: "User retrieved successfully",
@@ -206,7 +211,7 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error("Get current user error:", err);
+    logger.logApiError("Get current user error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to retrieve user data" });
@@ -237,12 +242,13 @@ export const requestPasswordResetHandler = async (
     // Send the password reset OTP via email
     await sendPasswordResetOTP(user.email, resetOTP);
 
+    logger.info("Password reset OTP sent to email");
     return res.status(200).json({
       success: true,
       message: "Password reset OTP sent to your email",
     });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Request password reset error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to send reset OTP" });
@@ -294,6 +300,7 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
     // Delete the OTP since it's been verified (prevent reuse)
     await delete2FACode(`reset_${email}`);
 
+    logger.info("Reset token verified successfully");
     return res.status(200).json({
       success: true,
       message: "Reset token verified successfully",
@@ -302,7 +309,7 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Verify reset token error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to verify reset token" });
@@ -357,11 +364,12 @@ export const confirmPasswordResetHandler = async (
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
 
+    logger.info("Password reset successfully");
     return res
       .status(200)
       .json({ success: true, message: "Password reset successfully" });
   } catch (err: any) {
-    console.error(err);
+    logger.logApiError("Confirm password reset error", err, req);
 
     // Handle JWT specific errors
     if (err.name === "TokenExpiredError") {
@@ -423,11 +431,12 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
 
+    logger.info("Password reset successfully");
     return res
       .status(200)
       .json({ success: true, message: "Password reset successfully" });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Reset password error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to reset password" });
@@ -460,15 +469,16 @@ export const resendPasswordResetOTPHandler = async (
 
     // Send the new password reset OTP via email
     sendPasswordResetOTP(user.email, resetOTP).catch((err) => {
-      console.error("Failed to send password reset OTP:", err.message);
+      logger.logApiError("Failed to send password reset OTP", err, req);
     });
 
+    logger.info("New password reset OTP sent to email");
     return res.status(200).json({
       success: true,
       message: "New password reset OTP sent to your email",
     });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Resend password reset OTP error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to resend password reset OTP" });
@@ -503,12 +513,13 @@ export const requestChangePasswordHandler = async (
     // Send the password change OTP via email
     await sendChangePasswordOTP(user.email, changeOTP);
 
+    logger.info("Password change OTP sent to email");
     return res.status(200).json({
       success: true,
       message: "Password change OTP sent to your email",
     });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Request change password error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Failed to send change password OTP" });
@@ -558,11 +569,12 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
     // Update the password in the database
     await updatePassword(userId, hashedPassword);
 
+    logger.info("Password changed successfully");
     return res
       .status(200)
       .json({ success: true, message: "Password changed successfully" });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Change password error", err, req);
     return res
       .status(500)
       .json({ success: false, message: "Password change failed" });
@@ -599,15 +611,16 @@ export const resendChangePasswordOTPHandler = async (
 
     // Send the new password change OTP via email
     sendChangePasswordOTP(user.email, changeOTP).catch((err) => {
-      console.error("Failed to send password change OTP:", err.message);
+      logger.logApiError("Failed to send password change OTP", err, req);
     });
 
+    logger.info("New password change OTP sent to email");
     return res.status(200).json({
       success: true,
       message: "New password change OTP sent to your email",
     });
   } catch (err) {
-    console.error(err);
+    logger.logApiError("Resend change password OTP error", err, req);
     return res.status(500).json({
       success: false,
       message: "Failed to resend password change OTP",
@@ -657,13 +670,14 @@ export const setupNewPasswordHandler = async (req: Request, res: Response) => {
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
 
+    logger.info("Password set up successfully");
     return res.status(200).json({
       success: true,
       message:
         "Password set up successfully. You can now login with your new password.",
     });
   } catch (err: any) {
-    console.error(err);
+    logger.logApiError("Setup new password error", err, req);
 
     // Handle JWT specific errors
     if (err.name === "TokenExpiredError") {

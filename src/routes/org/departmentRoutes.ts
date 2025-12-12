@@ -5,6 +5,7 @@ import {
   getDepartmentByIdHandler,
   updateDepartmentHandler,
   deleteDepartmentHandler,
+  getDepartmentKPIsHandler,
 } from "../../controllers/DepartmentController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -20,6 +21,8 @@ const router = Router();
 
 // Apply authentication middleware to all department routes
 router.use(authenticate);
+
+router.route("/department/kpis").get(getDepartmentKPIsHandler);
 
 router
   .route("/department")

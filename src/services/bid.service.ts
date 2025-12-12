@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, max, sql } from "drizzle-orm";
+import { count, eq, and, desc, asc, max, sql, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   bidsTable,
@@ -31,6 +31,7 @@ export const getBids = async (
     jobType?: string;
     priority?: string;
     assignedTo?: string;
+    search?: string;
   }
 ) => {
   let whereCondition = and(
@@ -62,6 +63,19 @@ export const getBids = async (
       eq(bidsTable.assignedTo, filters.assignedTo)
     );
   }
+  if (filters?.search) {
+    whereCondition = and(
+      whereCondition,
+      or(
+        ilike(bidsTable.title, `%${filters.search}%`),
+        ilike(bidsTable.bidNumber, `%${filters.search}%`),
+        ilike(bidsTable.clientName, `%${filters.search}%`),
+        ilike(bidsTable.projectName, `%${filters.search}%`),
+        ilike(bidsTable.siteAddress, `%${filters.search}%`),
+        ilike(bidsTable.city, `%${filters.search}%`)
+      )!
+    );
+  }
 
   const result = await db
     .select()
@@ -76,9 +90,16 @@ export const getBids = async (
     .from(bidsTable)
     .where(whereCondition);
 
+  const total = totalCount[0]?.count ?? 0;
+
   return {
     data: result || [],
-    total: totalCount[0]?.count ?? 0,
+    total: total,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit: limit,
+      totalPages: Math.ceil(total / limit),
+    },
   };
 };
 
@@ -127,7 +148,7 @@ export const createBid = async (data: {
 
   while (attempt < maxRetries) {
     try {
-      const [bid] = await db
+      const result = await db
         .insert(bidsTable)
         .values({
           bidNumber,
@@ -164,6 +185,8 @@ export const createBid = async (data: {
           bidAmount: data.bidAmount || "0",
         })
         .returning();
+
+      const bid = (result as any[])[0];
 
       // Create related records based on job type
       if (bid) {

@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger.js";
 
 export const errorHandler = (
   err: Error,
@@ -6,7 +7,8 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error("Error:", err);
+  // Log detailed error information with request context
+  logger.logApiError("API Error occurred", err, req);
 
   // Default error
   let statusCode = 500;
@@ -36,4 +38,3 @@ export const errorHandler = (
 
   res.status(statusCode).json(errorResponse);
 };
-

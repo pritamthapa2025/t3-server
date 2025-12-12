@@ -50,6 +50,13 @@
       "when": 1765347738361,
       "tag": "0006_gifted_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1765514904647,
+      "tag": "0007_enhanced_schema",
+      "breakpoints": true
     }
   ]
 }

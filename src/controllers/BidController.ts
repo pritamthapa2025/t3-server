@@ -1,23 +1,24 @@
 import type { Request, Response } from "express";
 
 // Helper function to validate organization access
-const validateOrganizationAccess = (
-  req: Request,
-  res: Response
-): string | null => {
-  const organizationId = req.user?.organizationId;
+// Note: organizationId in bids refers to CLIENT organizations (not T3)
+// Bids are created FOR client organizations BY T3 employees
+const validateUserAccess = (req: Request, res: Response): string | null => {
   const userId = req.user?.id;
 
-  if (!organizationId || !userId) {
+  if (!userId) {
     res.status(403).json({
       success: false,
-      message: "Access denied. Organization context required.",
+      message: "Access denied. Authentication required.",
     });
     return null;
   }
 
-  return organizationId;
+  return userId;
 };
+
+// Legacy function for backward compatibility
+const validateOrganizationAccess = validateUserAccess;
 
 // Helper function to validate required params
 const validateParams = (
@@ -37,6 +38,7 @@ const validateParams = (
   return true;
 };
 
+import { logger } from "../utils/logger.js";
 import {
   getBids,
   getBidById,
@@ -90,31 +92,31 @@ export const getBidsHandler = async (req: Request, res: Response) => {
 
     const offset = (page - 1) * limit;
 
-    const filters = {
-      status: req.query.status as string,
-      jobType: req.query.jobType as string,
-      priority: req.query.priority as string,
-      assignedTo: req.query.assignedTo as string,
-    };
+    const filters: {
+      status?: string;
+      jobType?: string;
+      priority?: string;
+      assignedTo?: string;
+      search?: string;
+    } = {};
 
-    // Remove undefined values
-    Object.keys(filters).forEach((key) => {
-      if (filters[key as keyof typeof filters] === undefined) {
-        delete filters[key as keyof typeof filters];
-      }
-    });
+    if (req.query.status) filters.status = req.query.status as string;
+    if (req.query.jobType) filters.jobType = req.query.jobType as string;
+    if (req.query.priority) filters.priority = req.query.priority as string;
+    if (req.query.assignedTo) filters.assignedTo = req.query.assignedTo as string;
+    if (req.query.search) filters.search = req.query.search as string;
 
-    const bids = await getBids(organizationId, offset, limit, filters);
+    const bids = await getBids(organizationId, offset, limit, Object.keys(filters).length > 0 ? filters : undefined);
 
+    logger.info("Bids fetched successfully");
     return res.status(200).json({
       success: true,
       data: bids.data,
       total: bids.total,
-      page,
-      limit,
+      pagination: bids.pagination,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -139,12 +141,13 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info("Bid fetched successfully");
     return res.status(200).json({
       success: true,
       data: bid,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -184,13 +187,14 @@ export const createBidHandler = async (req: Request, res: Response) => {
       performedBy: createdBy,
     });
 
+    logger.info("Bid created successfully");
     return res.status(201).json({
       success: true,
       data: bid,
       message: "Bid created successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -228,7 +232,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
 
     // Create history entries for changed fields
     for (const [key, value] of Object.entries(req.body)) {
-      const oldValue = originalBid[key as keyof typeof originalBid];
+      const oldValue = (originalBid as any)[key];
       if (oldValue !== value) {
         await createBidHistoryEntry({
           bidId: id!,
@@ -242,13 +246,14 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
     }
 
+    logger.info("Bid updated successfully");
     return res.status(200).json({
       success: true,
       data: updatedBid,
       message: "Bid updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -284,12 +289,13 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Bid deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -314,12 +320,13 @@ export const getBidFinancialBreakdownHandler = async (
 
     const breakdown = await getBidFinancialBreakdown(bidId!, organizationId);
 
+    logger.info("Bid financial breakdown fetched successfully");
     return res.status(200).json({
       success: true,
       data: breakdown,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -362,13 +369,14 @@ export const updateBidFinancialBreakdownHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid financial breakdown updated successfully");
     return res.status(200).json({
       success: true,
       data: breakdown,
       message: "Financial breakdown updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -390,12 +398,13 @@ export const getBidMaterialsHandler = async (req: Request, res: Response) => {
 
     const materials = await getBidMaterials(bidId!, organizationId);
 
+    logger.info("Bid materials fetched successfully");
     return res.status(200).json({
       success: true,
       data: materials,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -438,13 +447,14 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid material created successfully");
     return res.status(201).json({
       success: true,
       data: material,
       message: "Material added successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -484,13 +494,14 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid material updated successfully");
     return res.status(200).json({
       success: true,
       data: material,
       message: "Material updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -526,12 +537,13 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid material deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Material deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -552,12 +564,13 @@ export const getBidLaborHandler = async (req: Request, res: Response) => {
 
     const labor = await getBidLabor(bidId!, organizationId);
 
+    logger.info("Bid labor fetched successfully");
     return res.status(200).json({
       success: true,
       data: labor,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -599,13 +612,14 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid labor created successfully");
     return res.status(201).json({
       success: true,
       data: labor,
       message: "Labor added successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -641,13 +655,14 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid labor updated successfully");
     return res.status(200).json({
       success: true,
       data: labor,
       message: "Labor updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -688,7 +703,7 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
       message: "Labor deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -709,12 +724,13 @@ export const getBidTravelHandler = async (req: Request, res: Response) => {
 
     const travel = await getBidTravel(bidId!, organizationId);
 
+    logger.info("Bid travel fetched successfully");
     return res.status(200).json({
       success: true,
       data: travel,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -756,13 +772,14 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid travel created successfully");
     return res.status(201).json({
       success: true,
       data: travel,
       message: "Travel added successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -798,13 +815,14 @@ export const updateBidTravelHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid travel updated successfully");
     return res.status(200).json({
       success: true,
       data: travel,
       message: "Travel updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -845,7 +863,7 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
       message: "Travel deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -866,12 +884,13 @@ export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
 
     const surveyData = await getBidSurveyData(bidId!, organizationId);
 
+    logger.info("Bid survey data fetched successfully");
     return res.status(200).json({
       success: true,
       data: surveyData,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -913,13 +932,14 @@ export const updateBidSurveyDataHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid survey data updated successfully");
     return res.status(200).json({
       success: true,
       data: surveyData,
       message: "Survey data updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -939,12 +959,13 @@ export const getBidPlanSpecDataHandler = async (
 
     const planSpecData = await getBidPlanSpecData(bidId!, organizationId);
 
+    logger.info("Bid plan spec data fetched successfully");
     return res.status(200).json({
       success: true,
       data: planSpecData,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -986,13 +1007,14 @@ export const updateBidPlanSpecDataHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid plan spec data updated successfully");
     return res.status(200).json({
       success: true,
       data: planSpecData,
       message: "Plan & Spec data updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1012,12 +1034,13 @@ export const getBidDesignBuildDataHandler = async (
 
     const designBuildData = await getBidDesignBuildData(bidId!, organizationId);
 
+    logger.info("Bid design build data fetched successfully");
     return res.status(200).json({
       success: true,
       data: designBuildData,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1059,13 +1082,14 @@ export const updateBidDesignBuildDataHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid design build data updated successfully");
     return res.status(200).json({
       success: true,
       data: designBuildData,
       message: "Design Build data updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1091,7 +1115,7 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
       data: timeline,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1137,13 +1161,14 @@ export const createBidTimelineEventHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid timeline event created successfully");
     return res.status(201).json({
       success: true,
       data: event,
       message: "Timeline event added successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1186,13 +1211,14 @@ export const updateBidTimelineEventHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid timeline event updated successfully");
     return res.status(200).json({
       success: true,
       data: event,
       message: "Timeline event updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1231,12 +1257,13 @@ export const deleteBidTimelineEventHandler = async (
       performedBy: performedBy,
     });
 
+    logger.info("Bid timeline event deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Timeline event deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1257,12 +1284,13 @@ export const getBidNotesHandler = async (req: Request, res: Response) => {
 
     const notes = await getBidNotes(bidId!, organizationId);
 
+    logger.info("Bid notes fetched successfully");
     return res.status(200).json({
       success: true,
       data: notes,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1304,13 +1332,14 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid note created successfully");
     return res.status(201).json({
       success: true,
       data: note,
       message: "Note added successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1352,7 +1381,7 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
       message: "Note updated successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1388,12 +1417,13 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid note deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Note deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1414,12 +1444,13 @@ export const getBidHistoryHandler = async (req: Request, res: Response) => {
 
     const history = await getBidHistory(bidId!, organizationId);
 
+    logger.info("Bid history fetched successfully");
     return res.status(200).json({
       success: true,
       data: history,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1447,12 +1478,13 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info("Bid with all data fetched successfully");
     return res.status(200).json({
       success: true,
       data: bidData,
     });
   } catch (error) {
-    console.error(error);
+    logger.logApiError("Bid error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

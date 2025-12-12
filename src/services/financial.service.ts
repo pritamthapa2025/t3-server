@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, desc } from "drizzle-orm";
+import { and, eq, gte, lte, desc, or, ilike, count } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   financialSummary,
@@ -18,7 +18,7 @@ export const getFinancialSummary = async (
   periodEnd?: string
 ) => {
   let whereClause = eq(financialSummary.organizationId, organizationId);
-  
+
   if (periodStart && periodEnd) {
     const conditions = and(
       eq(financialSummary.organizationId, organizationId),
@@ -27,7 +27,7 @@ export const getFinancialSummary = async (
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(financialSummary)
@@ -98,17 +98,42 @@ export const updateFinancialSummary = async (
 export const getJobFinancialSummaries = async (
   organizationId: string,
   offset: number,
-  limit: number
+  limit: number,
+  search?: string
 ) => {
+  let whereConditions = [
+    eq(jobFinancialSummary.organizationId, organizationId),
+  ];
+
+  // Add search filter if provided
+  if (search) {
+    whereConditions.push(or(ilike(jobFinancialSummary.jobId, `%${search}%`))!);
+  }
+
   const result = await db
     .select()
     .from(jobFinancialSummary)
-    .where(eq(jobFinancialSummary.organizationId, organizationId))
+    .where(and(...whereConditions))
     .limit(limit)
     .offset(offset)
     .orderBy(desc(jobFinancialSummary.updatedAt));
-  
-  return result;
+
+  const totalCount = await db
+    .select({ count: count() })
+    .from(jobFinancialSummary)
+    .where(and(...whereConditions));
+
+  const total = totalCount[0]?.count ?? 0;
+
+  return {
+    data: result || [],
+    total: total,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit: limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 export const getJobFinancialSummary = async (jobId: string) => {
@@ -182,7 +207,7 @@ export const getFinancialCostCategories = async (
   periodEnd?: string
 ) => {
   let whereClause = eq(financialCostCategories.organizationId, organizationId);
-  
+
   if (periodStart && periodEnd) {
     const conditions = and(
       eq(financialCostCategories.organizationId, organizationId),
@@ -191,7 +216,7 @@ export const getFinancialCostCategories = async (
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(financialCostCategories)
@@ -266,7 +291,7 @@ export const getProfitTrend = async (
   endDate?: string
 ) => {
   let whereClause = eq(profitTrend.organizationId, organizationId);
-  
+
   if (startDate && endDate) {
     const conditions = and(
       eq(profitTrend.organizationId, organizationId),
@@ -275,7 +300,7 @@ export const getProfitTrend = async (
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(profitTrend)
@@ -311,7 +336,7 @@ export const getCashFlowProjections = async (
   endDate?: string
 ) => {
   let whereClause = eq(cashFlowProjection.organizationId, organizationId);
-  
+
   if (startDate && endDate) {
     const conditions = and(
       eq(cashFlowProjection.organizationId, organizationId),
@@ -320,7 +345,7 @@ export const getCashFlowProjections = async (
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(cashFlowProjection)
@@ -435,9 +460,12 @@ export const updateCashFlowScenario = async (
 };
 
 // Revenue Forecast Services
-export const getRevenueForecast = async (organizationId: string, year?: string) => {
+export const getRevenueForecast = async (
+  organizationId: string,
+  year?: string
+) => {
   let whereClause = eq(revenueForecast.organizationId, organizationId);
-  
+
   if (year) {
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
@@ -448,7 +476,7 @@ export const getRevenueForecast = async (organizationId: string, year?: string) 
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(revenueForecast)
@@ -501,9 +529,12 @@ export const updateRevenueForecast = async (
 };
 
 // Financial Reports Services
-export const getFinancialReports = async (organizationId: string, category?: string) => {
+export const getFinancialReports = async (
+  organizationId: string,
+  category?: string
+) => {
   let whereClause = eq(financialReports.organizationId, organizationId);
-  
+
   if (category) {
     const conditions = and(
       eq(financialReports.organizationId, organizationId),
@@ -511,7 +542,7 @@ export const getFinancialReports = async (organizationId: string, category?: str
     );
     if (conditions) whereClause = conditions;
   }
-  
+
   const result = await db
     .select()
     .from(financialReports)

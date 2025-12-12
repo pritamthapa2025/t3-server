@@ -91,21 +91,26 @@ export const verifyPassword = async (user: any, password: string) => {
   return comparePassword(password, user.passwordHash);
 };
 
-// Get user's organization ID
-export const getUserOrganizationId = async (
+// Note: getUserOrganizationId removed - employees work for T3, not client organizations
+// Organizations table now contains client companies that T3 serves
+
+// Get employee record for user (T3 internal staff)
+export const getEmployeeByUserId = async (
   userId: string
-): Promise<string | null> => {
+): Promise<{ id: number; employeeId: string | null } | null> => {
   try {
-    // Get organizationId from employee record
     const [employee] = await db
-      .select({ organizationId: employees.organizationId })
+      .select({ 
+        id: employees.id, 
+        employeeId: employees.employeeId 
+      })
       .from(employees)
       .where(eq(employees.userId, userId))
       .limit(1);
 
-    return employee?.organizationId || null;
+    return employee || null;
   } catch (error) {
-    console.error("Error getting user organization:", error);
+    console.error("Error getting employee record:", error);
     return null;
   }
 };

@@ -1,29 +1,592 @@
-import { count, eq, and } from "drizzle-orm";
+import {
+  count,
+  eq,
+  and,
+  or,
+  ilike,
+  sql,
+  gte,
+  lte,
+  avg,
+  min,
+  max,
+  inArray,
+} from "drizzle-orm";
 import { db } from "../config/db.js";
-import { departments } from "../drizzle/schema/org.schema.js";
+import {
+  departments,
+  employees,
+  positions,
+  timesheets,
+} from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 
-export const getDepartments = async (offset: number, limit: number) => {
-  // Run both queries in parallel for better performance
-  const result = await db
+export const getDepartments = async (
+  offset: number,
+  limit: number,
+  search?: string
+) => {
+  let whereConditions: any[] = [];
+
+  // Add search filter if provided
+  if (search) {
+    whereConditions.push(
+      or(
+        ilike(departments.name, `%${search}%`),
+        ilike(departments.description, `%${search}%`)
+      )!
+    );
+  }
+
+  const whereClause =
+    whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+  // Get all departments
+  const departmentsList = await db
     .select()
     .from(departments)
+    .where(whereClause)
     .limit(limit)
     .offset(offset);
 
+  const total = await db
+    .select({ count: count() })
+    .from(departments)
+    .where(whereClause);
+
+  // Get current month date range for utilisation calculation
+  const currentDate = new Date();
+  const startOfMonth = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth(),
+    1
+  );
+  const endOfMonth = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth() + 1,
+    0
+  );
+
+  // Process each department to get comprehensive metrics
+  const departmentsWithMetrics = await Promise.all(
+    departmentsList.map(async (dept) => {
+      // Get all employees in this department
+      const deptEmployees = await db
+        .select({
+          employee: employees,
+          user: users,
+          position: positions,
+        })
+        .from(employees)
+        .leftJoin(users, eq(employees.userId, users.id))
+        .leftJoin(positions, eq(employees.positionId, positions.id))
+        .where(
+          and(
+            eq(employees.departmentId, dept.id),
+            eq(employees.isDeleted, false)
+          )
+        );
+
+      // Get all positions in this department (for open roles calculation)
+      const deptPositions = await db
+        .select()
+        .from(positions)
+        .where(eq(positions.departmentId, dept.id));
+
+      // Calculate metrics
+      const totalPeople = deptEmployees.length;
+      const activeEmployees = deptEmployees.filter(
+        (e) => e.user?.isActive === true
+      );
+      const inFieldCount = deptEmployees.filter(
+        (e) => e.employee.status === "in_field"
+      ).length;
+      const availableCount = deptEmployees.filter(
+        (e) => e.employee.status === "available"
+      ).length;
+
+      // Role breakdown
+      const roleCounts: Record<string, number> = {};
+      deptEmployees.forEach((e) => {
+        const positionName = e.position?.name?.toLowerCase() || "";
+        let role = "Office Staff";
+
+        if (
+          positionName.includes("director") ||
+          positionName.includes("admin")
+        ) {
+          role = "Administrator";
+        } else if (
+          positionName.includes("manager") ||
+          positionName.includes("supervisor")
+        ) {
+          role = "Manager";
+        } else if (
+          positionName.includes("technician") ||
+          positionName.includes("engineer")
+        ) {
+          role = "Technician";
+        }
+
+        roleCounts[role] = (roleCounts[role] || 0) + 1;
+      });
+
+      // Average performance
+      const performanceScores = deptEmployees
+        .map((e) => e.employee.performance)
+        .filter((p): p is number => p !== null && p !== undefined && p > 0);
+      const avgPerformance =
+        performanceScores.length > 0
+          ? performanceScores.reduce((sum, p) => sum + p, 0) /
+            performanceScores.length
+          : 0;
+
+      // Get department lead/manager (first manager or first employee)
+      const departmentLead =
+        deptEmployees.find(
+          (e) =>
+            e.position?.name?.toLowerCase().includes("manager") ||
+            e.position?.name?.toLowerCase().includes("director") ||
+            e.position?.name?.toLowerCase().includes("lead")
+        ) || deptEmployees[0];
+
+      // Calculate utilisation (based on timesheets this month)
+      let totalHours = 0;
+      if (deptEmployees.length > 0) {
+        const employeeIds = deptEmployees.map((e) => e.employee.id);
+        const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
+        const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
+        const timesheetData = await db
+          .select({
+            totalHours: sql<number>`COALESCE(SUM(CAST(${timesheets.totalHours} AS NUMERIC)), 0)`,
+          })
+          .from(timesheets)
+          .where(
+            and(
+              or(...employeeIds.map((id) => eq(timesheets.employeeId, id)))!,
+              gte(timesheets.sheetDate, startOfMonthStr),
+              lte(timesheets.sheetDate, endOfMonthStr),
+              sql`${timesheets.status} IN ('submitted', 'approved')`
+            )
+          );
+
+        totalHours = Number(timesheetData[0]?.totalHours || 0);
+      }
+
+      const expectedHours = activeEmployees.length * 160; // 160 hours per month (40 hours/week * 4 weeks)
+      const utilisation =
+        expectedHours > 0 ? Math.round((totalHours / expectedHours) * 100) : 0;
+
+      // Open roles (positions without employees)
+      const filledPositionIds = new Set(
+        deptEmployees
+          .map((e) => e.employee.positionId)
+          .filter((id) => id !== null)
+      );
+      const openRoles = deptPositions.filter(
+        (p) => !filledPositionIds.has(p.id)
+      ).length;
+
+      // Pay structure
+      const payRates = deptEmployees
+        .map((e) => {
+          const emp = e.employee;
+          if (emp.hourlyRate) {
+            return {
+              type: "hourly" as const,
+              rate: Number(emp.hourlyRate),
+            };
+          } else if (emp.salary) {
+            return {
+              type: "salary" as const,
+              rate: Number(emp.salary),
+            };
+          }
+          return null;
+        })
+        .filter((p) => p !== null) as Array<{
+        type: "hourly" | "salary";
+        rate: number;
+      }>;
+
+      const hourlyRates = payRates
+        .filter((p) => p.type === "hourly")
+        .map((p) => p.rate);
+      const salaryRates = payRates
+        .filter((p) => p.type === "salary")
+        .map((p) => p.rate);
+
+      let payRange = "Not Set";
+      let averageYearlyPay: string | null = null;
+      let payType = "Not Set";
+      const positionPayDetails: Array<{ role: string; pay: string }> = [];
+
+      if (hourlyRates.length > 0 && salaryRates.length > 0) {
+        // Mixed pay types
+        const minHourly = Math.min(...hourlyRates);
+        const maxHourly = Math.max(...hourlyRates);
+        const minSalary = Math.min(...salaryRates);
+        const maxSalary = Math.max(...salaryRates);
+        payRange = `$${Math.round(minHourly)} - $${Math.round(
+          maxHourly
+        )}/hr or $${Math.round(minSalary / 1000)}k - $${Math.round(
+          maxSalary / 1000
+        )}k/yr`;
+        payType = "Mixed pay types";
+        const avgHourly =
+          hourlyRates.reduce((a, b) => a + b, 0) / hourlyRates.length;
+        const avgSalary =
+          salaryRates.reduce((a, b) => a + b, 0) / salaryRates.length;
+        averageYearlyPay = `$${Math.round(
+          (avgHourly * 2080 + avgSalary) / 2 / 1000
+        )}k/yr`;
+      } else if (hourlyRates.length > 0) {
+        const minRate = Math.min(...hourlyRates);
+        const maxRate = Math.max(...hourlyRates);
+        payRange = `$${Math.round(minRate)} - $${Math.round(maxRate)}/hr`;
+        payType = "Hourly";
+        const avgRate =
+          hourlyRates.reduce((a, b) => a + b, 0) / hourlyRates.length;
+        averageYearlyPay = `$${Math.round(avgRate * 2080)}/yr`;
+      } else if (salaryRates.length > 0) {
+        const minRate = Math.min(...salaryRates);
+        const maxRate = Math.max(...salaryRates);
+        payRange = `$${Math.round(minRate / 1000)}k - $${Math.round(
+          maxRate / 1000
+        )}k/yr`;
+        payType = "Salary";
+        const avgRate =
+          salaryRates.reduce((a, b) => a + b, 0) / salaryRates.length;
+        averageYearlyPay = `$${Math.round(avgRate / 1000)}k/yr`;
+      }
+
+      // Get position pay details
+      deptPositions.forEach((pos) => {
+        const posEmployees = deptEmployees.filter(
+          (e) => e.employee.positionId === pos.id
+        );
+        if (posEmployees.length > 0 && posEmployees[0]) {
+          const firstEmp = posEmployees[0].employee;
+          if (firstEmp.hourlyRate) {
+            positionPayDetails.push({
+              role: pos.name,
+              pay: `$${Math.round(Number(firstEmp.hourlyRate))}/hr`,
+            });
+          } else if (firstEmp.salary) {
+            positionPayDetails.push({
+              role: pos.name,
+              pay: `$${Math.round(Number(firstEmp.salary) / 1000)}k/yr`,
+            });
+          }
+        }
+      });
+
+      return {
+        department: {
+          id: dept.id,
+          name: dept.name,
+          description: dept.description,
+        },
+        lead: departmentLead?.user
+          ? {
+              id: departmentLead.user.id,
+              fullName: departmentLead.user.fullName,
+            }
+          : null,
+        headcount: {
+          total: totalPeople,
+          inField: inFieldCount,
+          available: availableCount,
+        },
+        roles: Object.entries(roleCounts).map(([role, count]) => ({
+          role,
+          count,
+        })),
+        avgPerformance: Math.round(avgPerformance * 10) / 10,
+        utilisation: Math.min(100, Math.max(0, utilisation)),
+        openRoles,
+        payStructure: {
+          range: payRange,
+          averageYearlyPay,
+          positionsCount: deptPositions.length,
+          payType,
+          positionDetails: positionPayDetails.slice(0, 3), // Limit to 3 for display
+          hasMore: positionPayDetails.length > 3,
+        },
+        location: {
+          primary: "San Francisco HQ", // Default - can be enhanced with actual location data
+          operatingConditions: "Business Hours", // Default - can be enhanced
+        },
+      };
+    })
+  );
+
+  const totalCount = total[0]?.count ?? 0;
+
   return {
-    data: result || [],
+    data: departmentsWithMetrics,
+    total: totalCount,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit: limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
   };
 };
 
 export const getDepartmentById = async (id: number) => {
+  // Get department basic info
   const [department] = await db
     .select()
     .from(departments)
     .where(eq(departments.id, id));
-  return department || null;
+
+  if (!department) {
+    return null;
+  }
+
+  // Parse metadata from description
+  let metadata: any = {};
+  let descriptionText = department.description || "";
+  if (department.description) {
+    try {
+      const parsed = JSON.parse(department.description);
+      if (parsed.metadata) {
+        metadata = parsed.metadata;
+        descriptionText = parsed.text || "";
+      }
+    } catch {
+      // Not JSON, use as-is
+      descriptionText = department.description;
+    }
+  }
+
+  // Calculate date range for rolling 30 days (for utilisation)
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
+  const startDateStr = startDate.toISOString().split("T")[0];
+  const endDateStr = endDate.toISOString().split("T")[0];
+
+  // OPTIMIZATION: Run all queries in parallel
+  const [deptEmployees, deptPositions] = await Promise.all([
+    // Get all employees in this department
+    db
+      .select({
+        employee: employees,
+        user: users,
+        position: positions,
+      })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .leftJoin(positions, eq(employees.positionId, positions.id))
+      .where(
+        and(eq(employees.departmentId, id), eq(employees.isDeleted, false))
+      ),
+
+    // Get all positions in this department
+    db.select().from(positions).where(eq(positions.departmentId, id)),
+  ]);
+
+  // Get timesheet data for utilisation calculation (rolling 30 days)
+  // Only query if there are employees
+  let timesheetData = { rows: [{ total_hours: "0" }] };
+  if (deptEmployees.length > 0) {
+    const employeeIds = deptEmployees.map((e) => e.employee.id);
+    const result = await db.execute<{
+      total_hours: string;
+    }>(
+      sql.raw(`
+        SELECT COALESCE(SUM(CAST(total_hours AS NUMERIC)), 0)::text as total_hours
+        FROM org.timesheets t
+        INNER JOIN org.employees e ON t.employee_id = e.id
+        INNER JOIN auth.users u ON e.user_id = u.id
+        WHERE e.department_id = ${id}
+          AND t.sheet_date >= '${startDateStr}'::date
+          AND t.sheet_date <= '${endDateStr}'::date
+          AND t.status IN ('submitted', 'approved')
+          AND e.is_deleted = false
+          AND u.is_active = true
+      `)
+    );
+    timesheetData = result;
+  }
+
+  // Calculate metrics
+  const totalPeople = deptEmployees.length;
+  const activeEmployees = deptEmployees.filter(
+    (e) => e.user?.isActive === true
+  );
+  const inFieldCount = deptEmployees.filter(
+    (e) => e.employee.status === "in_field"
+  ).length;
+  const availableCount = deptEmployees.filter(
+    (e) => e.employee.status === "available"
+  ).length;
+  const suspendedCount = deptEmployees.filter(
+    (e) => e.employee.status === "suspended"
+  ).length;
+
+  // Get department lead/manager
+  const departmentLead =
+    deptEmployees.find(
+      (e) =>
+        e.position?.name?.toLowerCase().includes("manager") ||
+        e.position?.name?.toLowerCase().includes("director") ||
+        e.position?.name?.toLowerCase().includes("lead")
+    ) || deptEmployees[0];
+
+  // Average performance
+  const performanceScores = deptEmployees
+    .map((e) => e.employee.performance)
+    .filter((p): p is number => p !== null && p !== undefined && p > 0);
+  const avgPerformance =
+    performanceScores.length > 0
+      ? performanceScores.reduce((sum, p) => sum + p, 0) /
+        performanceScores.length
+      : 0;
+
+  // Determine performance status (above/below target - assuming 80% is target)
+  const performanceTarget = 80;
+  const performanceStatus =
+    avgPerformance >= performanceTarget ? "Above target" : "Below target";
+
+  // Calculate utilisation (rolling 30 days)
+  const totalHours = Number(timesheetData.rows?.[0]?.total_hours || 0);
+  const expectedHours = activeEmployees.length * 240; // 240 hours per 30 days (8 hrs/day * 30 days)
+  const utilisation =
+    expectedHours > 0 ? Math.round((totalHours / expectedHours) * 100) : 0;
+
+  // Open roles (positions without employees)
+  const filledPositionIds = new Set(
+    deptEmployees.map((e) => e.employee.positionId).filter((id) => id !== null)
+  );
+  const openRoles = deptPositions.filter(
+    (p) => !filledPositionIds.has(p.id)
+  ).length;
+
+  // Pay structure - get all positions with their pay details
+  const positionPayBands = deptPositions.map((pos) => {
+    const posEmployees = deptEmployees.filter(
+      (e) => e.employee.positionId === pos.id
+    );
+
+    let payType: string = "Not Set";
+    let payAmount: string = "Not Set";
+
+    if (posEmployees.length > 0 && posEmployees[0]) {
+      const firstEmp = posEmployees[0].employee;
+      if (firstEmp.hourlyRate) {
+        payType = "Hourly";
+        payAmount = `$${Math.round(Number(firstEmp.hourlyRate))}/hr`;
+      } else if (firstEmp.salary) {
+        payType = "Salary";
+        payAmount = `$${Math.round(Number(firstEmp.salary) / 1000)}k/yr`;
+      }
+    }
+
+    return {
+      id: pos.id,
+      role: pos.name,
+      description: pos.description || "",
+      payType,
+      payAmount,
+    };
+  });
+
+  // Calculate overall pay range
+  const allPayRates = deptEmployees
+    .map((e) => {
+      const emp = e.employee;
+      if (emp.hourlyRate) {
+        return { type: "hourly" as const, rate: Number(emp.hourlyRate) };
+      } else if (emp.salary) {
+        return { type: "salary" as const, rate: Number(emp.salary) };
+      }
+      return null;
+    })
+    .filter((p) => p !== null) as Array<{
+    type: "hourly" | "salary";
+    rate: number;
+  }>;
+
+  const hourlyRates = allPayRates
+    .filter((p) => p.type === "hourly")
+    .map((p) => p.rate);
+  const salaryRates = allPayRates
+    .filter((p) => p.type === "salary")
+    .map((p) => p.rate);
+
+  let payRange = "Not Set";
+  if (hourlyRates.length > 0 && salaryRates.length > 0) {
+    const minHourly = Math.min(...hourlyRates);
+    const maxHourly = Math.max(...hourlyRates);
+    const minSalary = Math.min(...salaryRates);
+    const maxSalary = Math.max(...salaryRates);
+    payRange = `$${Math.round(minHourly)} - $${Math.round(
+      maxHourly
+    )}/hr or $${Math.round(minSalary / 1000)}k - $${Math.round(
+      maxSalary / 1000
+    )}k/yr`;
+  } else if (hourlyRates.length > 0) {
+    const minRate = Math.min(...hourlyRates);
+    const maxRate = Math.max(...hourlyRates);
+    payRange = `$${Math.round(minRate)} - $${Math.round(maxRate)}/hr`;
+  } else if (salaryRates.length > 0) {
+    const minRate = Math.min(...salaryRates);
+    const maxRate = Math.max(...salaryRates);
+    payRange = `$${Math.round(minRate / 1000)}k - $${Math.round(
+      maxRate / 1000
+    )}k/yr`;
+  }
+
+  return {
+    department: {
+      id: department.id,
+      name: department.name,
+      description: descriptionText,
+      operatingConditions: metadata.shiftCoverage || "Business Hours",
+    },
+    headcount: totalPeople,
+    openRoles,
+    teamLead: metadata.teamLeadId
+      ? {
+          id: metadata.teamLeadId,
+          fullName: departmentLead?.user?.fullName || null,
+        }
+      : departmentLead?.user
+      ? {
+          id: departmentLead.user.id,
+          fullName: departmentLead.user.fullName,
+        }
+      : null,
+    primaryLocation: metadata.primaryLocation || "San Francisco HQ",
+    shiftCoverage: metadata.shiftCoverage || "Business Hours",
+    teamStatus: {
+      inField: inFieldCount,
+      available: availableCount,
+      suspended: suspendedCount,
+    },
+    performance: {
+      avgPerformance: Math.round(avgPerformance * 10) / 10,
+      performanceStatus, // "Above target" or "Below target"
+    },
+    utilisation: {
+      value: Math.min(100, Math.max(0, utilisation)),
+      period: "rolling 30 days",
+    },
+    positionPayBands: {
+      payRange,
+      totalPositions: deptPositions.length,
+      positions: positionPayBands,
+    },
+  };
 };
 
-export const getDepartmentByName = async (name: string, organizationId: string) => {
+export const getDepartmentByName = async (
+  name: string,
+  organizationId: string
+) => {
   const [department] = await db
     .select()
     .from(departments)
@@ -40,31 +603,135 @@ export const createDepartment = async (data: {
   name: string;
   description?: string;
   organizationId: string;
+  teamLeadId?: string;
+  primaryLocation?: string;
+  shiftCoverage?: string;
+  positionPayBands?: Array<{
+    positionTitle: string;
+    payType: string;
+    payRate: number;
+    notes?: string;
+  }>;
 }) => {
+  // Build description JSON with additional metadata
+  const metadata: any = {};
+  if (data.teamLeadId) metadata.teamLeadId = data.teamLeadId;
+  if (data.primaryLocation) metadata.primaryLocation = data.primaryLocation;
+  if (data.shiftCoverage) metadata.shiftCoverage = data.shiftCoverage;
+  if (data.positionPayBands && data.positionPayBands.length > 0) {
+    metadata.positionPayBands = data.positionPayBands;
+  }
+
+  const descriptionText = data.description || "";
+  const descriptionJson = metadata && Object.keys(metadata).length > 0 
+    ? JSON.stringify({ text: descriptionText, metadata })
+    : descriptionText;
+
   const [department] = await db
     .insert(departments)
     .values({
       name: data.name,
-      description: data.description || null,
+      description: descriptionJson,
       organizationId: data.organizationId,
     })
     .returning();
+
+  // Create positions if positionPayBands are provided
+  if (data.positionPayBands && data.positionPayBands.length > 0 && department) {
+    const positionsToCreate = data.positionPayBands.map((band) => ({
+      name: band.positionTitle,
+      departmentId: department.id,
+      description: JSON.stringify({
+        payType: band.payType,
+        payRate: band.payRate,
+        notes: band.notes || null,
+      }),
+    }));
+
+    await db.insert(positions).values(positionsToCreate);
+  }
+
   return department;
 };
 
 export const updateDepartment = async (
   id: number,
-  data: { name?: string; description?: string }
+  data: {
+    name?: string;
+    description?: string;
+    teamLeadId?: string;
+    primaryLocation?: string;
+    shiftCoverage?: string;
+    positionPayBands?: Array<{
+      id?: number;
+      positionTitle: string;
+      payType: string;
+      payRate: number;
+      notes?: string;
+    }>;
+  }
 ) => {
-  const updateData: { name?: string; description?: string; updatedAt: Date } = {
+  const updateData: any = {
     updatedAt: new Date(),
   };
 
   if (data.name !== undefined) {
     updateData.name = data.name;
   }
-  if (data.description !== undefined) {
-    updateData.description = data.description;
+
+  // Handle description and metadata
+  if (
+    data.description !== undefined ||
+    data.teamLeadId !== undefined ||
+    data.primaryLocation !== undefined ||
+    data.shiftCoverage !== undefined ||
+    data.positionPayBands !== undefined
+  ) {
+    // Get existing department to preserve metadata
+    const [existingDept] = await db
+      .select()
+      .from(departments)
+      .where(eq(departments.id, id));
+
+    let existingMetadata: any = {};
+    let existingText = "";
+
+    if (existingDept?.description) {
+      try {
+        const parsed = JSON.parse(existingDept.description);
+        if (parsed.metadata) {
+          existingMetadata = parsed.metadata;
+          existingText = parsed.text || "";
+        } else {
+          existingText = existingDept.description;
+        }
+      } catch {
+        existingText = existingDept.description;
+      }
+    }
+
+    // Update metadata
+    if (data.teamLeadId !== undefined) {
+      existingMetadata.teamLeadId = data.teamLeadId;
+    }
+    if (data.primaryLocation !== undefined) {
+      existingMetadata.primaryLocation = data.primaryLocation;
+    }
+    if (data.shiftCoverage !== undefined) {
+      existingMetadata.shiftCoverage = data.shiftCoverage;
+    }
+    if (data.positionPayBands !== undefined) {
+      existingMetadata.positionPayBands = data.positionPayBands;
+    }
+
+    const descriptionText = data.description !== undefined 
+      ? data.description 
+      : existingText;
+
+    updateData.description =
+      Object.keys(existingMetadata).length > 0
+        ? JSON.stringify({ text: descriptionText, metadata: existingMetadata })
+        : descriptionText;
   }
 
   const [department] = await db
@@ -72,6 +739,67 @@ export const updateDepartment = async (
     .set(updateData)
     .where(eq(departments.id, id))
     .returning();
+
+  // Update positions if positionPayBands are provided
+  if (data.positionPayBands && department) {
+    // Get existing positions for this department
+    const existingPositions = await db
+      .select()
+      .from(positions)
+      .where(eq(positions.departmentId, id));
+
+    const existingPositionIds = new Set(
+      data.positionPayBands
+        .map((band) => band.id)
+        .filter((id): id is number => id !== undefined)
+    );
+
+    // Delete positions that are no longer in the list
+    const positionsToDelete = existingPositions.filter(
+      (pos) => !existingPositionIds.has(pos.id)
+    );
+    if (positionsToDelete.length > 0) {
+      await db
+        .delete(positions)
+        .where(
+          inArray(
+            positions.id,
+            positionsToDelete.map((p) => p.id)
+          )
+        );
+    }
+
+    // Update or create positions
+    for (const band of data.positionPayBands) {
+      if (band.id) {
+        // Update existing position
+        await db
+          .update(positions)
+          .set({
+            name: band.positionTitle,
+            description: JSON.stringify({
+              payType: band.payType,
+              payRate: band.payRate,
+              notes: band.notes || null,
+            }),
+            updatedAt: new Date(),
+          })
+          .where(eq(positions.id, band.id));
+      } else {
+        // Create new position
+        await db.insert(positions).values({
+          name: band.positionTitle,
+          departmentId: id,
+          description: JSON.stringify({
+            payType: band.payType,
+            payRate: band.payRate,
+            notes: band.notes || null,
+          }),
+        });
+      }
+    }
+  }
+
   return department || null;
 };
 
@@ -81,4 +809,111 @@ export const deleteDepartment = async (id: number) => {
     .where(eq(departments.id, id))
     .returning();
   return department || null;
+};
+
+export const getDepartmentKPIs = async () => {
+  // Calculate date range for rolling 30 days
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
+
+  // Format dates as YYYY-MM-DD strings for date column comparison
+  const startDateStr = startDate.toISOString().split("T")[0];
+  const endDateStr = endDate.toISOString().split("T")[0];
+
+  // OPTIMIZATION: Run all queries in parallel for maximum performance
+  const [departmentsCount, totalHeadcount, openRolesCount, utilisationData] =
+    await Promise.all([
+      // 1. Count active departments (departments with at least one active employee)
+      db.execute<{ count: string }>(
+        sql.raw(`
+        SELECT COUNT(DISTINCT d.id)::text as count
+        FROM org.departments d
+        INNER JOIN org.employees e ON e.department_id = d.id
+        INNER JOIN auth.users u ON e.user_id = u.id
+        WHERE e.is_deleted = false
+          AND u.is_active = true
+      `)
+      ),
+
+      // 2. Total headcount across all teams (active employees)
+      db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(employees)
+        .leftJoin(users, eq(employees.userId, users.id))
+        .where(and(eq(employees.isDeleted, false), eq(users.isActive, true))),
+
+      // 3. Open roles (positions without assigned employees)
+      db.execute<{ count: string }>(
+        sql.raw(`
+        SELECT COUNT(*)::text as count
+        FROM org.positions p
+        WHERE p.department_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM org.employees e
+            WHERE e.position_id = p.id
+              AND e.is_deleted = false
+          )
+      `)
+      ),
+
+      // 4. Average utilisation (rolling 30 days)
+      // Calculate: (total hours worked / expected hours) * 100
+      // Expected hours = active employees * 8 hours/day * 30 days = 240 hours per employee
+      db.execute<{
+        total_hours: string;
+        active_employees: string;
+      }>(
+        sql.raw(`
+        SELECT 
+          COALESCE(SUM(CAST(t.total_hours AS NUMERIC)), 0)::text as total_hours,
+          COUNT(DISTINCT e.id)::text as active_employees
+        FROM org.timesheets t
+        INNER JOIN org.employees e ON t.employee_id = e.id
+        INNER JOIN auth.users u ON e.user_id = u.id
+        WHERE t.sheet_date >= '${startDateStr}'::date
+          AND t.sheet_date <= '${endDateStr}'::date
+          AND t.status IN ('submitted', 'approved')
+          AND e.is_deleted = false
+          AND u.is_active = true
+      `)
+      ),
+    ]);
+
+  // Extract values
+  const departments = Number(departmentsCount.rows?.[0]?.count || 0);
+  const headcount = Number(totalHeadcount[0]?.count || 0);
+  const openRoles = Number(openRolesCount.rows?.[0]?.count || 0);
+
+  // Calculate average utilisation (rolling 30 days)
+  // Expected hours = active employees * 8 hours/day * 30 days = 240 hours per employee
+  const totalHours = Number(utilisationData.rows?.[0]?.total_hours || 0);
+  const activeEmployees = Number(
+    utilisationData.rows?.[0]?.active_employees || 0
+  );
+  const expectedHours = activeEmployees * 240; // 240 hours per 30 days (8 hrs/day * 30 days)
+  const avgUtilisation =
+    expectedHours > 0 ? Math.round((totalHours / expectedHours) * 100) : 0;
+
+  return {
+    departments: {
+      value: departments,
+      label: "Active teams",
+    },
+    headcount: {
+      value: headcount,
+      label: "Employees across teams",
+    },
+    openRoles: {
+      value: openRoles,
+      label: "Approved requisitions",
+    },
+    avgUtilisation: {
+      value: `${avgUtilisation}%`,
+      label: "Rolling 30 days",
+    },
+  };
 };

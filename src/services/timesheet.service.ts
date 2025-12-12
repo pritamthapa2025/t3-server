@@ -1,14 +1,61 @@
-import { count, eq } from "drizzle-orm";
+import { count, eq, and, or, ilike, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
-import { timesheets } from "../drizzle/schema/org.schema.js";
+import { timesheets, employees } from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 
-export const getTimesheets = async (offset: number, limit: number) => {
-  const result = await db.select().from(timesheets).limit(limit).offset(offset);
-  const total = await db.select({ count: count() }).from(timesheets);
+export const getTimesheets = async (
+  offset: number,
+  limit: number,
+  search?: string
+) => {
+  let whereConditions: any[] = [];
+
+  // Add search filter if provided
+  if (search) {
+    whereConditions.push(
+      or(
+        ilike(timesheets.notes, `%${search}%`),
+        ilike(timesheets.status, `%${search}%`),
+        ilike(employees.employeeId, `%${search}%`),
+        ilike(users.fullName, `%${search}%`)
+      )!
+    );
+  }
+
+  const whereClause =
+    whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+  const result = await db
+    .select({
+      timesheet: timesheets,
+    })
+    .from(timesheets)
+    .leftJoin(employees, eq(timesheets.employeeId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(whereClause)
+    .limit(limit)
+    .offset(offset);
+
+  // Extract timesheet data from result
+  const timesheetData = result.map((row) => row.timesheet);
+
+  const total = await db
+    .select({ count: count() })
+    .from(timesheets)
+    .leftJoin(employees, eq(timesheets.employeeId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(whereClause);
+
+  const totalCount = total[0]?.count ?? 0;
 
   return {
-    data: result || [],
-    total: total[0]?.count ?? 0,
+    data: timesheetData || [],
+    total: totalCount,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit: limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
   };
 };
 
@@ -34,9 +81,10 @@ export const createTimesheet = async (data: {
   approvedBy?: string;
 }) => {
   // Convert sheetDate to YYYY-MM-DD string format for date column
-  const sheetDateStr = data.sheetDate instanceof Date 
-    ? data.sheetDate.toISOString().split('T')[0] 
-    : data.sheetDate;
+  const sheetDateStr =
+    data.sheetDate instanceof Date
+      ? data.sheetDate.toISOString().split("T")[0]
+      : data.sheetDate;
 
   const [timesheet] = await db
     .insert(timesheets)
@@ -95,9 +143,10 @@ export const updateTimesheet = async (
   }
   if (data.sheetDate !== undefined) {
     // Convert sheetDate to YYYY-MM-DD string format for date column
-    const sheetDateStr: string = data.sheetDate instanceof Date
-      ? data.sheetDate.toISOString().split('T')[0]!
-      : String(data.sheetDate);
+    const sheetDateStr: string =
+      data.sheetDate instanceof Date
+        ? data.sheetDate.toISOString().split("T")[0]!
+        : String(data.sheetDate);
     updateData.sheetDate = sheetDateStr;
   }
   if (data.clockIn !== undefined) {
@@ -143,4 +192,3 @@ export const deleteTimesheet = async (id: number) => {
     .returning();
   return timesheet || null;
 };
-

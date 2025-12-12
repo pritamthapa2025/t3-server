@@ -7,10 +7,22 @@ import employeeRoutes from "./org/employeeRoutes.js";
 import timesheetRoutes from "./org/timesheetRoutes.js";
 import financialRoutes from "./org/financialRoutes.js";
 import bidRoutes from "./org/bidRoutes.js";
+import clientRoutes from "./org/clientRoutes.js";
+import propertyRoutes from "./org/propertyRoutes.js";
 
 const router = Router();
 
 router.use("/auth", authRoutes, userRoutes);
-router.use("/org", departmentRoutes, positionRoutes, employeeRoutes, timesheetRoutes, financialRoutes, bidRoutes);
+router.use(
+  "/org",
+  departmentRoutes,
+  positionRoutes,
+  employeeRoutes,
+  timesheetRoutes,
+  financialRoutes,
+  bidRoutes,
+  clientRoutes,
+  propertyRoutes
+);
 
 export default router;
