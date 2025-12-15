@@ -51,7 +51,17 @@ export const getPositionByIdHandler = async (req: Request, res: Response) => {
 
 export const createPositionHandler = async (req: Request, res: Response) => {
   try {
-    const { name, departmentId, description } = req.body;
+    const {
+      name,
+      departmentId,
+      description,
+      payRate,
+      payType,
+      currency,
+      notes,
+      isActive,
+      sortOrder,
+    } = req.body;
 
     // Check if position with this name already exists
     const existingPosition = await getPositionByName(name);
@@ -59,7 +69,17 @@ export const createPositionHandler = async (req: Request, res: Response) => {
       return res.status(409).send("Position name already exists");
     }
 
-    const position = await createPosition({ name, departmentId, description });
+    const position = await createPosition({
+      name,
+      departmentId,
+      description,
+      payRate,
+      payType,
+      currency,
+      notes,
+      isActive,
+      sortOrder,
+    });
     logger.info("Position created successfully");
     return res.status(201).send(position);
   } catch (error: any) {
@@ -75,12 +95,28 @@ export const createPositionHandler = async (req: Request, res: Response) => {
 export const updatePositionHandler = async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, departmentId, description } = req.body;
+    const {
+      name,
+      departmentId,
+      description,
+      payRate,
+      payType,
+      currency,
+      notes,
+      isActive,
+      sortOrder,
+    } = req.body;
 
     const position = await updatePosition(id, {
       name,
       departmentId,
       description,
+      payRate,
+      payType,
+      currency,
+      notes,
+      isActive,
+      sortOrder,
     });
     if (!position) {
       return res.status(404).send("Position not found");

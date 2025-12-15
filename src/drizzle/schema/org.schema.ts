@@ -116,36 +116,82 @@ export const jobPriorityEnum = pgEnum("job_priority_enum", [
 
 export const org = pgSchema("org");
 
-// Departments table
+// Departments table - T3 internal departments (not tied to client organizations)
 export const departments = org.table(
   "departments",
   {
     id: serial("id").primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 100 }).notNull(),
     description: text("description"),
+
+    // Department leadership
+    leadId: uuid("lead_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    contactEmail: varchar("contact_email", { length: 255 }),
+
+    // Operational details
+    primaryLocation: varchar("primary_location", { length: 255 }),
+    shiftCoverage: varchar("shift_coverage", { length: 100 }),
+    utilization: numeric("utilization", { precision: 5, scale: 4 }), // 0.0000 to 1.0000 (0-100%)
+
+    // Status & ordering
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order"),
+    isDeleted: boolean("is_deleted").default(false),
+
+    // Timestamps
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    // Unique constraint: department names unique per organization
-    unique("unique_dept_per_org").on(table.organizationId, table.name),
+    // Unique constraint: department names must be unique across T3
+    unique("unique_dept_name").on(table.name),
+    // Index for active departments
+    index("idx_departments_active").on(table.isActive),
+    // Index for lead lookup
+    index("idx_departments_lead").on(table.leadId),
+    // Index for soft delete filtering
+    index("idx_departments_deleted").on(table.isDeleted),
   ]
 );
 
 // Positions table
-export const positions = org.table("positions", {
-  id: serial("id").primaryKey(),
-  name: varchar("name", { length: 100 }).notNull().unique(),
-  departmentId: integer("department_id").references(() => departments.id, {
-    onDelete: "set null",
-  }),
-  description: text("description"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const positions = org.table(
+  "positions",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    departmentId: integer("department_id").references(() => departments.id, {
+      onDelete: "set null",
+    }),
+    description: text("description"),
+
+    // Position compensation
+    payRate: numeric("pay_rate", { precision: 10, scale: 2 }).notNull(),
+    payType: varchar("pay_type", { length: 20 }).notNull(), // "Hourly" | "Salary"
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+
+    notes: text("notes"),
+
+    // Status & ordering
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order"),
+    isDeleted: boolean("is_deleted").default(false),
+
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    // Index for department positions lookup
+    index("idx_positions_department").on(table.departmentId),
+    // Index for active positions
+    index("idx_positions_active").on(table.isActive, table.departmentId),
+    // Index for soft delete filtering
+    index("idx_positions_deleted").on(table.isDeleted),
+  ]
+);
 
 // Enhanced Employees table - T3 internal staff
 export const employees = org.table(

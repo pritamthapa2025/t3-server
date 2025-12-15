@@ -19,20 +19,21 @@ export const getPositions = async (
     );
   }
 
-  const whereClause =
-    whereConditions.length > 0 ? and(...whereConditions) : undefined;
+  // Add soft delete filter
+  whereConditions.push(eq(positions.isDeleted, false));
+  const finalWhereClause = and(...whereConditions);
 
   const result = await db
     .select()
     .from(positions)
-    .where(whereClause)
+    .where(finalWhereClause)
     .limit(limit)
     .offset(offset);
 
   const total = await db
     .select({ count: count() })
     .from(positions)
-    .where(whereClause);
+    .where(finalWhereClause);
 
   const totalCount = total[0]?.count ?? 0;
 
@@ -51,7 +52,7 @@ export const getPositionById = async (id: number) => {
   const [position] = await db
     .select()
     .from(positions)
-    .where(eq(positions.id, id));
+    .where(and(eq(positions.id, id), eq(positions.isDeleted, false)));
   return position || null;
 };
 
@@ -59,14 +60,20 @@ export const getPositionByName = async (name: string) => {
   const [position] = await db
     .select()
     .from(positions)
-    .where(eq(positions.name, name));
+    .where(and(eq(positions.name, name), eq(positions.isDeleted, false)));
   return position || null;
 };
 
 export const createPosition = async (data: {
   name: string;
-  departmentId?: number;
+  departmentId?: number | null;
   description?: string;
+  payRate: number;
+  payType: string;
+  currency?: string;
+  notes?: string;
+  isActive?: boolean;
+  sortOrder?: number | null;
 }) => {
   const [position] = await db
     .insert(positions)
@@ -74,6 +81,13 @@ export const createPosition = async (data: {
       name: data.name,
       departmentId: data.departmentId || null,
       description: data.description || null,
+      payRate: String(data.payRate),
+      payType: data.payType,
+      currency: data.currency || "USD",
+      notes: data.notes || null,
+      isActive: data.isActive ?? true,
+      sortOrder: data.sortOrder || null,
+      isDeleted: false,
     })
     .returning();
   return position;
@@ -81,39 +95,46 @@ export const createPosition = async (data: {
 
 export const updatePosition = async (
   id: number,
-  data: { name?: string; departmentId?: number; description?: string }
-) => {
-  const updateData: {
+  data: {
     name?: string;
     departmentId?: number | null;
     description?: string;
-    updatedAt: Date;
-  } = {
+    payRate?: number;
+    payType?: string;
+    currency?: string;
+    notes?: string | null;
+    isActive?: boolean;
+    sortOrder?: number | null;
+  }
+) => {
+  const updateData: any = {
     updatedAt: new Date(),
   };
 
-  if (data.name !== undefined) {
-    updateData.name = data.name;
-  }
-  if (data.departmentId !== undefined) {
-    updateData.departmentId = data.departmentId || null;
-  }
-  if (data.description !== undefined) {
-    updateData.description = data.description;
-  }
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.departmentId !== undefined) updateData.departmentId = data.departmentId;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.payRate !== undefined) updateData.payRate = String(data.payRate);
+  if (data.payType !== undefined) updateData.payType = data.payType;
+  if (data.currency !== undefined) updateData.currency = data.currency;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
 
   const [position] = await db
     .update(positions)
     .set(updateData)
-    .where(eq(positions.id, id))
+    .where(and(eq(positions.id, id), eq(positions.isDeleted, false)))
     .returning();
   return position || null;
 };
 
 export const deletePosition = async (id: number) => {
+  // Soft delete: set isDeleted to true instead of hard delete
   const [position] = await db
-    .delete(positions)
-    .where(eq(positions.id, id))
+    .update(positions)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(positions.id, id), eq(positions.isDeleted, false)))
     .returning();
   return position || null;
 };
