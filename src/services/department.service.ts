@@ -602,7 +602,6 @@ export const createDepartment = async (data: {
   contactEmail?: string;
   primaryLocation?: string;
   shiftCoverage?: string;
-  openPositions?: number;
   utilization?: number;
   isActive?: boolean;
   sortOrder?: number;
@@ -622,7 +621,6 @@ export const createDepartment = async (data: {
       contactEmail: data.contactEmail || null,
       primaryLocation: data.primaryLocation || null,
       shiftCoverage: data.shiftCoverage || null,
-      openPositions: data.openPositions ?? 0,
       utilization: data.utilization ? String(data.utilization) : null,
       isActive: data.isActive ?? true,
       sortOrder: data.sortOrder || null,
@@ -658,7 +656,6 @@ export const updateDepartment = async (
     contactEmail?: string | null;
     primaryLocation?: string | null;
     shiftCoverage?: string | null;
-    openPositions?: number;
     utilization?: number | null;
     isActive?: boolean;
     sortOrder?: number | null;
@@ -681,7 +678,6 @@ export const updateDepartment = async (
   if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
   if (data.primaryLocation !== undefined) updateData.primaryLocation = data.primaryLocation;
   if (data.shiftCoverage !== undefined) updateData.shiftCoverage = data.shiftCoverage;
-  if (data.openPositions !== undefined) updateData.openPositions = data.openPositions;
   if (data.utilization !== undefined) updateData.utilization = data.utilization ? String(data.utilization) : null;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;

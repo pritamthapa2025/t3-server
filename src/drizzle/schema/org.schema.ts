@@ -133,7 +133,6 @@ export const departments = org.table(
     // Operational details
     primaryLocation: varchar("primary_location", { length: 255 }),
     shiftCoverage: varchar("shift_coverage", { length: 100 }),
-    openPositions: integer("open_positions").default(0).notNull(),
     utilization: numeric("utilization", { precision: 5, scale: 4 }), // 0.0000 to 1.0000 (0-100%)
 
     // Status & ordering

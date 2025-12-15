@@ -69,11 +69,6 @@ export const createDepartmentSchema = z.object({
       .string()
       .max(100, "Shift coverage must be less than 100 characters")
       .optional(),
-    openPositions: z
-      .number()
-      .int()
-      .nonnegative("Open positions must be a non-negative integer")
-      .optional(),
     utilization: z
       .number()
       .min(0, "Utilization must be between 0 and 1")
@@ -143,11 +138,6 @@ export const updateDepartmentSchema = z.object({
         .max(100, "Shift coverage must be less than 100 characters")
         .optional()
         .nullable(),
-      openPositions: z
-        .number()
-        .int()
-        .nonnegative("Open positions must be a non-negative integer")
-        .optional(),
       utilization: z
         .number()
         .min(0, "Utilization must be between 0 and 1")
@@ -170,7 +160,6 @@ export const updateDepartmentSchema = z.object({
         data.contactEmail !== undefined ||
         data.primaryLocation !== undefined ||
         data.shiftCoverage !== undefined ||
-        data.openPositions !== undefined ||
         data.utilization !== undefined ||
         data.isActive !== undefined ||
         data.sortOrder !== undefined ||

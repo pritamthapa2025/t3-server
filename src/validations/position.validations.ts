@@ -44,7 +44,7 @@ export const createPositionSchema = z.object({
       .or(z.string().transform((val) => parseFloat(val)))
       .pipe(z.number().positive("Pay rate must be a positive number")),
     payType: z.enum(["Hourly", "Salary"], {
-      errorMap: () => ({ message: "Pay type must be either 'Hourly' or 'Salary'" }),
+      message: "Pay type must be either 'Hourly' or 'Salary'",
     }),
     currency: z
       .string()
@@ -90,7 +90,7 @@ export const updatePositionSchema = z.object({
         .pipe(z.number().positive("Pay rate must be a positive number"))
         .optional(),
       payType: z.enum(["Hourly", "Salary"], {
-        errorMap: () => ({ message: "Pay type must be either 'Hourly' or 'Salary'" }),
+        message: "Pay type must be either 'Hourly' or 'Salary'",
       }).optional(),
       currency: z
         .string()

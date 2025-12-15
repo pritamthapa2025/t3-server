@@ -20,7 +20,6 @@ ALTER TABLE "org"."departments"
   ADD COLUMN IF NOT EXISTS "contact_email" varchar(255),
   ADD COLUMN IF NOT EXISTS "primary_location" varchar(255),
   ADD COLUMN IF NOT EXISTS "shift_coverage" varchar(100),
-  ADD COLUMN IF NOT EXISTS "open_positions" integer DEFAULT 0 NOT NULL,
   ADD COLUMN IF NOT EXISTS "utilization" numeric(5, 4),
   ADD COLUMN IF NOT EXISTS "is_active" boolean DEFAULT true NOT NULL,
   ADD COLUMN IF NOT EXISTS "sort_order" integer,
