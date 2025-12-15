@@ -41,18 +41,22 @@ export const getDepartments = async (
   const whereClause =
     whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
-  // Get all departments
+  // Add soft delete filter
+  whereConditions.push(eq(departments.isDeleted, false));
+  const finalWhereClause = and(...whereConditions);
+
+  // Get all departments (excluding soft deleted)
   const departmentsList = await db
     .select()
     .from(departments)
-    .where(whereClause)
+    .where(finalWhereClause)
     .limit(limit)
     .offset(offset);
 
   const total = await db
     .select({ count: count() })
     .from(departments)
-    .where(whereClause);
+    .where(finalWhereClause);
 
   // Get current month date range for utilisation calculation
   const currentDate = new Date();
@@ -91,7 +95,7 @@ export const getDepartments = async (
       const deptPositions = await db
         .select()
         .from(positions)
-        .where(eq(positions.departmentId, dept.id));
+        .where(and(eq(positions.departmentId, dept.id), eq(positions.isDeleted, false)));
 
       // Calculate metrics
       const totalPeople = deptEmployees.length;
@@ -335,11 +339,11 @@ export const getDepartments = async (
 };
 
 export const getDepartmentById = async (id: number) => {
-  // Get department basic info
+  // Get department basic info (excluding soft deleted)
   const [department] = await db
     .select()
     .from(departments)
-    .where(eq(departments.id, id));
+    .where(and(eq(departments.id, id), eq(departments.isDeleted, false)));
 
   if (!department) {
     return null;
@@ -385,7 +389,7 @@ export const getDepartmentById = async (id: number) => {
       ),
 
     // Get all positions in this department
-    db.select().from(positions).where(eq(positions.departmentId, id)),
+    db.select().from(positions).where(and(eq(positions.departmentId, id), eq(positions.isDeleted, false))),
   ]);
 
   // Get timesheet data for utilisation calculation (rolling 30 days)
@@ -583,29 +587,25 @@ export const getDepartmentById = async (id: number) => {
   };
 };
 
-export const getDepartmentByName = async (
-  name: string,
-  organizationId: string
-) => {
+export const getDepartmentByName = async (name: string) => {
   const [department] = await db
     .select()
     .from(departments)
-    .where(
-      and(
-        eq(departments.name, name),
-        eq(departments.organizationId, organizationId)
-      )
-    );
+    .where(and(eq(departments.name, name), eq(departments.isDeleted, false)));
   return department || null;
 };
 
 export const createDepartment = async (data: {
   name: string;
   description?: string;
-  organizationId: string;
-  teamLeadId?: string;
+  leadId?: string;
+  contactEmail?: string;
   primaryLocation?: string;
   shiftCoverage?: string;
+  openPositions?: number;
+  utilization?: number;
+  isActive?: boolean;
+  sortOrder?: number;
   positionPayBands?: Array<{
     positionTitle: string;
     payType: string;
@@ -613,26 +613,20 @@ export const createDepartment = async (data: {
     notes?: string;
   }>;
 }) => {
-  // Build description JSON with additional metadata
-  const metadata: any = {};
-  if (data.teamLeadId) metadata.teamLeadId = data.teamLeadId;
-  if (data.primaryLocation) metadata.primaryLocation = data.primaryLocation;
-  if (data.shiftCoverage) metadata.shiftCoverage = data.shiftCoverage;
-  if (data.positionPayBands && data.positionPayBands.length > 0) {
-    metadata.positionPayBands = data.positionPayBands;
-  }
-
-  const descriptionText = data.description || "";
-  const descriptionJson = metadata && Object.keys(metadata).length > 0 
-    ? JSON.stringify({ text: descriptionText, metadata })
-    : descriptionText;
-
   const [department] = await db
     .insert(departments)
     .values({
       name: data.name,
-      description: descriptionJson,
-      organizationId: data.organizationId,
+      description: data.description || null,
+      leadId: data.leadId || null,
+      contactEmail: data.contactEmail || null,
+      primaryLocation: data.primaryLocation || null,
+      shiftCoverage: data.shiftCoverage || null,
+      openPositions: data.openPositions ?? 0,
+      utilization: data.utilization ? String(data.utilization) : null,
+      isActive: data.isActive ?? true,
+      sortOrder: data.sortOrder || null,
+      isDeleted: false,
     })
     .returning();
 
@@ -641,11 +635,12 @@ export const createDepartment = async (data: {
     const positionsToCreate = data.positionPayBands.map((band) => ({
       name: band.positionTitle,
       departmentId: department.id,
-      description: JSON.stringify({
-        payType: band.payType,
-        payRate: band.payRate,
-        notes: band.notes || null,
-      }),
+      description: band.notes || null,
+      payRate: String(band.payRate),
+      payType: band.payType,
+      currency: "USD",
+      isActive: true,
+      isDeleted: false,
     }));
 
     await db.insert(positions).values(positionsToCreate);
@@ -659,9 +654,14 @@ export const updateDepartment = async (
   data: {
     name?: string;
     description?: string;
-    teamLeadId?: string;
-    primaryLocation?: string;
-    shiftCoverage?: string;
+    leadId?: string | null;
+    contactEmail?: string | null;
+    primaryLocation?: string | null;
+    shiftCoverage?: string | null;
+    openPositions?: number;
+    utilization?: number | null;
+    isActive?: boolean;
+    sortOrder?: number | null;
     positionPayBands?: Array<{
       id?: number;
       positionTitle: string;
@@ -675,69 +675,21 @@ export const updateDepartment = async (
     updatedAt: new Date(),
   };
 
-  if (data.name !== undefined) {
-    updateData.name = data.name;
-  }
-
-  // Handle description and metadata
-  if (
-    data.description !== undefined ||
-    data.teamLeadId !== undefined ||
-    data.primaryLocation !== undefined ||
-    data.shiftCoverage !== undefined ||
-    data.positionPayBands !== undefined
-  ) {
-    // Get existing department to preserve metadata
-    const [existingDept] = await db
-      .select()
-      .from(departments)
-      .where(eq(departments.id, id));
-
-    let existingMetadata: any = {};
-    let existingText = "";
-
-    if (existingDept?.description) {
-      try {
-        const parsed = JSON.parse(existingDept.description);
-        if (parsed.metadata) {
-          existingMetadata = parsed.metadata;
-          existingText = parsed.text || "";
-        } else {
-          existingText = existingDept.description;
-        }
-      } catch {
-        existingText = existingDept.description;
-      }
-    }
-
-    // Update metadata
-    if (data.teamLeadId !== undefined) {
-      existingMetadata.teamLeadId = data.teamLeadId;
-    }
-    if (data.primaryLocation !== undefined) {
-      existingMetadata.primaryLocation = data.primaryLocation;
-    }
-    if (data.shiftCoverage !== undefined) {
-      existingMetadata.shiftCoverage = data.shiftCoverage;
-    }
-    if (data.positionPayBands !== undefined) {
-      existingMetadata.positionPayBands = data.positionPayBands;
-    }
-
-    const descriptionText = data.description !== undefined 
-      ? data.description 
-      : existingText;
-
-    updateData.description =
-      Object.keys(existingMetadata).length > 0
-        ? JSON.stringify({ text: descriptionText, metadata: existingMetadata })
-        : descriptionText;
-  }
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.leadId !== undefined) updateData.leadId = data.leadId;
+  if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
+  if (data.primaryLocation !== undefined) updateData.primaryLocation = data.primaryLocation;
+  if (data.shiftCoverage !== undefined) updateData.shiftCoverage = data.shiftCoverage;
+  if (data.openPositions !== undefined) updateData.openPositions = data.openPositions;
+  if (data.utilization !== undefined) updateData.utilization = data.utilization ? String(data.utilization) : null;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
 
   const [department] = await db
     .update(departments)
     .set(updateData)
-    .where(eq(departments.id, id))
+    .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
     .returning();
 
   // Update positions if positionPayBands are provided
@@ -746,7 +698,7 @@ export const updateDepartment = async (
     const existingPositions = await db
       .select()
       .from(positions)
-      .where(eq(positions.departmentId, id));
+      .where(and(eq(positions.departmentId, id), eq(positions.isDeleted, false)));
 
     const existingPositionIds = new Set(
       data.positionPayBands
@@ -754,13 +706,14 @@ export const updateDepartment = async (
         .filter((id): id is number => id !== undefined)
     );
 
-    // Delete positions that are no longer in the list
+    // Soft delete positions that are no longer in the list
     const positionsToDelete = existingPositions.filter(
       (pos) => !existingPositionIds.has(pos.id)
     );
     if (positionsToDelete.length > 0) {
       await db
-        .delete(positions)
+        .update(positions)
+        .set({ isDeleted: true, updatedAt: new Date() })
         .where(
           inArray(
             positions.id,
@@ -777,11 +730,9 @@ export const updateDepartment = async (
           .update(positions)
           .set({
             name: band.positionTitle,
-            description: JSON.stringify({
-              payType: band.payType,
-              payRate: band.payRate,
-              notes: band.notes || null,
-            }),
+            description: band.notes || null,
+            payRate: String(band.payRate),
+            payType: band.payType,
             updatedAt: new Date(),
           })
           .where(eq(positions.id, band.id));
@@ -790,11 +741,12 @@ export const updateDepartment = async (
         await db.insert(positions).values({
           name: band.positionTitle,
           departmentId: id,
-          description: JSON.stringify({
-            payType: band.payType,
-            payRate: band.payRate,
-            notes: band.notes || null,
-          }),
+          description: band.notes || null,
+          payRate: String(band.payRate),
+          payType: band.payType,
+          currency: "USD",
+          isActive: true,
+          isDeleted: false,
         });
       }
     }
@@ -804,9 +756,11 @@ export const updateDepartment = async (
 };
 
 export const deleteDepartment = async (id: number) => {
+  // Soft delete: set isDeleted to true instead of hard delete
   const [department] = await db
-    .delete(departments)
-    .where(eq(departments.id, id))
+    .update(departments)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
     .returning();
   return department || null;
 };
@@ -831,7 +785,8 @@ export const getDepartmentKPIs = async () => {
         FROM org.departments d
         INNER JOIN org.employees e ON e.department_id = d.id
         INNER JOIN auth.users u ON e.user_id = u.id
-        WHERE e.is_deleted = false
+        WHERE d.is_deleted = false
+          AND e.is_deleted = false
           AND u.is_active = true
       `)
       ),

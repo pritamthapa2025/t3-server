@@ -32,7 +32,10 @@ const positionPayBandSchema = z.object({
     .string()
     .min(1, "Position title is required")
     .max(100, "Position title must be less than 100 characters"),
-  payType: z.enum(["Hourly", "Salary"], "Pay type must be either 'Hourly' or 'Salary'"),
+  payType: z.enum(
+    ["Hourly", "Salary"],
+    "Pay type must be either 'Hourly' or 'Salary'"
+  ),
   payRate: z
     .number()
     .positive("Pay rate must be a positive number")
@@ -52,14 +55,34 @@ export const createDepartmentSchema = z.object({
       .string()
       .max(1000, "Description must be less than 1000 characters")
       .optional(),
-    teamLeadId: z.string().uuid("Invalid team lead ID").optional(),
+    leadId: z.string().uuid("Invalid lead ID").optional(),
+    contactEmail: z
+      .string()
+      .email("Invalid email format")
+      .max(255, "Contact email must be less than 255 characters")
+      .optional(),
     primaryLocation: z
       .string()
       .max(255, "Primary location must be less than 255 characters")
       .optional(),
     shiftCoverage: z
       .string()
-      .max(255, "Shift coverage must be less than 255 characters")
+      .max(100, "Shift coverage must be less than 100 characters")
+      .optional(),
+    openPositions: z
+      .number()
+      .int()
+      .nonnegative("Open positions must be a non-negative integer")
+      .optional(),
+    utilization: z
+      .number()
+      .min(0, "Utilization must be between 0 and 1")
+      .max(1, "Utilization must be between 0 and 1")
+      .optional(),
+    isActive: z.boolean().optional(),
+    sortOrder: z
+      .number()
+      .int()
       .optional(),
     positionPayBands: z.array(positionPayBandSchema).optional(),
   }),
@@ -72,7 +95,10 @@ const updatePositionPayBandSchema = z.object({
     .string()
     .min(1, "Position title is required")
     .max(100, "Position title must be less than 100 characters"),
-  payType: z.enum(["Hourly", "Salary"], "Pay type must be either 'Hourly' or 'Salary'"),
+  payType: z.enum(
+    ["Hourly", "Salary"],
+    "Pay type must be either 'Hourly' or 'Salary'"
+  ),
   payRate: z
     .number()
     .positive("Pay rate must be a positive number")
@@ -100,24 +126,54 @@ export const updateDepartmentSchema = z.object({
         .string()
         .max(1000, "Description must be less than 1000 characters")
         .optional(),
-      teamLeadId: z.string().uuid("Invalid team lead ID").optional(),
+      leadId: z.string().uuid("Invalid lead ID").optional().nullable(),
+      contactEmail: z
+        .string()
+        .email("Invalid email format")
+        .max(255, "Contact email must be less than 255 characters")
+        .optional()
+        .nullable(),
       primaryLocation: z
         .string()
         .max(255, "Primary location must be less than 255 characters")
-        .optional(),
+        .optional()
+        .nullable(),
       shiftCoverage: z
         .string()
-        .max(255, "Shift coverage must be less than 255 characters")
+        .max(100, "Shift coverage must be less than 100 characters")
+        .optional()
+        .nullable(),
+      openPositions: z
+        .number()
+        .int()
+        .nonnegative("Open positions must be a non-negative integer")
         .optional(),
+      utilization: z
+        .number()
+        .min(0, "Utilization must be between 0 and 1")
+        .max(1, "Utilization must be between 0 and 1")
+        .optional()
+        .nullable(),
+      isActive: z.boolean().optional(),
+      sortOrder: z
+        .number()
+        .int()
+        .optional()
+        .nullable(),
       positionPayBands: z.array(updatePositionPayBandSchema).optional(),
     })
     .refine(
       (data) =>
         data.name !== undefined ||
         data.description !== undefined ||
-        data.teamLeadId !== undefined ||
+        data.leadId !== undefined ||
+        data.contactEmail !== undefined ||
         data.primaryLocation !== undefined ||
         data.shiftCoverage !== undefined ||
+        data.openPositions !== undefined ||
+        data.utilization !== undefined ||
+        data.isActive !== undefined ||
+        data.sortOrder !== undefined ||
         data.positionPayBands !== undefined,
       {
         message: "At least one field is required for update",
@@ -134,8 +190,3 @@ export const deleteDepartmentSchema = z.object({
       .pipe(z.number().int().positive("Invalid department ID")),
   }),
 });
-
-
-
-
-

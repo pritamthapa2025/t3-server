@@ -32,14 +32,12 @@ export const getDepartmentById = async (id: number) => {
 export const createDepartment = async (data: {
   name: string;
   description?: string;
-  organizationId: string;
 }) => {
   const [department] = await db
     .insert(departments)
     .values({
       name: data.name,
       description: data.description || null,
-      organizationId: data.organizationId,
       createdAt: new Date(),
       updatedAt: new Date(),
     })

@@ -10,22 +10,8 @@ import {
 } from "../services/department.service.js";
 import { logger } from "../utils/logger.js";
 
-// Remove organization validation - departments are T3 internal
-// Access control will be based on user roles/permissions instead
-const validateOrganizationAccess = (
-  req: Request,
-  res: Response
-): string | null => {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(403).json({
-      success: false,
-      message: "Access denied. Authentication required.",
-    });
-    return null;
-  }
-  return userId;
-};
+// Departments are T3 internal - no organization validation needed
+// Access control is based on user roles/permissions
 
 export const getDepartmentsHandler = async (req: Request, res: Response) => {
   try {
@@ -81,17 +67,28 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
     const {
       name,
       description,
-      teamLeadId,
+      leadId,
+      contactEmail,
       primaryLocation,
       shiftCoverage,
+      openPositions,
+      utilization,
+      isActive,
+      sortOrder,
       positionPayBands,
     } = req.body;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    // Validate user access (departments are T3 internal, not organization-specific)
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Authentication required.",
+      });
+    }
 
-    // Check if department with this name already exists in this organization
-    const existingDepartment = await getDepartmentByName(name, organizationId);
+    // Check if department with this name already exists
+    const existingDepartment = await getDepartmentByName(name);
     if (existingDepartment) {
       return res.status(409).json({
         success: false,
@@ -102,10 +99,14 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
     const department = await createDepartment({
       name,
       description,
-      organizationId,
-      teamLeadId,
+      leadId,
+      contactEmail,
       primaryLocation,
       shiftCoverage,
+      openPositions,
+      utilization,
+      isActive,
+      sortOrder,
       positionPayBands,
     });
     logger.info("Department created successfully");
@@ -136,18 +137,28 @@ export const updateDepartmentHandler = async (req: Request, res: Response) => {
     const {
       name,
       description,
-      teamLeadId,
+      leadId,
+      contactEmail,
       primaryLocation,
       shiftCoverage,
+      openPositions,
+      utilization,
+      isActive,
+      sortOrder,
       positionPayBands,
     } = req.body;
 
     const department = await updateDepartment(id, {
       name,
       description,
-      teamLeadId,
+      leadId,
+      contactEmail,
       primaryLocation,
       shiftCoverage,
+      openPositions,
+      utilization,
+      isActive,
+      sortOrder,
       positionPayBands,
     });
     if (!department) {

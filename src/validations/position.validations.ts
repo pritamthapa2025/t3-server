@@ -38,6 +38,28 @@ export const createPositionSchema = z.object({
       .string()
       .max(1000, "Description must be less than 1000 characters")
       .optional(),
+    payRate: z
+      .number()
+      .positive("Pay rate must be a positive number")
+      .or(z.string().transform((val) => parseFloat(val)))
+      .pipe(z.number().positive("Pay rate must be a positive number")),
+    payType: z.enum(["Hourly", "Salary"], {
+      errorMap: () => ({ message: "Pay type must be either 'Hourly' or 'Salary'" }),
+    }),
+    currency: z
+      .string()
+      .length(3, "Currency must be a 3-character code")
+      .default("USD")
+      .optional(),
+    notes: z
+      .string()
+      .max(2000, "Notes must be less than 2000 characters")
+      .optional(),
+    isActive: z.boolean().default(true).optional(),
+    sortOrder: z
+      .number()
+      .int()
+      .optional(),
   }),
 });
 
@@ -61,15 +83,44 @@ export const updatePositionSchema = z.object({
         .string()
         .max(1000, "Description must be less than 1000 characters")
         .optional(),
+      payRate: z
+        .number()
+        .positive("Pay rate must be a positive number")
+        .or(z.string().transform((val) => parseFloat(val)))
+        .pipe(z.number().positive("Pay rate must be a positive number"))
+        .optional(),
+      payType: z.enum(["Hourly", "Salary"], {
+        errorMap: () => ({ message: "Pay type must be either 'Hourly' or 'Salary'" }),
+      }).optional(),
+      currency: z
+        .string()
+        .length(3, "Currency must be a 3-character code")
+        .optional(),
+      notes: z
+        .string()
+        .max(2000, "Notes must be less than 2000 characters")
+        .optional()
+        .nullable(),
+      isActive: z.boolean().optional(),
+      sortOrder: z
+        .number()
+        .int()
+        .optional()
+        .nullable(),
     })
     .refine(
       (data) =>
         data.name !== undefined ||
         data.departmentId !== undefined ||
-        data.description !== undefined,
+        data.description !== undefined ||
+        data.payRate !== undefined ||
+        data.payType !== undefined ||
+        data.currency !== undefined ||
+        data.notes !== undefined ||
+        data.isActive !== undefined ||
+        data.sortOrder !== undefined,
       {
-        message:
-          "At least one field (name, departmentId, or description) is required",
+        message: "At least one field is required for update",
       }
     ),
 });
