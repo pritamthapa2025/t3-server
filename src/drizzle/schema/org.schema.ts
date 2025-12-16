@@ -300,7 +300,7 @@ export const timesheets = org.table(
     sheetDate: date("sheet_date").notNull(),
 
     clockIn: timestamp("clock_in").notNull(),
-    clockOut: timestamp("clock_out").notNull(),
+    clockOut: timestamp("clock_out"), // Nullable - populated when employee clocks out
 
     breakMinutes: integer("break_minutes").default(0),
 
@@ -314,7 +314,7 @@ export const timesheets = org.table(
 
     status: timesheetStatusEnum("status").notNull().default("pending"),
 
-    submittedBy: uuid("submitted_by").references(() => users.id),
+    rejectedBy: uuid("rejected_by").references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
 
     createdAt: timestamp("created_at").defaultNow(),

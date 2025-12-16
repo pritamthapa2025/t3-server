@@ -6,3 +6,5 @@ ALTER TABLE "org"."departments" DROP COLUMN IF EXISTS "open_positions";
 
 -- Note: This is a safe operation as open_positions was just a counter field
 -- No data loss concerns as this was just metadata
+
+

@@ -57,11 +57,15 @@ import {
   updateFinancialReportSchema,
   deleteFinancialReportSchema,
 } from "../../validations/financial.validations.js";
+import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
 
 // Apply authentication middleware to all financial routes
 router.use(authenticate);
+
+// Apply timezone transformation to all GET responses
+router.use(generalTransformer);
 
 // Financial Summary Routes
 router

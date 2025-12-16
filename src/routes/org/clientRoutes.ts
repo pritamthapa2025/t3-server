@@ -13,6 +13,7 @@ import {
 } from "../../controllers/ClientController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
+import { generalTransformer } from "../../middleware/response-transformer.js";
 import {
   getClientsQuerySchema,
   getClientByIdSchema,
@@ -67,6 +68,9 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 // Apply authentication middleware to all client routes
 router.use(authenticate);
+
+// Apply timezone transformation to all GET responses
+router.use(generalTransformer);
 
 // Client KPIs route
 router.get("/clients/kpis", getClientKPIsHandler);

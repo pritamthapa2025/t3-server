@@ -9,6 +9,7 @@ import {
 } from "../../controllers/DepartmentController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
+import { generalTransformer } from "../../middleware/response-transformer.js";
 import {
   getDepartmentsQuerySchema,
   getDepartmentByIdSchema,
@@ -21,6 +22,9 @@ const router = Router();
 
 // Apply authentication middleware to all department routes
 router.use(authenticate);
+
+// Apply timezone transformation to all GET responses
+router.use(generalTransformer);
 
 router.route("/department/kpis").get(getDepartmentKPIsHandler);
 
