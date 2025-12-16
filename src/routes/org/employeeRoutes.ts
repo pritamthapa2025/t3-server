@@ -10,6 +10,7 @@ import {
 } from "../../controllers/EmployeeController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
+import { userTransformer } from "../../middleware/response-transformer.js";
 import {
   getEmployeesQuerySchema,
   getEmployeeByIdSchema,
@@ -61,6 +62,9 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 // Apply authentication middleware to all employee routes
 router.use(authenticate);
+
+// Apply timezone transformation to all GET responses
+router.use(userTransformer);
 
 router.get("/employees/kpis", getEmployeeKPIsHandler);
 router

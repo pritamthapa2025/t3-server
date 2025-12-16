@@ -367,17 +367,16 @@ export const getEmployeeById = async (id: number) => {
       .orderBy(desc(timesheetApprovals.createdAt))
       .limit(10),
 
-    // Get recent timesheet submissions (for activity log)
+    // Get recent timesheet creations (for activity log)
     db
       .select({
-        type: sql<string>`'submission'`,
-        action: sql<string>`'timesheet_submitted'`,
-        performedBy: users.fullName,
+        type: sql<string>`'timesheet'`,
+        action: sql<string>`'timesheet_created'`,
+        performedBy: sql<string>`'System'`, // No longer track who submitted
         timestamp: timesheets.createdAt,
         details: timesheets.sheetDate,
       })
       .from(timesheets)
-      .leftJoin(users, eq(timesheets.submittedBy, users.id))
       .where(eq(timesheets.employeeId, id))
       .orderBy(desc(timesheets.createdAt))
       .limit(10),

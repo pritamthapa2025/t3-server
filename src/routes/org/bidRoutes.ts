@@ -71,10 +71,14 @@ import {
   getBidHistorySchema,
   getBidWithAllDataSchema,
 } from "../../validations/bid.validations.js";
+import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
 
 router.use(authenticate);
+
+// Apply timezone transformation to all GET responses
+router.use(generalTransformer);
 
 // Main Bid Routes
 
