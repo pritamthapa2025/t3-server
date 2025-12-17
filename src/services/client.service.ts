@@ -15,11 +15,10 @@ import {
   clientContacts,
   clientNotes,
   clientDocuments,
-  jobs,
-  jobFinancialSummary,
-  bidsTable,
   properties,
 } from "../drizzle/schema/org.schema.js";
+import { jobs, jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // Get all clients with pagination and optional filtering

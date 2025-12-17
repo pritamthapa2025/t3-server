@@ -6,6 +6,7 @@ import {
   updateDepartmentHandler,
   deleteDepartmentHandler,
   getDepartmentKPIsHandler,
+  getDepartmentsListHandler,
 } from "../../controllers/DepartmentController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -27,6 +28,7 @@ router.use(authenticate);
 router.use(generalTransformer);
 
 router.route("/department/kpis").get(getDepartmentKPIsHandler);
+router.route("/department/list").get(getDepartmentsListHandler);
 
 router
   .route("/department")

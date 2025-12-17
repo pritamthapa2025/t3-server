@@ -1,0 +1,242 @@
+import type { Request, Response } from "express";
+import { RoleRepository } from "../repositories/RoleRepository.js";
+import { logger } from "../utils/logger.js";
+
+// Get all roles with pagination and filtering
+export const getRolesHandler = async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string | undefined;
+    const includeDeleted = req.query.includeDeleted === 'true';
+    const sortBy = (req.query.sortBy as 'name' | 'createdAt') || 'createdAt';
+    const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || 'desc';
+
+    const offset = (page - 1) * limit;
+
+    const result = await RoleRepository.getRoles({
+      offset,
+      limit,
+      search,
+      includeDeleted,
+      sortBy,
+      sortOrder,
+    });
+
+    logger.info("Roles fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching roles", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get role by ID
+export const getRoleByIdHandler = async (req: Request, res: Response) => {
+  try {
+    const roleId = parseInt(req.params.id || '0');
+    
+    const role = await RoleRepository.getRoleById(roleId);
+    
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+    }
+
+    logger.info(`Role with ID ${roleId} fetched successfully`);
+    return res.status(200).json({
+      success: true,
+      data: role,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching role by ID", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Create a new role
+export const createRoleHandler = async (req: Request, res: Response) => {
+  try {
+    const { name, description } = req.body;
+
+    // Check if role name already exists
+    const existingRole = await RoleRepository.getRoleByName(name);
+    if (existingRole) {
+      return res.status(409).json({
+        success: false,
+        message: "Role name already exists",
+      });
+    }
+
+    const newRole = await RoleRepository.createRole({
+      name,
+      description,
+    });
+
+    logger.info(`Role '${name}' created successfully`);
+    return res.status(201).json({
+      success: true,
+      message: "Role created successfully",
+      data: newRole,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error creating role", error, req);
+
+    if (error.code === "23505") {
+      // PostgreSQL unique constraint violation
+      return res.status(409).json({
+        success: false,
+        message: "Role name already exists",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Update a role
+export const updateRoleHandler = async (req: Request, res: Response) => {
+  try {
+    const roleId = parseInt(req.params.id || '0');
+    const { name, description } = req.body;
+
+    // Check if role exists
+    const existingRole = await RoleRepository.getRoleById(roleId);
+    if (!existingRole) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+    }
+
+    // If updating name, check if new name already exists (excluding current role)
+    if (name && name !== existingRole.name) {
+      const roleWithSameName = await RoleRepository.getRoleByName(name);
+      if (roleWithSameName && roleWithSameName.id !== roleId) {
+        return res.status(409).json({
+          success: false,
+          message: "Role name already exists",
+        });
+      }
+    }
+
+    const updatedRole = await RoleRepository.updateRole(roleId, {
+      name,
+      description,
+    });
+
+    if (!updatedRole) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+    }
+
+    logger.info(`Role with ID ${roleId} updated successfully`);
+    return res.status(200).json({
+      success: true,
+      message: "Role updated successfully",
+      data: updatedRole,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating role", error, req);
+
+    if (error.code === "23505") {
+      // PostgreSQL unique constraint violation
+      return res.status(409).json({
+        success: false,
+        message: "Role name already exists",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Delete a role (soft delete)
+export const deleteRoleHandler = async (req: Request, res: Response) => {
+  try {
+    const roleId = parseInt(req.params.id || '0');
+
+    const deletedRole = await RoleRepository.deleteRole(roleId);
+    
+    if (!deletedRole) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+    }
+
+    logger.info(`Role with ID ${roleId} deleted successfully`);
+    return res.status(200).json({
+      success: true,
+      message: "Role deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Error deleting role", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Check if role name exists (utility endpoint)
+export const checkRoleNameHandler = async (req: Request, res: Response) => {
+  try {
+    const { name, excludeId } = req.query;
+    
+    const exists = await RoleRepository.roleNameExists(
+      name as string,
+      excludeId ? parseInt(excludeId as string) : undefined
+    );
+
+    return res.status(200).json({
+      success: true,
+      exists,
+    });
+  } catch (error) {
+    logger.logApiError("Error checking role name", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get roles count
+export const getRolesCountHandler = async (req: Request, res: Response) => {
+  try {
+    const count = await RoleRepository.getActiveRolesCount();
+
+    return res.status(200).json({
+      success: true,
+      data: { count },
+    });
+  } catch (error) {
+    logger.logApiError("Error getting roles count", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};

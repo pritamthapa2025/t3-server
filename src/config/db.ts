@@ -143,6 +143,18 @@ export const initDB = async (retries = 5, delay = 5000) => {
     try {
       const client = await pool.connect();
       client.release();
+      
+      // Extract database name from connection string for display
+      let dbName = "database";
+      try {
+        const url = dbUrl.replace(/^postgres:\/\//, "postgresql://");
+        const parsed = new URL(url);
+        dbName = parsed.pathname.replace("/", "") || "database";
+      } catch {
+        // Use default if parsing fails
+      }
+      
+      console.log(`✅ Database connected successfully to: ${dbName}`);
       return;
     } catch (error: any) {
       const errorMessage = error?.message || String(error);

@@ -234,7 +234,7 @@ CREATE INDEX IF NOT EXISTS "idx_jobs_scheduled_start" ON "org"."jobs" USING btre
 CREATE INDEX IF NOT EXISTS "idx_jobs_is_deleted" ON "org"."jobs" USING btree ("is_deleted");
 
 -- Add unique constraint for job numbers per organization
-CREATE UNIQUE INDEX IF NOT EXISTS "unique_job_number_per_org" ON "org"."jobs" USING btree ("organization_id","job_number");
+-- Removed duplicate unique index (constraint created in later migration)
 
 -- Add jobs foreign keys
 DO $$ BEGIN

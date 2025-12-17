@@ -1,4 +1,4 @@
-import { count, eq, and, or, ilike } from "drizzle-orm";
+import { count, eq, and, or, ilike, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { positions } from "../drizzle/schema/org.schema.js";
 
@@ -112,7 +112,8 @@ export const updatePosition = async (
   };
 
   if (data.name !== undefined) updateData.name = data.name;
-  if (data.departmentId !== undefined) updateData.departmentId = data.departmentId;
+  if (data.departmentId !== undefined)
+    updateData.departmentId = data.departmentId;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.payRate !== undefined) updateData.payRate = String(data.payRate);
   if (data.payType !== undefined) updateData.payType = data.payType;
@@ -137,4 +138,35 @@ export const deletePosition = async (id: number) => {
     .where(and(eq(positions.id, id), eq(positions.isDeleted, false)))
     .returning();
   return position || null;
+};
+
+export const getPositionsByDepartment = async (departmentId: number) => {
+  // Get positions list filtered by department ID, returning only id and name
+  try {
+    const result = await db
+      .select({
+        id: positions.id,
+        name: positions.name,
+      })
+      .from(positions)
+      .where(
+        and(
+          eq(positions.departmentId, departmentId),
+          eq(positions.isDeleted, false)
+        )
+      )
+      .orderBy(positions.name);
+
+    return result;
+  } catch (error: any) {
+    // Log the actual database error for debugging
+    console.error("Database error in getPositionsByDepartment:", {
+      message: error?.message,
+      code: error?.code,
+      detail: error?.detail,
+      hint: error?.hint,
+      stack: error?.stack,
+    });
+    throw error;
+  }
 };

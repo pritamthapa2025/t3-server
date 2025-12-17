@@ -11,14 +11,15 @@ import {
   min,
   max,
   inArray,
+  isNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   departments,
   employees,
   positions,
-  timesheets,
 } from "../drizzle/schema/org.schema.js";
+import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 export const getDepartments = async (
@@ -77,9 +78,23 @@ export const getDepartments = async (
       // Get all employees in this department
       const deptEmployees = await db
         .select({
-          employee: employees,
-          user: users,
-          position: positions,
+          employee: {
+            id: employees.id,
+            status: employees.status,
+            performance: employees.performance,
+            positionId: employees.positionId,
+            hourlyRate: employees.hourlyRate,
+            salary: employees.salary,
+          },
+          user: {
+            id: users.id,
+            fullName: users.fullName,
+            isActive: users.isActive,
+          },
+          position: {
+            id: positions.id,
+            name: positions.name,
+          },
         })
         .from(employees)
         .leftJoin(users, eq(employees.userId, users.id))
@@ -92,10 +107,20 @@ export const getDepartments = async (
         );
 
       // Get all positions in this department (for open roles calculation)
+      // Handle null isDeleted values (for rows created before migration)
       const deptPositions = await db
-        .select()
+        .select({
+          id: positions.id,
+          name: positions.name,
+          description: positions.description,
+        })
         .from(positions)
-        .where(and(eq(positions.departmentId, dept.id), eq(positions.isDeleted, false)));
+        .where(
+          and(
+            eq(positions.departmentId, dept.id),
+            or(isNull(positions.isDeleted), eq(positions.isDeleted, false))
+          )
+        );
 
       // Calculate metrics
       const totalPeople = deptEmployees.length;
@@ -377,9 +402,23 @@ export const getDepartmentById = async (id: number) => {
     // Get all employees in this department
     db
       .select({
-        employee: employees,
-        user: users,
-        position: positions,
+        employee: {
+          id: employees.id,
+          status: employees.status,
+          performance: employees.performance,
+          positionId: employees.positionId,
+          hourlyRate: employees.hourlyRate,
+          salary: employees.salary,
+        },
+        user: {
+          id: users.id,
+          fullName: users.fullName,
+          isActive: users.isActive,
+        },
+        position: {
+          id: positions.id,
+          name: positions.name,
+        },
       })
       .from(employees)
       .leftJoin(users, eq(employees.userId, users.id))
@@ -389,7 +428,20 @@ export const getDepartmentById = async (id: number) => {
       ),
 
     // Get all positions in this department
-    db.select().from(positions).where(and(eq(positions.departmentId, id), eq(positions.isDeleted, false))),
+    // Handle null isDeleted values (for rows created before migration)
+    db
+      .select({
+        id: positions.id,
+        name: positions.name,
+        description: positions.description,
+      })
+      .from(positions)
+      .where(
+        and(
+          eq(positions.departmentId, id),
+          or(isNull(positions.isDeleted), eq(positions.isDeleted, false))
+        )
+      ),
   ]);
 
   // Get timesheet data for utilisation calculation (rolling 30 days)
@@ -675,10 +727,14 @@ export const updateDepartment = async (
   if (data.name !== undefined) updateData.name = data.name;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.leadId !== undefined) updateData.leadId = data.leadId;
-  if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
-  if (data.primaryLocation !== undefined) updateData.primaryLocation = data.primaryLocation;
-  if (data.shiftCoverage !== undefined) updateData.shiftCoverage = data.shiftCoverage;
-  if (data.utilization !== undefined) updateData.utilization = data.utilization ? String(data.utilization) : null;
+  if (data.contactEmail !== undefined)
+    updateData.contactEmail = data.contactEmail;
+  if (data.primaryLocation !== undefined)
+    updateData.primaryLocation = data.primaryLocation;
+  if (data.shiftCoverage !== undefined)
+    updateData.shiftCoverage = data.shiftCoverage;
+  if (data.utilization !== undefined)
+    updateData.utilization = data.utilization ? String(data.utilization) : null;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
 
@@ -694,7 +750,9 @@ export const updateDepartment = async (
     const existingPositions = await db
       .select()
       .from(positions)
-      .where(and(eq(positions.departmentId, id), eq(positions.isDeleted, false)));
+      .where(
+        and(eq(positions.departmentId, id), eq(positions.isDeleted, false))
+      );
 
     const existingPositionIds = new Set(
       data.positionPayBands
@@ -759,6 +817,28 @@ export const deleteDepartment = async (id: number) => {
     .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
     .returning();
   return department || null;
+};
+
+export const getDepartmentsList = async () => {
+  // Get simplified department list with just id, name, leadId, and lead name
+  const result = await db
+    .select({
+      id: departments.id,
+      name: departments.name,
+      leadId: departments.leadId,
+      leadName: users.fullName,
+    })
+    .from(departments)
+    .leftJoin(users, eq(departments.leadId, users.id))
+    .where(eq(departments.isDeleted, false))
+    .orderBy(departments.name);
+
+  return result.map((dept) => ({
+    id: dept.id,
+    name: dept.name,
+    leadId: dept.leadId,
+    leadName: dept.leadName || null,
+  }));
 };
 
 export const getDepartmentKPIs = async () => {

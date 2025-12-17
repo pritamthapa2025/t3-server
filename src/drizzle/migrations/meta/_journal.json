@@ -57,6 +57,111 @@
       "when": 1765514904647,
       "tag": "0007_enhanced_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1765518904647,
+      "tag": "0017_add_compliance_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1765522904647,
+      "tag": "0018_add_capacity_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1765949850272,
+      "tag": "0001_enhanced_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1765949851272,
+      "tag": "0006_add_financial_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1765949852272,
+      "tag": "0008_add_employee_reviews_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1765949853272,
+      "tag": "0009_add_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1765949854272,
+      "tag": "0010_add_employee_kpi_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1765949855272,
+      "tag": "0013_update_departments_and_positions_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1765949856272,
+      "tag": "0014_remove_open_positions_from_departments",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1765949857272,
+      "tag": "0015_make_clockout_nullable_in_timesheets",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1765949858272,
+      "tag": "0016_add_payroll_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1765949859272,
+      "tag": "0019_add_is_deleted_to_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1765949860272,
+      "tag": "0019_add_missing_columns_to_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1765949861272,
+      "tag": "0020_comprehensive_schema_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1765951156572,
+      "tag": "0031_ambitious_white_queen",
+      "breakpoints": true
     }
   ]
 }

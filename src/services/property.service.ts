@@ -17,8 +17,8 @@ import {
   propertyDocuments,
   propertyServiceHistory,
   organizations,
-  jobs,
 } from "../drizzle/schema/org.schema.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // Get properties with pagination and filtering

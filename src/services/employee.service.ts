@@ -17,9 +17,8 @@ import {
   positions,
   userBankAccounts,
   employeeReviews,
-  timesheets,
-  timesheetApprovals,
 } from "../drizzle/schema/org.schema.js";
+import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 export const getEmployees = async (

@@ -5,6 +5,7 @@ import {
   getPositionByIdHandler,
   updatePositionHandler,
   deletePositionHandler,
+  getPositionsByDepartmentHandler,
 } from "../../controllers/PositionController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -29,6 +30,7 @@ router
   .route("/position")
   .get(validate(getPositionsQuerySchema), getPositionsHandler)
   .post(validate(createPositionSchema), createPositionHandler);
+router.route("/position/list").get(getPositionsByDepartmentHandler);
 router
   .route("/position/:id")
   .get(validate(getPositionByIdSchema), getPositionByIdHandler)

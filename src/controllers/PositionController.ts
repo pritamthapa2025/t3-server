@@ -6,6 +6,7 @@ import {
   createPosition,
   updatePosition,
   deletePosition,
+  getPositionsByDepartment,
 } from "../services/position.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -148,5 +149,50 @@ export const deletePositionHandler = async (req: Request, res: Response) => {
   } catch (error) {
     logger.logApiError("Error deleting position", error, req);
     return res.status(500).send("Internal server error");
+  }
+};
+
+export const getPositionsByDepartmentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const departmentId = parseInt(req.query.departmentId as string);
+
+    if (!departmentId || isNaN(departmentId)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "departmentId query parameter is required and must be a valid number",
+      });
+    }
+
+    const positions = await getPositionsByDepartment(departmentId);
+
+    logger.info("Positions by department fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: positions,
+    });
+  } catch (error: any) {
+    // Log detailed error information
+    logger.error("Error fetching positions by department", {
+      error: error?.message || String(error),
+      code: error?.code,
+      detail: error?.detail,
+      hint: error?.hint,
+    });
+    logger.logApiError("Error fetching positions by department", error, req);
+
+    // Return more detailed error in development
+    const errorMessage =
+      process.env.NODE_ENV === "development" && error?.message
+        ? error.message
+        : "Internal server error";
+
+    return res.status(500).json({
+      success: false,
+      message: errorMessage,
+    });
   }
 };

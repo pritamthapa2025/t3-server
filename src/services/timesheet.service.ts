@@ -1,6 +1,7 @@
 import { count, eq, and, or, ilike, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
-import { timesheets, employees } from "../drizzle/schema/org.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
+import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 export const getTimesheets = async (
