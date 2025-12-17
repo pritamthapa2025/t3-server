@@ -16,7 +16,7 @@ import {
   bidDesignBuildFiles,
   bidNotes,
   bidHistory,
-} from "../drizzle/schema/org.schema.js";
+} from "../drizzle/schema/bids.schema.js";
 
 // ============================
 // Main Bid Operations

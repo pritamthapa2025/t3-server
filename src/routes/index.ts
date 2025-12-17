@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth/authRoutes.js";
 import userRoutes from "./auth/userRoutes.js";
+import roleRoutes from "./auth/roleRoutes.js";
 import departmentRoutes from "./org/departmentRoutes.js";
 import positionRoutes from "./org/positionRoutes.js";
 import employeeRoutes from "./org/employeeRoutes.js";
@@ -9,10 +10,14 @@ import financialRoutes from "./org/financialRoutes.js";
 import bidRoutes from "./org/bidRoutes.js";
 import clientRoutes from "./org/clientRoutes.js";
 import propertyRoutes from "./org/propertyRoutes.js";
+import payrollRoutes from "./org/payrollRoutes.js";
+import compensationRoutes from "./org/compensationRoutes.js";
+import capacityRoutes from "./org/capacityRoutes.js";
 
 const router = Router();
 
-router.use("/auth", authRoutes, userRoutes);
+router.use("/auth", authRoutes, userRoutes, roleRoutes);
+
 router.use(
   "/org",
   departmentRoutes,
@@ -24,5 +29,9 @@ router.use(
   clientRoutes,
   propertyRoutes
 );
+
+router.use("/org/payroll", payrollRoutes);
+router.use("/org/compensation", compensationRoutes);
+router.use("/org/capacity", capacityRoutes);
 
 export default router;

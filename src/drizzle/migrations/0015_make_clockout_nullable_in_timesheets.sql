@@ -8,8 +8,8 @@ ALTER TABLE "org"."timesheets" ALTER COLUMN "clock_out" DROP NOT NULL;
 -- Remove submittedBy column
 ALTER TABLE "org"."timesheets" DROP COLUMN IF EXISTS "submitted_by";
 
--- Add rejectedBy column
-ALTER TABLE "org"."timesheets" ADD COLUMN "rejected_by" UUID REFERENCES "auth"."users"("id");
+-- Add rejectedBy column if it doesn't exist
+ALTER TABLE "org"."timesheets" ADD COLUMN IF NOT EXISTS "rejected_by" UUID REFERENCES "auth"."users"("id");
 
 -- Update existing records where clockOut equals clockIn (temporary values) to NULL
 -- This handles any existing records created with the old logic

@@ -28,9 +28,11 @@ const gracefulShutdown = async (signal: string) => {
     }
     
     try {
-      // Close Redis connection
-      await redis.quit();
-      console.log("Redis connection closed");
+      // Close Redis connection (only if connected)
+      if (redis.status !== "end") {
+        await redis.quit();
+        console.log("Redis connection closed");
+      }
     } catch (error) {
       console.error("Error closing Redis connection:", error);
     }
@@ -69,7 +71,8 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 initDB()
   .then(() => {
     server.listen(PORT, () => {
-      // Server started - log removed
+      console.log(`🚀 Server is running on port ${PORT}`);
+      console.log(`📡 API available at http://localhost:${PORT}`);
     });
     
     // Handle server errors

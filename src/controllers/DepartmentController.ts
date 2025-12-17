@@ -7,6 +7,7 @@ import {
   updateDepartment,
   deleteDepartment,
   getDepartmentKPIs,
+  getDepartmentsList,
 } from "../services/department.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -205,6 +206,27 @@ export const deleteDepartmentHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error deleting department", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getDepartmentsListHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const departments = await getDepartmentsList();
+
+    logger.info("Departments list fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: departments,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching departments list", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

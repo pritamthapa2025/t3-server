@@ -42,14 +42,15 @@ END $$;
 -- Update unique constraint (remove organization_id, keep name unique)
 DO $$
 BEGIN
-  IF EXISTS (
+  -- Check if any unique constraint on department name exists
+  IF NOT EXISTS (
     SELECT 1 FROM information_schema.table_constraints 
     WHERE constraint_schema = 'org' 
-    AND constraint_name = 'departments_name_unique'
+    AND table_name = 'departments'
+    AND constraint_type = 'UNIQUE'
+    AND constraint_name IN ('departments_name_unique', 'unique_dept_name')
   ) THEN
-    -- Constraint already exists, no need to add
-    NULL;
-  ELSE
+    -- No unique constraint exists, add one
     ALTER TABLE "org"."departments" 
     ADD CONSTRAINT "unique_dept_name" UNIQUE("name");
   END IF;

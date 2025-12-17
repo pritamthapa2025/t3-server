@@ -2,7 +2,6 @@ import { and, eq, gte, lte, desc, or, ilike, count } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   financialSummary,
-  jobFinancialSummary,
   financialCostCategories,
   profitTrend,
   cashFlowProjection,
@@ -10,6 +9,7 @@ import {
   revenueForecast,
   financialReports,
 } from "../drizzle/schema/org.schema.js";
+import { jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 
 // Financial Summary Services
 export const getFinancialSummary = async (
