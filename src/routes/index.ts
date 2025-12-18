@@ -13,6 +13,7 @@ import propertyRoutes from "./org/propertyRoutes.js";
 import payrollRoutes from "./org/payrollRoutes.js";
 import compensationRoutes from "./org/compensationRoutes.js";
 import capacityRoutes from "./org/capacityRoutes.js";
+import inventoryRoutes from "./org/inventoryRoutes.js";
 
 const router = Router();
 
@@ -33,5 +34,6 @@ router.use(
 router.use("/org/payroll", payrollRoutes);
 router.use("/org/compensation", compensationRoutes);
 router.use("/org/capacity", capacityRoutes);
+router.use("/org/inventory", inventoryRoutes);
 
 export default router;

@@ -169,6 +169,13 @@
       "when": 1766033171475,
       "tag": "0032_dazzling_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1766066104487,
+      "tag": "0035_yummy_archangel",
+      "breakpoints": true
     }
   ]
 }
