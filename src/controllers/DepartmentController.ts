@@ -10,6 +10,11 @@ import {
   getDepartmentsList,
 } from "../services/department.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkDepartmentNameExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 // Departments are T3 internal - no organization validation needed
 // Access control is based on user roles/permissions
@@ -87,13 +92,23 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if department with this name already exists
-    const existingDepartment = await getDepartmentByName(name);
-    if (existingDepartment) {
-      return res.status(409).json({
-        success: false,
-        message: "Department name already exists",
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check department name uniqueness
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkDepartmentNameExists(name),
+        message: `A department with the name '${name}' already exists`,
       });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const department = await createDepartment({
@@ -145,6 +160,34 @@ export const updateDepartmentHandler = async (req: Request, res: Response) => {
       sortOrder,
       positionPayBands,
     } = req.body;
+
+    // Check if department exists first
+    const existingDepartment = await getDepartmentById(id);
+    if (!existingDepartment) {
+      return res.status(404).json({
+        success: false,
+        message: "Department not found",
+      });
+    }
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check department name uniqueness (if provided and different from current)
+    if (name && name !== existingDepartment.department.name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkDepartmentNameExists(name, id),
+        message: `A department with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
 
     const department = await updateDepartment(id, {
       name,

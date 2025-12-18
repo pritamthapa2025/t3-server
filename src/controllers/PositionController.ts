@@ -9,6 +9,11 @@ import {
   getPositionsByDepartment,
 } from "../services/position.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkPositionNameExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 export const getPositionsHandler = async (req: Request, res: Response) => {
   try {
@@ -64,10 +69,23 @@ export const createPositionHandler = async (req: Request, res: Response) => {
       sortOrder,
     } = req.body;
 
-    // Check if position with this name already exists
-    const existingPosition = await getPositionByName(name);
-    if (existingPosition) {
-      return res.status(409).send("Position name already exists");
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check position name uniqueness
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkPositionNameExists(name),
+        message: `A position with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const position = await createPosition({
@@ -107,6 +125,34 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
       isActive,
       sortOrder,
     } = req.body;
+
+    // Check if position exists first
+    const existingPosition = await getPositionById(id);
+    if (!existingPosition) {
+      return res.status(404).json({
+        success: false,
+        message: "Position not found",
+      });
+    }
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check position name uniqueness (if provided and different from current)
+    if (name && name !== existingPosition.name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkPositionNameExists(name, id),
+        message: `A position with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
 
     const position = await updatePosition(id, {
       name,

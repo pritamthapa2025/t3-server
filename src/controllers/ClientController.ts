@@ -25,6 +25,12 @@ import {
 } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkOrganizationNameExists,
+  checkClientIdExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 // Get all clients with pagination
 export const getClientsHandler = async (req: Request, res: Response) => {
@@ -200,6 +206,35 @@ export const createClientHandler = async (req: Request, res: Response) => {
     // Add createdBy
     clientData.createdBy = req.user?.id;
 
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check organization name uniqueness
+    if (clientData.name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: clientData.name,
+        checkFunction: () => checkOrganizationNameExists(clientData.name),
+        message: `A client with the name '${clientData.name}' already exists`,
+      });
+    }
+
+    // Check client ID uniqueness
+    if (clientData.clientId) {
+      uniqueFieldChecks.push({
+        field: "clientId",
+        value: clientData.clientId,
+        checkFunction: () => checkClientIdExists(clientData.clientId),
+        message: `Client ID '${clientData.clientId}' is already in use`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     // Create client with contacts and properties
     const client = await createClient(clientData);
 
@@ -304,6 +339,43 @@ export const updateClientHandler = async (req: Request, res: Response) => {
       }
       updateData.tags = tags;
       delete updateData.companyLogo; // Remove from updateData as it's not a direct field
+    }
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Get existing client for comparison
+    const existingClient = await getClientById(id);
+    if (!existingClient) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Client not found" });
+    }
+
+    // Check organization name uniqueness (if provided and different from current)
+    if (updateData.name && updateData.name !== existingClient.name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: updateData.name,
+        checkFunction: () => checkOrganizationNameExists(updateData.name, id),
+        message: `A client with the name '${updateData.name}' already exists`,
+      });
+    }
+
+    // Check client ID uniqueness (if provided and different from current)
+    if (updateData.clientId && updateData.clientId !== existingClient.clientId) {
+      uniqueFieldChecks.push({
+        field: "clientId",
+        value: updateData.clientId,
+        checkFunction: () => checkClientIdExists(updateData.clientId, id),
+        message: `Client ID '${updateData.clientId}' is already in use`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const client = await updateClient(id, updateData);

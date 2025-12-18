@@ -1,6 +1,11 @@
 import type { Request, Response } from "express";
 import { RoleRepository } from "../repositories/RoleRepository.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkRoleNameExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 // Get all roles with pagination and filtering
 export const getRolesHandler = async (req: Request, res: Response) => {
@@ -72,13 +77,23 @@ export const createRoleHandler = async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
 
-    // Check if role name already exists
-    const existingRole = await RoleRepository.getRoleByName(name);
-    if (existingRole) {
-      return res.status(409).json({
-        success: false,
-        message: "Role name already exists",
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check role name uniqueness
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkRoleNameExists(name),
+        message: `A role with the name '${name}' already exists`,
       });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const newRole = await RoleRepository.createRole({
@@ -125,15 +140,23 @@ export const updateRoleHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // If updating name, check if new name already exists (excluding current role)
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check role name uniqueness (if provided and different from current)
     if (name && name !== existingRole.name) {
-      const roleWithSameName = await RoleRepository.getRoleByName(name);
-      if (roleWithSameName && roleWithSameName.id !== roleId) {
-        return res.status(409).json({
-          success: false,
-          message: "Role name already exists",
-        });
-      }
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkRoleNameExists(name, roleId),
+        message: `A role with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const updatedRole = await RoleRepository.updateRole(roleId, {

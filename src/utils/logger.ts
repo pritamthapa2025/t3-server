@@ -23,6 +23,24 @@ class Logger {
     if (error instanceof Error) {
       errorContext.errorName = error.name;
       errorContext.errorMessage = error.message;
+      errorContext.errorStack = error.stack;
+      
+      // Capture PostgreSQL/Database specific error details
+      if ((error as any).code) {
+        errorContext.errorCode = (error as any).code;
+      }
+      if ((error as any).detail) {
+        errorContext.errorDetail = (error as any).detail;
+      }
+      if ((error as any).constraint) {
+        errorContext.constraint = (error as any).constraint;
+      }
+      if ((error as any).table) {
+        errorContext.table = (error as any).table;
+      }
+      if ((error as any).column) {
+        errorContext.column = (error as any).column;
+      }
     } else if (error) {
       errorContext.error = error;
     }

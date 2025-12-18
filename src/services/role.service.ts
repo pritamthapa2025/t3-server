@@ -36,28 +36,42 @@ export const getUserRoles = async (userId: string) => {
  * Assign a role to a user (creates entry in userRoles table)
  */
 export const assignRoleToUser = async (userId: string, roleId: number) => {
-  // Check if the role assignment already exists
-  const existing = await db
-    .select()
-    .from(userRoles)
-    .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
-    .limit(1);
+  try {
+    // Check if the role assignment already exists
+    const existing = await db
+      .select()
+      .from(userRoles)
+      .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+      .limit(1);
 
-  if (existing.length > 0) {
-    // Role already assigned
-    return existing[0];
+    if (existing.length > 0) {
+      // Role already assigned
+      return existing[0];
+    }
+
+    // Create new role assignment
+    const [userRole] = await db
+      .insert(userRoles)
+      .values({
+        userId,
+        roleId,
+      })
+      .returning();
+
+    return userRole;
+  } catch (error: any) {
+    // Add more context to the error
+    if (error.code === "23503") {
+      // Foreign key violation
+      if (error.constraint?.includes("user_id")) {
+        throw new Error(`User with ID ${userId} does not exist`);
+      }
+      if (error.constraint?.includes("role_id")) {
+        throw new Error(`Role with ID ${roleId} does not exist`);
+      }
+    }
+    throw error;
   }
-
-  // Create new role assignment
-  const [userRole] = await db
-    .insert(userRoles)
-    .values({
-      userId,
-      roleId,
-    })
-    .returning();
-
-  return userRole;
 };
 
 /**

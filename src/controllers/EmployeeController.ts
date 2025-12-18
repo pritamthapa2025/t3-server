@@ -21,6 +21,12 @@ import { createBankAccount } from "../services/bankAccount.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkEmailExists,
+  checkEmployeeIdExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 // Remove organization validation - all employees work for T3
 // Access control will be based on user roles/permissions instead
@@ -142,6 +148,35 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       accountType,
       branchName,
     } = employeeData;
+
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check email uniqueness (only if creating new user)
+    if (!userId && email) {
+      uniqueFieldChecks.push({
+        field: "email",
+        value: email,
+        checkFunction: () => checkEmailExists(email),
+        message: `An account with email '${email}' already exists`,
+      });
+    }
+
+    // Check employeeId uniqueness (if provided)
+    if (employeeId) {
+      uniqueFieldChecks.push({
+        field: "employeeId",
+        value: employeeId,
+        checkFunction: () => checkEmployeeIdExists(employeeId),
+        message: `Employee ID '${employeeId}' is already in use`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
 
     // Handle file upload if provided
     const file = req.file;
@@ -374,9 +409,23 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
 
     if (error.code === "23505") {
       // PostgreSQL unique constraint violation
+      const detail = error.detail || "";
+      let message = "Email or employee ID already exists";
+
+      // Provide more specific error message based on constraint
+      if (detail.includes("email") || error.constraint?.includes("email")) {
+        message = "An account with this email already exists";
+      } else if (
+        detail.includes("employee_id") ||
+        error.constraint?.includes("employee_id")
+      ) {
+        message = "This employee ID is already in use";
+      }
+
       return res.status(409).json({
         success: false,
-        message: "Email or employee ID already exists",
+        message: message,
+        detail: process.env.NODE_ENV === "development" ? detail : undefined,
       });
     }
     if (error.code === "23503") {
@@ -386,9 +435,17 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
         message: "Invalid department, position, or reportsTo reference",
       });
     }
+
+    // Return more helpful error message
+    const errorMessage = error.message?.includes("duplicate key")
+      ? "A record with this information already exists"
+      : "Internal server error";
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: errorMessage,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -407,6 +464,34 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
     const { userId, employeeId, departmentId, positionId, reportsTo, roleId } =
       req.body;
 
+    // Get the employee to find the userId
+    const existingEmployee = await getEmployeeById(id);
+    if (!existingEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check employeeId uniqueness (if provided and different from current)
+    if (employeeId && employeeId !== existingEmployee.employeeId) {
+      uniqueFieldChecks.push({
+        field: "employeeId",
+        value: employeeId,
+        checkFunction: () => checkEmployeeIdExists(employeeId, id),
+        message: `Employee ID '${employeeId}' is already in use`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     // Validate roleId if provided
     if (roleId !== undefined && roleId !== null) {
       const role = await getRoleById(roleId);
@@ -416,15 +501,6 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
           message: "Invalid role ID",
         });
       }
-    }
-
-    // Get the employee to find the userId
-    const existingEmployee = await getEmployeeById(id);
-    if (!existingEmployee) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
     }
 
     // Update employee data

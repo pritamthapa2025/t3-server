@@ -9,6 +9,11 @@ import {
 import { hashPassword } from "../utils/hash.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  checkEmailExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -97,6 +102,25 @@ export const createUserHandler = async (req: Request, res: Response) => {
       emergencyContactPhone,
     } = userData;
 
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check email uniqueness
+    if (email) {
+      uniqueFieldChecks.push({
+        field: "email",
+        value: email,
+        checkFunction: () => checkEmailExists(email),
+        message: `An account with email '${email}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     // Handle file upload if provided
     const file = req.file;
     if (file) {
@@ -169,6 +193,51 @@ export const createUserHandler = async (req: Request, res: Response) => {
 export const updateUserHandler = async (req: Request, res: Response) => {
   let uploadedFileUrl: string | null = null;
   try {
+    const userId = req.params.id as string;
+
+    // Check if user exists first
+    const existingUser = await getUserById(userId);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const {
+      fullName,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      zipCode,
+      dateOfBirth,
+      emergencyContactName,
+      emergencyContactPhone,
+      isActive,
+      isVerified,
+    } = req.body;
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check email uniqueness (if provided and different from current)
+    if (email && email !== existingUser.email) {
+      uniqueFieldChecks.push({
+        field: "email",
+        value: email,
+        checkFunction: () => checkEmailExists(email, userId),
+        message: `An account with email '${email}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     // Handle file upload if provided
     const file = req.file;
     if (file) {
@@ -187,21 +256,6 @@ export const updateUserHandler = async (req: Request, res: Response) => {
         });
       }
     }
-
-    const {
-      fullName,
-      email,
-      phone,
-      address,
-      city,
-      state,
-      zipCode,
-      dateOfBirth,
-      emergencyContactName,
-      emergencyContactPhone,
-      isActive,
-      isVerified,
-    } = req.body;
 
     const user = await updateUser(req.params.id as string, {
       fullName,
