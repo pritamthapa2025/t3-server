@@ -162,6 +162,13 @@
       "when": 1765951156572,
       "tag": "0031_ambitious_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1766033171475,
+      "tag": "0032_dazzling_hulk",
+      "breakpoints": true
     }
   ]
 }
