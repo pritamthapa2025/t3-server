@@ -69,10 +69,25 @@ export const createEmployeeSchema = z
         .string()
         .max(50, "Employee ID must be less than 50 characters")
         .optional(),
-      departmentId: z.number().int().positive().optional().nullable(),
-      positionId: z.number().int().positive().optional().nullable(),
+      departmentId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
+      positionId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
       reportsTo: uuidSchema.optional().nullable(),
-      roleId: z.number().int().positive().optional().nullable(),
+      roleId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
       startDate: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
@@ -162,10 +177,25 @@ export const updateEmployeeSchema = z.object({
         .string()
         .max(50, "Employee ID must be less than 50 characters")
         .optional(),
-      departmentId: z.number().int().positive().optional().nullable(),
-      positionId: z.number().int().positive().optional().nullable(),
+      departmentId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
+      positionId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
       reportsTo: uuidSchema.optional().nullable(),
-      roleId: z.number().int().positive().optional().nullable(),
+      roleId: z
+        .union([z.number(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().positive())
+        .optional()
+        .nullable(),
     })
     .refine(
       (data) =>

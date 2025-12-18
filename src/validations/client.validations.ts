@@ -16,7 +16,13 @@ const contactSchema = z.object({
   contactType: z
     .enum(["primary", "billing", "technical", "emergency", "project_manager"])
     .default("primary"),
-  isPrimary: z.boolean().default(false),
+  isPrimary: z
+    .union([z.boolean(), z.string()])
+    .transform((val) =>
+      typeof val === "string" ? val === "true" || val === "1" : val
+    )
+    .pipe(z.boolean())
+    .default(false),
   preferredContactMethod: z.string().max(50).optional(),
   notes: z.string().optional(),
 });
@@ -74,17 +80,49 @@ export const createClientSchema = z.object({
     zipCode: z.string().max(20).optional(),
 
     // Contacts (Step 2)
-    contacts: z.array(contactSchema).optional(),
+    contacts: z
+      .union([z.array(contactSchema), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(contactSchema))
+      .optional(),
 
     // Properties (Step 3)
-    properties: z.array(propertySchema).optional(),
+    properties: z
+      .union([z.array(propertySchema), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(propertySchema))
+      .optional(),
 
     // Settings (Step 4)
     paymentTerms: z.string().max(100).optional(), // e.g., "Net 30"
     preferredPaymentMethod: z.string().max(50).optional(), // e.g., "ACH Transfer"
     creditLimit: z.string().optional(), // Numeric as string for precision, e.g., "50000"
     billingContactId: z.string().uuid().optional(),
-    taxExempt: z.boolean().default(false),
+    taxExempt: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .default(false),
     status: z
       .enum(["active", "inactive", "prospect", "suspended", "archived"])
       .default("active"), // Priority Level maps to status
@@ -93,7 +131,20 @@ export const createClientSchema = z.object({
     taxId: z.string().max(50).optional(),
     description: z.string().optional(),
     notes: z.string().optional(),
-    tags: z.array(z.string()).optional(),
+    tags: z
+      .union([z.array(z.string()), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(z.string()))
+      .optional(),
   }),
 });
 
@@ -105,10 +156,22 @@ export const updateClientSchema = z.object({
     // Basic Details
     name: z.string().min(1).max(255).optional(),
     legalName: z.string().max(255).optional(),
-    clientTypeId: z.number().int().positive().optional(),
-    industryClassificationId: z.number().int().positive().optional(),
+    clientTypeId: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int().positive())
+      .optional(),
+    industryClassificationId: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int().positive())
+      .optional(),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
-    numberOfEmployees: z.number().int().positive().optional(),
+    numberOfEmployees: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int().positive())
+      .optional(),
     website: z
       .string()
       .url("Invalid website URL")
@@ -128,7 +191,13 @@ export const updateClientSchema = z.object({
     preferredPaymentMethod: z.string().max(50).optional(),
     creditLimit: z.string().optional(),
     billingContactId: z.string().uuid().optional(),
-    taxExempt: z.boolean().optional(),
+    taxExempt: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .optional(),
     status: z
       .enum(["active", "inactive", "prospect", "suspended", "archived"])
       .optional(),
@@ -195,7 +264,13 @@ export const createClientContactSchema = z.object({
     contactType: z
       .enum(["primary", "billing", "technical", "emergency", "project_manager"])
       .default("primary"),
-    isPrimary: z.boolean().default(false),
+    isPrimary: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .default(false),
     preferredContactMethod: z.string().max(50).optional(),
     notes: z.string().optional(),
   }),
@@ -222,8 +297,25 @@ export const createClientDocumentSchema = z.object({
     fileName: z.string().min(1, "File name is required").max(255),
     filePath: z.string().min(1, "File path is required").max(500),
     fileType: z.string().max(50).optional(),
-    fileSize: z.number().optional(),
-    categoryIds: z.array(z.number().int().positive()).optional(),
+    fileSize: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number())
+      .optional(),
+    categoryIds: z
+      .union([z.array(z.number().int().positive()), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(z.number().int().positive()))
+      .optional(),
     description: z.string().optional(),
   }),
 });
@@ -237,7 +329,12 @@ export const createDocumentCategorySchema = z.object({
       .string()
       .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color code")
       .optional(),
-    sortOrder: z.number().int().default(0).optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .default(0)
+      .optional(),
   }),
 });
 
@@ -252,8 +349,18 @@ export const updateDocumentCategorySchema = z.object({
       .string()
       .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color code")
       .optional(),
-    sortOrder: z.number().int().optional(),
-    isActive: z.boolean().optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .optional(),
+    isActive: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .optional(),
   }),
 });
 
@@ -262,7 +369,19 @@ export const assignDocumentCategoriesSchema = z.object({
     documentId: z.string().uuid("Invalid document ID"),
   }),
   body: z.object({
-    categoryIds: z.array(z.number().int().positive()),
+    categoryIds: z
+      .union([z.array(z.number().int().positive()), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(z.number().int().positive())),
   }),
 });
 
@@ -278,7 +397,12 @@ export const createCategoryAndAssignToDocumentSchema = z.object({
       .string()
       .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color code")
       .optional(),
-    sortOrder: z.number().int().default(0).optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .default(0)
+      .optional(),
   }),
 });
 
@@ -287,7 +411,12 @@ export const createClientTypeSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(100),
     description: z.string().optional(),
-    sortOrder: z.number().int().default(0).optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .default(0)
+      .optional(),
   }),
 });
 
@@ -298,8 +427,18 @@ export const updateClientTypeSchema = z.object({
   body: z.object({
     name: z.string().min(1).max(100).optional(),
     description: z.string().optional(),
-    sortOrder: z.number().int().optional(),
-    isActive: z.boolean().optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .optional(),
+    isActive: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .optional(),
   }),
 });
 
@@ -309,7 +448,12 @@ export const createIndustryClassificationSchema = z.object({
     name: z.string().min(1, "Name is required").max(150),
     code: z.string().max(20).optional(),
     description: z.string().optional(),
-    sortOrder: z.number().int().default(0).optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .default(0)
+      .optional(),
   }),
 });
 
@@ -321,8 +465,18 @@ export const updateIndustryClassificationSchema = z.object({
     name: z.string().min(1).max(150).optional(),
     code: z.string().max(20).optional(),
     description: z.string().optional(),
-    sortOrder: z.number().int().optional(),
-    isActive: z.boolean().optional(),
+    sortOrder: z
+      .union([z.number(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int())
+      .optional(),
+    isActive: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .optional(),
   }),
 });
 
@@ -337,8 +491,20 @@ export const updateClientSettingsSchema = z.object({
       paymentTerms: z.string().max(100).optional(), // e.g., "Net 30", "Net 60"
       preferredPaymentMethod: z.string().max(50).optional(), // e.g., "ACH Transfer", "Check"
       billingContactId: z.string().uuid().optional(), // Reference to client contact
-      billingDay: z.number().int().min(1).max(31).optional(), // Day of month (1-31)
-      taxExempt: z.boolean().optional(), // Tax exemption status
+      billingDay: z
+        .union([z.number(), z.string()])
+        .transform((val) =>
+          typeof val === "string" ? parseInt(val, 10) : val
+        )
+        .pipe(z.number().int().min(1).max(31))
+        .optional(), // Day of month (1-31)
+      taxExempt: z
+        .union([z.boolean(), z.string()])
+        .transform((val) =>
+          typeof val === "string" ? val === "true" || val === "1" : val
+        )
+        .pipe(z.boolean())
+        .optional(), // Tax exemption status
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: "At least one setting field must be provided",

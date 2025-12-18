@@ -99,8 +99,24 @@ export const updateUserSchema = z.object({
         .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
           message: "Invalid phone number format",
         }),
-      isActive: z.boolean().optional(),
-      isVerified: z.boolean().optional(),
+      isActive: z
+        .union([z.boolean(), z.string()])
+        .transform((val) =>
+          typeof val === "string"
+            ? val === "true" || val === "1"
+            : val
+        )
+        .pipe(z.boolean())
+        .optional(),
+      isVerified: z
+        .union([z.boolean(), z.string()])
+        .transform((val) =>
+          typeof val === "string"
+            ? val === "true" || val === "1"
+            : val
+        )
+        .pipe(z.boolean())
+        .optional(),
     })
     .refine(
       (data) =>
