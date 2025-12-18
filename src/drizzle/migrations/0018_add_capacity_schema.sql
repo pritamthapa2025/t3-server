@@ -277,3 +277,4 @@ CREATE INDEX IF NOT EXISTS "idx_capacity_templates_active" ON "org"."capacity_pl
 CREATE INDEX IF NOT EXISTS "idx_capacity_templates_day" ON "org"."capacity_planning_templates" USING btree ("day_of_week");
 
 
+

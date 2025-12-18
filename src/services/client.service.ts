@@ -15,11 +15,59 @@ import {
   clientContacts,
   clientNotes,
   clientDocuments,
+  documentCategories,
+  clientDocumentCategories,
   properties,
+  clientTypes,
+  industryClassifications,
 } from "../drizzle/schema/org.schema.js";
 import { jobs, jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+
+// Generate next client ID in CLT-00001 format
+export const generateClientId = async (): Promise<string> => {
+  // Get the highest existing clientId
+  const result = await db
+    .select({ clientId: organizations.clientId })
+    .from(organizations)
+    .where(eq(organizations.isDeleted, false))
+    .orderBy(desc(organizations.clientId))
+    .limit(1);
+
+  if (!result.length || !result[0]?.clientId) {
+    return "CLT-00001";
+  }
+
+  // Extract number from CLT-XXXXX format
+  const lastClientId = result[0].clientId;
+  const match = lastClientId.match(/^CLT-(\d+)$/);
+
+  if (!match) {
+    return "CLT-00001";
+  }
+
+  const nextNumber = parseInt(match[1]!) + 1;
+  return `CLT-${nextNumber.toString().padStart(5, "0")}`;
+};
+
+// Get all client types
+export const getClientTypes = async () => {
+  return await db
+    .select()
+    .from(clientTypes)
+    .where(eq(clientTypes.isActive, true))
+    .orderBy(clientTypes.sortOrder, clientTypes.name);
+};
+
+// Get all industry classifications
+export const getIndustryClassifications = async () => {
+  return await db
+    .select()
+    .from(industryClassifications)
+    .where(eq(industryClassifications.isActive, true))
+    .orderBy(industryClassifications.sortOrder, industryClassifications.name);
+};
 
 // Get all clients with pagination and optional filtering
 export const getClients = async (
@@ -27,7 +75,8 @@ export const getClients = async (
   limit: number,
   filters?: {
     status?: string | string[];
-    clientType?: string;
+    clientTypeId?: number;
+    priority?: string;
     search?: string;
   }
 ) => {
@@ -52,10 +101,12 @@ export const getClients = async (
     }
   }
 
-  if (filters?.clientType) {
-    whereConditions.push(
-      eq(organizations.clientType, filters.clientType as any)
-    );
+  if (filters?.clientTypeId) {
+    whereConditions.push(eq(organizations.clientTypeId, filters.clientTypeId));
+  }
+
+  if (filters?.priority) {
+    whereConditions.push(eq(organizations.priority, filters.priority as any));
   }
 
   // Enhanced search - includes contact info
@@ -83,8 +134,7 @@ export const getClients = async (
       or(
         ilike(organizations.name, searchTerm),
         ilike(organizations.legalName, searchTerm),
-        ilike(organizations.billingCity, searchTerm),
-        ilike(organizations.billingState, searchTerm),
+        ilike(organizations.website, searchTerm),
         matchingOrgIds.length > 0
           ? inArray(organizations.id, matchingOrgIds)
           : sql`1 = 0` // No match if no contact matches
@@ -95,30 +145,17 @@ export const getClients = async (
   // Get clients with basic info
   const clientsResult = await db
     .select({
-      // Client data
+      // Basic client data - only what's needed
       id: organizations.id,
       name: organizations.name,
-      legalName: organizations.legalName,
-      clientType: organizations.clientType,
       status: organizations.status,
-      industryClassification: organizations.industryClassification,
-      website: organizations.website,
-      creditLimit: organizations.creditLimit,
-      paymentTerms: organizations.paymentTerms,
-      billingAddressLine1: organizations.billingAddressLine1,
-      billingAddressLine2: organizations.billingAddressLine2,
-      billingCity: organizations.billingCity,
-      billingState: organizations.billingState,
-      billingZipCode: organizations.billingZipCode,
-      tags: organizations.tags,
-      createdAt: organizations.createdAt,
-
-      // Account Manager
-      accountManagerId: users.id,
-      accountManagerName: users.fullName,
+      // Address fields
+      streetAddress: organizations.streetAddress,
+      city: organizations.city,
+      state: organizations.state,
+      zipCode: organizations.zipCode,
     })
     .from(organizations)
-    .leftJoin(users, eq(organizations.accountManager, users.id))
     .where(and(...whereConditions))
     .orderBy(desc(organizations.createdAt))
     .limit(limit)
@@ -132,12 +169,15 @@ export const getClients = async (
 
   const total = totalResult[0]?.count ?? 0;
 
-  // Enrich each client with contact, financial, and activity data
+  // Enrich each client with primary contact and active jobs count only
   const enrichedClients = await Promise.all(
     clientsResult.map(async (client) => {
-      // Get primary contact
-      const [primaryContact] = await db
-        .select()
+      // Get primary contact (name and email only)
+      const primaryContactResult = await db
+        .select({
+          fullName: clientContacts.fullName,
+          email: clientContacts.email,
+        })
         .from(clientContacts)
         .where(
           and(
@@ -148,11 +188,16 @@ export const getClients = async (
         )
         .limit(1);
 
+      const primaryContact = primaryContactResult[0];
+
       // If no primary contact, get first contact
       const contact =
         primaryContact ||
         (await db
-          .select()
+          .select({
+            fullName: clientContacts.fullName,
+            email: clientContacts.email,
+          })
           .from(clientContacts)
           .where(
             and(
@@ -196,20 +241,25 @@ export const getClients = async (
       const activeJobs = Number(activeJobsCount[0]?.count || 0);
 
       return {
-        ...client,
-        contact: contact
+        id: client.id,
+        name: client.name,
+        status: client.status,
+        address: {
+          streetAddress: client.streetAddress,
+          city: client.city,
+          state: client.state,
+          zipCode: client.zipCode,
+        },
+        primaryContact: contact
           ? {
               name: contact.fullName,
               email: contact.email || null,
-              phone: contact.phone || contact.mobilePhone || null,
             }
           : null,
-        finance: {
+        activeJobs: activeJobs,
+        financial: {
           totalPaid: totalPaid,
           totalOutstanding: totalOutstanding > 0 ? totalOutstanding : 0,
-        },
-        activity: {
-          activeJobs: activeJobs,
         },
       };
     })
@@ -228,18 +278,48 @@ export const getClients = async (
 
 // Get client by ID with all related data organized by UI tabs
 export const getClientById = async (id: string) => {
-  // Get client basic info
+  // Get client with industry classification and client type info
   const clientQuery = await db
     .select({
-      client: organizations,
-      accountManager: {
-        id: users.id,
-        fullName: users.fullName,
-        email: users.email,
-      },
+      // All organization fields
+      id: organizations.id,
+      clientId: organizations.clientId,
+      name: organizations.name,
+      legalName: organizations.legalName,
+      clientTypeId: organizations.clientTypeId,
+      status: organizations.status,
+      priority: organizations.priority,
+      industryClassificationId: organizations.industryClassificationId,
+      taxId: organizations.taxId,
+      website: organizations.website,
+      numberOfEmployees: organizations.numberOfEmployees,
+      streetAddress: organizations.streetAddress,
+      city: organizations.city,
+      state: organizations.state,
+      zipCode: organizations.zipCode,
+      creditLimit: organizations.creditLimit,
+      paymentTerms: organizations.paymentTerms,
+      preferredPaymentMethod: organizations.preferredPaymentMethod,
+      billingContactId: organizations.billingContactId,
+      billingDay: organizations.billingDay,
+      taxExempt: organizations.taxExempt,
+      description: organizations.description,
+      notes: organizations.notes,
+      tags: organizations.tags,
+      createdBy: organizations.createdBy,
+      isDeleted: organizations.isDeleted,
+      createdAt: organizations.createdAt,
+      updatedAt: organizations.updatedAt,
+      // Join data for related info
+      clientTypeName: clientTypes.name,
+      industryName: industryClassifications.name,
     })
     .from(organizations)
-    .leftJoin(users, eq(organizations.accountManager, users.id))
+    .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
+    .leftJoin(
+      industryClassifications,
+      eq(organizations.industryClassificationId, industryClassifications.id)
+    )
     .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)))
     .limit(1);
 
@@ -247,296 +327,158 @@ export const getClientById = async (id: string) => {
     return null;
   }
 
-  const baseData = clientQuery[0]!;
-  const client = baseData.client;
+  const client = clientQuery[0]!;
 
-  // Run all queries in parallel for performance
-  const [
-    contactsList,
-    propertiesList,
-    jobsList,
-    financialSummaries,
-    documentsList,
-    bidsList,
-  ] = await Promise.all([
-    // Get all contacts
+  // Run queries in parallel for performance
+  const [primaryContact, propertiesList] = await Promise.all([
+    // Get primary contact (including picture link)
     db
-      .select()
+      .select({
+        id: clientContacts.id,
+        fullName: clientContacts.fullName,
+        title: clientContacts.title,
+        email: clientContacts.email,
+        phone: clientContacts.phone,
+        mobilePhone: clientContacts.mobilePhone,
+        picture: clientContacts.picture,
+        contactType: clientContacts.contactType,
+        isPrimary: clientContacts.isPrimary,
+        preferredContactMethod: clientContacts.preferredContactMethod,
+        notes: clientContacts.notes,
+      })
       .from(clientContacts)
       .where(
         and(
           eq(clientContacts.organizationId, id),
+          eq(clientContacts.isPrimary, true),
           eq(clientContacts.isDeleted, false)
         )
       )
-      .orderBy(desc(clientContacts.isPrimary), desc(clientContacts.createdAt)),
+      .limit(1)
+      .then((contacts) => contacts[0] || null),
 
-    // Get all properties
+    // Get all properties with complete info
     db
-      .select()
+      .select({
+        id: properties.id,
+        propertyName: properties.propertyName,
+        propertyCode: properties.propertyCode,
+        propertyType: properties.propertyType,
+        status: properties.status,
+        addressLine1: properties.addressLine1,
+        addressLine2: properties.addressLine2,
+        city: properties.city,
+        state: properties.state,
+        zipCode: properties.zipCode,
+        country: properties.country,
+        squareFootage: properties.squareFootage,
+        numberOfFloors: properties.numberOfFloors,
+        yearBuilt: properties.yearBuilt,
+        accessInstructions: properties.accessInstructions,
+        gateCode: properties.gateCode,
+        parkingInstructions: properties.parkingInstructions,
+        operatingHours: properties.operatingHours,
+        latitude: properties.latitude,
+        longitude: properties.longitude,
+        description: properties.description,
+        notes: properties.notes,
+        tags: properties.tags,
+        createdBy: properties.createdBy,
+        createdAt: properties.createdAt,
+        updatedAt: properties.updatedAt,
+      })
       .from(properties)
       .where(
         and(eq(properties.organizationId, id), eq(properties.isDeleted, false))
       )
       .orderBy(desc(properties.createdAt)),
-
-    // Get all jobs
-    db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.organizationId, id), eq(jobs.isDeleted, false)))
-      .orderBy(desc(jobs.createdAt)),
-
-    // Get financial summaries for invoicing
-    db
-      .select()
-      .from(jobFinancialSummary)
-      .where(eq(jobFinancialSummary.organizationId, id))
-      .orderBy(desc(jobFinancialSummary.updatedAt)),
-
-    // Get all documents
-    db
-      .select({
-        document: clientDocuments,
-        uploadedBy: {
-          id: users.id,
-          fullName: users.fullName,
-        },
-      })
-      .from(clientDocuments)
-      .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
-      .where(
-        and(
-          eq(clientDocuments.organizationId, id),
-          eq(clientDocuments.isDeleted, false)
-        )
-      )
-      .orderBy(desc(clientDocuments.createdAt)),
-
-    // Get all bids for win rate calculation
-    db
-      .select()
-      .from(bidsTable)
-      .where(
-        and(eq(bidsTable.organizationId, id), eq(bidsTable.isDeleted, false))
-      ),
   ]);
 
-  // Get primary contact
-  const primaryContact =
-    contactsList.find((c) => c.isPrimary) || contactsList[0] || null;
+  // Return simplified client data structure
+  return {
+    // All organization data (fields from schema 251-302)
+    id: client.id,
+    clientId: client.clientId,
+    name: client.name,
+    legalName: client.legalName,
+    clientTypeId: client.clientTypeId,
+    clientTypeName: client.clientTypeName,
+    status: client.status,
+    priority: client.priority,
+    industryClassificationId: client.industryClassificationId,
+    industryName: client.industryName,
+    taxId: client.taxId,
+    website: client.website,
+    numberOfEmployees: client.numberOfEmployees,
+    streetAddress: client.streetAddress,
+    city: client.city,
+    state: client.state,
+    zipCode: client.zipCode,
+    creditLimit: client.creditLimit,
+    paymentTerms: client.paymentTerms,
+    preferredPaymentMethod: client.preferredPaymentMethod,
+    billingContactId: client.billingContactId,
+    billingDay: client.billingDay,
+    taxExempt: client.taxExempt,
+    description: client.description,
+    notes: client.notes,
+    tags: client.tags,
+    createdBy: client.createdBy,
+    isDeleted: client.isDeleted,
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt,
 
-  // Calculate KPIs
-  const totalRevenue = Number(
-    financialSummaries.reduce((sum, fs) => sum + Number(fs.totalPaid || 0), 0)
-  );
+    // Primary contact info (including picture link)
+    primaryContact: primaryContact
+      ? {
+          id: primaryContact.id,
+          fullName: primaryContact.fullName,
+          title: primaryContact.title,
+          email: primaryContact.email,
+          phone: primaryContact.phone || primaryContact.mobilePhone,
+          picture: primaryContact.picture, // Picture link included as requested
+          contactType: primaryContact.contactType,
+          preferredContactMethod: primaryContact.preferredContactMethod,
+          notes: primaryContact.notes,
+        }
+      : null,
 
-  const activeJobs = jobsList.filter((job) =>
-    ["planned", "scheduled", "in_progress", "on_hold"].includes(job.status)
-  ).length;
-
-  const totalBids = bidsList.length;
-  const wonBids = bidsList.filter(
-    (bid) => bid.status === "won" || bid.status === "accepted"
-  ).length;
-  const winRate = totalBids > 0 ? Math.round((wonBids / totalBids) * 100) : 0;
-
-  const totalInvoiced = Number(
-    financialSummaries.reduce(
-      (sum, fs) => sum + Number(fs.totalInvoiced || 0),
-      0
-    )
-  );
-  const totalPaid = Number(
-    financialSummaries.reduce((sum, fs) => sum + Number(fs.totalPaid || 0), 0)
-  );
-  const outstanding = totalInvoiced - totalPaid;
-
-  const totalProjects = jobsList.length;
-
-  // Calculate risk level (simplified - can be enhanced)
-  let riskLevel = "Low";
-  if (outstanding > 50000) {
-    riskLevel = "High";
-  } else if (outstanding > 25000) {
-    riskLevel = "Medium";
-  }
-
-  // Format properties with units
-  const formattedProperties = propertiesList.map((prop) => {
-    const tags = prop.tags as any;
-    const numberOfUnits = tags?.numberOfUnits || tags?.number_of_units || null;
-    return {
+    // All properties linked to this client
+    properties: propertiesList.map((prop) => ({
       id: prop.id,
       propertyName: prop.propertyName,
       propertyCode: prop.propertyCode,
       propertyType: prop.propertyType,
+      status: prop.status,
       addressLine1: prop.addressLine1,
       addressLine2: prop.addressLine2,
       city: prop.city,
       state: prop.state,
       zipCode: prop.zipCode,
-      numberOfUnits: numberOfUnits,
-    };
-  });
+      country: prop.country,
+      squareFootage: prop.squareFootage,
+      numberOfFloors: prop.numberOfFloors,
+      yearBuilt: prop.yearBuilt,
+      accessInstructions: prop.accessInstructions,
+      gateCode: prop.gateCode,
+      parkingInstructions: prop.parkingInstructions,
+      operatingHours: prop.operatingHours,
+      latitude: prop.latitude,
+      longitude: prop.longitude,
+      description: prop.description,
+      notes: prop.notes,
+      tags: prop.tags,
+      createdBy: prop.createdBy,
+      createdAt: prop.createdAt,
+      updatedAt: prop.updatedAt,
+    })),
 
-  // Format contacts
-  const formattedContacts = contactsList.map((contact) => ({
-    id: contact.id,
-    fullName: contact.fullName,
-    title: contact.title,
-    email: contact.email,
-    phone: contact.phone || contact.mobilePhone,
-    isPrimary: contact.isPrimary,
-    contactType: contact.contactType,
-    notes: contact.notes,
-  }));
-
-  // Format jobs
-  const formattedJobs = jobsList.map((job) => ({
-    id: job.id,
-    jobNumber: job.jobNumber,
-    name: job.name,
-    description: job.description,
-    status: job.status,
-    priority: job.priority,
-    jobType: job.jobType,
-    serviceType: job.serviceType,
-    scheduledStartDate: job.scheduledStartDate,
-    scheduledEndDate: job.scheduledEndDate,
-    siteAddress: job.siteAddress,
-    contractValue: job.contractValue,
-    completionPercentage: job.completionPercentage,
-  }));
-
-  // Format invoices from jobFinancialSummary
-  const formattedInvoices = financialSummaries.map((fs, index) => {
-    const invoiceAmount = Number(fs.totalInvoiced || 0);
-    const paidAmount = Number(fs.totalPaid || 0);
-    const outstandingAmount = invoiceAmount - paidAmount;
-
-    let status = "Paid";
-    if (outstandingAmount > 0 && paidAmount > 0) {
-      status = "Partial";
-    } else if (outstandingAmount > 0) {
-      status = "Unpaid";
-    }
-
-    return {
-      id: fs.id,
-      invoiceId: `INV-${
-        fs.jobId?.substring(0, 8).toUpperCase() ||
-        `2025-${String(index + 1).padStart(3, "0")}`
-      }`,
-      date: fs.updatedAt || new Date(),
-      amount: invoiceAmount,
-      paid: paidAmount,
-      outstanding: outstandingAmount,
-      status: status,
-      jobId: fs.jobId,
-    };
-  });
-
-  // Format documents
-  const formattedDocuments = documentsList.map((doc) => ({
-    id: doc.document.id,
-    fileName: doc.document.fileName,
-    filePath: doc.document.filePath,
-    fileType: doc.document.fileType,
-    fileSize: doc.document.fileSize,
-    documentType: doc.document.documentType,
-    description: doc.document.description,
-    uploadedBy: doc.uploadedBy?.fullName || "Unknown",
-    uploadedAt: doc.document.createdAt,
-    updatedAt: doc.document.updatedAt,
-  }));
-
-  // Extract logo from tags
-  const tags = client.tags as any;
-  const companyLogo =
-    (Array.isArray(tags) ? tags.find((t: any) => t?.logo)?.logo : tags?.logo) ||
-    null;
-
-  // Get last activity (most recent update from jobs, bids, or client itself)
-  const lastActivityDates = [
-    client.updatedAt,
-    ...jobsList.map((j) => j.updatedAt).filter(Boolean),
-    ...bidsList.map((b) => b.updatedAt).filter(Boolean),
-  ].filter(Boolean) as Date[];
-  const lastActivity =
-    lastActivityDates.length > 0
-      ? new Date(Math.max(...lastActivityDates.map((d) => d.getTime())))
-      : client.createdAt;
-
-  // Structure response by tabs
-  return {
-    id: client.id,
-    name: client.name,
-    legalName: client.legalName,
-    clientType: client.clientType,
-    companyLogo: companyLogo,
-    tags: client.tags,
-
-    // Overview tab
-    overview: {
-      kpis: {
-        totalRevenue: totalRevenue,
-        activeJobs: activeJobs,
-        winRate: winRate,
-        outstanding: outstanding > 0 ? outstanding : 0,
-        totalProjects: totalProjects,
-        riskLevel: riskLevel,
-      },
-      businessInformation: {
-        clientId: client.id.substring(0, 8).toUpperCase(), // Simplified ID
-        businessType: client.clientType,
-        website: client.website,
-        industry: client.industryClassification,
-        employees: null, // Not in schema, can be added to tags
-        priorityLevel: client.status,
-      },
-      properties: formattedProperties,
-      primaryContact: primaryContact
-        ? {
-            id: primaryContact.id,
-            name: primaryContact.fullName,
-            email: primaryContact.email,
-            phone: primaryContact.phone || primaryContact.mobilePhone,
-            title: primaryContact.title,
-          }
-        : null,
-      accountSummary: {
-        accountStatus: client.status,
-        clientSince: client.createdAt,
-        lastActivity: lastActivity,
-      },
-    },
-
-    // Contacts tab
-    contacts: formattedContacts,
-
-    // Jobs tab
-    jobs: formattedJobs,
-
-    // Invoicing tab
-    invoicing: formattedInvoices,
-
-    // Documents tab
-    documents: formattedDocuments,
-
-    // Settings tab
-    settings: {
-      paymentTerms: client.paymentTerms,
-      creditLimit: client.creditLimit,
-      billingContact: primaryContact
-        ? {
-            id: primaryContact.id,
-            name: primaryContact.fullName,
-          }
-        : null,
-      paymentMethod: client.preferredPaymentMethod,
-      taxExempt: false, // Can be stored in tags or added to schema
-      preferredBillingDate: null, // Can be added to schema
+    // Account summary (creation date, billing day, and last activity)
+    accountSummary: {
+      createdAt: client.createdAt,
+      billingDay: client.billingDay,
+      accountStatus: client.status,
+      lastActivity: client.updatedAt,
     },
   };
 };
@@ -545,26 +487,26 @@ export const getClientById = async (id: string) => {
 export const createClient = async (data: {
   name: string;
   legalName?: string;
-  clientType: string;
+  clientTypeId?: number;
   status?: string;
-  industryClassification?: string;
+  priority?: string;
+  industryClassificationId?: number;
+  numberOfEmployees?: number;
   taxId?: string;
   website?: string;
   companyLogo?: string;
+  streetAddress?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
   creditLimit?: string | number;
   paymentTerms?: string;
   preferredPaymentMethod?: string;
-  taxExemptStatus?: boolean;
-  billingAddressLine1?: string;
-  billingAddressLine2?: string;
-  billingCity?: string;
-  billingState?: string;
-  billingZipCode?: string;
-  billingCountry?: string;
+  billingContactId?: string;
+  taxExempt?: boolean;
   description?: string;
   notes?: string;
   tags?: any;
-  accountManager?: string;
   createdBy?: string;
   contacts?: Array<{
     fullName: string;
@@ -572,6 +514,7 @@ export const createClient = async (data: {
     email?: string;
     phone?: string;
     mobilePhone?: string;
+    picture?: string;
     contactType?:
       | "primary"
       | "billing"
@@ -593,6 +536,9 @@ export const createClient = async (data: {
     numberOfUnits?: string;
   }>;
 }) => {
+  // Generate unique client ID
+  const clientId = await generateClientId();
+
   // Prepare tags - include logo if provided
   let tags = data.tags || [];
   if (data.companyLogo) {
@@ -605,13 +551,20 @@ export const createClient = async (data: {
   const result = await db
     .insert(organizations)
     .values({
+      clientId,
       name: data.name,
       legalName: data.legalName || null,
-      clientType: data.clientType as any,
+      clientTypeId: data.clientTypeId || null,
       status: (data.status as any) || "prospect",
-      industryClassification: data.industryClassification || null,
+      priority: (data.priority as any) || "medium",
+      industryClassificationId: data.industryClassificationId || null,
+      numberOfEmployees: data.numberOfEmployees || null,
       taxId: data.taxId || null,
       website: data.website || null,
+      streetAddress: data.streetAddress || null,
+      city: data.city || null,
+      state: data.state || null,
+      zipCode: data.zipCode || null,
       creditLimit: data.creditLimit
         ? typeof data.creditLimit === "string"
           ? data.creditLimit
@@ -619,16 +572,11 @@ export const createClient = async (data: {
         : null,
       paymentTerms: data.paymentTerms || null,
       preferredPaymentMethod: data.preferredPaymentMethod || null,
-      billingAddressLine1: data.billingAddressLine1 || null,
-      billingAddressLine2: data.billingAddressLine2 || null,
-      billingCity: data.billingCity || null,
-      billingState: data.billingState || null,
-      billingZipCode: data.billingZipCode || null,
-      billingCountry: data.billingCountry || "USA",
+      billingContactId: data.billingContactId || null,
+      taxExempt: data.taxExempt || false,
       description: data.description || null,
       notes: data.notes || null,
       tags: tags,
-      accountManager: data.accountManager || null,
       createdBy: data.createdBy || null,
     })
     .returning();
@@ -637,8 +585,6 @@ export const createClient = async (data: {
   if (!client) {
     throw new Error("Failed to create client");
   }
-
-  const clientId = client.id;
 
   // Create contacts if provided
   const createdContacts = [];
@@ -661,22 +607,23 @@ export const createClient = async (data: {
     }
 
     for (const contactData of contactsToCreate) {
-      const [contact] = await db
+      const result = await db
         .insert(clientContacts)
         .values({
-          organizationId: clientId,
+          organizationId: client.id,
           fullName: contactData.fullName,
           title: contactData.title || null,
           email: contactData.email || null,
           phone: contactData.phone || null,
           mobilePhone: contactData.mobilePhone || null,
+          picture: contactData.picture || null,
           contactType: (contactData.contactType || "primary") as any,
           isPrimary: contactData.isPrimary || false,
           preferredContactMethod: contactData.preferredContactMethod || null,
           notes: contactData.notes || null,
         })
         .returning();
-      createdContacts.push(contact);
+      createdContacts.push(result[0]);
     }
   }
 
@@ -684,10 +631,10 @@ export const createClient = async (data: {
   const createdProperties = [];
   if (data.properties && data.properties.length > 0) {
     for (const propertyData of data.properties) {
-      const [property] = await db
+      const result = await db
         .insert(properties)
         .values({
-          organizationId: clientId,
+          organizationId: client.id,
           propertyName: propertyData.propertyName,
           propertyType: (propertyData.propertyType || "commercial") as any,
           status: "active" as any,
@@ -704,7 +651,7 @@ export const createClient = async (data: {
           createdBy: data.createdBy || null,
         })
         .returning();
-      createdProperties.push(property);
+      createdProperties.push(result[0]);
     }
   }
 
@@ -722,18 +669,70 @@ export const updateClient = async (id: string, data: any) => {
     updatedAt: new Date(),
   };
 
-  const [client] = await db
+  const result = await db
     .update(organizations)
     .set(updateData)
     .where(eq(organizations.id, id))
     .returning();
 
-  return client || null;
+  return result[0] || null;
+};
+
+// Update client settings only
+export const updateClientSettings = async (
+  id: string,
+  data: {
+    creditLimit?: string | number;
+    paymentTerms?: string;
+    preferredPaymentMethod?: string;
+    billingContactId?: string;
+    billingDay?: number;
+    taxExempt?: boolean;
+  }
+) => {
+  // Prepare update data with only settings fields
+  const updateData: any = {
+    updatedAt: new Date(),
+  };
+
+  // Handle creditLimit conversion
+  if (data.creditLimit !== undefined) {
+    updateData.creditLimit = data.creditLimit
+      ? typeof data.creditLimit === "string"
+        ? data.creditLimit
+        : data.creditLimit.toString()
+      : null;
+  }
+
+  // Add other fields if provided
+  if (data.paymentTerms !== undefined) {
+    updateData.paymentTerms = data.paymentTerms || null;
+  }
+  if (data.preferredPaymentMethod !== undefined) {
+    updateData.preferredPaymentMethod = data.preferredPaymentMethod || null;
+  }
+  if (data.billingContactId !== undefined) {
+    updateData.billingContactId = data.billingContactId || null;
+  }
+  if (data.billingDay !== undefined) {
+    updateData.billingDay = data.billingDay || null;
+  }
+  if (data.taxExempt !== undefined) {
+    updateData.taxExempt = data.taxExempt;
+  }
+
+  const result = await db
+    .update(organizations)
+    .set(updateData)
+    .where(eq(organizations.id, id))
+    .returning();
+
+  return result[0] || null;
 };
 
 // Soft delete client
 export const deleteClient = async (id: string) => {
-  const [client] = await db
+  const result = await db
     .update(organizations)
     .set({
       isDeleted: true,
@@ -742,7 +741,7 @@ export const deleteClient = async (id: string) => {
     .where(eq(organizations.id, id))
     .returning();
 
-  return client || null;
+  return result[0] || null;
 };
 
 // Client Contacts Management
@@ -753,6 +752,7 @@ export const createClientContact = async (data: {
   email?: string;
   phone?: string;
   mobilePhone?: string;
+  picture?: string;
   contactType:
     | "primary"
     | "billing"
@@ -763,19 +763,19 @@ export const createClientContact = async (data: {
   preferredContactMethod?: string;
   notes?: string;
 }) => {
-  const [contact] = await db.insert(clientContacts).values(data).returning();
+  const result = await db.insert(clientContacts).values(data).returning();
 
-  return contact;
+  return result[0];
 };
 
 export const updateClientContact = async (id: string, data: any) => {
-  const [contact] = await db
+  const result = await db
     .update(clientContacts)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(clientContacts.id, id))
     .returning();
 
-  return contact || null;
+  return result[0] || null;
 };
 
 // Client Notes Management
@@ -786,9 +786,9 @@ export const createClientNote = async (data: {
   content: string;
   createdBy: string;
 }) => {
-  const [note] = await db.insert(clientNotes).values(data).returning();
+  const result = await db.insert(clientNotes).values(data).returning();
 
-  return note;
+  return result[0];
 };
 
 export const getClientNotes = async (organizationId: string, limit = 20) => {
@@ -810,6 +810,142 @@ export const getClientNotes = async (organizationId: string, limit = 20) => {
     )
     .orderBy(desc(clientNotes.createdAt))
     .limit(limit);
+};
+
+// Client Types Management
+export const createClientType = async (data: {
+  name: string;
+  description?: string;
+  sortOrder?: number;
+}) => {
+  const result = await db
+    .insert(clientTypes)
+    .values({
+      name: data.name,
+      description: data.description || null,
+      sortOrder: data.sortOrder || 0,
+    })
+    .returning();
+
+  return Array.isArray(result) ? result[0] : result;
+};
+
+export const updateClientType = async (id: number, data: any) => {
+  const result = await db
+    .update(clientTypes)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(clientTypes.id, id))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Industry Classifications Management
+export const createIndustryClassification = async (data: {
+  name: string;
+  code?: string;
+  description?: string;
+  sortOrder?: number;
+}) => {
+  const result = await db
+    .insert(industryClassifications)
+    .values({
+      name: data.name,
+      code: data.code || null,
+      description: data.description || null,
+      sortOrder: data.sortOrder || 0,
+    })
+    .returning();
+
+  return Array.isArray(result) ? result[0] : result;
+};
+
+export const updateIndustryClassification = async (id: number, data: any) => {
+  const result = await db
+    .update(industryClassifications)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(industryClassifications.id, id))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Document Categories Management
+export const getDocumentCategories = async () => {
+  return await db
+    .select()
+    .from(documentCategories)
+    .where(eq(documentCategories.isActive, true))
+    .orderBy(documentCategories.sortOrder, documentCategories.name);
+};
+
+export const createDocumentCategory = async (data: {
+  name: string;
+  description?: string;
+  color?: string;
+  sortOrder?: number;
+}) => {
+  const result = await db
+    .insert(documentCategories)
+    .values({
+      name: data.name,
+      description: data.description || null,
+      color: data.color || null,
+      sortOrder: data.sortOrder || 0,
+    })
+    .returning();
+
+  return Array.isArray(result) ? result[0] : result;
+};
+
+export const updateDocumentCategory = async (id: number, data: any) => {
+  const result = await db
+    .update(documentCategories)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(documentCategories.id, id))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Document Category Assignments
+export const assignDocumentCategories = async (
+  documentId: string,
+  categoryIds: number[]
+) => {
+  // Remove existing categories
+  await db
+    .delete(clientDocumentCategories)
+    .where(eq(clientDocumentCategories.documentId, documentId));
+
+  // Add new categories
+  if (categoryIds.length > 0) {
+    const assignments = categoryIds.map((categoryId) => ({
+      documentId,
+      categoryId,
+    }));
+
+    await db.insert(clientDocumentCategories).values(assignments);
+  }
+
+  return true;
+};
+
+export const getDocumentCategories2 = async (documentId: string) => {
+  return await db
+    .select({
+      id: documentCategories.id,
+      name: documentCategories.name,
+      description: documentCategories.description,
+      color: documentCategories.color,
+    })
+    .from(documentCategories)
+    .innerJoin(
+      clientDocumentCategories,
+      eq(clientDocumentCategories.categoryId, documentCategories.id)
+    )
+    .where(eq(clientDocumentCategories.documentId, documentId))
+    .orderBy(documentCategories.sortOrder, documentCategories.name);
 };
 
 // Get Client KPIs for dashboard
@@ -931,5 +1067,303 @@ export const getClientKPIs = async () => {
       value: newThisMonth,
       label: "New This Month",
     },
+  };
+};
+
+// Client Documents Management
+export const createClientDocument = async (data: {
+  organizationId: string;
+  fileName: string;
+  filePath: string;
+  fileType?: string;
+  fileSize?: number;
+  description?: string;
+  categoryIds?: number[];
+  uploadedBy: string;
+}) => {
+  // Create the document
+  const result = await db
+    .insert(clientDocuments)
+    .values({
+      organizationId: data.organizationId,
+      fileName: data.fileName,
+      filePath: data.filePath,
+      fileType: data.fileType || null,
+      fileSize: data.fileSize || null,
+      description: data.description || null,
+      uploadedBy: data.uploadedBy,
+    })
+    .returning();
+
+  const document = Array.isArray(result) ? result[0] : result;
+
+  if (!document) {
+    throw new Error("Failed to create document");
+  }
+
+  // Assign categories if provided
+  if (data.categoryIds && data.categoryIds.length > 0) {
+    await assignDocumentCategories(document.id, data.categoryIds);
+  }
+
+  return document;
+};
+
+export const getClientDocumentById = async (documentId: string) => {
+  // Get document with uploader info
+  const documentQuery = await db
+    .select({
+      document: clientDocuments,
+      uploadedBy: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(clientDocuments)
+    .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
+    .where(
+      and(
+        eq(clientDocuments.id, documentId),
+        eq(clientDocuments.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!documentQuery.length) {
+    return null;
+  }
+
+  const doc = documentQuery[0];
+  if (!doc) {
+    return null;
+  }
+
+  // Get document categories
+  const categories = await db
+    .select({
+      id: documentCategories.id,
+      name: documentCategories.name,
+      color: documentCategories.color,
+    })
+    .from(documentCategories)
+    .innerJoin(
+      clientDocumentCategories,
+      eq(clientDocumentCategories.categoryId, documentCategories.id)
+    )
+    .where(eq(clientDocumentCategories.documentId, documentId));
+
+  return {
+    id: doc.document.id,
+    organizationId: doc.document.organizationId,
+    fileName: doc.document.fileName,
+    filePath: doc.document.filePath,
+    fileType: doc.document.fileType,
+    fileSize: doc.document.fileSize,
+    description: doc.document.description,
+    categories: categories,
+    uploadedBy: doc.uploadedBy?.fullName || "Unknown",
+    uploadedAt: doc.document.createdAt,
+    updatedAt: doc.document.updatedAt,
+  };
+};
+
+export const deleteClientDocument = async (documentId: string) => {
+  // Soft delete the document
+  const result = await db
+    .update(clientDocuments)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(clientDocuments.id, documentId))
+    .returning();
+
+  const document = Array.isArray(result) ? result[0] : result;
+
+  if (document) {
+    // Remove category associations
+    await db
+      .delete(clientDocumentCategories)
+      .where(eq(clientDocumentCategories.documentId, documentId));
+  }
+
+  return document || null;
+};
+
+export const updateClientDocument = async (documentId: string, data: any) => {
+  const updateData = {
+    ...data,
+    updatedAt: new Date(),
+  };
+
+  const result = await db
+    .update(clientDocuments)
+    .set(updateData)
+    .where(eq(clientDocuments.id, documentId))
+    .returning();
+
+  return result[0] || null;
+};
+
+export const createCategoryAndAssignToDocument = async (
+  documentId: string,
+  categoryData: {
+    name: string;
+    description?: string;
+    color?: string;
+    sortOrder?: number;
+  }
+) => {
+  // First, check if the document exists and is not deleted
+  const document = await db
+    .select()
+    .from(clientDocuments)
+    .where(
+      and(
+        eq(clientDocuments.id, documentId),
+        eq(clientDocuments.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!document.length) {
+    throw new Error("Document not found");
+  }
+
+  // Check if a category with the same name already exists
+  const existingCategory = await db
+    .select()
+    .from(documentCategories)
+    .where(eq(documentCategories.name, categoryData.name))
+    .limit(1);
+
+  let category;
+  if (existingCategory.length) {
+    // Use existing category
+    category = existingCategory[0];
+  } else {
+    // Create new category
+    const result = await db
+      .insert(documentCategories)
+      .values({
+        name: categoryData.name,
+        description: categoryData.description || null,
+        color: categoryData.color || null,
+        sortOrder: categoryData.sortOrder || null,
+        isActive: true,
+      })
+      .returning();
+    category = Array.isArray(result) ? result[0] : result;
+  }
+
+  // Check if the document is already assigned to this category
+  const existingAssignment = await db
+    .select()
+    .from(clientDocumentCategories)
+    .where(
+      and(
+        eq(clientDocumentCategories.documentId, documentId),
+        eq(clientDocumentCategories.categoryId, category.id)
+      )
+    )
+    .limit(1);
+
+  // If not already assigned, create the assignment
+  if (!existingAssignment.length) {
+    await db.insert(clientDocumentCategories).values({
+      documentId: documentId,
+      categoryId: category.id,
+    });
+  }
+
+  return {
+    category,
+    document: document[0],
+    wasNewCategory: !existingCategory.length,
+    wasAlreadyAssigned: existingAssignment.length > 0,
+  };
+};
+
+export const removeDocumentCategoryLink = async (
+  documentId: string,
+  categoryId: number
+) => {
+  // First, check if the document exists and is not deleted
+  const document = await db
+    .select()
+    .from(clientDocuments)
+    .where(
+      and(
+        eq(clientDocuments.id, documentId),
+        eq(clientDocuments.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!document.length) {
+    throw new Error("Document not found");
+  }
+
+  // Check if the category exists
+  const category = await db
+    .select()
+    .from(documentCategories)
+    .where(eq(documentCategories.id, categoryId))
+    .limit(1);
+
+  if (!category.length) {
+    throw new Error("Category not found");
+  }
+
+  // Check if the link exists
+  const existingLink = await db
+    .select()
+    .from(clientDocumentCategories)
+    .where(
+      and(
+        eq(clientDocumentCategories.documentId, documentId),
+        eq(clientDocumentCategories.categoryId, categoryId)
+      )
+    )
+    .limit(1);
+
+  if (!existingLink.length) {
+    throw new Error("Document is not linked to this category");
+  }
+
+  // Count how many documents are linked to this category
+  const linkedDocumentsCount = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(clientDocumentCategories)
+    .where(eq(clientDocumentCategories.categoryId, categoryId));
+
+  const totalLinkedDocuments = linkedDocumentsCount[0]?.count || 0;
+
+  // Remove the link
+  await db
+    .delete(clientDocumentCategories)
+    .where(
+      and(
+        eq(clientDocumentCategories.documentId, documentId),
+        eq(clientDocumentCategories.categoryId, categoryId)
+      )
+    );
+
+  let categoryDeleted = false;
+
+  // If this was the only document linked to the category, delete the category
+  if (totalLinkedDocuments <= 1) {
+    await db
+      .delete(documentCategories)
+      .where(eq(documentCategories.id, categoryId));
+    categoryDeleted = true;
+  }
+
+  return {
+    category: category[0],
+    document: document[0],
+    linkRemoved: true,
+    categoryDeleted,
+    remainingLinkedDocuments: totalLinkedDocuments - 1,
   };
 };

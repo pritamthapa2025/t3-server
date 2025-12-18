@@ -21,8 +21,8 @@ import { users } from "./auth.schema.js";
 import {
   accountTypeEnum,
   employeeStatusEnum,
-  clientTypeEnum,
   clientStatusEnum,
+  clientPriorityEnum,
   contactTypeEnum,
   propertyTypeEnum,
   propertyStatusEnum,
@@ -34,6 +34,43 @@ import { jobs } from "./jobs.schema.js";
 import { bidsTable } from "./bids.schema.js";
 
 export const org = pgSchema("org");
+
+// Client Types table - Reference table for different client categories
+export const clientTypes: any = org.table(
+  "client_types",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    description: text("description"),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_client_types_active").on(table.isActive),
+    index("idx_client_types_sort").on(table.sortOrder),
+  ]
+);
+
+// Industry Classifications table - Reference table for industry types
+export const industryClassifications: any = org.table(
+  "industry_classifications",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 150 }).notNull().unique(),
+    code: varchar("code", { length: 20 }).unique(),
+    description: text("description"),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_industry_active").on(table.isActive),
+    index("idx_industry_code").on(table.code),
+  ]
+);
 
 // Departments table - T3 internal departments (not tied to client organizations)
 export const departments = org.table(
@@ -212,47 +249,54 @@ export const organizations: any = org.table(
   "organizations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    clientId: varchar("client_id", { length: 20 }).notNull().unique(),
     // Basic Info
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
-    clientType: clientTypeEnum("client_type").notNull().default("direct"),
+    clientTypeId: integer("client_type_id").references(() => clientTypes.id, {
+      onDelete: "set null",
+    }),
     status: clientStatusEnum("status").notNull().default("prospect"),
+    priority: clientPriorityEnum("priority").default("medium"),
 
     // Business Info
-    industryClassification: varchar("industry_classification", { length: 100 }),
-    taxId: varchar("tax_id", { length: 50 }), // EIN/Tax ID
-    website: varchar("website", { length: 255 }),
-
-    // Parent/Super Client relationship
-    parentOrganizationId: uuid("parent_organization_id").references(
-      () => organizations.id,
+    industryClassificationId: integer("industry_classification_id").references(
+      () => industryClassifications.id,
       {
         onDelete: "set null",
       }
     ),
+    taxId: varchar("tax_id", { length: 50 }),
+    website: varchar("website", { length: 255 }),
+    numberOfEmployees: integer("number_of_employees"),
+
+    // Address Information
+    streetAddress: varchar("street_address", { length: 255 }),
+    city: varchar("city", { length: 100 }),
+    state: varchar("state", { length: 50 }),
+    zipCode: varchar("zip_code", { length: 20 }),
 
     // Financial
     creditLimit: numeric("credit_limit", { precision: 15, scale: 2 }),
     paymentTerms: varchar("payment_terms", { length: 100 }), // Net 30, Net 60, etc.
     preferredPaymentMethod: varchar("preferred_payment_method", { length: 50 }),
 
-    // Billing Address
-    billingAddressLine1: varchar("billing_address_line1", { length: 255 }),
-    billingAddressLine2: varchar("billing_address_line2", { length: 255 }),
-    billingCity: varchar("billing_city", { length: 100 }),
-    billingState: varchar("billing_state", { length: 50 }),
-    billingZipCode: varchar("billing_zip_code", { length: 20 }),
-    billingCountry: varchar("billing_country", { length: 100 }).default("USA"),
+    // Billing Contact
+    billingContactId: uuid("billing_contact_id").references(
+      () => clientContacts.id,
+      {
+        onDelete: "set null",
+      }
+    ),
+    billingDay: integer("billing_day"),
+    taxExempt: boolean("tax_exempt").default(false),
 
     // Additional Info
     description: text("description"),
     notes: text("notes"),
-    tags: jsonb("tags"), // ["priority", "long-term", etc.]
+    tags: jsonb("tags"),
 
     // Metadata
-    accountManager: uuid("account_manager").references(() => users.id, {
-      onDelete: "set null",
-    }),
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -261,11 +305,15 @@ export const organizations: any = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
+    index("idx_orgs_client_id").on(table.clientId),
     index("idx_orgs_status").on(table.status),
-    index("idx_orgs_client_type").on(table.clientType),
-    index("idx_orgs_parent").on(table.parentOrganizationId),
+    index("idx_orgs_priority").on(table.priority),
+    index("idx_orgs_client_type_id").on(table.clientTypeId),
+    index("idx_orgs_industry_id").on(table.industryClassificationId),
+    index("idx_orgs_number_of_employees").on(table.numberOfEmployees),
     index("idx_orgs_is_deleted").on(table.isDeleted),
-    index("idx_orgs_account_manager").on(table.accountManager),
+    index("idx_orgs_billing_contact").on(table.billingContactId),
+    index("idx_orgs_city_state").on(table.city, table.state),
   ]
 );
 
@@ -318,10 +366,11 @@ export const clientContacts = org.table(
 
     // Contact Info
     fullName: varchar("full_name", { length: 150 }).notNull(),
-    title: varchar("title", { length: 100 }), // VP Operations, Site Manager, etc.
+    title: varchar("title", { length: 100 }),
     email: varchar("email", { length: 150 }),
     phone: varchar("phone", { length: 20 }),
     mobilePhone: varchar("mobile_phone", { length: 20 }),
+    picture: varchar("picture", { length: 500 }), // Profile picture URL
 
     contactType: contactTypeEnum("contact_type").notNull().default("primary"),
     isPrimary: boolean("is_primary").default(false),
@@ -382,8 +431,6 @@ export const clientDocuments = org.table(
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileType: varchar("file_type", { length: 50 }),
     fileSize: integer("file_size"),
-
-    documentType: varchar("document_type", { length: 50 }), // contract, insurance, w9, etc.
     description: text("description"),
 
     uploadedBy: uuid("uploaded_by")
@@ -394,9 +441,45 @@ export const clientDocuments = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
+  (table) => [index("idx_client_docs_org").on(table.organizationId)]
+);
+
+// Document Categories table - Reference table for document categories
+export const documentCategories: any = org.table(
+  "document_categories",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    description: text("description"),
+    color: varchar("color", { length: 7 }), // Hex color code for UI display
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
   (table) => [
-    index("idx_client_docs_org").on(table.organizationId),
-    index("idx_client_docs_type").on(table.documentType),
+    index("idx_doc_categories_active").on(table.isActive),
+    index("idx_doc_categories_sort").on(table.sortOrder),
+  ]
+);
+
+// Client Document Categories junction table - Many-to-many relationship
+export const clientDocumentCategories: any = org.table(
+  "client_document_categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => clientDocuments.id, { onDelete: "cascade" }),
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => documentCategories.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    unique("unique_doc_category").on(table.documentId, table.categoryId),
+    index("idx_doc_categories_document").on(table.documentId),
+    index("idx_doc_categories_category").on(table.categoryId),
   ]
 );
 

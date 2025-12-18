@@ -10,3 +10,4 @@ ALTER TABLE "org"."departments" DROP COLUMN IF EXISTS "open_positions";
 
 
 
+

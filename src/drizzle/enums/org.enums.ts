@@ -36,19 +36,6 @@ export const timesheetStatusEnum = pgEnum("timesheet_status_enum", [
 ]);
 
 /**
- * Client Type Enum
- * Different categories of clients
- */
-export const clientTypeEnum = pgEnum("client_type_enum", [
-  "direct",
-  "subcontractor",
-  "government",
-  "property_management",
-  "corporate",
-  "individual",
-]);
-
-/**
  * Client Status Enum
  * Current status of client relationships
  */
@@ -58,6 +45,16 @@ export const clientStatusEnum = pgEnum("client_status_enum", [
   "prospect",
   "suspended",
   "archived",
+]);
+
+/**
+ * Client Priority Enum
+ * Priority levels for client relationships
+ */
+export const clientPriorityEnum = pgEnum("client_priority_enum", [
+  "low",
+  "medium",
+  "high",
 ]);
 
 /**

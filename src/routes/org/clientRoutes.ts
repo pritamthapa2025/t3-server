@@ -9,7 +9,20 @@ import {
   createClientContactHandler,
   createClientNoteHandler,
   getClientKPIsHandler,
-  // createClientDocumentHandler,
+  getClientTypesHandler,
+  createClientTypeHandler,
+  getIndustryClassificationsHandler,
+  createIndustryClassificationHandler,
+  getDocumentCategoriesHandler,
+  createDocumentCategoryHandler,
+  assignDocumentCategoriesHandler,
+  createClientDocumentHandler,
+  getClientDocumentByIdHandler,
+  deleteClientDocumentHandler,
+  createCategoryAndAssignToDocumentHandler,
+  getClientDocumentCategoriesHandler,
+  removeDocumentCategoryHandler,
+  updateClientSettingsHandler,
 } from "../../controllers/ClientController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -22,7 +35,13 @@ import {
   deleteClientSchema,
   createClientContactSchema,
   createClientNoteSchema,
-  // createClientDocumentSchema,
+  createClientTypeSchema,
+  createIndustryClassificationSchema,
+  createDocumentCategorySchema,
+  assignDocumentCategoriesSchema,
+  createClientDocumentSchema,
+  createCategoryAndAssignToDocumentSchema,
+  updateClientSettingsSchema,
 } from "../../validations/client.validations.js";
 
 const router = Router();
@@ -42,6 +61,34 @@ const upload = multer({
     }
   },
 }).single("companyLogo"); // Handle the companyLogo field
+
+// Configure multer for contact picture uploads
+const uploadContactPicture = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed (PNG, JPG, SVG)"));
+    }
+  },
+}).single("contactPicture"); // Handle the contactPicture field
+
+// Configure multer for document uploads (all file types)
+const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for documents
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept all file types for documents
+    cb(null, true);
+  },
+}).single("document"); // Handle the document field
 
 // Multer error handler middleware
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
@@ -75,6 +122,20 @@ router.use(generalTransformer);
 // Client KPIs route
 router.get("/clients/kpis", getClientKPIsHandler);
 
+// Reference data routes
+router
+  .route("/client-types")
+  .get(getClientTypesHandler)
+  .post(validate(createClientTypeSchema), createClientTypeHandler);
+
+router
+  .route("/industry-classifications")
+  .get(getIndustryClassificationsHandler)
+  .post(
+    validate(createIndustryClassificationSchema),
+    createIndustryClassificationHandler
+  );
+
 // Main client routes
 router
   .route("/clients")
@@ -97,19 +158,70 @@ router
   )
   .delete(validate(deleteClientSchema), deleteClientHandler);
 
+// Client settings route - update only settings fields
+router
+  .route("/clients/:id/settings")
+  .put(validate(updateClientSettingsSchema), updateClientSettingsHandler);
+
 // Client contacts routes
 router
-  .route("/clients/:clientId/contacts")
-  .post(validate(createClientContactSchema), createClientContactHandler);
+  .route("/clients/:id/contacts")
+  .post(
+    uploadContactPicture,
+    handleMulterError,
+    validate(createClientContactSchema),
+    createClientContactHandler
+  );
 
 // Client notes routes
 router
-  .route("/clients/:clientId/notes")
+  .route("/clients/:id/notes")
   .post(validate(createClientNoteSchema), createClientNoteHandler);
 
-// Client documents routes (coming soon)
-// router
-//   .route("/clients/:clientId/documents")
-//   .post(validate(createClientDocumentSchema), createClientDocumentHandler);
+// Client documents routes
+router
+  .route("/clients/:id/documents")
+  .post(
+    uploadDocument,
+    handleMulterError,
+    validate(createClientDocumentSchema),
+    createClientDocumentHandler
+  );
+
+router
+  .route("/clients/:id/documents/:documentId")
+  .get(getClientDocumentByIdHandler)
+  .delete(deleteClientDocumentHandler);
+
+// Create category and assign to document
+router
+  .route("/clients/:id/documents/:documentId/categories")
+  .post(
+    validate(createCategoryAndAssignToDocumentSchema),
+    createCategoryAndAssignToDocumentHandler
+  );
+
+router
+  .route("/clients/:id/documents/:documentId/categories")
+  .get(getClientDocumentCategoriesHandler);
+
+// Remove category from document
+router
+  .route("/clients/:id/documents/:documentId/categories/:categoryId")
+  .delete(removeDocumentCategoryHandler);
+
+// Document Categories routes
+router
+  .route("/document-categories")
+  .get(getDocumentCategoriesHandler)
+  .post(validate(createDocumentCategorySchema), createDocumentCategoryHandler);
+
+// Document Category Assignment routes
+router
+  .route("/documents/:documentId/categories")
+  .put(
+    validate(assignDocumentCategoriesSchema),
+    assignDocumentCategoriesHandler
+  );
 
 export default router;
