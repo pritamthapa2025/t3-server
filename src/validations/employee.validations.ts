@@ -72,6 +72,7 @@ export const createEmployeeSchema = z
       departmentId: z.number().int().positive().optional().nullable(),
       positionId: z.number().int().positive().optional().nullable(),
       reportsTo: uuidSchema.optional().nullable(),
+      roleId: z.number().int().positive().optional().nullable(),
       startDate: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
@@ -164,6 +165,7 @@ export const updateEmployeeSchema = z.object({
       departmentId: z.number().int().positive().optional().nullable(),
       positionId: z.number().int().positive().optional().nullable(),
       reportsTo: uuidSchema.optional().nullable(),
+      roleId: z.number().int().positive().optional().nullable(),
     })
     .refine(
       (data) =>
@@ -171,10 +173,11 @@ export const updateEmployeeSchema = z.object({
         data.employeeId !== undefined ||
         data.departmentId !== undefined ||
         data.positionId !== undefined ||
-        data.reportsTo !== undefined,
+        data.reportsTo !== undefined ||
+        data.roleId !== undefined,
       {
         message:
-          "At least one field (userId, employeeId, departmentId, positionId, or reportsTo) is required",
+          "At least one field (userId, employeeId, departmentId, positionId, reportsTo, or roleId) is required",
       }
     ),
 });

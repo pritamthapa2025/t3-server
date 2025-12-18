@@ -15,6 +15,7 @@ import {
 } from "../services/user.service.js";
 import { getDepartmentById } from "../services/department.service.js";
 import { getPositionById } from "../services/position.service.js";
+import { getRoleById, assignRoleToUser } from "../services/role.service.js";
 import { hashPassword } from "../utils/hash.js";
 import { createBankAccount } from "../services/bankAccount.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -132,6 +133,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       positionId,
       reportsTo,
       startDate,
+      roleId,
       // Bank account fields
       accountHolderName,
       bankName,
@@ -193,6 +195,17 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
+    // Validate roleId if provided
+    if (roleId !== undefined && roleId !== null) {
+      const role = await getRoleById(roleId);
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role ID",
+        });
+      }
+    }
+
     // Create user if userId is not provided (new user)
     if (!userId) {
       if (!fullName || !email) {
@@ -240,6 +253,27 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
     }
 
     const finalUserId = userId || createdUser!.id;
+
+    // Assign role to user if roleId is provided
+    if (roleId !== undefined && roleId !== null) {
+      try {
+        await assignRoleToUser(finalUserId, roleId);
+      } catch (roleError: any) {
+        // Rollback user creation if role assignment fails
+        if (createdUser) {
+          try {
+            await deleteUser(createdUser.id);
+          } catch (cleanupError) {
+            logger.logApiError("Failed to cleanup user", cleanupError, req);
+          }
+        }
+        logger.logApiError("Failed to assign role to user", roleError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to assign role to user",
+        });
+      }
+    }
 
     // Create employee
     let employee;
@@ -370,9 +404,30 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { userId, employeeId, departmentId, positionId, reportsTo } =
+    const { userId, employeeId, departmentId, positionId, reportsTo, roleId } =
       req.body;
 
+    // Validate roleId if provided
+    if (roleId !== undefined && roleId !== null) {
+      const role = await getRoleById(roleId);
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role ID",
+        });
+      }
+    }
+
+    // Get the employee to find the userId
+    const existingEmployee = await getEmployeeById(id);
+    if (!existingEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Update employee data
     const employee = await updateEmployee(id, {
       userId,
       employeeId,
@@ -386,6 +441,23 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Employee not found",
       });
+    }
+
+    // Update role if roleId is provided and employee has a user
+    if (roleId !== undefined && roleId !== null && existingEmployee.user?.id) {
+      try {
+        await assignRoleToUser(existingEmployee.user.id, roleId);
+      } catch (roleError: any) {
+        logger.logApiError("Failed to assign role to user", roleError, req);
+        // Don't fail the entire update if only role assignment fails
+        // Return success but note the role assignment issue
+        return res.status(200).json({
+          success: true,
+          data: employee,
+          message: "Employee updated successfully, but role assignment failed",
+          warning: "Role could not be assigned to user",
+        });
+      }
     }
 
     logger.info("Employee updated successfully");

@@ -19,7 +19,7 @@ import {
   employeeReviews,
 } from "../drizzle/schema/org.schema.js";
 import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 
 export const getEmployees = async (
   offset: number,
@@ -79,6 +79,42 @@ export const getEmployees = async (
     .where(and(...whereConditions))
     .limit(limit)
     .offset(offset);
+
+  // Fetch roles for all users in the result
+  const userIds = result.map((emp) => emp.userId).filter(Boolean) as string[];
+  const rolesData =
+    userIds.length > 0
+      ? await db
+          .select({
+            userId: userRoles.userId,
+            roleId: roles.id,
+            roleName: roles.name,
+            roleDescription: roles.description,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(
+            and(
+              sql`${userRoles.userId} = ANY(ARRAY[${sql.raw(
+                userIds.map((id) => `'${id}'`).join(",")
+              )}]::uuid[])`,
+              eq(roles.isDeleted, false)
+            )
+          )
+      : [];
+
+  // Create a map of userId to roles
+  const rolesMap = new Map<string, Array<{ id: number; name: string; description: string | null }>>();
+  for (const roleData of rolesData) {
+    if (!rolesMap.has(roleData.userId)) {
+      rolesMap.set(roleData.userId, []);
+    }
+    rolesMap.get(roleData.userId)!.push({
+      id: roleData.roleId,
+      name: roleData.roleName,
+      description: roleData.roleDescription,
+    });
+  }
 
   // Get total count for pagination
   const totalResult = await db
@@ -149,10 +185,15 @@ export const getEmployees = async (
       overallRating = "Pending";
     }
 
-    // Determine portal role (this might need to be added to your schema)
-    // For now, using position as a proxy for portal role
+    // Get roles for this user
+    const userRolesList = emp.userId ? rolesMap.get(emp.userId) || [] : [];
+
+    // Determine portal role from actual assigned roles (use first role if multiple)
     let portalRole = "Office Staff"; // default
-    if (emp.positionName) {
+    if (userRolesList.length > 0) {
+      portalRole = userRolesList[0]!.name;
+    } else if (emp.positionName) {
+      // Fallback to position-based role if no roles assigned
       if (
         emp.positionName.toLowerCase().includes("director") ||
         emp.positionName.toLowerCase().includes("admin")
@@ -188,6 +229,7 @@ export const getEmployees = async (
 
       // Role and Position
       portalRole: portalRole,
+      roles: userRolesList, // Include full role data
       jobTitle: emp.positionName || "N/A",
       department: emp.departmentName || "N/A",
 
@@ -276,6 +318,7 @@ export const getEmployeeById = async (id: number) => {
     reviewsResult,
     approvalsResult,
     submissionsResult,
+    userRolesResult,
   ] = await Promise.all([
     // Get manager information (only if reportsTo exists)
     employee.reportsTo
@@ -379,6 +422,21 @@ export const getEmployeeById = async (id: number) => {
       .where(eq(timesheets.employeeId, id))
       .orderBy(desc(timesheets.createdAt))
       .limit(10),
+
+    // Get user roles
+    user?.id
+      ? db
+          .select({
+            roleId: roles.id,
+            roleName: roles.name,
+            roleDescription: roles.description,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(
+            and(eq(userRoles.userId, user.id), eq(roles.isDeleted, false))
+          )
+      : Promise.resolve([]),
   ]);
 
   const managerData = managerResult[0] || null;
@@ -388,6 +446,7 @@ export const getEmployeeById = async (id: number) => {
   const reviews = reviewsResult;
   const approvals = approvalsResult;
   const submissions = submissionsResult;
+  const userRolesData = userRolesResult;
 
   // Calculate performance metrics
   // timesheetStats already filtered to current month by SQL query
@@ -531,6 +590,13 @@ export const getEmployeeById = async (id: number) => {
           location: "N/A", // Mock location - add location fields to user schema if needed
         }
       : null,
+
+    // Roles information
+    roles: userRolesData.map((r) => ({
+      id: r.roleId,
+      name: r.roleName,
+      description: r.roleDescription,
+    })),
 
     // Department information
     department: department
