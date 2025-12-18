@@ -18,6 +18,11 @@ import {
   documentCategories,
   clientDocumentCategories,
   properties,
+  propertyContacts,
+  propertyEquipment,
+  propertyDocuments,
+  propertyServiceHistory,
+  userOrganizations,
   clientTypes,
   industryClassifications,
 } from "../drizzle/schema/org.schema.js";
@@ -730,18 +735,121 @@ export const updateClientSettings = async (
   return result[0] || null;
 };
 
-// Soft delete client
+// Soft delete client and all related entities (cascade soft delete)
 export const deleteClient = async (id: string) => {
-  const result = await db
-    .update(organizations)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
-    })
-    .where(eq(organizations.id, id))
-    .returning();
+  // Use a transaction to ensure all deletions succeed or fail together
+  const result = await db.transaction(async (tx) => {
+    const now = new Date();
 
-  return result[0] || null;
+    // 1. Soft delete the client/organization
+    const deletedClient = await tx
+      .update(organizations)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(organizations.id, id))
+      .returning();
+
+    if (!deletedClient[0]) {
+      return null;
+    }
+
+    // 2. Get all properties for this client (to soft delete property-related entities)
+    const clientProperties = await tx
+      .select({ id: properties.id })
+      .from(properties)
+      .where(eq(properties.organizationId, id));
+
+    const propertyIds = clientProperties.map((p) => p.id);
+
+    // 3. Soft delete property-related entities if there are properties
+    if (propertyIds.length > 0) {
+      // 3a. Soft delete property contacts
+      await tx
+        .update(propertyContacts)
+        .set({
+          isDeleted: true,
+          updatedAt: now,
+        })
+        .where(inArray(propertyContacts.propertyId, propertyIds));
+
+      // 3b. Soft delete property equipment
+      await tx
+        .update(propertyEquipment)
+        .set({
+          isDeleted: true,
+          updatedAt: now,
+        })
+        .where(inArray(propertyEquipment.propertyId, propertyIds));
+
+      // 3c. Soft delete property documents
+      await tx
+        .update(propertyDocuments)
+        .set({
+          isDeleted: true,
+          updatedAt: now,
+        })
+        .where(inArray(propertyDocuments.propertyId, propertyIds));
+
+      // 3d. Soft delete property service history
+      await tx
+        .update(propertyServiceHistory)
+        .set({
+          isDeleted: true,
+        })
+        .where(inArray(propertyServiceHistory.propertyId, propertyIds));
+    }
+
+    // 4. Soft delete all client properties
+    await tx
+      .update(properties)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(properties.organizationId, id));
+
+    // 5. Soft delete all client contacts
+    await tx
+      .update(clientContacts)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(clientContacts.organizationId, id));
+
+    // 6. Soft delete all client documents
+    await tx
+      .update(clientDocuments)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(clientDocuments.organizationId, id));
+
+    // 7. Soft delete all client notes
+    await tx
+      .update(clientNotes)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(clientNotes.organizationId, id));
+
+    // 8. Soft delete all user-organization relationships
+    await tx
+      .update(userOrganizations)
+      .set({
+        isDeleted: true,
+        updatedAt: now,
+      })
+      .where(eq(userOrganizations.organizationId, id));
+
+    return deletedClient[0];
+  });
+
+  return result;
 };
 
 // Client Contacts Management
