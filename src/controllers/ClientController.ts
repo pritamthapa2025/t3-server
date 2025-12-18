@@ -140,23 +140,60 @@ export const createClientHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle file upload for company logo if provided
-    const file = req.file;
-    if (file) {
-      try {
-        const uploadResult = await uploadToSpaces(
-          file.buffer,
-          file.originalname,
-          "client-logos"
+    // Handle file uploads for company logo and contact pictures
+    const files = req.files as Express.Multer.File[];
+    
+    if (files && files.length > 0) {
+      // Upload company logo if provided
+      const companyLogoFile = files.find(f => f.fieldname === "companyLogo");
+      if (companyLogoFile) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            companyLogoFile.buffer,
+            companyLogoFile.originalname,
+            "client-logos"
+          );
+          uploadedLogoUrl = uploadResult.url;
+          clientData.companyLogo = uploadedLogoUrl;
+        } catch (uploadError: any) {
+          logger.logApiError("Company logo upload error", uploadError, req);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload company logo. Please try again.",
+          });
+        }
+      }
+
+      // Upload contact pictures if provided and match them to contacts by index
+      // Pattern: contactPicture_0, contactPicture_1, etc.
+      if (clientData.contacts && Array.isArray(clientData.contacts)) {
+        const contactPictureFiles = files.filter(f => 
+          f.fieldname.startsWith("contactPicture_")
         );
-        uploadedLogoUrl = uploadResult.url;
-        clientData.companyLogo = uploadedLogoUrl;
-      } catch (uploadError: any) {
-        logger.logApiError("File upload error", uploadError, req);
-        return res.status(500).json({
-          success: false,
-          message: "Failed to upload company logo. Please try again.",
-        });
+
+        for (const pictureFile of contactPictureFiles) {
+          // Extract index from fieldname (e.g., "contactPicture_0" -> 0)
+          const match = pictureFile.fieldname.match(/^contactPicture_(\d+)$/);
+          if (match && match[1]) {
+            const index = parseInt(match[1], 10);
+            if (index >= 0 && index < clientData.contacts.length) {
+              try {
+                const uploadResult = await uploadToSpaces(
+                  pictureFile.buffer,
+                  pictureFile.originalname,
+                  "contact-pictures"
+                );
+                clientData.contacts[index].picture = uploadResult.url;
+              } catch (uploadError: any) {
+                logger.logApiError(`Contact picture ${index} upload error`, uploadError, req);
+                return res.status(500).json({
+                  success: false,
+                  message: `Failed to upload contact picture for contact ${index + 1}. Please try again.`,
+                });
+              }
+            }
+          }
+        }
       }
     }
 
@@ -231,22 +268,25 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     }
 
     // Handle file upload for company logo if provided
-    const file = req.file;
-    if (file) {
-      try {
-        const uploadResult = await uploadToSpaces(
-          file.buffer,
-          file.originalname,
-          "client-logos"
-        );
-        uploadedLogoUrl = uploadResult.url;
-        updateData.companyLogo = uploadedLogoUrl;
-      } catch (uploadError: any) {
-        logger.logApiError("File upload error", uploadError, req);
-        return res.status(500).json({
-          success: false,
-          message: "Failed to upload company logo. Please try again.",
-        });
+    const files = req.files as Express.Multer.File[];
+    if (files && files.length > 0) {
+      const companyLogoFile = files.find(f => f.fieldname === "companyLogo");
+      if (companyLogoFile) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            companyLogoFile.buffer,
+            companyLogoFile.originalname,
+            "client-logos"
+          );
+          uploadedLogoUrl = uploadResult.url;
+          updateData.companyLogo = uploadedLogoUrl;
+        } catch (uploadError: any) {
+          logger.logApiError("File upload error", uploadError, req);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload company logo. Please try again.",
+          });
+        }
       }
     }
 

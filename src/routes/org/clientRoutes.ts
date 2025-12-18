@@ -46,11 +46,12 @@ import {
 
 const router = Router();
 
-// Configure multer for memory storage (for company logo upload)
+// Configure multer for memory storage (for company logo + contact pictures upload)
+// Using .any() to accept dynamic number of files with pattern matching
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit per file
   },
   fileFilter: (req, file, cb) => {
     // Accept only image files
@@ -60,7 +61,7 @@ const upload = multer({
       cb(new Error("Only image files are allowed (PNG, JPG, SVG)"));
     }
   },
-}).single("companyLogo"); // Handle the companyLogo field
+}).any(); // Accept any files - controller will handle companyLogo and contactPicture_X pattern
 
 // Configure multer for contact picture uploads
 const uploadContactPicture = multer({
@@ -113,6 +114,24 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
   next();
 };
 
+// Middleware to parse JSON data field from multipart/form-data
+const parseFormData = (req: any, res: any, next: any) => {
+  if (req.body && req.body.data) {
+    try {
+      // Parse the stringified JSON data field
+      const parsedData = JSON.parse(req.body.data);
+      // Replace req.body with the parsed data, preserving files
+      req.body = parsedData;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid JSON data in request body",
+      });
+    }
+  }
+  next();
+};
+
 // Apply authentication middleware to all client routes
 router.use(authenticate);
 
@@ -143,6 +162,7 @@ router
   .post(
     upload,
     handleMulterError,
+    parseFormData,
     validate(createClientSchema),
     createClientHandler
   );
@@ -153,6 +173,7 @@ router
   .put(
     upload,
     handleMulterError,
+    parseFormData,
     validate(updateClientSchema),
     updateClientHandler
   )
