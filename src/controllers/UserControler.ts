@@ -8,7 +8,7 @@ import {
   getUsersByRoles,
 } from "../services/user.service.js";
 import { hashPassword } from "../utils/hash.js";
-import { uploadToSpaces } from "../services/storage.service.js";
+import { uploadToSpaces, deleteFromSpaces } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 import {
   checkEmailExists,
@@ -239,8 +239,32 @@ export const updateUserHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
+    // Handle profile picture deletion when user sends profilePicture: null
+    if (req.body.profilePicture === null && existingUser.profilePicture) {
+      try {
+        const deleted = await deleteFromSpaces(existingUser.profilePicture);
+        if (deleted) {
+          logger.info("Profile picture deleted from DigitalOcean Spaces");
+        }
+      } catch (error) {
+        logger.logApiError("Error deleting profile picture from storage", error, req);
+        // Continue with database update even if file deletion fails
+      }
+    }
+
     // Handle file upload if provided
     const file = req.file;
+    if (file) {
+      // Delete old profile picture if uploading new one
+      if (existingUser.profilePicture) {
+        try {
+          await deleteFromSpaces(existingUser.profilePicture);
+          logger.info("Old profile picture deleted from DigitalOcean Spaces");
+        } catch (error) {
+          logger.logApiError("Error deleting old profile picture from storage", error, req);
+        }
+      }
+    }
     if (file) {
       try {
         const uploadResult = await uploadToSpaces(

@@ -40,7 +40,7 @@ import {
   getClientSettings,
   updateClientSettings,
 } from "../services/client.service.js";
-import { uploadToSpaces } from "../services/storage.service.js";
+import { uploadToSpaces, deleteFromSpaces } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 import {
   checkOrganizationNameExists,
@@ -357,8 +357,40 @@ export const updateClientHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Map companyLogo to logo field in database
-    if (updateData.companyLogo) {
+    // Get current client data to check for existing logo
+    const currentClient = await getClientById(id);
+    if (!currentClient) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found",
+      });
+    }
+
+    // Handle logo deletion when user sends companyLogo: null
+    if (updateData.companyLogo === null && currentClient.logo) {
+      try {
+        const deleted = await deleteFromSpaces(currentClient.logo);
+        if (deleted) {
+          logger.info("Company logo deleted from DigitalOcean Spaces");
+        }
+      } catch (error) {
+        logger.logApiError("Error deleting company logo from storage", error, req);
+        // Continue with database update even if file deletion fails
+      }
+      updateData.logo = null;
+      delete updateData.companyLogo;
+    }
+    // Map companyLogo to logo field in database (for new uploads)
+    else if (updateData.companyLogo) {
+      // Delete old logo if uploading new one
+      if (currentClient.logo) {
+        try {
+          await deleteFromSpaces(currentClient.logo);
+          logger.info("Old company logo deleted from DigitalOcean Spaces");
+        } catch (error) {
+          logger.logApiError("Error deleting old company logo from storage", error, req);
+        }
+      }
       updateData.logo = updateData.companyLogo;
       delete updateData.companyLogo;
     }
@@ -646,8 +678,41 @@ export const updateClientContactHandler = async (
       }
     }
 
+    // Get current contact data to check for existing picture
+    const currentContact = await getClientContactById(contactId);
+    if (!currentContact) {
+      return res.status(404).json({
+        success: false,
+        message: "Contact not found",
+      });
+    }
+
+    // Handle picture deletion when user sends picture: null
+    if (contactData.picture === null && currentContact.picture) {
+      try {
+        const deleted = await deleteFromSpaces(currentContact.picture);
+        if (deleted) {
+          logger.info("Contact picture deleted from DigitalOcean Spaces");
+        }
+      } catch (error) {
+        logger.logApiError("Error deleting contact picture from storage", error, req);
+        // Continue with database update even if file deletion fails
+      }
+    }
+
     // Handle file upload for contact picture if provided
     const file = req.file;
+    if (file) {
+      // Delete old picture if uploading new one
+      if (currentContact.picture) {
+        try {
+          await deleteFromSpaces(currentContact.picture);
+          logger.info("Old contact picture deleted from DigitalOcean Spaces");
+        } catch (error) {
+          logger.logApiError("Error deleting old contact picture from storage", error, req);
+        }
+      }
+    }
     if (file) {
       try {
         const uploadResult = await uploadToSpaces(
@@ -1697,6 +1762,7 @@ export const updateClientDocumentHandler = async (
   req: Request,
   res: Response
 ) => {
+  let uploadedFileUrl: string | null = null;
   try {
     const { documentId } = req.params;
 
@@ -1707,7 +1773,72 @@ export const updateClientDocumentHandler = async (
       });
     }
 
-    const document = await updateClientDocument(documentId, req.body);
+    // Parse update data - either from JSON body or from form-data field
+    let updateData: any;
+    if (req.headers["content-type"]?.includes("application/json")) {
+      updateData = req.body;
+    } else {
+      if (req.body.data) {
+        try {
+          updateData =
+            typeof req.body.data === "string"
+              ? JSON.parse(req.body.data)
+              : req.body.data;
+        } catch (parseError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid JSON in 'data' field",
+          });
+        }
+      } else {
+        updateData = req.body;
+      }
+    }
+
+    // Get current document to check for existing file
+    const currentDocument = await getClientDocumentById(documentId);
+    if (!currentDocument) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // Handle file replacement if new file is provided
+    const file = req.file;
+    if (file) {
+      // Delete old file from DigitalOcean if it exists
+      if (currentDocument.document.filePath) {
+        try {
+          await deleteFromSpaces(currentDocument.document.filePath);
+          logger.info("Old document file deleted from DigitalOcean Spaces");
+        } catch (error) {
+          logger.logApiError("Error deleting old document file from storage", error, req);
+        }
+      }
+
+      // Upload new file
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "client-documents"
+        );
+        uploadedFileUrl = uploadResult.url;
+        updateData.filePath = uploadedFileUrl;
+        updateData.fileName = file.originalname;
+        updateData.fileType = file.mimetype;
+        updateData.fileSize = file.size;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new document file. Please try again.",
+        });
+      }
+    }
+
+    const document = await updateClientDocument(documentId, updateData);
 
     if (!document) {
       return res.status(404).json({
@@ -1759,6 +1890,29 @@ export const deleteClientDocumentHandler = async (
       });
     }
 
+    // Get current document to retrieve file path for deletion
+    const currentDocument = await getClientDocumentById(documentId);
+    if (!currentDocument) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // Delete file from DigitalOcean Spaces first
+    if (currentDocument.document.filePath) {
+      try {
+        const deleted = await deleteFromSpaces(currentDocument.document.filePath);
+        if (deleted) {
+          logger.info("Document file deleted from DigitalOcean Spaces");
+        }
+      } catch (error) {
+        logger.logApiError("Error deleting document file from storage", error, req);
+        // Continue with database deletion even if file deletion fails
+      }
+    }
+
+    // Then soft delete from database
     const success = await deleteClientDocument(documentId);
 
     if (!success) {

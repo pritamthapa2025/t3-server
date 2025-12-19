@@ -293,7 +293,12 @@ router
 router
   .route("/clients/:id/documents/:documentId")
   .get(getClientDocumentByIdHandler)
-  .put(validate(updateClientDocumentSchema), updateClientDocumentHandler)
+  .put(
+    uploadDocument,
+    handleMulterError,
+    validate(updateClientDocumentSchema),
+    updateClientDocumentHandler
+  )
   .delete(deleteClientDocumentHandler);
 
 // Create category and assign to document

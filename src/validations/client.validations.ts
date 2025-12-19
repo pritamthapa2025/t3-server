@@ -39,11 +39,15 @@ const contactSchema = z.object({
     .max(20, "Mobile phone number is too long (maximum 20 characters)")
     .optional(),
   picture: z
-    .string()
-    .url("Profile picture must be a valid URL")
-    .max(500, "Profile picture URL is too long")
-    .optional()
-    .or(z.literal("")),
+    .union([
+      z
+        .string()
+        .url("Profile picture must be a valid URL")
+        .max(500, "Profile picture URL is too long"),
+      z.literal(""),
+      z.null(),
+    ])
+    .optional(),
   contactType: z
     .enum(["primary", "billing", "technical", "emergency", "project_manager"])
     .default("primary"),
@@ -292,7 +296,7 @@ export const updateClientSchema = z.object({
     city: z.string().max(100).optional(),
     state: z.string().max(50).optional(),
     zipCode: z.string().max(20).optional(),
-    companyLogo: z.string().url().optional(),
+    companyLogo: z.union([z.string().url(), z.null()]).optional(),
 
     // Settings
     paymentTerms: z.string().max(100).optional(),
@@ -376,11 +380,12 @@ export const createClientContactSchema = z.object({
     phone: z.string().max(20).optional(),
     mobilePhone: z.string().max(20).optional(),
     picture: z
-      .string()
-      .url("Invalid picture URL")
-      .max(500)
-      .optional()
-      .or(z.literal("")),
+      .union([
+        z.string().url("Invalid picture URL").max(500),
+        z.literal(""),
+        z.null(),
+      ])
+      .optional(),
     contactType: z
       .enum(["primary", "billing", "technical", "emergency", "project_manager"])
       .default("primary"),
@@ -407,11 +412,12 @@ export const updateClientContactSchema = z.object({
     phone: z.string().max(20).optional(),
     mobilePhone: z.string().max(20).optional(),
     picture: z
-      .string()
-      .url("Invalid picture URL")
-      .max(500)
-      .optional()
-      .or(z.literal("")),
+      .union([
+        z.string().url("Invalid picture URL").max(500),
+        z.literal(""),
+        z.null(),
+      ])
+      .optional(),
     contactType: z
       .enum(["primary", "billing", "technical", "emergency", "project_manager"])
       .optional(),

@@ -158,6 +158,12 @@ export const updateUserSchema = z.object({
         )
         .pipe(z.boolean())
         .optional(),
+      profilePicture: z
+        .union([
+          z.string().url("Profile picture must be a valid URL").max(500),
+          z.null()
+        ])
+        .optional(),
     })
     .refine(
       (data) =>
@@ -172,7 +178,8 @@ export const updateUserSchema = z.object({
         data.emergencyContactName !== undefined ||
         data.emergencyContactPhone !== undefined ||
         data.isActive !== undefined ||
-        data.isVerified !== undefined,
+        data.isVerified !== undefined ||
+        data.profilePicture !== undefined,
       {
         message: "At least one field must be provided to update the user profile",
       }
