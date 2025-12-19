@@ -1230,7 +1230,12 @@ export const getDocumentCategories2 = async (documentId: string) => {
       clientDocumentCategories,
       eq(clientDocumentCategories.categoryId, documentCategories.id)
     )
-    .where(eq(clientDocumentCategories.documentId, documentId))
+    .where(
+      and(
+        eq(clientDocumentCategories.documentId, documentId),
+        eq(documentCategories.isActive, true)
+      )
+    )
     .orderBy(documentCategories.sortOrder, documentCategories.name);
 };
 
