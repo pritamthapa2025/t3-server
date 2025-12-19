@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid UUID format" });
+const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
+
+// Helper to handle empty strings for numeric fields
+const stringToIntOrUndefined = z
+  .union([z.number(), z.string(), z.null(), z.undefined()])
+  .transform((val) => {
+    if (val === null || val === undefined || val === "") return undefined;
+    const num = typeof val === "string" ? parseInt(val, 10) : val;
+    return isNaN(num) ? undefined : num;
+  });
 
 // Get employees query validation
 export const getEmployeesQuerySchema = z.object({
@@ -36,91 +45,126 @@ export const createEmployeeSchema = z
       userId: uuidSchema.optional(),
       fullName: z
         .string()
-        .min(1, "Full name is required")
-        .max(150, "Full name must be less than 150 characters")
+        .min(1, "Full name is required and cannot be empty")
+        .max(150, "Full name is too long (maximum 150 characters)")
+        .trim()
         .optional(),
-      email: z.email("Invalid email format").optional(),
+      email: z
+        .string()
+        .email("Please provide a valid email address (e.g., john@example.com)")
+        .trim()
+        .toLowerCase()
+        .optional(),
       phone: z
         .string()
         .optional()
         .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
-          message: "Invalid phone number format",
+          message: "Please provide a valid phone number (e.g., +1234567890)",
         }),
-      address: z.string().max(255).optional(),
-      city: z.string().max(100).optional(),
-      state: z.string().max(50).optional(),
-      zipCode: z.string().max(20).optional(),
+      address: z
+        .string()
+        .max(255, "Address is too long (maximum 255 characters)")
+        .optional(),
+      city: z
+        .string()
+        .max(100, "City is too long (maximum 100 characters)")
+        .optional(),
+      state: z
+        .string()
+        .max(50, "State is too long (maximum 50 characters)")
+        .optional(),
+      zipCode: z
+        .string()
+        .max(20, "ZIP code is too long (maximum 20 characters)")
+        .optional(),
       dateOfBirth: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid date format",
+          message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15)",
         })
         .optional(),
-      emergencyContactName: z.string().max(150).optional(),
+      emergencyContactName: z
+        .string()
+        .max(150, "Emergency contact name is too long (maximum 150 characters)")
+        .optional(),
       emergencyContactPhone: z
         .string()
         .optional()
         .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
-          message: "Invalid phone number format",
+          message: "Please provide a valid emergency contact phone number (e.g., +1234567890)",
         }),
       // Employee fields
       employeeId: z
         .string()
-        .max(50, "Employee ID must be less than 50 characters")
+        .max(50, "Employee ID is too long (maximum 50 characters)")
         .optional(),
-      departmentId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      departmentId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Department ID must be a whole number")
+            .positive("Department ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
-      positionId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      positionId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Position ID must be a whole number")
+            .positive("Position ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
       reportsTo: uuidSchema.optional().nullable(),
-      roleId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      roleId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Role ID must be a whole number")
+            .positive("Role ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
       startDate: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid date format",
+          message: "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
         })
         .optional(),
       // Bank account fields
       accountHolderName: z
         .string()
-        .max(150, "Account holder name must be less than 150 characters")
+        .max(150, "Account holder name is too long (maximum 150 characters)")
+        .trim()
         .optional(),
       bankName: z
         .string()
-        .max(150, "Bank name must be less than 150 characters")
+        .max(150, "Bank name is too long (maximum 150 characters)")
+        .trim()
         .optional(),
       accountNumber: z
         .string()
-        .max(100, "Account number must be less than 100 characters")
+        .max(100, "Account number is too long (maximum 100 characters)")
+        .trim()
         .optional(),
       routingNumber: z
         .string()
-        .max(100, "Routing number must be less than 100 characters")
+        .max(100, "Routing number is too long (maximum 100 characters)")
+        .trim()
         .optional(),
       accountType: z
-        .enum(["savings", "current", "salary", "checking", "business"], {
-          message:
-            "Account type must be one of: savings, current, salary, checking, business",
-        })
+        .enum(["savings", "current", "salary", "checking", "business"])
         .optional(),
       branchName: z
         .string()
-        .max(150, "Branch name must be less than 150 characters")
+        .max(150, "Branch name is too long (maximum 150 characters)")
+        .trim()
         .optional(),
     }),
   })
@@ -133,7 +177,7 @@ export const createEmployeeSchema = z
     },
     {
       message:
-        "Either userId must be provided, or fullName and email are required to create a new user",
+        "Either 'User ID' must be provided (for existing user), OR both 'Full Name' and 'Email' are required (to create a new user)",
       path: ["body"],
     }
   )
@@ -157,7 +201,7 @@ export const createEmployeeSchema = z
     },
     {
       message:
-        "When providing bank account details, accountHolderName, bankName, accountNumber, and accountType are required",
+        "When adding bank account details, all of these fields are required: Account Holder Name, Bank Name, Account Number, and Account Type",
       path: ["body"],
     }
   );
@@ -175,25 +219,37 @@ export const updateEmployeeSchema = z.object({
       userId: uuidSchema.optional(),
       employeeId: z
         .string()
-        .max(50, "Employee ID must be less than 50 characters")
+        .max(50, "Employee ID is too long (maximum 50 characters)")
         .optional(),
-      departmentId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      departmentId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Department ID must be a whole number")
+            .positive("Department ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
-      positionId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      positionId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Position ID must be a whole number")
+            .positive("Position ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
       reportsTo: uuidSchema.optional().nullable(),
-      roleId: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().positive())
+      roleId: stringToIntOrUndefined
+        .pipe(
+          z
+            .number()
+            .int("Role ID must be a whole number")
+            .positive("Role ID must be a positive number")
+            .optional()
+        )
         .optional()
         .nullable(),
     })
@@ -207,7 +263,7 @@ export const updateEmployeeSchema = z.object({
         data.roleId !== undefined,
       {
         message:
-          "At least one field (userId, employeeId, departmentId, positionId, reportsTo, or roleId) is required",
+          "At least one field must be provided to update: User ID, Employee ID, Department, Position, Reports To, or Role",
       }
     ),
 });

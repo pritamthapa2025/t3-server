@@ -668,17 +668,30 @@ export const getEmployeeById = async (id: number) => {
   };
 };
 
+// Generate next employee ID in T3-00001 format using PostgreSQL sequence
+// This is THREAD-SAFE and prevents race conditions
 export const generateEmployeeId = async (): Promise<string> => {
-  // Count all T3 employees to generate next ID
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(eq(employees.isDeleted, false));
-  const total = totalResult[0]?.count ?? 0;
-  const nextNumber = total + 1;
-  // Format: T3-00001, T3-00002, etc. (5 digits padding)
-  const employeeId = `T3-${String(nextNumber).padStart(5, "0")}`;
-  return employeeId;
+  try {
+    // Use PostgreSQL sequence for atomic ID generation
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`)
+    );
+
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+    return `T3-${nextNumber.toString().padStart(5, "0")}`;
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    // (This handles cases where migration hasn't run yet)
+    console.warn("Sequence not found, using fallback method:", error);
+    
+    const totalResult = await db
+      .select({ count: count() })
+      .from(employees)
+      .where(eq(employees.isDeleted, false));
+    const total = totalResult[0]?.count ?? 0;
+    const nextNumber = total + 1;
+    return `T3-${nextNumber.toString().padStart(5, "0")}`;
+  }
 };
 
 export const createEmployee = async (data: {

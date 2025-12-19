@@ -31,6 +31,8 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
+import { parseDatabaseError, isDatabaseError } from "../utils/database-error-parser.js";
 
 // Get all clients with pagination
 export const getClientsHandler = async (req: Request, res: Response) => {
@@ -247,23 +249,25 @@ export const createClientHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Error creating client", error, req);
 
-    // Handle specific errors
-    if (error.code === "23505") {
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Client with this name already exists",
-      });
-    }
-    if (error.code === "23503") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid reference (organization, account manager, etc.)",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create client",
+      message: "An unexpected error occurred while creating the client",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -395,16 +399,25 @@ export const updateClientHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Error updating client", error, req);
 
-    if (error.code === "23505") {
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Client with this name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update client",
+      message: "An unexpected error occurred while updating the client",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -589,16 +602,25 @@ export const createClientTypeHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Error creating client type", error, req);
 
-    if (error.code === "23505") {
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Client type with this name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create client type",
+      message: "An unexpected error occurred while creating the client type",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -641,16 +663,25 @@ export const createIndustryClassificationHandler = async (
   } catch (error: any) {
     logger.logApiError("Error creating industry classification", error, req);
 
-    if (error.code === "23505") {
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Industry classification with this name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create industry classification",
+      message: "An unexpected error occurred while creating the industry classification",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -693,16 +724,25 @@ export const createDocumentCategoryHandler = async (
   } catch (error: any) {
     logger.logApiError("Error creating document category", error, req);
 
-    if (error.code === "23505") {
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Document category with this name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create document category",
+      message: "An unexpected error occurred while creating the document category",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -823,16 +863,25 @@ export const createClientDocumentHandler = async (
   } catch (error: any) {
     logger.logApiError("Error creating document", error, req);
 
-    if (error.code === "23503") {
-      return res.status(400).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Invalid client ID or category ID",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to upload document",
+      message: "An unexpected error occurred while creating the document",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -1146,16 +1195,25 @@ export const updateClientSettingsHandler = async (
   } catch (error: any) {
     logger.logApiError("Error updating client settings", error, req);
 
-    if (error.code === "23503") {
-      return res.status(400).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Invalid billing contact ID",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update client settings",
+      message: "An unexpected error occurred while updating the client settings",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

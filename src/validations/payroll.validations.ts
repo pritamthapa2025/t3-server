@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid UUID format" });
+const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
 
 // Get payroll dashboard query validation
 export const getPayrollDashboardQuerySchema = z.object({
@@ -62,34 +62,82 @@ export const createPayrollEntrySchema = z.object({
     employeeId: z.number().int().positive(),
     
     // Hours data
-    regularHours: z.number().min(0).max(168), // Max 168 hours per week
-    overtimeHours: z.number().min(0).max(168).default(0),
-    doubleOvertimeHours: z.number().min(0).max(168).default(0),
-    ptoHours: z.number().min(0).max(168).default(0),
-    sickHours: z.number().min(0).max(168).default(0),
-    holidayHours: z.number().min(0).max(168).default(0),
+    regularHours: z
+      .number()
+      .min(0, "Regular hours cannot be negative")
+      .max(168, "Regular hours cannot exceed 168 hours (1 week)"),
+    overtimeHours: z
+      .number()
+      .min(0, "Overtime hours cannot be negative")
+      .max(168, "Overtime hours cannot exceed 168 hours (1 week)")
+      .default(0),
+    doubleOvertimeHours: z
+      .number()
+      .min(0, "Double overtime hours cannot be negative")
+      .max(168, "Double overtime hours cannot exceed 168 hours (1 week)")
+      .default(0),
+    ptoHours: z
+      .number()
+      .min(0, "PTO hours cannot be negative")
+      .max(168, "PTO hours cannot exceed 168 hours (1 week)")
+      .default(0),
+    sickHours: z
+      .number()
+      .min(0, "Sick hours cannot be negative")
+      .max(168, "Sick hours cannot exceed 168 hours (1 week)")
+      .default(0),
+    holidayHours: z
+      .number()
+      .min(0, "Holiday hours cannot be negative")
+      .max(168, "Holiday hours cannot exceed 168 hours (1 week)")
+      .default(0),
 
     // Pay rates
-    hourlyRate: z.number().positive(),
-    overtimeMultiplier: z.number().positive().default(1.5),
-    doubleOvertimeMultiplier: z.number().positive().default(2.0),
-    holidayMultiplier: z.number().positive().default(1.5),
+    hourlyRate: z
+      .number()
+      .positive("Hourly rate must be a positive number"),
+    overtimeMultiplier: z
+      .number()
+      .positive("Overtime multiplier must be a positive number (e.g., 1.5 for time-and-a-half)")
+      .default(1.5),
+    doubleOvertimeMultiplier: z
+      .number()
+      .positive("Double overtime multiplier must be a positive number (e.g., 2.0 for double-time)")
+      .default(2.0),
+    holidayMultiplier: z
+      .number()
+      .positive("Holiday multiplier must be a positive number (e.g., 1.5)")
+      .default(1.5),
 
     // Bonuses
-    bonuses: z.number().min(0).default(0),
+    bonuses: z
+      .number()
+      .min(0, "Bonuses cannot be negative")
+      .default(0),
 
     // Payment details
     paymentMethod: z
-      .enum(["direct_deposit", "check", "cash", "wire_transfer"])
+      .enum(["direct_deposit", "check", "cash", "wire_transfer"], {
+        message: "Payment method must be one of: direct_deposit, check, cash, or wire_transfer"
+      })
       .default("direct_deposit"),
     bankAccountId: uuidSchema.optional(),
-    checkNumber: z.string().max(50).optional(),
+    checkNumber: z
+      .string()
+      .max(50, "Check number is too long (maximum 50 characters)")
+      .optional(),
 
     // Scheduling
-    scheduledDate: z.string().date().optional(),
+    scheduledDate: z
+      .string()
+      .date("Invalid scheduled date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)")
+      .optional(),
 
     // Notes
-    notes: z.string().max(1000).optional(),
+    notes: z
+      .string()
+      .max(1000, "Notes are too long (maximum 1000 characters)")
+      .optional(),
   }),
 });
 
@@ -100,34 +148,84 @@ export const updatePayrollEntrySchema = z.object({
   }),
   body: z.object({
     // Hours data
-    regularHours: z.number().min(0).max(168).optional(),
-    overtimeHours: z.number().min(0).max(168).optional(),
-    doubleOvertimeHours: z.number().min(0).max(168).optional(),
-    ptoHours: z.number().min(0).max(168).optional(),
-    sickHours: z.number().min(0).max(168).optional(),
-    holidayHours: z.number().min(0).max(168).optional(),
+    regularHours: z
+      .number()
+      .min(0, "Regular hours cannot be negative")
+      .max(168, "Regular hours cannot exceed 168 hours (1 week)")
+      .optional(),
+    overtimeHours: z
+      .number()
+      .min(0, "Overtime hours cannot be negative")
+      .max(168, "Overtime hours cannot exceed 168 hours (1 week)")
+      .optional(),
+    doubleOvertimeHours: z
+      .number()
+      .min(0, "Double overtime hours cannot be negative")
+      .max(168, "Double overtime hours cannot exceed 168 hours (1 week)")
+      .optional(),
+    ptoHours: z
+      .number()
+      .min(0, "PTO hours cannot be negative")
+      .max(168, "PTO hours cannot exceed 168 hours (1 week)")
+      .optional(),
+    sickHours: z
+      .number()
+      .min(0, "Sick hours cannot be negative")
+      .max(168, "Sick hours cannot exceed 168 hours (1 week)")
+      .optional(),
+    holidayHours: z
+      .number()
+      .min(0, "Holiday hours cannot be negative")
+      .max(168, "Holiday hours cannot exceed 168 hours (1 week)")
+      .optional(),
 
     // Pay rates
-    hourlyRate: z.number().positive().optional(),
-    overtimeMultiplier: z.number().positive().optional(),
-    doubleOvertimeMultiplier: z.number().positive().optional(),
-    holidayMultiplier: z.number().positive().optional(),
+    hourlyRate: z
+      .number()
+      .positive("Hourly rate must be a positive number")
+      .optional(),
+    overtimeMultiplier: z
+      .number()
+      .positive("Overtime multiplier must be a positive number")
+      .optional(),
+    doubleOvertimeMultiplier: z
+      .number()
+      .positive("Double overtime multiplier must be a positive number")
+      .optional(),
+    holidayMultiplier: z
+      .number()
+      .positive("Holiday multiplier must be a positive number")
+      .optional(),
 
     // Bonuses
-    bonuses: z.number().min(0).optional(),
+    bonuses: z
+      .number()
+      .min(0, "Bonuses cannot be negative")
+      .optional(),
 
     // Payment details
     paymentMethod: z
-      .enum(["direct_deposit", "check", "cash", "wire_transfer"])
+      .enum(["direct_deposit", "check", "cash", "wire_transfer"], {
+        message: "Payment method must be one of: direct_deposit, check, cash, or wire_transfer"
+      })
       .optional(),
     bankAccountId: uuidSchema.optional(),
-    checkNumber: z.string().max(50).optional(),
+    checkNumber: z
+      .string()
+      .max(50, "Check number is too long (maximum 50 characters)")
+      .optional(),
 
     // Scheduling
-    scheduledDate: z.string().date().optional(),
+    scheduledDate: z
+      .string()
+      .date("Invalid scheduled date format. Please use YYYY-MM-DD format")
+      .optional(),
 
     // Notes
-    notes: z.string().max(1000).optional(),
+    notes: z
+      .string()
+      .max(1000, "Notes are too long (maximum 1000 characters)")
+      .optional(),
   }),
 });
 
@@ -144,7 +242,10 @@ export const approvePayrollEntrySchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    notes: z.string().max(500).optional(),
+    notes: z
+      .string()
+      .max(500, "Notes are too long (maximum 500 characters)")
+      .optional(),
   }),
 });
 
@@ -154,7 +255,10 @@ export const rejectPayrollEntrySchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    reason: z.string().min(1).max(500),
+    reason: z
+      .string()
+      .min(1, "Rejection reason is required and cannot be empty")
+      .max(500, "Rejection reason is too long (maximum 500 characters)"),
   }),
 });
 
@@ -199,8 +303,13 @@ export const createPayrollRunSchema = z.object({
   body: z.object({
     organizationId: uuidSchema,
     payPeriodId: uuidSchema,
-    runType: z.enum(["regular", "bonus", "correction"]).default("regular"),
-    notes: z.string().max(1000).optional(),
+    runType: z.enum(["regular", "bonus", "correction"], {
+      message: "Run type must be one of: regular, bonus, or correction"
+    }).default("regular"),
+    notes: z
+      .string()
+      .max(1000, "Notes are too long (maximum 1000 characters)")
+      .optional(),
   }),
 });
 
@@ -210,6 +319,7 @@ export const processPayrollRunSchema = z.object({
     id: uuidSchema,
   }),
 });
+
 
 
 

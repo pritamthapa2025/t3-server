@@ -24,7 +24,6 @@ import {
   clientStatusEnum,
   clientPriorityEnum,
   contactTypeEnum,
-  propertyTypeEnum,
   propertyStatusEnum,
   userOrganizationTypeEnum,
 } from "../enums/org.enums.js";
@@ -495,7 +494,7 @@ export const properties = org.table(
     // Basic Info
     propertyName: varchar("property_name", { length: 255 }).notNull(),
     propertyCode: varchar("property_code", { length: 50 }), // P-001, BLDG-A, etc.
-    propertyType: propertyTypeEnum("property_type").notNull(),
+    propertyType: varchar("property_type", { length: 100 }).notNull(),
     status: propertyStatusEnum("status").notNull().default("active"),
 
     // Address

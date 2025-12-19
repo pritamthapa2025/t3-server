@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid UUID format" });
+const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
 const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
-  message: "Must be a valid numeric string",
+  message: "Must be a valid number (e.g., 100 or 99.99)",
 });
 
 // ============================
@@ -20,18 +20,26 @@ const bidStatusEnum = z.enum([
   "lost",
   "expired",
   "cancelled",
-]);
+], {
+  message: "Status must be one of: draft, in_progress, pending, submitted, accepted, won, rejected, lost, expired, or cancelled"
+});
 
-const bidPriorityEnum = z.enum(["low", "medium", "high", "urgent"]);
+const bidPriorityEnum = z.enum(["low", "medium", "high", "urgent"], {
+  message: "Priority must be one of: low, medium, high, or urgent"
+});
 
-const bidJobTypeEnum = z.enum(["survey", "plan_spec", "design_build"]);
+const bidJobTypeEnum = z.enum(["survey", "plan_spec", "design_build"], {
+  message: "Job type must be one of: survey, plan_spec, or design_build"
+});
 
 const timelineStatusEnum = z.enum([
   "completed",
   "pending",
   "in_progress",
   "cancelled",
-]);
+], {
+  message: "Timeline status must be one of: completed, pending, in_progress, or cancelled"
+});
 
 // ============================
 // Main Bid Validations
@@ -43,12 +51,12 @@ export const getBidsQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
+      .pipe(z.number().int().positive("Page number must be a positive number")),
     limit: z
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
     status: bidStatusEnum.optional(),
     jobType: bidJobTypeEnum.optional(),
     priority: bidPriorityEnum.optional(),
@@ -64,51 +72,137 @@ export const getBidByIdSchema = z.object({
 
 export const createBidSchema = z.object({
   body: z.object({
-    title: z.string().min(1, "Title is required").max(255),
+    title: z
+      .string()
+      .min(1, "Bid title is required and cannot be empty")
+      .max(255, "Bid title is too long (maximum 255 characters)")
+      .trim(),
     jobType: bidJobTypeEnum,
     status: bidStatusEnum.optional().default("draft"),
     priority: bidPriorityEnum.optional().default("medium"),
-    clientName: z.string().max(255).optional(),
-    clientEmail: z.string().email().max(150).optional(),
-    clientPhone: z.string().max(20).optional(),
-    city: z.string().max(100).optional(),
-    superClient: z.string().max(255).optional(),
-    superPrimaryContact: z.string().max(255).optional(),
-    primaryContact: z.string().max(255).optional(),
-    industryClassification: z.string().max(100).optional(),
-    projectName: z.string().max(255).optional(),
+    clientName: z
+      .string()
+      .max(255, "Client name is too long (maximum 255 characters)")
+      .optional(),
+    clientEmail: z
+      .string()
+      .email("Please provide a valid client email address (e.g., client@example.com)")
+      .max(150, "Email address is too long (maximum 150 characters)")
+      .trim()
+      .optional(),
+    clientPhone: z
+      .string()
+      .max(20, "Phone number is too long (maximum 20 characters)")
+      .optional(),
+    city: z
+      .string()
+      .max(100, "City is too long (maximum 100 characters)")
+      .optional(),
+    superClient: z
+      .string()
+      .max(255, "Super client name is too long (maximum 255 characters)")
+      .optional(),
+    superPrimaryContact: z
+      .string()
+      .max(255, "Super primary contact is too long (maximum 255 characters)")
+      .optional(),
+    primaryContact: z
+      .string()
+      .max(255, "Primary contact is too long (maximum 255 characters)")
+      .optional(),
+    industryClassification: z
+      .string()
+      .max(100, "Industry classification is too long (maximum 100 characters)")
+      .optional(),
+    projectName: z
+      .string()
+      .max(255, "Project name is too long (maximum 255 characters)")
+      .optional(),
     siteAddress: z.string().optional(),
-    buildingSuiteNumber: z.string().max(100).optional(),
-    property: z.string().max(255).optional(),
-    acrossValuations: z.string().max(255).optional(),
+    buildingSuiteNumber: z
+      .string()
+      .max(100, "Building/Suite number is too long (maximum 100 characters)")
+      .optional(),
+    property: z
+      .string()
+      .max(255, "Property is too long (maximum 255 characters)")
+      .optional(),
+    acrossValuations: z
+      .string()
+      .max(255, "Across valuations is too long (maximum 255 characters)")
+      .optional(),
     scopeOfWork: z.string().optional(),
     specialRequirements: z.string().optional(),
     description: z.string().optional(),
-    startDate: z.string().datetime().optional(),
-    endDate: z.string().datetime().optional(),
-    plannedStartDate: z.string().datetime().optional(),
-    estimatedCompletion: z.string().datetime().optional(),
-    expiresDate: z.string().datetime().optional(),
-    removalDate: z.string().datetime().optional(),
+    startDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    endDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    plannedStartDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    estimatedCompletion: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    expiresDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    removalDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
     bidAmount: numericStringSchema.optional(),
-    estimatedDuration: z.number().int().positive().optional(),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive")
+      .optional(),
     profitMargin: numericStringSchema.optional(),
-    expiresIn: z.number().int().positive().optional(),
+    expiresIn: z
+      .number()
+      .int("Expires in must be a whole number")
+      .positive("Expires in must be positive")
+      .optional(),
     paymentTerms: z.string().optional(),
-    warrantyPeriod: z.string().max(50).optional(),
-    warrantyPeriodLabor: z.string().max(50).optional(),
+    warrantyPeriod: z
+      .string()
+      .max(50, "Warranty period is too long (maximum 50 characters)")
+      .optional(),
+    warrantyPeriodLabor: z
+      .string()
+      .max(50, "Warranty period labor is too long (maximum 50 characters)")
+      .optional(),
     warrantyDetails: z.string().optional(),
     specialTerms: z.string().optional(),
     exclusions: z.string().optional(),
     proposalBasis: z.string().optional(),
-    referenceDate: z.string().max(50).optional(),
-    templateSelection: z.string().max(100).optional(),
+    referenceDate: z
+      .string()
+      .max(50, "Reference date is too long (maximum 50 characters)")
+      .optional(),
+    templateSelection: z
+      .string()
+      .max(100, "Template selection is too long (maximum 100 characters)")
+      .optional(),
     primaryTeammate: uuidSchema.optional(),
     supervisorManager: uuidSchema.optional(),
     technicianId: uuidSchema.optional(),
     assignedTo: uuidSchema.optional(),
-    qtyNumber: z.string().max(50).optional(),
-    marked: z.string().max(20).optional(),
+    qtyNumber: z
+      .string()
+      .max(50, "Quantity number is too long (maximum 50 characters)")
+      .optional(),
+    marked: z
+      .string()
+      .max(20, "Marked value is too long (maximum 20 characters)")
+      .optional(),
     convertToJob: z.boolean().optional(),
     jobId: uuidSchema.optional(),
   }),
@@ -119,50 +213,137 @@ export const updateBidSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    title: z.string().min(1).max(255).optional(),
+    title: z
+      .string()
+      .min(1, "Bid title cannot be empty")
+      .max(255, "Bid title is too long (maximum 255 characters)")
+      .trim()
+      .optional(),
     status: bidStatusEnum.optional(),
     priority: bidPriorityEnum.optional(),
-    clientName: z.string().max(255).optional(),
-    clientEmail: z.string().email().max(150).optional(),
-    clientPhone: z.string().max(20).optional(),
-    city: z.string().max(100).optional(),
-    superClient: z.string().max(255).optional(),
-    superPrimaryContact: z.string().max(255).optional(),
-    primaryContact: z.string().max(255).optional(),
-    industryClassification: z.string().max(100).optional(),
-    projectName: z.string().max(255).optional(),
+    clientName: z
+      .string()
+      .max(255, "Client name is too long (maximum 255 characters)")
+      .optional(),
+    clientEmail: z
+      .string()
+      .email("Please provide a valid client email address (e.g., client@example.com)")
+      .max(150, "Email address is too long (maximum 150 characters)")
+      .trim()
+      .optional(),
+    clientPhone: z
+      .string()
+      .max(20, "Phone number is too long (maximum 20 characters)")
+      .optional(),
+    city: z
+      .string()
+      .max(100, "City is too long (maximum 100 characters)")
+      .optional(),
+    superClient: z
+      .string()
+      .max(255, "Super client name is too long (maximum 255 characters)")
+      .optional(),
+    superPrimaryContact: z
+      .string()
+      .max(255, "Super primary contact is too long (maximum 255 characters)")
+      .optional(),
+    primaryContact: z
+      .string()
+      .max(255, "Primary contact is too long (maximum 255 characters)")
+      .optional(),
+    industryClassification: z
+      .string()
+      .max(100, "Industry classification is too long (maximum 100 characters)")
+      .optional(),
+    projectName: z
+      .string()
+      .max(255, "Project name is too long (maximum 255 characters)")
+      .optional(),
     siteAddress: z.string().optional(),
-    buildingSuiteNumber: z.string().max(100).optional(),
-    property: z.string().max(255).optional(),
-    acrossValuations: z.string().max(255).optional(),
+    buildingSuiteNumber: z
+      .string()
+      .max(100, "Building/Suite number is too long (maximum 100 characters)")
+      .optional(),
+    property: z
+      .string()
+      .max(255, "Property is too long (maximum 255 characters)")
+      .optional(),
+    acrossValuations: z
+      .string()
+      .max(255, "Across valuations is too long (maximum 255 characters)")
+      .optional(),
     scopeOfWork: z.string().optional(),
     specialRequirements: z.string().optional(),
     description: z.string().optional(),
-    startDate: z.string().datetime().optional(),
-    endDate: z.string().datetime().optional(),
-    plannedStartDate: z.string().datetime().optional(),
-    estimatedCompletion: z.string().datetime().optional(),
-    expiresDate: z.string().datetime().optional(),
-    removalDate: z.string().datetime().optional(),
+    startDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    endDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    plannedStartDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    estimatedCompletion: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    expiresDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
+    removalDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
     bidAmount: numericStringSchema.optional(),
-    estimatedDuration: z.number().int().positive().optional(),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive")
+      .optional(),
     profitMargin: numericStringSchema.optional(),
-    expiresIn: z.number().int().positive().optional(),
+    expiresIn: z
+      .number()
+      .int("Expires in must be a whole number")
+      .positive("Expires in must be positive")
+      .optional(),
     paymentTerms: z.string().optional(),
-    warrantyPeriod: z.string().max(50).optional(),
-    warrantyPeriodLabor: z.string().max(50).optional(),
+    warrantyPeriod: z
+      .string()
+      .max(50, "Warranty period is too long (maximum 50 characters)")
+      .optional(),
+    warrantyPeriodLabor: z
+      .string()
+      .max(50, "Warranty period labor is too long (maximum 50 characters)")
+      .optional(),
     warrantyDetails: z.string().optional(),
     specialTerms: z.string().optional(),
     exclusions: z.string().optional(),
     proposalBasis: z.string().optional(),
-    referenceDate: z.string().max(50).optional(),
-    templateSelection: z.string().max(100).optional(),
+    referenceDate: z
+      .string()
+      .max(50, "Reference date is too long (maximum 50 characters)")
+      .optional(),
+    templateSelection: z
+      .string()
+      .max(100, "Template selection is too long (maximum 100 characters)")
+      .optional(),
     primaryTeammate: uuidSchema.optional(),
     supervisorManager: uuidSchema.optional(),
     technicianId: uuidSchema.optional(),
     assignedTo: uuidSchema.optional(),
-    qtyNumber: z.string().max(50).optional(),
-    marked: z.string().max(20).optional(),
+    qtyNumber: z
+      .string()
+      .max(50, "Quantity number is too long (maximum 50 characters)")
+      .optional(),
+    marked: z
+      .string()
+      .max(20, "Marked value is too long (maximum 20 characters)")
+      .optional(),
     convertToJob: z.boolean().optional(),
     jobId: uuidSchema.optional(),
   }),
@@ -206,7 +387,10 @@ export const createBidMaterialSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    description: z.string().min(1, "Description is required"),
+    description: z
+      .string()
+      .min(1, "Material description is required and cannot be empty")
+      .trim(),
     quantity: numericStringSchema,
     unitCost: numericStringSchema,
     markup: numericStringSchema.optional().default("0"),
@@ -220,7 +404,11 @@ export const updateBidMaterialSchema = z.object({
     materialId: uuidSchema,
   }),
   body: z.object({
-    description: z.string().min(1).optional(),
+    description: z
+      .string()
+      .min(1, "Material description cannot be empty")
+      .trim()
+      .optional(),
     quantity: numericStringSchema.optional(),
     unitCost: numericStringSchema.optional(),
     markup: numericStringSchema.optional(),
@@ -250,9 +438,19 @@ export const createBidLaborSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    role: z.string().min(1, "Role is required").max(100),
-    quantity: z.number().int().positive(),
-    days: z.number().int().positive(),
+    role: z
+      .string()
+      .min(1, "Labor role is required and cannot be empty")
+      .max(100, "Labor role is too long (maximum 100 characters)")
+      .trim(),
+    quantity: z
+      .number()
+      .int("Quantity must be a whole number")
+      .positive("Quantity must be a positive number"),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number"),
     hoursPerDay: numericStringSchema,
     totalHours: numericStringSchema,
     costRate: numericStringSchema,
@@ -268,9 +466,22 @@ export const updateBidLaborSchema = z.object({
     laborId: uuidSchema,
   }),
   body: z.object({
-    role: z.string().min(1).max(100).optional(),
-    quantity: z.number().int().positive().optional(),
-    days: z.number().int().positive().optional(),
+    role: z
+      .string()
+      .min(1, "Labor role cannot be empty")
+      .max(100, "Labor role is too long (maximum 100 characters)")
+      .trim()
+      .optional(),
+    quantity: z
+      .number()
+      .int("Quantity must be a whole number")
+      .positive("Quantity must be a positive number")
+      .optional(),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number")
+      .optional(),
     hoursPerDay: numericStringSchema.optional(),
     totalHours: numericStringSchema.optional(),
     costRate: numericStringSchema.optional(),
@@ -302,12 +513,21 @@ export const createBidTravelSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    employeeName: z.string().max(255).optional(),
-    vehicleName: z.string().max(255).optional(),
+    employeeName: z
+      .string()
+      .max(255, "Employee name is too long (maximum 255 characters)")
+      .optional(),
+    vehicleName: z
+      .string()
+      .max(255, "Vehicle name is too long (maximum 255 characters)")
+      .optional(),
     roundTripMiles: numericStringSchema,
     mileageRate: numericStringSchema,
     vehicleDayRate: numericStringSchema,
-    days: z.number().int().positive(),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number"),
     mileageCost: numericStringSchema,
     vehicleCost: numericStringSchema,
     markup: numericStringSchema.optional().default("0"),
@@ -322,12 +542,22 @@ export const updateBidTravelSchema = z.object({
     travelId: uuidSchema,
   }),
   body: z.object({
-    employeeName: z.string().max(255).optional(),
-    vehicleName: z.string().max(255).optional(),
+    employeeName: z
+      .string()
+      .max(255, "Employee name is too long (maximum 255 characters)")
+      .optional(),
+    vehicleName: z
+      .string()
+      .max(255, "Vehicle name is too long (maximum 255 characters)")
+      .optional(),
     roundTripMiles: numericStringSchema.optional(),
     mileageRate: numericStringSchema.optional(),
     vehicleDayRate: numericStringSchema.optional(),
-    days: z.number().int().positive().optional(),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number")
+      .optional(),
     mileageCost: numericStringSchema.optional(),
     vehicleCost: numericStringSchema.optional(),
     markup: numericStringSchema.optional(),
@@ -352,19 +582,52 @@ export const updateBidSurveyDataSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    buildingNumber: z.string().max(100).optional(),
+    buildingNumber: z
+      .string()
+      .max(100, "Building number is too long (maximum 100 characters)")
+      .optional(),
     siteLocation: z.string().optional(),
-    workType: z.string().max(50).optional(),
+    workType: z
+      .string()
+      .max(50, "Work type is too long (maximum 50 characters)")
+      .optional(),
     hasExistingUnit: z.boolean().optional(),
-    unitTag: z.string().max(100).optional(),
-    unitLocation: z.string().max(255).optional(),
-    make: z.string().max(100).optional(),
-    model: z.string().max(100).optional(),
-    serial: z.string().max(100).optional(),
-    systemType: z.string().max(100).optional(),
-    powerStatus: z.string().max(50).optional(),
-    voltagePhase: z.string().max(50).optional(),
-    overallCondition: z.string().max(100).optional(),
+    unitTag: z
+      .string()
+      .max(100, "Unit tag is too long (maximum 100 characters)")
+      .optional(),
+    unitLocation: z
+      .string()
+      .max(255, "Unit location is too long (maximum 255 characters)")
+      .optional(),
+    make: z
+      .string()
+      .max(100, "Make is too long (maximum 100 characters)")
+      .optional(),
+    model: z
+      .string()
+      .max(100, "Model is too long (maximum 100 characters)")
+      .optional(),
+    serial: z
+      .string()
+      .max(100, "Serial number is too long (maximum 100 characters)")
+      .optional(),
+    systemType: z
+      .string()
+      .max(100, "System type is too long (maximum 100 characters)")
+      .optional(),
+    powerStatus: z
+      .string()
+      .max(50, "Power status is too long (maximum 50 characters)")
+      .optional(),
+    voltagePhase: z
+      .string()
+      .max(50, "Voltage/Phase is too long (maximum 50 characters)")
+      .optional(),
+    overallCondition: z
+      .string()
+      .max(100, "Overall condition is too long (maximum 100 characters)")
+      .optional(),
     siteAccessNotes: z.string().optional(),
     siteConditions: z.string().optional(),
     clientRequirements: z.string().optional(),
@@ -407,11 +670,21 @@ export const createBidTimelineEventSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    event: z.string().min(1, "Event name is required").max(255),
-    eventDate: z.string().datetime(),
+    event: z
+      .string()
+      .min(1, "Timeline event name is required and cannot be empty")
+      .max(255, "Timeline event name is too long (maximum 255 characters)")
+      .trim(),
+    eventDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)"),
     status: timelineStatusEnum.optional().default("pending"),
     description: z.string().optional(),
-    sortOrder: z.number().int().optional().default(0),
+    sortOrder: z
+      .number()
+      .int("Sort order must be a whole number")
+      .optional()
+      .default(0),
   }),
 });
 
@@ -421,11 +694,22 @@ export const updateBidTimelineEventSchema = z.object({
     eventId: uuidSchema,
   }),
   body: z.object({
-    event: z.string().min(1).max(255).optional(),
-    eventDate: z.string().datetime().optional(),
+    event: z
+      .string()
+      .min(1, "Timeline event name cannot be empty")
+      .max(255, "Timeline event name is too long (maximum 255 characters)")
+      .trim()
+      .optional(),
+    eventDate: z
+      .string()
+      .datetime("Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)")
+      .optional(),
     status: timelineStatusEnum.optional(),
     description: z.string().optional(),
-    sortOrder: z.number().int().optional(),
+    sortOrder: z
+      .number()
+      .int("Sort order must be a whole number")
+      .optional(),
   }),
 });
 
@@ -451,7 +735,10 @@ export const createBidNoteSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    note: z.string().min(1, "Note content is required"),
+    note: z
+      .string()
+      .min(1, "Note content is required and cannot be empty")
+      .trim(),
     isInternal: z.boolean().optional().default(true),
   }),
 });
@@ -462,7 +749,11 @@ export const updateBidNoteSchema = z.object({
     noteId: uuidSchema,
   }),
   body: z.object({
-    note: z.string().min(1).optional(),
+    note: z
+      .string()
+      .min(1, "Note content cannot be empty")
+      .trim()
+      .optional(),
     isInternal: z.boolean().optional(),
   }),
 });
@@ -516,17 +807,3 @@ export const updateBidOperatingExpensesSchema = z.object({
     operatingPrice: numericStringSchema.optional(),
   }),
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-

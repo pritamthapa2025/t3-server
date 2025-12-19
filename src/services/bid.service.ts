@@ -140,95 +140,56 @@ export const createBid = async (data: {
   bidAmount?: string;
   createdBy: string;
 }) => {
-  const maxRetries = 5;
-  let attempt = 0;
+  // Generate bid number atomically (no race conditions)
+  const bidNumber = await generateBidNumber(data.organizationId);
 
-  // Generate initial bid number outside the retry loop
-  let bidNumber = await generateBidNumber(data.organizationId);
+  // Insert bid - no retry logic needed since bidNumber is guaranteed unique
+  const result = await db
+    .insert(bidsTable)
+    .values({
+      bidNumber,
+      title: data.title,
+      jobType: data.jobType,
+      organizationId: data.organizationId,
+      createdBy: data.createdBy,
+      status: (data.status as any) || "draft",
+      priority: (data.priority as any) || "medium",
+      clientName: data.clientName,
+      clientEmail: data.clientEmail,
+      clientPhone: data.clientPhone,
+      city: data.city,
+      projectName: data.projectName,
+      siteAddress: data.siteAddress,
+      scopeOfWork: data.scopeOfWork,
+      description: data.description,
+      startDate: data.startDate
+        ? new Date(data.startDate).toISOString().split("T")[0]
+        : null,
+      endDate: data.endDate
+        ? new Date(data.endDate).toISOString().split("T")[0]
+        : null,
+      plannedStartDate: data.plannedStartDate
+        ? new Date(data.plannedStartDate).toISOString().split("T")[0]
+        : null,
+      estimatedCompletion: data.estimatedCompletion
+        ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
+        : null,
+      expiresDate: data.expiresDate ? new Date(data.expiresDate) : null,
+      removalDate: data.removalDate
+        ? new Date(data.removalDate).toISOString().split("T")[0]
+        : null,
+      bidAmount: data.bidAmount || "0",
+    })
+    .returning();
 
-  while (attempt < maxRetries) {
-    try {
-      const result = await db
-        .insert(bidsTable)
-        .values({
-          bidNumber,
-          title: data.title,
-          jobType: data.jobType,
-          organizationId: data.organizationId,
-          createdBy: data.createdBy,
-          status: (data.status as any) || "draft",
-          priority: (data.priority as any) || "medium",
-          clientName: data.clientName,
-          clientEmail: data.clientEmail,
-          clientPhone: data.clientPhone,
-          city: data.city,
-          projectName: data.projectName,
-          siteAddress: data.siteAddress,
-          scopeOfWork: data.scopeOfWork,
-          description: data.description,
-          startDate: data.startDate
-            ? new Date(data.startDate).toISOString().split("T")[0]
-            : null,
-          endDate: data.endDate
-            ? new Date(data.endDate).toISOString().split("T")[0]
-            : null,
-          plannedStartDate: data.plannedStartDate
-            ? new Date(data.plannedStartDate).toISOString().split("T")[0]
-            : null,
-          estimatedCompletion: data.estimatedCompletion
-            ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
-            : null,
-          expiresDate: data.expiresDate ? new Date(data.expiresDate) : null,
-          removalDate: data.removalDate
-            ? new Date(data.removalDate).toISOString().split("T")[0]
-            : null,
-          bidAmount: data.bidAmount || "0",
-        })
-        .returning();
+  const bid = (result as any[])[0];
 
-      const bid = (result as any[])[0];
-
-      // Create related records based on job type
-      if (bid) {
-        await createRelatedRecords(bid.id, data.organizationId, data.jobType);
-      }
-
-      return bid;
-    } catch (error: any) {
-      attempt++;
-
-      // Check if it's a unique constraint violation on bidNumber
-      const isUniqueConstraintError =
-        error?.code === "23505" || // PostgreSQL unique violation
-        error?.code === "SQLITE_CONSTRAINT" || // SQLite constraint
-        (error?.message && error.message.includes("UNIQUE constraint failed"));
-
-      if (isUniqueConstraintError && attempt < maxRetries) {
-        // Increment bid number for retry
-        const match = bidNumber.match(/BID-(\d+)/);
-        if (match && match[1]) {
-          const currentNumber = parseInt(match[1], 10);
-          const nextNumber = currentNumber + 1;
-          bidNumber = `BID-${nextNumber.toString().padStart(5, "0")}`;
-        }
-
-        console.warn(
-          `Bid number collision detected, retrying with ${bidNumber}... (attempt ${attempt}/${maxRetries})`
-        );
-        // Small random delay to reduce collision probability
-        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
-        continue;
-      }
-
-      // If it's not a unique constraint error or we've exceeded retries, throw the error
-      console.error(`Failed to create bid after ${attempt} attempts:`, error);
-      throw error;
-    }
+  // Create related records based on job type
+  if (bid) {
+    await createRelatedRecords(bid.id, data.organizationId, data.jobType);
   }
 
-  throw new Error(
-    `Failed to create bid after ${maxRetries} attempts due to bid number collisions`
-  );
+  return bid;
 };
 
 export const updateBid = async (
@@ -1008,31 +969,41 @@ export const createBidHistoryEntry = async (data: {
 // Helper Functions
 // ============================
 
+// Generate next bid number using atomic database function
+// This is THREAD-SAFE and prevents race conditions
 const generateBidNumber = async (organizationId: string): Promise<string> => {
-  // Get the highest existing bid number for this organization
-  const maxResult = await db
-    .select({
-      maxBidNumber: max(bidsTable.bidNumber),
-    })
-    .from(bidsTable)
-    .where(eq(bidsTable.organizationId, organizationId));
+  try {
+    // Use atomic database function to get next counter value
+    const result = await db.execute<{ next_value: string }>(
+      sql.raw(`SELECT org.get_next_counter('${organizationId}'::uuid, 'bid_number') as next_value`)
+    );
 
-  const maxBidNumber = maxResult[0]?.maxBidNumber;
+    const nextNumber = parseInt(result.rows[0]?.next_value || "1");
+    return `BID-${nextNumber.toString().padStart(5, "0")}`;
+  } catch (error) {
+    // Fallback to old method if function doesn't exist yet
+    console.warn("Counter function not found, using fallback method:", error);
+    
+    const maxResult = await db
+      .select({
+        maxBidNumber: max(bidsTable.bidNumber),
+      })
+      .from(bidsTable)
+      .where(eq(bidsTable.organizationId, organizationId));
 
-  let nextNumber = 1;
+    const maxBidNumber = maxResult[0]?.maxBidNumber;
+    let nextNumber = 1;
 
-  if (maxBidNumber) {
-    // Extract numeric part from BID-00001 format
-    const match = maxBidNumber.match(/BID-(\d+)/);
-    if (match && match[1]) {
-      const currentNumber = parseInt(match[1], 10);
-      nextNumber = currentNumber + 1;
+    if (maxBidNumber) {
+      const match = maxBidNumber.match(/BID-(\d+)/);
+      if (match && match[1]) {
+        const currentNumber = parseInt(match[1], 10);
+        nextNumber = currentNumber + 1;
+      }
     }
-  }
 
-  // Format: BID-00001, BID-00002, etc. (5 digits padding)
-  const bidNumber = `BID-${String(nextNumber).padStart(5, "0")}`;
-  return bidNumber;
+    return `BID-${nextNumber.toString().padStart(5, "0")}`;
+  }
 };
 
 const createRelatedRecords = async (

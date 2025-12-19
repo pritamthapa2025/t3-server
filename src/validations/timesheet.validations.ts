@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid UUID format" });
+const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
 
 // Get timesheets query validation
 export const getTimesheetsQuerySchema = z.object({
@@ -9,12 +9,12 @@ export const getTimesheetsQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
+      .pipe(z.number().int().positive("Page number must be a positive number")),
     limit: z
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
   }),
 });
 
@@ -25,27 +25,27 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
+      .pipe(z.number().int().positive("Page number must be a positive number")),
     limit: z
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
     search: z.string().optional(),
-    employeeId: z.string().optional(), // Filter by specific employee ID (e.g., "T3-00001")
+    employeeId: z.string().optional(),
     dateFrom: z
       .string()
       .optional()
       .refine(
         (val) => !val || !isNaN(new Date(val).getTime()),
-        { message: "Invalid date format for dateFrom" }
+        { message: "Invalid date format for dateFrom. Please use YYYY-MM-DD format" }
       ),
     dateTo: z
       .string()
       .optional()
       .refine(
         (val) => !val || !isNaN(new Date(val).getTime()),
-        { message: "Invalid date format for dateTo" }
+        { message: "Invalid date format for dateTo. Please use YYYY-MM-DD format" }
       ),
   }).refine(
     (data) => {
@@ -55,7 +55,7 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
       return true;
     },
     {
-      message: "dateFrom must be before or equal to dateTo",
+      message: "Start date must be before or equal to end date",
       path: ["dateFrom"],
     }
   ),
@@ -67,53 +67,55 @@ export const getTimesheetByIdSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid timesheet ID")),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
 });
 
 // Create timesheet validation
 export const createTimesheetSchema = z.object({
   body: z.object({
-    employeeId: z.number().int().positive("Employee ID is required"),
+    employeeId: z
+      .number()
+      .int("Employee ID must be a whole number")
+      .positive("Employee ID is required and must be a positive number"),
     sheetDate: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid date format",
+        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
       }),
     clockIn: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid datetime format",
+        message: "Invalid clock-in datetime format. Please use ISO 8601 format (e.g., 2024-01-15T08:00:00Z)",
       }),
     clockOut: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid datetime format",
+        message: "Invalid clock-out datetime format. Please use ISO 8601 format (e.g., 2024-01-15T17:00:00Z)",
       })
-      .optional(), // Now optional since employees can create timesheet without clock-out
+      .optional(),
     breakMinutes: z
       .union([z.number().int(), z.string()])
       .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-      .pipe(z.number().int().nonnegative())
+      .pipe(z.number().int("Break minutes must be a whole number").nonnegative("Break minutes cannot be negative"))
       .optional(),
     totalHours: z
       .union([z.number(), z.string()])
       .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
-      .pipe(z.number().nonnegative())
+      .pipe(z.number().nonnegative("Total hours cannot be negative"))
       .optional(),
     overtimeHours: z
       .union([z.number(), z.string()])
       .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
-      .pipe(z.number().nonnegative())
+      .pipe(z.number().nonnegative("Overtime hours cannot be negative"))
       .optional(),
     notes: z.string().optional(),
     status: z
       .enum(["pending", "submitted", "approved", "rejected"], {
-        message:
-          "Status must be one of: pending, submitted, approved, rejected",
+        message: "Status must be one of: pending, submitted, approved, or rejected"
       })
       .optional(),
     rejectedBy: uuidSchema.optional().nullable(),
@@ -127,52 +129,55 @@ export const updateTimesheetSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid timesheet ID")),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z
     .object({
-      employeeId: z.number().int().positive().optional(),
+      employeeId: z
+        .number()
+        .int("Employee ID must be a whole number")
+        .positive("Employee ID must be a positive number")
+        .optional(),
       sheetDate: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid date format",
+          message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
         })
         .optional(),
       clockIn: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid datetime format",
+          message: "Invalid clock-in datetime format. Please use ISO 8601 format (e.g., 2024-01-15T08:00:00Z)",
         })
         .optional(),
       clockOut: z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid datetime format",
+          message: "Invalid clock-out datetime format. Please use ISO 8601 format (e.g., 2024-01-15T17:00:00Z)",
         })
         .optional(),
       breakMinutes: z
         .union([z.number().int(), z.string()])
         .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().nonnegative())
+        .pipe(z.number().int("Break minutes must be a whole number").nonnegative("Break minutes cannot be negative"))
         .optional(),
       totalHours: z
         .union([z.number(), z.string()])
         .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
-        .pipe(z.number().nonnegative())
+        .pipe(z.number().nonnegative("Total hours cannot be negative"))
         .optional(),
       overtimeHours: z
         .union([z.number(), z.string()])
         .transform((val) => (typeof val === "string" ? parseFloat(val) : val))
-        .pipe(z.number().nonnegative())
+        .pipe(z.number().nonnegative("Overtime hours cannot be negative"))
         .optional(),
       notes: z.string().optional(),
       status: z
         .enum(["pending", "submitted", "approved", "rejected"], {
-          message:
-            "Status must be one of: pending, submitted, approved, rejected",
+          message: "Status must be one of: pending, submitted, approved, or rejected"
         })
         .optional(),
       rejectedBy: uuidSchema.optional().nullable(),
@@ -192,7 +197,7 @@ export const updateTimesheetSchema = z.object({
         data.rejectedBy !== undefined ||
         data.approvedBy !== undefined,
       {
-        message: "At least one field is required for update",
+        message: "At least one field must be provided to update the timesheet",
       }
     ),
 });
@@ -200,19 +205,22 @@ export const updateTimesheetSchema = z.object({
 // Clock-in validation
 export const clockInSchema = z.object({
   body: z.object({
-    employeeId: z.number().int().positive("Employee ID is required"),
+    employeeId: z
+      .number()
+      .int("Employee ID must be a whole number")
+      .positive("Employee ID is required and must be a positive number"),
     clockInDate: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid date format",
+        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
       }),
     clockInTime: z
       .string()
       .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-        message: "Invalid time format. Expected HH:MM (24-hour format)",
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
       }),
-    jobIds: z.array(uuidSchema).optional(), // Array of job IDs to assign
+    jobIds: z.array(uuidSchema).optional(),
     notes: z.string().optional(),
   }),
 });
@@ -220,24 +228,27 @@ export const clockInSchema = z.object({
 // Clock-out validation
 export const clockOutSchema = z.object({
   body: z.object({
-    employeeId: z.number().int().positive("Employee ID is required"),
+    employeeId: z
+      .number()
+      .int("Employee ID must be a whole number")
+      .positive("Employee ID is required and must be a positive number"),
     clockOutDate: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid date format",
+        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
       }),
     clockOutTime: z
       .string()
       .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-        message: "Invalid time format. Expected HH:MM (24-hour format)",
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
       }),
-    jobIds: z.array(uuidSchema).optional(), // Array of job IDs to assign
+    jobIds: z.array(uuidSchema).optional(),
     notes: z.string().optional(),
     breakMinutes: z
       .union([z.number().int(), z.string()])
       .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-      .pipe(z.number().int().nonnegative())
+      .pipe(z.number().int("Break minutes must be a whole number").nonnegative("Break minutes cannot be negative"))
       .optional(),
   }),
 });
@@ -248,7 +259,7 @@ export const deleteTimesheetSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid timesheet ID")),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
 });
 
@@ -258,7 +269,7 @@ export const approveTimesheetSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid timesheet ID")),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z.object({
     approvedBy: uuidSchema,
@@ -272,14 +283,14 @@ export const rejectTimesheetSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid timesheet ID")),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z.object({
     rejectedBy: uuidSchema,
     rejectionReason: z
       .string()
-      .min(1, "Rejection reason is required")
-      .max(500, "Rejection reason must be under 500 characters"),
+      .min(1, "Rejection reason is required and cannot be empty")
+      .max(500, "Rejection reason is too long (maximum 500 characters)"),
     notes: z.string().optional(),
   }),
 });
@@ -294,7 +305,7 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
           const date = new Date(val);
           return !isNaN(date.getTime());
         },
-        { message: "Invalid date format for weekStartDate. Expected YYYY-MM-DD" }
+        { message: "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)" }
       )
       .refine(
         (val) => {
@@ -302,7 +313,7 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
           // Check if it's a Monday (0 = Sunday, 1 = Monday)
           return date.getDay() === 1;
         },
-        { message: "weekStartDate must be a Monday" }
+        { message: "Week start date must be a Monday (start of the work week)" }
       ),
     search: z.string().optional(),
   }),
@@ -316,20 +327,20 @@ export const getMyTimesheetsQuerySchema = z.object({
       .optional()
       .refine(
         (val) => {
-          if (!val) return true; // Optional field
+          if (!val) return true;
           const date = new Date(val);
           return !isNaN(date.getTime());
         },
-        { message: "Invalid date format for weekStartDate. Expected YYYY-MM-DD" }
+        { message: "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)" }
       )
       .refine(
         (val) => {
-          if (!val) return true; // Optional field
+          if (!val) return true;
           const date = new Date(val);
           // Check if it's a Monday (0 = Sunday, 1 = Monday)
           return date.getDay() === 1;
         },
-        { message: "weekStartDate must be a Monday" }
+        { message: "Week start date must be a Monday (start of the work week)" }
       ),
     search: z.string().optional(),
   }),

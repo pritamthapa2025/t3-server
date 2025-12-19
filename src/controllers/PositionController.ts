@@ -14,6 +14,7 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { parseDatabaseError, isDatabaseError } from "../utils/database-error-parser.js";
 
 export const getPositionsHandler = async (req: Request, res: Response) => {
   try {
@@ -103,11 +104,27 @@ export const createPositionHandler = async (req: Request, res: Response) => {
     return res.status(201).send(position);
   } catch (error: any) {
     logger.logApiError("Error creating position", error, req);
-    // Fallback: handle race condition if two requests create simultaneously
-    if (error?.code === "23505") {
-      return res.status(409).send("Position name already exists");
+    
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
+      });
     }
-    return res.status(500).send("Internal server error");
+    
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while creating the position",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
@@ -173,11 +190,27 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
     return res.status(200).send(position);
   } catch (error: any) {
     logger.logApiError("Error updating position", error, req);
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res.status(409).send("Position name already exists");
+    
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
+      });
     }
-    return res.status(500).send("Internal server error");
+    
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while updating the position",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 

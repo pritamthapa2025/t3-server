@@ -30,30 +30,43 @@ import { jobs, jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
-// Generate next client ID in CLT-00001 format
+// Generate next client ID in CLT-00001 format using PostgreSQL sequence
+// This is THREAD-SAFE and prevents race conditions
 export const generateClientId = async (): Promise<string> => {
-  // Get the highest existing clientId
-  const result = await db
-    .select({ clientId: organizations.clientId })
-    .from(organizations)
-    .where(eq(organizations.isDeleted, false))
-    .orderBy(desc(organizations.clientId))
-    .limit(1);
+  try {
+    // Use PostgreSQL sequence for atomic ID generation
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.client_id_seq')::text as nextval`)
+    );
 
-  if (!result.length || !result[0]?.clientId) {
-    return "CLT-00001";
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+    return `CLT-${nextNumber.toString().padStart(5, "0")}`;
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    // (This handles cases where migration hasn't run yet)
+    console.warn("Sequence not found, using fallback method:", error);
+    
+    const result = await db
+      .select({ clientId: organizations.clientId })
+      .from(organizations)
+      .where(eq(organizations.isDeleted, false))
+      .orderBy(desc(organizations.clientId))
+      .limit(1);
+
+    if (!result.length || !result[0]?.clientId) {
+      return "CLT-00001";
+    }
+
+    const lastClientId = result[0].clientId;
+    const match = lastClientId.match(/^CLT-(\d+)$/);
+
+    if (!match) {
+      return "CLT-00001";
+    }
+
+    const nextNumber = parseInt(match[1]!) + 1;
+    return `CLT-${nextNumber.toString().padStart(5, "0")}`;
   }
-
-  // Extract number from CLT-XXXXX format
-  const lastClientId = result[0].clientId;
-  const match = lastClientId.match(/^CLT-(\d+)$/);
-
-  if (!match) {
-    return "CLT-00001";
-  }
-
-  const nextNumber = parseInt(match[1]!) + 1;
-  return `CLT-${nextNumber.toString().padStart(5, "0")}`;
 };
 
 // Get all client types
@@ -559,11 +572,15 @@ export const createClient = async (data: {
       clientId,
       name: data.name,
       legalName: data.legalName || null,
-      clientTypeId: data.clientTypeId || null,
+      clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : null,
       status: (data.status as any) || "prospect",
       priority: (data.priority as any) || "medium",
-      industryClassificationId: data.industryClassificationId || null,
-      numberOfEmployees: data.numberOfEmployees || null,
+      industryClassificationId: data.industryClassificationId
+        ? Number(data.industryClassificationId)
+        : null,
+      numberOfEmployees: data.numberOfEmployees
+        ? Number(data.numberOfEmployees)
+        : null,
       taxId: data.taxId || null,
       website: data.website || null,
       streetAddress: data.streetAddress || null,

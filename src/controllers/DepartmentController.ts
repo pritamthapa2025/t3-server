@@ -15,6 +15,7 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { parseDatabaseError, isDatabaseError } from "../utils/database-error-parser.js";
 
 // Departments are T3 internal - no organization validation needed
 // Access control is based on user roles/permissions
@@ -131,16 +132,26 @@ export const createDepartmentHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Error creating department", error, req);
-    // Fallback: handle race condition if two requests create simultaneously
-    if (error?.code === "23505") {
-      return res.status(409).json({
+    
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Department name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
+    
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while creating the department",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -216,16 +227,26 @@ export const updateDepartmentHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Error updating department", error, req);
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res.status(409).json({
+    
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Department name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
+    
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while updating the department",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

@@ -3,23 +3,35 @@ import { z } from "zod";
 // Login validation
 export const loginSchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
-    password: z.string().min(1, "Password is required"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address (e.g., john@example.com)")
+      .trim()
+      .toLowerCase(),
+    password: z
+      .string()
+      .min(1, "Password is required and cannot be empty"),
   }),
 });
 
 // Verify 2FA validation
 export const verify2FASchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
     code: z
       .union([z.string(), z.number()])
       .transform((val) => String(val))
       .pipe(
         z
           .string()
-          .length(6, "2FA code must be 6 digits")
-          .regex(/^\d+$/, "2FA code must contain only digits")
+          .length(6, "2FA code must be exactly 6 digits")
+          .regex(/^\d+$/, "2FA code must contain only numbers (0-9)")
       ),
   }),
 });
@@ -27,29 +39,39 @@ export const verify2FASchema = z.object({
 // Request password reset validation
 export const requestPasswordResetSchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required to reset password")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
   }),
 });
 
 // Reset password validation
 export const resetPasswordSchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
     otp: z
       .union([z.string(), z.number()])
       .transform((val) => String(val))
       .pipe(
         z
           .string()
-          .length(6, "OTP must be 6 digits")
-          .regex(/^\d+$/, "OTP must contain only digits")
+          .length(6, "OTP code must be exactly 6 digits")
+          .regex(/^\d+$/, "OTP code must contain only numbers (0-9)")
       ),
     newPassword: z
       .string()
-      .min(8, "New password must be at least 8 characters")
+      .min(8, "Password must be at least 8 characters long")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        "Password must contain at least one uppercase letter (A-Z), one lowercase letter (a-z), and one number (0-9)"
       ),
   }),
 });
@@ -68,15 +90,15 @@ export const changePasswordSchema = z.object({
       .pipe(
         z
           .string()
-          .length(6, "OTP must be 6 digits")
-          .regex(/^\d+$/, "OTP must contain only digits")
+          .length(6, "OTP code must be exactly 6 digits")
+          .regex(/^\d+$/, "OTP code must contain only numbers (0-9)")
       ),
     newPassword: z
       .string()
-      .min(8, "New password must be at least 8 characters")
+      .min(8, "Password must be at least 8 characters long")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        "Password must contain at least one uppercase letter (A-Z), one lowercase letter (a-z), and one number (0-9)"
       ),
   }),
 });
@@ -84,14 +106,24 @@ export const changePasswordSchema = z.object({
 // Resend 2FA validation
 export const resend2FASchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
   }),
 });
 
 // Resend password reset OTP validation
 export const resendPasswordResetOTPSchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
   }),
 });
 
@@ -103,15 +135,20 @@ export const resendChangePasswordOTPSchema = z.object({
 // Verify reset token validation (first step of password reset)
 export const verifyResetTokenSchema = z.object({
   body: z.object({
-    email: z.email("Invalid email format"),
+    email: z
+      .string()
+      .min(1, "Email address is required")
+      .email("Please provide a valid email address")
+      .trim()
+      .toLowerCase(),
     otp: z
       .union([z.string(), z.number()])
       .transform((val) => String(val))
       .pipe(
         z
           .string()
-          .length(6, "OTP must be 6 digits")
-          .regex(/^\d+$/, "OTP must contain only digits")
+          .length(6, "OTP code must be exactly 6 digits")
+          .regex(/^\d+$/, "OTP code must contain only numbers (0-9)")
       ),
   }),
 });
@@ -119,13 +156,15 @@ export const verifyResetTokenSchema = z.object({
 // Confirm password reset validation (second step of password reset)
 export const confirmPasswordResetSchema = z.object({
   body: z.object({
-    verificationToken: z.string().min(1, "Verification token is required"),
+    verificationToken: z
+      .string()
+      .min(1, "Verification token is required and cannot be empty"),
     newPassword: z
       .string()
-      .min(8, "New password must be at least 8 characters")
+      .min(8, "Password must be at least 8 characters long")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        "Password must contain at least one uppercase letter (A-Z), one lowercase letter (a-z), and one number (0-9)"
       ),
   }),
 });
@@ -133,13 +172,15 @@ export const confirmPasswordResetSchema = z.object({
 // Setup new password validation (for new users with token)
 export const setupNewPasswordSchema = z.object({
   body: z.object({
-    token: z.string().min(1, "Setup token is required"),
+    token: z
+      .string()
+      .min(1, "Setup token is required and cannot be empty"),
     newPassword: z
       .string()
-      .min(8, "Password must be at least 8 characters")
+      .min(8, "Password must be at least 8 characters long")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        "Password must contain at least one uppercase letter (A-Z), one lowercase letter (a-z), and one number (0-9)"
       ),
   }),
 });

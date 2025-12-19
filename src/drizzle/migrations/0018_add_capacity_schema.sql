@@ -278,3 +278,4 @@ CREATE INDEX IF NOT EXISTS "idx_capacity_templates_day" ON "org"."capacity_plann
 
 
 
+

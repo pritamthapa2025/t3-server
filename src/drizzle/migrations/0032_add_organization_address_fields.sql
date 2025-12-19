@@ -10,3 +10,4 @@ ALTER TABLE "org"."organizations" ADD COLUMN "zip_code" varchar(20);
 -- Add index for city and state lookup
 CREATE INDEX IF NOT EXISTS "idx_orgs_city_state" ON "org"."organizations" USING btree ("city","state");
 
+
