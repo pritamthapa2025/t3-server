@@ -727,6 +727,9 @@ export const updateEmployee = async (
     departmentId?: number;
     positionId?: number;
     reportsTo?: string;
+    status?: "available" | "in_field" | "on_leave" | "terminated" | "suspended";
+    startDate?: Date;
+    endDate?: Date | null;
   }
 ) => {
   const updateData: {
@@ -735,6 +738,9 @@ export const updateEmployee = async (
     departmentId?: number | null;
     positionId?: number | null;
     reportsTo?: string | null;
+    status?: "available" | "in_field" | "on_leave" | "terminated" | "suspended";
+    startDate?: Date | null;
+    endDate?: Date | null;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -754,6 +760,15 @@ export const updateEmployee = async (
   }
   if (data.reportsTo !== undefined) {
     updateData.reportsTo = data.reportsTo || null;
+  }
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+  if (data.startDate !== undefined) {
+    updateData.startDate = data.startDate || null;
+  }
+  if (data.endDate !== undefined) {
+    updateData.endDate = data.endDate || null;
   }
 
   const [employee] = await db

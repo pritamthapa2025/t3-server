@@ -216,11 +216,7 @@ export const updateEmployeeSchema = z.object({
   }),
   body: z
     .object({
-      userId: uuidSchema.optional(),
-      employeeId: z
-        .string()
-        .max(50, "Employee ID is too long (maximum 50 characters)")
-        .optional(),
+      // Employee fields (employeeId excluded as per user request)
       departmentId: stringToIntOrUndefined
         .pipe(
           z
@@ -252,18 +248,112 @@ export const updateEmployeeSchema = z.object({
         )
         .optional()
         .nullable(),
+      status: z
+        .enum(["available", "in_field", "on_leave", "terminated", "suspended"])
+        .optional(),
+      startDate: z
+        .union([z.string(), z.date()])
+        .transform((val) => (typeof val === "string" ? new Date(val) : val))
+        .refine((val) => !isNaN(val.getTime()), {
+          message: "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
+        })
+        .optional(),
+      endDate: z
+        .union([z.string(), z.date(), z.null()])
+        .transform((val) => 
+          val === null || val === undefined ? null : 
+          typeof val === "string" ? new Date(val) : val
+        )
+        .refine((val) => val === null || !isNaN(val.getTime()), {
+          message: "Invalid end date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)",
+        })
+        .optional()
+        .nullable(),
+      
+      // User fields (from General Information section)
+      fullName: z
+        .string()
+        .min(1, "Full name is required and cannot be empty")
+        .max(150, "Full name is too long (maximum 150 characters)")
+        .trim()
+        .optional(),
+      email: z
+        .string()
+        .email("Please provide a valid email address (e.g., john@example.com)")
+        .trim()
+        .toLowerCase()
+        .optional(),
+      phone: z
+        .string()
+        .optional()
+        .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
+          message: "Please provide a valid phone number (e.g., +1234567890)",
+        }),
+      address: z
+        .string()
+        .max(255, "Address is too long (maximum 255 characters)")
+        .optional(),
+      city: z
+        .string()
+        .max(100, "City is too long (maximum 100 characters)")
+        .optional(),
+      state: z
+        .string()
+        .max(50, "State is too long (maximum 50 characters)")
+        .optional(),
+      zipCode: z
+        .string()
+        .max(20, "ZIP code is too long (maximum 20 characters)")
+        .optional(),
+      
+      // Bank account fields (from Payroll Information section)
+      accountHolderName: z
+        .string()
+        .max(150, "Account holder name is too long (maximum 150 characters)")
+        .trim()
+        .optional(),
+      bankName: z
+        .string()
+        .max(150, "Bank name is too long (maximum 150 characters)")
+        .trim()
+        .optional(),
+      accountNumber: z
+        .string()
+        .max(100, "Account number is too long (maximum 100 characters)")
+        .trim()
+        .optional(),
+      routingNumber: z
+        .string()
+        .max(100, "Routing number is too long (maximum 100 characters)")
+        .trim()
+        .optional(),
+      accountType: z
+        .enum(["savings", "current", "salary", "checking", "business"])
+        .optional(),
     })
     .refine(
       (data) =>
-        data.userId !== undefined ||
-        data.employeeId !== undefined ||
         data.departmentId !== undefined ||
         data.positionId !== undefined ||
         data.reportsTo !== undefined ||
-        data.roleId !== undefined,
+        data.roleId !== undefined ||
+        data.status !== undefined ||
+        data.startDate !== undefined ||
+        data.endDate !== undefined ||
+        data.fullName !== undefined ||
+        data.email !== undefined ||
+        data.phone !== undefined ||
+        data.address !== undefined ||
+        data.city !== undefined ||
+        data.state !== undefined ||
+        data.zipCode !== undefined ||
+        data.accountHolderName !== undefined ||
+        data.bankName !== undefined ||
+        data.accountNumber !== undefined ||
+        data.routingNumber !== undefined ||
+        data.accountType !== undefined,
       {
-        message:
-          "At least one field must be provided to update: User ID, Employee ID, Department, Position, Reports To, or Role",
+        message: "At least one field must be provided to update",
       }
     ),
 });

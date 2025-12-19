@@ -12,12 +12,17 @@ import {
   createUser,
   deleteUser,
   getUserById,
+  updateUser,
 } from "../services/user.service.js";
 import { getDepartmentById } from "../services/department.service.js";
 import { getPositionById } from "../services/position.service.js";
 import { getRoleById, assignRoleToUser } from "../services/role.service.js";
 import { hashPassword } from "../utils/hash.js";
-import { createBankAccount } from "../services/bankAccount.service.js";
+import {
+  createBankAccount,
+  getPrimaryBankAccount,
+  updateBankAccount,
+} from "../services/bankAccount.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
@@ -454,8 +459,30 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { userId, employeeId, departmentId, positionId, reportsTo, roleId } =
-      req.body;
+    const {
+      // Employee fields (employeeId excluded as per user request)
+      departmentId,
+      positionId,
+      reportsTo,
+      roleId,
+      status,
+      startDate,
+      endDate,
+      // User fields
+      fullName,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      zipCode,
+      // Bank account fields
+      accountHolderName,
+      bankName,
+      accountNumber,
+      routingNumber,
+      accountType,
+    } = req.body;
 
     // Get the employee to find the userId
     const existingEmployee = await getEmployeeById(id);
@@ -466,16 +493,26 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Get the user ID for updating user and bank account data
+    const userId = existingEmployee.user?.id;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee has no associated user account",
+      });
+    }
+
     // Pre-validate unique fields before attempting to update
     const uniqueFieldChecks = [];
 
-    // Check employeeId uniqueness (if provided and different from current)
-    if (employeeId && employeeId !== existingEmployee.employeeId) {
+    // Check email uniqueness (if provided and different from current)
+    if (email && email !== existingEmployee.user?.email) {
       uniqueFieldChecks.push({
-        field: "employeeId",
-        value: employeeId,
-        checkFunction: () => checkEmployeeIdExists(employeeId, id),
-        message: `Employee ID '${employeeId}' is already in use`,
+        field: "email",
+        value: email,
+        checkFunction: () => checkEmailExists(email, userId),
+        message: `An account with email '${email}' already exists`,
       });
     }
 
@@ -496,43 +533,140 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Update employee data
-    const employee = await updateEmployee(id, {
-      userId,
-      employeeId,
-      departmentId,
-      positionId,
-      reportsTo,
-    });
-
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
-    }
-
-    // Update role if roleId is provided and employee has a user
-    if (roleId !== undefined && roleId !== null && existingEmployee.user?.id) {
-      try {
-        await assignRoleToUser(existingEmployee.user.id, roleId);
-      } catch (roleError: any) {
-        logger.logApiError("Failed to assign role to user", roleError, req);
-        // Don't fail the entire update if only role assignment fails
-        // Return success but note the role assignment issue
-        return res.status(200).json({
-          success: true,
-          data: employee,
-          message: "Employee updated successfully, but role assignment failed",
-          warning: "Role could not be assigned to user",
+    // Validate departmentId if provided
+    if (departmentId !== undefined && departmentId !== null) {
+      const department = await getDepartmentById(departmentId);
+      if (!department) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid department ID",
         });
       }
     }
 
+    // Validate positionId if provided
+    if (positionId !== undefined && positionId !== null) {
+      const position = await getPositionById(positionId);
+      if (!position) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid position ID",
+        });
+      }
+    }
+
+    // Validate reportsTo (user ID) if provided
+    if (reportsTo !== undefined && reportsTo !== null) {
+      const manager = await getUserById(reportsTo);
+      if (!manager) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid reportsTo user ID",
+        });
+      }
+    }
+
+    // Update employee data
+    const employeeUpdateData: any = {};
+    if (departmentId !== undefined)
+      employeeUpdateData.departmentId = departmentId;
+    if (positionId !== undefined) employeeUpdateData.positionId = positionId;
+    if (reportsTo !== undefined) employeeUpdateData.reportsTo = reportsTo;
+    if (status !== undefined) employeeUpdateData.status = status;
+    if (startDate !== undefined)
+      employeeUpdateData.startDate = startDate ? new Date(startDate) : null;
+    if (endDate !== undefined)
+      employeeUpdateData.endDate = endDate ? new Date(endDate) : null;
+
+    let employee = null;
+    if (Object.keys(employeeUpdateData).length > 0) {
+      employee = await updateEmployee(id, employeeUpdateData);
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found",
+        });
+      }
+    }
+
+    // Update user data if any user fields are provided
+    const userUpdateData: any = {};
+    if (fullName !== undefined) userUpdateData.fullName = fullName;
+    if (email !== undefined) userUpdateData.email = email;
+    if (phone !== undefined) userUpdateData.phone = phone;
+    if (address !== undefined) userUpdateData.address = address;
+    if (city !== undefined) userUpdateData.city = city;
+    if (state !== undefined) userUpdateData.state = state;
+    if (zipCode !== undefined) userUpdateData.zipCode = zipCode;
+
+    if (Object.keys(userUpdateData).length > 0) {
+      try {
+        await updateUser(userId, userUpdateData);
+      } catch (userError: any) {
+        logger.logApiError("Failed to update user", userError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update user information",
+        });
+      }
+    }
+
+    // Update bank account if any bank fields are provided
+    const bankUpdateData: any = {};
+    if (accountHolderName !== undefined)
+      bankUpdateData.accountHolderName = accountHolderName;
+    if (bankName !== undefined) bankUpdateData.bankName = bankName;
+    if (accountNumber !== undefined)
+      bankUpdateData.accountNumber = accountNumber;
+    if (routingNumber !== undefined)
+      bankUpdateData.routingNumber = routingNumber;
+    if (accountType !== undefined) bankUpdateData.accountType = accountType;
+
+    if (Object.keys(bankUpdateData).length > 0) {
+      try {
+        // Check if primary bank account exists
+        const existingBankAccount = await getPrimaryBankAccount(userId);
+
+        if (existingBankAccount) {
+          // Update existing bank account
+          await updateBankAccount(userId, bankUpdateData);
+        } else {
+          // Create new bank account if all required fields are provided
+          if (accountHolderName && bankName && accountNumber && accountType) {
+            await createBankAccount({
+              userId,
+              accountHolderName,
+              bankName,
+              accountNumber,
+              routingNumber,
+              accountType,
+              isPrimary: true,
+            });
+          }
+        }
+      } catch (bankError: any) {
+        logger.logApiError("Failed to update bank account", bankError, req);
+        // Don't fail the entire update if only bank account update fails
+      }
+    }
+
+    // Update role if roleId is provided
+    if (roleId !== undefined && roleId !== null) {
+      try {
+        await assignRoleToUser(userId, roleId);
+      } catch (roleError: any) {
+        logger.logApiError("Failed to assign role to user", roleError, req);
+        // Don't fail the entire update if only role assignment fails
+      }
+    }
+
+    // Get updated employee data
+    const updatedEmployee = await getEmployeeById(id);
+
     logger.info("Employee updated successfully");
     return res.status(200).json({
       success: true,
-      data: employee,
+      data: updatedEmployee,
       message: "Employee updated successfully",
     });
   } catch (error: any) {
