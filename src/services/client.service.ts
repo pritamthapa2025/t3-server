@@ -263,6 +263,7 @@ export const getClients = async (
         id: client.id,
         name: client.name,
         status: client.status,
+        logo: client.logo,
         address: {
           streetAddress: client.streetAddress,
           city: client.city,
@@ -425,6 +426,7 @@ export const getClientById = async (id: string) => {
     clientTypeName: client.clientTypeName,
     status: client.status,
     priority: client.priority,
+    logo: client.logo,
     industryClassificationId: client.industryClassificationId,
     industryName: client.industryName,
     taxId: client.taxId,
