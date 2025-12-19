@@ -1808,9 +1808,9 @@ export const updateClientDocumentHandler = async (
     const file = req.file;
     if (file) {
       // Delete old file from DigitalOcean if it exists
-      if (currentDocument.document.filePath) {
+      if (currentDocument.filePath) {
         try {
-          await deleteFromSpaces(currentDocument.document.filePath);
+          await deleteFromSpaces(currentDocument.filePath);
           logger.info("Old document file deleted from DigitalOcean Spaces");
         } catch (error) {
           logger.logApiError("Error deleting old document file from storage", error, req);
@@ -1900,9 +1900,9 @@ export const deleteClientDocumentHandler = async (
     }
 
     // Delete file from DigitalOcean Spaces first
-    if (currentDocument.document.filePath) {
+    if (currentDocument.filePath) {
       try {
-        const deleted = await deleteFromSpaces(currentDocument.document.filePath);
+        const deleted = await deleteFromSpaces(currentDocument.filePath);
         if (deleted) {
           logger.info("Document file deleted from DigitalOcean Spaces");
         }
