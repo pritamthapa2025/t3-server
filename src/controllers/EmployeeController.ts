@@ -27,6 +27,11 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
+import {
+  parseDatabaseError,
+  isDatabaseError,
+} from "../utils/database-error-parser.js";
 
 // Remove organization validation - all employees work for T3
 // Access control will be based on user roles/permissions instead
@@ -407,39 +412,27 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      const detail = error.detail || "";
-      let message = "Email or employee ID already exists";
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
 
-      // Provide more specific error message based on constraint
-      if (detail.includes("email") || error.constraint?.includes("email")) {
-        message = "An account with this email already exists";
-      } else if (
-        detail.includes("employee_id") ||
-        error.constraint?.includes("employee_id")
-      ) {
-        message = "This employee ID is already in use";
-      }
-
-      return res.status(409).json({
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: message,
-        detail: process.env.NODE_ENV === "development" ? detail : undefined,
-      });
-    }
-    if (error.code === "23503") {
-      // Foreign key constraint violation
-      return res.status(400).json({
-        success: false,
-        message: "Invalid department, position, or reportsTo reference",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        // Include technical details in development mode
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
-    // Return more helpful error message
+    // Fallback for non-database errors
     const errorMessage = error.message?.includes("duplicate key")
       ? "A record with this information already exists"
-      : "Internal server error";
+      : "An unexpected error occurred while creating the employee";
 
     return res.status(500).json({
       success: false,
@@ -544,16 +537,28 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Error updating employee", error, req);
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res.status(409).json({
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Employee ID already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while updating the employee",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

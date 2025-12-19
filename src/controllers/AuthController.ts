@@ -25,6 +25,11 @@ import {
   updatePassword,
 } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
+import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
+import {
+  parseDatabaseError,
+  isDatabaseError,
+} from "../utils/database-error-parser.js";
 
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
@@ -33,15 +38,15 @@ export const loginUserHandler = async (req: Request, res: Response) => {
     const user = await getUserByEmail(email);
     if (!user) {
       return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+        .status(401)
+        .json({ success: false, message: ErrorMessages.invalidCredentials() });
     }
 
     const valid = await comparePassword(password, user.passwordHash);
     if (!valid) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid credentials" });
+        .json({ success: false, message: ErrorMessages.invalidCredentials() });
     }
 
     // generate and store 2FA code (encrypted in Redis)
@@ -60,7 +65,11 @@ export const loginUserHandler = async (req: Request, res: Response) => {
       .json({ success: true, message: "2FA code sent to email" });
   } catch (err: any) {
     logger.logApiError("Login error", err, req);
-    return res.status(500).json({ success: false, message: "Login failed" });
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to process login request. Please try again or contact support.",
+    });
   }
 };
 
@@ -75,22 +84,26 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
     if (!/^\d{6}$/.test(codeString)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid 2FA code format. Code must be exactly 6 digits",
+        message:
+          "Invalid 2FA code format. Please enter a 6-digit code containing only numbers.",
       });
     }
 
     const valid = await verify2FACode(email, codeString);
     if (!valid) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid 2FA code" });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid or expired 2FA code. Please request a new code if needed.",
+      });
     }
 
     const user = await getUserByEmail(email);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: ErrorMessages.notFound("User"),
+      });
     }
 
     // Fetch user's role

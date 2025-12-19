@@ -7,12 +7,12 @@ export const getDepartmentsQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
+      .pipe(z.number().int().positive("Page number must be a positive number")),
     limit: z
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
   }),
 });
 
@@ -22,7 +22,7 @@ export const getDepartmentByIdSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid department ID")),
+      .pipe(z.number().int().positive("Department ID must be a valid positive number")),
   }),
 });
 
@@ -30,18 +30,21 @@ export const getDepartmentByIdSchema = z.object({
 const positionPayBandSchema = z.object({
   positionTitle: z
     .string()
-    .min(1, "Position title is required")
-    .max(100, "Position title must be less than 100 characters"),
-  payType: z.enum(
-    ["Hourly", "Salary"],
-    "Pay type must be either 'Hourly' or 'Salary'"
-  ),
+    .min(1, "Position title is required and cannot be empty")
+    .max(100, "Position title is too long (maximum 100 characters)")
+    .trim(),
+  payType: z.enum(["Hourly", "Salary"], {
+    message: "Pay type must be either 'Hourly' or 'Salary'"
+  }),
   payRate: z
     .number()
     .positive("Pay rate must be a positive number")
     .or(z.string().transform((val) => parseFloat(val)))
-    .pipe(z.number().positive()),
-  notes: z.string().max(500).optional(),
+    .pipe(z.number().positive("Pay rate must be a positive number")),
+  notes: z
+    .string()
+    .max(500, "Notes are too long (maximum 500 characters)")
+    .optional(),
 });
 
 // Create department validation
@@ -49,35 +52,40 @@ export const createDepartmentSchema = z.object({
   body: z.object({
     name: z
       .string()
-      .min(1, "Department name is required")
-      .max(100, "Department name must be less than 100 characters"),
+      .min(1, "Department name is required and cannot be empty")
+      .max(100, "Department name is too long (maximum 100 characters)")
+      .trim(),
     description: z
       .string()
-      .max(1000, "Description must be less than 1000 characters")
+      .max(1000, "Description is too long (maximum 1000 characters)")
       .optional(),
-    leadId: z.string().uuid("Invalid lead ID").optional(),
+    leadId: z
+      .string()
+      .uuid("Lead ID must be a valid UUID")
+      .optional(),
     contactEmail: z
       .string()
-      .email("Invalid email format")
-      .max(255, "Contact email must be less than 255 characters")
+      .email("Please provide a valid email address (e.g., department@example.com)")
+      .max(255, "Contact email is too long (maximum 255 characters)")
+      .trim()
       .optional(),
     primaryLocation: z
       .string()
-      .max(255, "Primary location must be less than 255 characters")
+      .max(255, "Primary location is too long (maximum 255 characters)")
       .optional(),
     shiftCoverage: z
       .string()
-      .max(100, "Shift coverage must be less than 100 characters")
+      .max(100, "Shift coverage is too long (maximum 100 characters)")
       .optional(),
     utilization: z
       .number()
-      .min(0, "Utilization must be between 0 and 1")
-      .max(1, "Utilization must be between 0 and 1")
+      .min(0, "Utilization must be between 0 and 1 (e.g., 0.75 for 75%)")
+      .max(1, "Utilization must be between 0 and 1 (e.g., 0.75 for 75%)")
       .optional(),
     isActive: z.boolean().optional(),
     sortOrder: z
       .number()
-      .int()
+      .int("Sort order must be a whole number")
       .optional(),
     positionPayBands: z.array(positionPayBandSchema).optional(),
   }),
@@ -88,18 +96,21 @@ const updatePositionPayBandSchema = z.object({
   id: z.number().int().positive().optional(),
   positionTitle: z
     .string()
-    .min(1, "Position title is required")
-    .max(100, "Position title must be less than 100 characters"),
-  payType: z.enum(
-    ["Hourly", "Salary"],
-    "Pay type must be either 'Hourly' or 'Salary'"
-  ),
+    .min(1, "Position title is required and cannot be empty")
+    .max(100, "Position title is too long (maximum 100 characters)")
+    .trim(),
+  payType: z.enum(["Hourly", "Salary"], {
+    message: "Pay type must be either 'Hourly' or 'Salary'"
+  }),
   payRate: z
     .number()
     .positive("Pay rate must be a positive number")
     .or(z.string().transform((val) => parseFloat(val)))
-    .pipe(z.number().positive()),
-  notes: z.string().max(500).optional(),
+    .pipe(z.number().positive("Pay rate must be a positive number")),
+  notes: z
+    .string()
+    .max(500, "Notes are too long (maximum 500 characters)")
+    .optional(),
 });
 
 // Update department validation
@@ -108,46 +119,52 @@ export const updateDepartmentSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid department ID")),
+      .pipe(z.number().int().positive("Department ID must be a valid positive number")),
   }),
   body: z
     .object({
       name: z
         .string()
         .min(1, "Department name cannot be empty")
-        .max(100, "Department name must be less than 100 characters")
+        .max(100, "Department name is too long (maximum 100 characters)")
+        .trim()
         .optional(),
       description: z
         .string()
-        .max(1000, "Description must be less than 1000 characters")
+        .max(1000, "Description is too long (maximum 1000 characters)")
         .optional(),
-      leadId: z.string().uuid("Invalid lead ID").optional().nullable(),
+      leadId: z
+        .string()
+        .uuid("Lead ID must be a valid UUID")
+        .optional()
+        .nullable(),
       contactEmail: z
         .string()
-        .email("Invalid email format")
-        .max(255, "Contact email must be less than 255 characters")
+        .email("Please provide a valid email address (e.g., department@example.com)")
+        .max(255, "Contact email is too long (maximum 255 characters)")
+        .trim()
         .optional()
         .nullable(),
       primaryLocation: z
         .string()
-        .max(255, "Primary location must be less than 255 characters")
+        .max(255, "Primary location is too long (maximum 255 characters)")
         .optional()
         .nullable(),
       shiftCoverage: z
         .string()
-        .max(100, "Shift coverage must be less than 100 characters")
+        .max(100, "Shift coverage is too long (maximum 100 characters)")
         .optional()
         .nullable(),
       utilization: z
         .number()
-        .min(0, "Utilization must be between 0 and 1")
-        .max(1, "Utilization must be between 0 and 1")
+        .min(0, "Utilization must be between 0 and 1 (e.g., 0.75 for 75%)")
+        .max(1, "Utilization must be between 0 and 1 (e.g., 0.75 for 75%)")
         .optional()
         .nullable(),
       isActive: z.boolean().optional(),
       sortOrder: z
         .number()
-        .int()
+        .int("Sort order must be a whole number")
         .optional()
         .nullable(),
       positionPayBands: z.array(updatePositionPayBandSchema).optional(),
@@ -165,7 +182,7 @@ export const updateDepartmentSchema = z.object({
         data.sortOrder !== undefined ||
         data.positionPayBands !== undefined,
       {
-        message: "At least one field is required for update",
+        message: "At least one field must be provided to update the department",
       }
     ),
 });
@@ -176,6 +193,6 @@ export const deleteDepartmentSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(z.number().int().positive("Invalid department ID")),
+      .pipe(z.number().int().positive("Department ID must be a valid positive number")),
   }),
 });

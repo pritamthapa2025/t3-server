@@ -176,6 +176,20 @@
       "when": 1766066104487,
       "tag": "0035_yummy_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1766230000000,
+      "tag": "0036_add_id_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1766120998899,
+      "tag": "0037_crazy_morlocks",
+      "breakpoints": true
     }
   ]
 }

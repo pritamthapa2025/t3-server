@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid UUID format" });
+const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
 const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
-  message: "Must be a valid numeric string",
+  message: "Must be a valid number (e.g., 100 or 99.99)",
 });
 
 // ============================
@@ -87,12 +87,26 @@ export const getInventoryItemByIdSchema = z.object({
 
 export const createInventoryItemSchema = z.object({
   body: z.object({
-    itemCode: z.string().min(1).max(100),
-    name: z.string().min(1).max(255),
+    itemCode: z
+      .string()
+      .min(1, "Item code is required and cannot be empty")
+      .max(100, "Item code is too long (maximum 100 characters)")
+      .trim(),
+    name: z
+      .string()
+      .min(1, "Item name is required and cannot be empty")
+      .max(255, "Item name is too long (maximum 255 characters)")
+      .trim(),
     description: z.string().optional(),
-    categoryId: z.number().int().positive(),
+    categoryId: z
+      .number()
+      .int("Category ID must be a whole number")
+      .positive("Category ID is required and must be a positive number"),
     primarySupplierId: uuidSchema.optional(),
-    unitOfMeasureId: z.number().int().positive(),
+    unitOfMeasureId: z
+      .number()
+      .int("Unit of measure ID must be a whole number")
+      .positive("Unit of measure ID is required and must be a positive number"),
     unitCost: numericStringSchema,
     sellingPrice: numericStringSchema.optional(),
     quantityOnHand: numericStringSchema.optional().default("0"),
@@ -233,7 +247,7 @@ export const createAllocationSchema = z.object({
     expectedUseDate: z.string().optional(),
     notes: z.string().optional(),
   }).refine((data) => data.jobId || data.bidId, {
-    message: "Either jobId or bidId must be provided",
+    message: "Either a job ID or bid ID must be provided for the allocation",
   }),
 });
 
@@ -313,7 +327,7 @@ export const createPurchaseOrderSchema = z.object({
         expectedDeliveryDate: z.string().optional(),
         notes: z.string().optional(),
       })
-    ).min(1),
+    ).min(1, "At least one item must be included in the purchase order"),
   }),
 });
 
@@ -351,7 +365,7 @@ export const receivePurchaseOrderSchema = z.object({
         actualDeliveryDate: z.string().optional(),
         notes: z.string().optional(),
       })
-    ).min(1),
+    ).min(1, "At least one item must be included in the receipt"),
     locationId: uuidSchema.optional(),
   }),
 });
@@ -380,11 +394,23 @@ export const getSuppliersQuerySchema = z.object({
 
 export const createSupplierSchema = z.object({
   body: z.object({
-    supplierCode: z.string().max(50).optional(),
-    name: z.string().min(1).max(255),
+    supplierCode: z
+      .string()
+      .max(50, "Supplier code is too long (maximum 50 characters)")
+      .optional(),
+    name: z
+      .string()
+      .min(1, "Supplier name is required and cannot be empty")
+      .max(255, "Supplier name is too long (maximum 255 characters)")
+      .trim(),
     legalName: z.string().max(255).optional(),
     contactName: z.string().max(150).optional(),
-    email: z.string().email().max(150).optional(),
+    email: z
+      .string()
+      .email("Please provide a valid email address (e.g., supplier@example.com)")
+      .max(150, "Email address is too long (maximum 150 characters)")
+      .trim()
+      .optional(),
     phone: z.string().max(20).optional(),
     website: z.string().max(255).optional(),
     streetAddress: z.string().max(255).optional(),
@@ -412,7 +438,12 @@ export const updateSupplierSchema = z.object({
     name: z.string().min(1).max(255).optional(),
     legalName: z.string().max(255).optional(),
     contactName: z.string().max(150).optional(),
-    email: z.string().email().max(150).optional(),
+    email: z
+      .string()
+      .email("Please provide a valid email address (e.g., supplier@example.com)")
+      .max(150, "Email address is too long (maximum 150 characters)")
+      .trim()
+      .optional(),
     phone: z.string().max(20).optional(),
     website: z.string().max(255).optional(),
     streetAddress: z.string().max(255).optional(),
@@ -455,8 +486,15 @@ export const getLocationsQuerySchema = z.object({
 
 export const createLocationSchema = z.object({
   body: z.object({
-    locationCode: z.string().max(50).optional(),
-    name: z.string().min(1).max(255),
+    locationCode: z
+      .string()
+      .max(50, "Location code is too long (maximum 50 characters)")
+      .optional(),
+    name: z
+      .string()
+      .min(1, "Location name is required and cannot be empty")
+      .max(255, "Location name is too long (maximum 255 characters)")
+      .trim(),
     locationType: z.string().max(50).optional(),
     parentLocationId: uuidSchema.optional(),
     streetAddress: z.string().max(255).optional(),
@@ -499,7 +537,11 @@ export const updateLocationSchema = z.object({
 
 export const createCategorySchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(100),
+    name: z
+      .string()
+      .min(1, "Category name is required and cannot be empty")
+      .max(100, "Category name is too long (maximum 100 characters)")
+      .trim(),
     description: z.string().optional(),
     code: z.string().max(20).optional(),
     color: z.string().max(7).optional(),
@@ -591,4 +633,5 @@ export const deleteSchema = z.object({
     id: uuidSchema,
   }),
 });
+
 

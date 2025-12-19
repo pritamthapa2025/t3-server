@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { isDatabaseError, formatErrorForLogging } from "./database-error-parser.js";
 
 type LogLevel = "error" | "warn" | "info" | "debug";
 
@@ -46,6 +47,11 @@ class Logger {
     }
 
     console.error(this.formatMessage("error", message, errorContext));
+    
+    // If it's a database error, also log the human-readable version
+    if (isDatabaseError(error)) {
+      console.error("\n" + formatErrorForLogging(error) + "\n");
+    }
   }
 
   warn(message: string, context?: LogContext): void {

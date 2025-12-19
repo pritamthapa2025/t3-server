@@ -1,16 +1,47 @@
 import { z } from "zod";
 
+// Helper function to handle empty strings and convert to undefined
+const emptyStringToUndefined = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((val) => (val === "" || val === null ? undefined : val));
+
+// Helper function to convert string numbers to integers or undefined
+const stringToIntOrUndefined = z
+  .union([z.number(), z.string(), z.null(), z.undefined()])
+  .transform((val) => {
+    if (val === null || val === undefined || val === "") return undefined;
+    const num = typeof val === "string" ? parseInt(val, 10) : val;
+    return isNaN(num) ? undefined : num;
+  });
+
 // Contact validation schema
 const contactSchema = z.object({
-  fullName: z.string().min(1, "Contact name is required").max(150),
-  title: z.string().max(100).optional(),
-  email: z.string().email("Invalid email address").max(150), // Required in UI
-  phone: z.string().max(20).optional(),
-  mobilePhone: z.string().max(20).optional(),
+  fullName: z
+    .string()
+    .min(1, "Contact full name is required and cannot be empty")
+    .max(150, "Contact full name is too long (maximum 150 characters)")
+    .trim(),
+  title: z
+    .string()
+    .max(100, "Contact title is too long (maximum 100 characters)")
+    .optional(),
+  email: z
+    .string()
+    .email("Please provide a valid email address (e.g., john@example.com)")
+    .max(150, "Email address is too long (maximum 150 characters)")
+    .trim(),
+  phone: z
+    .string()
+    .max(20, "Phone number is too long (maximum 20 characters)")
+    .optional(),
+  mobilePhone: z
+    .string()
+    .max(20, "Mobile phone number is too long (maximum 20 characters)")
+    .optional(),
   picture: z
     .string()
-    .url("Invalid picture URL")
-    .max(500)
+    .url("Profile picture must be a valid URL")
+    .max(500, "Profile picture URL is too long")
     .optional()
     .or(z.literal("")),
   contactType: z
@@ -23,61 +54,121 @@ const contactSchema = z.object({
     )
     .pipe(z.boolean())
     .default(false),
-  preferredContactMethod: z.string().max(50).optional(),
+  preferredContactMethod: z
+    .string()
+    .max(50, "Preferred contact method is too long")
+    .optional(),
   notes: z.string().optional(),
 });
 
 // Property validation schema
 const propertySchema = z.object({
-  propertyName: z.string().min(1, "Property name is required").max(255),
+  propertyName: z
+    .string()
+    .min(1, "Property name is required and cannot be empty")
+    .max(255, "Property name is too long (maximum 255 characters)")
+    .trim(),
   propertyType: z
-    .enum([
-      "commercial",
-      "industrial",
-      "residential",
-      "healthcare",
-      "education",
-      "hospitality",
-      "retail",
-      "warehouse",
-      "government",
-      "mixed_use",
-    ])
+    .string()
+    .max(100, "Property type is too long (maximum 100 characters)")
+    .trim()
     .optional(),
-  addressLine1: z.string().min(1, "Address is required").max(255),
-  addressLine2: z.string().max(255).optional(),
-  city: z.string().min(1, "City is required").max(100),
-  state: z.string().min(1, "State is required").max(50),
-  zipCode: z.string().min(1, "Zip code is required").max(20),
-  numberOfUnits: z.string().optional(), // Can be stored as string or parsed to number
+  addressLine1: z
+    .string()
+    .min(1, "Property address is required and cannot be empty")
+    .max(255, "Property address is too long (maximum 255 characters)")
+    .trim(),
+  addressLine2: z
+    .string()
+    .max(255, "Property address line 2 is too long (maximum 255 characters)")
+    .optional(),
+  city: z
+    .string()
+    .min(1, "Property city is required and cannot be empty")
+    .max(100, "Property city is too long (maximum 100 characters)")
+    .trim(),
+  state: z
+    .string()
+    .min(1, "Property state is required and cannot be empty")
+    .max(50, "Property state is too long (maximum 50 characters)")
+    .trim(),
+  zipCode: z
+    .string()
+    .min(1, "Property ZIP code is required and cannot be empty")
+    .max(20, "Property ZIP code is too long (maximum 20 characters)")
+    .trim(),
+  numberOfUnits: z.string().optional(),
 });
 
 // Client validation schemas
 export const createClientSchema = z.object({
   body: z.object({
     // Basic Details (Step 1)
-    name: z.string().min(1, "Company name is required").max(255),
-    legalName: z.string().max(255).optional(),
-    clientTypeId: z.number().int().positive().optional(),
-    industryClassificationId: z.number().int().positive().optional(),
+    name: z
+      .string()
+      .min(1, "Company name is required and cannot be empty")
+      .max(255, "Company name is too long (maximum 255 characters)")
+      .trim(),
+    legalName: z
+      .string()
+      .max(255, "Legal name is too long (maximum 255 characters)")
+      .optional(),
+    clientTypeId: stringToIntOrUndefined
+      .pipe(
+        z
+          .number()
+          .int("Client type must be a whole number")
+          .positive("Client type must be a positive number")
+          .optional()
+      )
+      .optional(),
+    industryClassificationId: stringToIntOrUndefined
+      .pipe(
+        z
+          .number()
+          .int("Industry classification must be a whole number")
+          .positive("Industry classification must be a positive number")
+          .optional()
+      )
+      .optional(),
     priority: z
       .enum(["low", "medium", "high", "critical"])
       .default("medium")
       .optional(),
-    numberOfEmployees: z.number().int().positive().optional(),
+    numberOfEmployees: stringToIntOrUndefined
+      .pipe(
+        z
+          .number()
+          .int("Number of employees must be a whole number")
+          .positive("Number of employees must be a positive number")
+          .optional()
+      )
+      .optional(),
     website: z
       .string()
-      .url("Invalid website URL")
-      .max(255)
+      .url("Website must be a valid URL (e.g., https://example.com)")
+      .max(255, "Website URL is too long (maximum 255 characters)")
       .optional()
       .or(z.literal("")),
-    companyLogo: z.string().url().optional(), // URL after upload
+    companyLogo: z.string().url("Company logo must be a valid URL").optional(), // URL after upload
 
     // Address Information
-    streetAddress: z.string().max(255).optional(),
-    city: z.string().max(100).optional(),
-    state: z.string().max(50).optional(),
-    zipCode: z.string().max(20).optional(),
+    streetAddress: z
+      .string()
+      .max(255, "Street address is too long (maximum 255 characters)")
+      .optional(),
+    city: z
+      .string()
+      .max(100, "City is too long (maximum 100 characters)")
+      .optional(),
+    state: z
+      .string()
+      .max(50, "State is too long (maximum 50 characters)")
+      .optional(),
+    zipCode: z
+      .string()
+      .max(20, "ZIP code is too long (maximum 20 characters)")
+      .optional(),
 
     // Contacts (Step 2)
     contacts: z
@@ -112,10 +203,24 @@ export const createClientSchema = z.object({
       .optional(),
 
     // Settings (Step 4)
-    paymentTerms: z.string().max(100).optional(), // e.g., "Net 30"
-    preferredPaymentMethod: z.string().max(50).optional(), // e.g., "ACH Transfer"
-    creditLimit: z.string().optional(), // Numeric as string for precision, e.g., "50000"
-    billingContactId: z.string().uuid().optional(),
+    paymentTerms: z
+      .string()
+      .max(100, "Payment terms is too long (maximum 100 characters)")
+      .optional(),
+    preferredPaymentMethod: z
+      .string()
+      .max(50, "Preferred payment method is too long (maximum 50 characters)")
+      .optional(),
+    creditLimit: z
+      .string()
+      .regex(/^\d+(\.\d{1,2})?$/, "Credit limit must be a valid number")
+      .optional()
+      .or(z.literal("")),
+    billingContactId: z
+      .string()
+      .uuid("Billing contact ID must be a valid ID")
+      .optional()
+      .or(z.literal("")),
     taxExempt: z
       .union([z.boolean(), z.string()])
       .transform((val) =>
@@ -125,10 +230,13 @@ export const createClientSchema = z.object({
       .default(false),
     status: z
       .enum(["active", "inactive", "prospect", "suspended", "archived"])
-      .default("active"), // Priority Level maps to status
+      .default("active"),
 
     // Additional fields
-    taxId: z.string().max(50).optional(),
+    taxId: z
+      .string()
+      .max(50, "Tax ID is too long (maximum 50 characters)")
+      .optional(),
     description: z.string().optional(),
     notes: z.string().optional(),
     tags: z
@@ -493,9 +601,7 @@ export const updateClientSettingsSchema = z.object({
       billingContactId: z.string().uuid().optional(), // Reference to client contact
       billingDay: z
         .union([z.number(), z.string()])
-        .transform((val) =>
-          typeof val === "string" ? parseInt(val, 10) : val
-        )
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
         .pipe(z.number().int().min(1).max(31))
         .optional(), // Day of month (1-31)
       taxExempt: z

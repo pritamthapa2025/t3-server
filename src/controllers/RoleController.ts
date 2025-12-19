@@ -6,6 +6,7 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { parseDatabaseError, isDatabaseError } from "../utils/database-error-parser.js";
 
 // Get all roles with pagination and filtering
 export const getRolesHandler = async (req: Request, res: Response) => {
@@ -110,17 +111,25 @@ export const createRoleHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Error creating role", error, req);
 
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Role name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while creating the role",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -180,17 +189,25 @@ export const updateRoleHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Error updating role", error, req);
 
-    if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res.status(409).json({
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      
+      return res.status(parsedError.statusCode).json({
         success: false,
-        message: "Role name already exists",
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails: process.env.NODE_ENV === "development" 
+          ? parsedError.technicalMessage 
+          : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while updating the role",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

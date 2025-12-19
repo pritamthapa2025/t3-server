@@ -1,0 +1,1 @@
+ALTER TABLE "org"."properties" ALTER COLUMN "property_type" SET DATA TYPE varchar(100);
