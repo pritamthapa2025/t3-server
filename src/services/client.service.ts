@@ -695,6 +695,26 @@ export const updateClient = async (id: string, data: any) => {
   return result[0] || null;
 };
 
+// Get client settings only
+export const getClientSettings = async (id: string) => {
+  const result = await db
+    .select({
+      id: organizations.id,
+      creditLimit: organizations.creditLimit,
+      paymentTerms: organizations.paymentTerms,
+      preferredPaymentMethod: organizations.preferredPaymentMethod,
+      billingContactId: organizations.billingContactId,
+      billingDay: organizations.billingDay,
+      taxExempt: organizations.taxExempt,
+      updatedAt: organizations.updatedAt,
+    })
+    .from(organizations)
+    .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)))
+    .limit(1);
+
+  return result[0] || null;
+};
+
 // Update client settings only
 export const updateClientSettings = async (
   id: string,
@@ -888,11 +908,52 @@ export const createClientContact = async (data: {
   return result[0];
 };
 
+// Get all contacts for a client
+export const getClientContacts = async (organizationId: string) => {
+  return await db
+    .select()
+    .from(clientContacts)
+    .where(
+      and(
+        eq(clientContacts.organizationId, organizationId),
+        eq(clientContacts.isDeleted, false)
+      )
+    )
+    .orderBy(desc(clientContacts.isPrimary), clientContacts.fullName);
+};
+
+// Get single contact by ID
+export const getClientContactById = async (contactId: string) => {
+  const result = await db
+    .select()
+    .from(clientContacts)
+    .where(
+      and(eq(clientContacts.id, contactId), eq(clientContacts.isDeleted, false))
+    )
+    .limit(1);
+
+  return result[0] || null;
+};
+
 export const updateClientContact = async (id: string, data: any) => {
   const result = await db
     .update(clientContacts)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(clientContacts.id, id))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Delete (soft delete) a client contact
+export const deleteClientContact = async (contactId: string) => {
+  const result = await db
+    .update(clientContacts)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(clientContacts.id, contactId))
     .returning();
 
   return result[0] || null;
@@ -930,6 +991,54 @@ export const getClientNotes = async (organizationId: string, limit = 20) => {
     )
     .orderBy(desc(clientNotes.createdAt))
     .limit(limit);
+};
+
+// Get single note by ID
+export const getClientNoteById = async (noteId: string) => {
+  const result = await db
+    .select({
+      note: clientNotes,
+      createdBy: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(clientNotes)
+    .leftJoin(users, eq(clientNotes.createdBy, users.id))
+    .where(and(eq(clientNotes.id, noteId), eq(clientNotes.isDeleted, false)))
+    .limit(1);
+
+  if (!result[0]) return null;
+
+  return {
+    ...result[0].note,
+    createdBy: result[0].createdBy,
+  };
+};
+
+// Update a client note
+export const updateClientNote = async (noteId: string, data: any) => {
+  const result = await db
+    .update(clientNotes)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(clientNotes.id, noteId))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Delete (soft delete) a client note
+export const deleteClientNote = async (noteId: string) => {
+  const result = await db
+    .update(clientNotes)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(clientNotes.id, noteId))
+    .returning();
+
+  return result[0] || null;
 };
 
 // Client Types Management
@@ -1065,6 +1174,20 @@ export const updateDocumentCategory = async (id: number, data: any) => {
   const result = await db
     .update(documentCategories)
     .set({ ...data, updatedAt: new Date() })
+    .where(eq(documentCategories.id, id))
+    .returning();
+
+  return result[0] || null;
+};
+
+// Delete (soft delete) a document category
+export const deleteDocumentCategory = async (id: number) => {
+  const result = await db
+    .update(documentCategories)
+    .set({
+      isActive: false,
+      updatedAt: new Date(),
+    })
     .where(eq(documentCategories.id, id))
     .returning();
 

@@ -353,9 +353,21 @@ export const deleteClientSchema = z.object({
 });
 
 // Client Contact validation schemas
+export const getClientContactsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid client ID"),
+  }),
+});
+
+export const getClientContactByIdSchema = z.object({
+  params: z.object({
+    contactId: z.string().uuid("Invalid contact ID"),
+  }),
+});
+
 export const createClientContactSchema = z.object({
   params: z.object({
-    clientId: z.string().uuid("Invalid client ID"),
+    id: z.string().uuid("Invalid client ID"),
   }),
   body: z.object({
     fullName: z.string().min(1, "Full name is required").max(150),
@@ -384,10 +396,65 @@ export const createClientContactSchema = z.object({
   }),
 });
 
+export const updateClientContactSchema = z.object({
+  params: z.object({
+    contactId: z.string().uuid("Invalid contact ID"),
+  }),
+  body: z.object({
+    fullName: z.string().min(1).max(150).optional(),
+    title: z.string().max(100).optional(),
+    email: z.string().email().max(150).optional(),
+    phone: z.string().max(20).optional(),
+    mobilePhone: z.string().max(20).optional(),
+    picture: z
+      .string()
+      .url("Invalid picture URL")
+      .max(500)
+      .optional()
+      .or(z.literal("")),
+    contactType: z
+      .enum(["primary", "billing", "technical", "emergency", "project_manager"])
+      .optional(),
+    isPrimary: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
+      )
+      .pipe(z.boolean())
+      .optional(),
+    preferredContactMethod: z.string().max(50).optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+export const deleteClientContactSchema = z.object({
+  params: z.object({
+    contactId: z.string().uuid("Invalid contact ID"),
+  }),
+});
+
 // Client Note validation schemas
+export const getClientNotesSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid client ID"),
+  }),
+  query: z.object({
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val) : 20)),
+  }),
+});
+
+export const getClientNoteByIdSchema = z.object({
+  params: z.object({
+    noteId: z.string().uuid("Invalid note ID"),
+  }),
+});
+
 export const createClientNoteSchema = z.object({
   params: z.object({
-    clientId: z.string().uuid("Invalid client ID"),
+    id: z.string().uuid("Invalid client ID"),
   }),
   body: z.object({
     noteType: z.string().max(50).optional(),
@@ -396,10 +463,27 @@ export const createClientNoteSchema = z.object({
   }),
 });
 
+export const updateClientNoteSchema = z.object({
+  params: z.object({
+    noteId: z.string().uuid("Invalid note ID"),
+  }),
+  body: z.object({
+    noteType: z.string().max(50).optional(),
+    subject: z.string().max(255).optional(),
+    content: z.string().min(1).optional(),
+  }),
+});
+
+export const deleteClientNoteSchema = z.object({
+  params: z.object({
+    noteId: z.string().uuid("Invalid note ID"),
+  }),
+});
+
 // Client Document validation schemas
 export const createClientDocumentSchema = z.object({
   params: z.object({
-    clientId: z.string().uuid("Invalid client ID"),
+    id: z.string().uuid("Invalid client ID"),
   }),
   body: z.object({
     fileName: z.string().min(1, "File name is required").max(255),
@@ -428,6 +512,30 @@ export const createClientDocumentSchema = z.object({
   }),
 });
 
+export const updateClientDocumentSchema = z.object({
+  params: z.object({
+    documentId: z.string().uuid("Invalid document ID"),
+  }),
+  body: z.object({
+    fileName: z.string().min(1).max(255).optional(),
+    description: z.string().optional(),
+    categoryIds: z
+      .union([z.array(z.number().int().positive()), z.string()])
+      .transform((val) => {
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return [];
+          }
+        }
+        return val;
+      })
+      .pipe(z.array(z.number().int().positive()))
+      .optional(),
+  }),
+});
+
 // Document Category validation schemas
 export const createDocumentCategorySchema = z.object({
   body: z.object({
@@ -448,7 +556,10 @@ export const createDocumentCategorySchema = z.object({
 
 export const updateDocumentCategorySchema = z.object({
   params: z.object({
-    id: z.string().transform((val) => parseInt(val)),
+    id: z
+      .string()
+      .regex(/^\d+$/, "Document category ID must be a number")
+      .transform((val) => parseInt(val)),
   }),
   body: z.object({
     name: z.string().min(1).max(100).optional(),
@@ -469,6 +580,15 @@ export const updateDocumentCategorySchema = z.object({
       )
       .pipe(z.boolean())
       .optional(),
+  }),
+});
+
+export const deleteDocumentCategorySchema = z.object({
+  params: z.object({
+    id: z
+      .string()
+      .regex(/^\d+$/, "Document category ID must be a number")
+      .transform((val) => parseInt(val)),
   }),
 });
 
@@ -588,7 +708,13 @@ export const updateIndustryClassificationSchema = z.object({
   }),
 });
 
-// Client Settings validation schema
+// Client Settings validation schemas
+export const getClientSettingsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid client ID"),
+  }),
+});
+
 export const updateClientSettingsSchema = z.object({
   params: z.object({
     id: z.string().uuid("Invalid client ID"),

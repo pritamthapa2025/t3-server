@@ -6,7 +6,15 @@ import {
   updateClient,
   deleteClient,
   createClientContact,
+  getClientContacts,
+  getClientContactById,
+  updateClientContact,
+  deleteClientContact,
   createClientNote,
+  getClientNotes,
+  getClientNoteById,
+  updateClientNote,
+  deleteClientNote,
   getClientKPIs,
   getClientTypes,
   getIndustryClassifications,
@@ -19,12 +27,16 @@ import {
   getDocumentCategories,
   getDocumentCategories2,
   createDocumentCategory,
+  updateDocumentCategory,
+  deleteDocumentCategory,
   assignDocumentCategories,
   createClientDocument,
   getClientDocumentById,
+  updateClientDocument,
   deleteClientDocument,
   createCategoryAndAssignToDocument,
   removeDocumentCategoryLink,
+  getClientSettings,
   updateClientSettings,
 } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -464,6 +476,67 @@ export const deleteClientHandler = async (req: Request, res: Response) => {
   }
 };
 
+// Get all client contacts
+export const getClientContactsHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Client ID is required" });
+    }
+
+    const contacts = await getClientContacts(id);
+
+    logger.info("Client contacts fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: contacts,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching contacts", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch contacts" });
+  }
+};
+
+// Get single client contact
+export const getClientContactByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { contactId } = req.params;
+
+    if (!contactId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Contact ID is required" });
+    }
+
+    const contact = await getClientContactById(contactId);
+
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Contact not found" });
+    }
+
+    logger.info("Client contact fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: contact,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching contact", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch contact" });
+  }
+};
+
 // Create client contact
 export const createClientContactHandler = async (
   req: Request,
@@ -535,6 +608,190 @@ export const createClientContactHandler = async (
   }
 };
 
+// Update client contact
+export const updateClientContactHandler = async (
+  req: Request,
+  res: Response
+) => {
+  let uploadedPictureUrl: string | null = null;
+  try {
+    const { contactId } = req.params;
+
+    if (!contactId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Contact ID is required" });
+    }
+
+    // Parse contact data - either from JSON body or from form-data field
+    let contactData: any;
+    if (req.headers["content-type"]?.includes("application/json")) {
+      contactData = req.body;
+    } else {
+      if (req.body.data) {
+        try {
+          contactData =
+            typeof req.body.data === "string"
+              ? JSON.parse(req.body.data)
+              : req.body.data;
+        } catch (parseError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid JSON in 'data' field",
+          });
+        }
+      } else {
+        contactData = req.body;
+      }
+    }
+
+    // Handle file upload for contact picture if provided
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "contact-pictures"
+        );
+        uploadedPictureUrl = uploadResult.url;
+        contactData.picture = uploadedPictureUrl;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload contact picture. Please try again.",
+        });
+      }
+    }
+
+    const contact = await updateClientContact(contactId, contactData);
+
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Contact not found" });
+    }
+
+    logger.info("Client contact updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Contact updated successfully",
+      data: contact,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating contact", error, req);
+
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
+
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update contact" });
+  }
+};
+
+// Delete client contact
+export const deleteClientContactHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { contactId } = req.params;
+
+    if (!contactId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Contact ID is required" });
+    }
+
+    const contact = await deleteClientContact(contactId);
+
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Contact not found" });
+    }
+
+    logger.info("Client contact deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Contact deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Error deleting contact", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to delete contact" });
+  }
+};
+
+// Get all client notes
+export const getClientNotesHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Client ID is required" });
+    }
+
+    const notes = await getClientNotes(id, limit);
+
+    logger.info("Client notes fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: notes,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching notes", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch notes" });
+  }
+};
+
+// Get single client note
+export const getClientNoteByIdHandler = async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+
+    if (!noteId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Note ID is required" });
+    }
+
+    const note = await getClientNoteById(noteId);
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Note not found" });
+    }
+
+    logger.info("Client note fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: note,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching note", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch note" });
+  }
+};
+
 // Create client note
 export const createClientNoteHandler = async (req: Request, res: Response) => {
   try {
@@ -558,6 +815,82 @@ export const createClientNoteHandler = async (req: Request, res: Response) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to create note" });
+  }
+};
+
+// Update client note
+export const updateClientNoteHandler = async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+
+    if (!noteId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Note ID is required" });
+    }
+
+    const note = await updateClientNote(noteId, req.body);
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Note not found" });
+    }
+
+    logger.info("Client note updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Note updated successfully",
+      data: note,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating note", error, req);
+
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
+
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update note" });
+  }
+};
+
+// Delete client note
+export const deleteClientNoteHandler = async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+
+    if (!noteId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Note ID is required" });
+    }
+
+    const note = await deleteClientNote(noteId);
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Note not found" });
+    }
+
+    logger.info("Client note deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Note deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Error deleting note", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to delete note" });
   }
 };
 
@@ -1023,6 +1356,131 @@ export const createDocumentCategoryHandler = async (
   }
 };
 
+// Update document category
+export const updateDocumentCategoryHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Document category ID is required",
+      });
+    }
+
+    const categoryId = parseInt(id);
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document category ID",
+      });
+    }
+
+    const category = await updateDocumentCategory(categoryId, req.body);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Document category not found",
+      });
+    }
+
+    logger.info("Document category updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Document category updated successfully",
+      data: category,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating document category", error, req);
+
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "An unexpected error occurred while updating the document category",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// Delete document category
+export const deleteDocumentCategoryHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Document category ID is required",
+      });
+    }
+
+    const categoryId = parseInt(id);
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document category ID",
+      });
+    }
+
+    const category = await deleteDocumentCategory(categoryId);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Document category not found",
+      });
+    }
+
+    logger.info("Document category deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Document category deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting document category", error, req);
+
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "An unexpected error occurred while deleting the document category",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 export const assignDocumentCategoriesHandler = async (
   req: Request,
   res: Response
@@ -1197,6 +1655,59 @@ export const getClientDocumentByIdHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to fetch document",
+    });
+  }
+};
+
+// Update client document
+export const updateClientDocumentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { documentId } = req.params;
+
+    if (!documentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Document ID is required",
+      });
+    }
+
+    const document = await updateClientDocument(documentId, req.body);
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    logger.info("Client document updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Document updated successfully",
+      data: document,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating document", error, req);
+
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update document",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -1429,6 +1940,42 @@ export const removeDocumentCategoryHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to remove document category link",
+    });
+  }
+};
+
+// Get client settings
+export const getClientSettingsHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Client ID is required" });
+    }
+
+    const settings = await getClientSettings(id);
+
+    if (!settings) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Client not found" });
+    }
+
+    logger.info("Client settings fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: settings,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching client settings", error, req);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch client settings",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

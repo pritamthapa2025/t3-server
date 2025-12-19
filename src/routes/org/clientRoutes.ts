@@ -6,8 +6,16 @@ import {
   createClientHandler,
   updateClientHandler,
   deleteClientHandler,
+  getClientContactsHandler,
+  getClientContactByIdHandler,
   createClientContactHandler,
+  updateClientContactHandler,
+  deleteClientContactHandler,
+  getClientNotesHandler,
+  getClientNoteByIdHandler,
   createClientNoteHandler,
+  updateClientNoteHandler,
+  deleteClientNoteHandler,
   getClientKPIsHandler,
   getClientTypesHandler,
   createClientTypeHandler,
@@ -19,13 +27,17 @@ import {
   deleteIndustryClassificationHandler,
   getDocumentCategoriesHandler,
   createDocumentCategoryHandler,
+  updateDocumentCategoryHandler,
+  deleteDocumentCategoryHandler,
   assignDocumentCategoriesHandler,
   createClientDocumentHandler,
   getClientDocumentByIdHandler,
+  updateClientDocumentHandler,
   deleteClientDocumentHandler,
   createCategoryAndAssignToDocumentHandler,
   getClientDocumentCategoriesHandler,
   removeDocumentCategoryHandler,
+  getClientSettingsHandler,
   updateClientSettingsHandler,
 } from "../../controllers/ClientController.js";
 import { authenticate } from "../../middleware/auth.js";
@@ -37,16 +49,28 @@ import {
   createClientSchema,
   updateClientSchema,
   deleteClientSchema,
+  getClientContactsSchema,
+  getClientContactByIdSchema,
   createClientContactSchema,
+  updateClientContactSchema,
+  deleteClientContactSchema,
+  getClientNotesSchema,
+  getClientNoteByIdSchema,
   createClientNoteSchema,
+  updateClientNoteSchema,
+  deleteClientNoteSchema,
   createClientTypeSchema,
   updateClientTypeSchema,
   createIndustryClassificationSchema,
   updateIndustryClassificationSchema,
   createDocumentCategorySchema,
+  updateDocumentCategorySchema,
+  deleteDocumentCategorySchema,
   assignDocumentCategoriesSchema,
   createClientDocumentSchema,
+  updateClientDocumentSchema,
   createCategoryAndAssignToDocumentSchema,
+  getClientSettingsSchema,
   updateClientSettingsSchema,
 } from "../../validations/client.validations.js";
 
@@ -198,14 +222,16 @@ router
   )
   .delete(validate(deleteClientSchema), deleteClientHandler);
 
-// Client settings route - update only settings fields
+// Client settings routes - get and update settings fields
 router
   .route("/clients/:id/settings")
+  .get(validate(getClientSettingsSchema), getClientSettingsHandler)
   .put(validate(updateClientSettingsSchema), updateClientSettingsHandler);
 
 // Client contacts routes
 router
   .route("/clients/:id/contacts")
+  .get(validate(getClientContactsSchema), getClientContactsHandler)
   .post(
     uploadContactPicture,
     handleMulterError,
@@ -213,10 +239,28 @@ router
     createClientContactHandler
   );
 
+router
+  .route("/clients/:id/contacts/:contactId")
+  .get(validate(getClientContactByIdSchema), getClientContactByIdHandler)
+  .put(
+    uploadContactPicture,
+    handleMulterError,
+    validate(updateClientContactSchema),
+    updateClientContactHandler
+  )
+  .delete(validate(deleteClientContactSchema), deleteClientContactHandler);
+
 // Client notes routes
 router
   .route("/clients/:id/notes")
+  .get(validate(getClientNotesSchema), getClientNotesHandler)
   .post(validate(createClientNoteSchema), createClientNoteHandler);
+
+router
+  .route("/clients/:id/notes/:noteId")
+  .get(validate(getClientNoteByIdSchema), getClientNoteByIdHandler)
+  .put(validate(updateClientNoteSchema), updateClientNoteHandler)
+  .delete(validate(deleteClientNoteSchema), deleteClientNoteHandler);
 
 // Client documents routes
 router
@@ -231,6 +275,7 @@ router
 router
   .route("/clients/:id/documents/:documentId")
   .get(getClientDocumentByIdHandler)
+  .put(validate(updateClientDocumentSchema), updateClientDocumentHandler)
   .delete(deleteClientDocumentHandler);
 
 // Create category and assign to document
@@ -255,6 +300,14 @@ router
   .route("/document-categories")
   .get(getDocumentCategoriesHandler)
   .post(validate(createDocumentCategorySchema), createDocumentCategoryHandler);
+
+router
+  .route("/document-categories/:id")
+  .put(validate(updateDocumentCategorySchema), updateDocumentCategoryHandler)
+  .delete(
+    validate(deleteDocumentCategorySchema),
+    deleteDocumentCategoryHandler
+  );
 
 // Document Category Assignment routes
 router
