@@ -13,6 +13,10 @@ import {
   setupNewPasswordHandler,
   verify2FAHandler,
   verifyResetTokenHandler,
+  getTrustedDevicesHandler,
+  revokeTrustedDeviceHandler,
+  revokeAllTrustedDevicesHandler,
+  logoutHandler,
 } from "../../controllers/AuthController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -85,5 +89,17 @@ router
   );
 
 router.route("/me").get(authenticate, getCurrentUserHandler);
+
+// Trusted device management routes
+router.route("/trusted-devices").get(authenticate, getTrustedDevicesHandler);
+router
+  .route("/trusted-devices")
+  .delete(authenticate, revokeAllTrustedDevicesHandler);
+router
+  .route("/trusted-devices/:deviceId")
+  .delete(authenticate, revokeTrustedDeviceHandler);
+
+// Logout route
+router.route("/logout").post(logoutHandler);
 
 export default router;

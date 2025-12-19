@@ -33,6 +33,15 @@ export const verify2FASchema = z.object({
           .length(6, "2FA code must be exactly 6 digits")
           .regex(/^\d+$/, "2FA code must contain only numbers (0-9)")
       ),
+    rememberDevice: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => 
+        typeof val === "string" 
+          ? val === "true" || val === "1" 
+          : val
+      )
+      .pipe(z.boolean())
+      .optional(),
   }),
 });
 

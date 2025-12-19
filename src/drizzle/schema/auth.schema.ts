@@ -124,6 +124,32 @@ export const userRoles = auth.table(
   (table) => [primaryKey({ columns: [table.userId, table.roleId] })]
 );
 
+// Trusted Devices for 2FA Skip
+export const trustedDevices = auth.table(
+  "trusted_devices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceToken: varchar("device_token", { length: 255 }).notNull().unique(),
+    deviceName: varchar("device_name", { length: 200 }), // Browser info or user-defined name
+    ipAddress: varchar("ip_address", { length: 50 }),
+    userAgent: text("user_agent"), // Store browser/device info
+    lastUsedAt: timestamp("last_used_at").defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    isActive: boolean("is_active").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_trusted_devices_user_id").on(table.userId),
+    index("idx_trusted_devices_token").on(table.deviceToken),
+    index("idx_trusted_devices_expires_at").on(table.expiresAt),
+    index("idx_trusted_devices_active").on(table.isActive),
+  ]
+);
+
 // Fixed Audit Logs
 export const auditLogs = auth.table(
   "audit_logs",

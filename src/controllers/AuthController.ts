@@ -13,6 +13,14 @@ import {
   delete2FACode,
 } from "../utils/twoFactor.js";
 import {
+  generateDeviceToken,
+  storeTrustedDevice,
+  validateDeviceToken,
+  getUserTrustedDevices,
+  revokeTrustedDevice,
+  revokeAllUserDevices,
+} from "../utils/trusted-device.js";
+import {
   send2FACode,
   sendPasswordResetEmail,
   sendPasswordResetOTP,
@@ -49,7 +57,47 @@ export const loginUserHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: ErrorMessages.invalidCredentials() });
     }
 
-    // generate and store 2FA code (encrypted in Redis)
+    // Check for trusted device token
+    const deviceToken = req.cookies?.device_token;
+    if (deviceToken) {
+      const trustedUserId = await validateDeviceToken(deviceToken);
+      if (trustedUserId === user.id) {
+        // Device is trusted, skip 2FA and login directly
+
+        // Fetch user's role
+        const [userRole] = await db
+          .select({
+            roleName: roles.name,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(eq(userRoles.userId, user.id))
+          .limit(1);
+
+        const token = generateToken(user.id);
+
+        logger.info("Login successful via trusted device", { userId: user.id });
+        return res.status(200).json({
+          success: true,
+          message: "Login successful",
+          data: {
+            token,
+            user: {
+              id: user.id,
+              name: user.fullName,
+              email: user.email,
+              role: userRole?.roleName || null,
+            },
+            trustedDevice: true,
+          },
+        });
+      } else {
+        // Invalid or expired device token, clear the cookie
+        res.clearCookie("device_token");
+      }
+    }
+
+    // No trusted device or invalid token, proceed with 2FA
     const code = generate2FACode();
     await store2FACode(email, code);
 
@@ -60,9 +108,11 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
     // Return response immediately without waiting for email
     logger.info("2FA code sent to email");
-    return res
-      .status(200)
-      .json({ success: true, message: "2FA code sent to email" });
+    return res.status(200).json({
+      success: true,
+      message: "2FA code sent to email",
+      requiresVerification: true,
+    });
   } catch (err: any) {
     logger.logApiError("Login error", err, req);
     return res.status(500).json({
@@ -75,7 +125,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
 export const verify2FAHandler = async (req: Request, res: Response) => {
   try {
-    const { email, code } = req.body;
+    const { email, code, rememberDevice } = req.body;
 
     // Ensure code is a string and trim any whitespace
     const codeString = String(code).trim();
@@ -118,6 +168,37 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id);
 
+    // Handle "Remember Device" functionality
+    let deviceTokenSet = false;
+    if (rememberDevice === true || rememberDevice === "true") {
+      try {
+        const deviceToken = generateDeviceToken();
+        const trustedDevice = await storeTrustedDevice(
+          user.id,
+          deviceToken,
+          req,
+          30
+        ); // 30 days
+
+        // Set secure httpOnly cookie with device token
+        res.cookie("device_token", deviceToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production", // Use secure in production
+          sameSite: "strict",
+          maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+        });
+
+        deviceTokenSet = true;
+        logger.info("Device token set for user", {
+          userId: user.id,
+          deviceId: trustedDevice?.id,
+        });
+      } catch (deviceError) {
+        logger.logApiError("Failed to set device token", deviceError, req);
+        // Continue with login even if device token fails
+      }
+    }
+
     logger.info("2FA verification successful");
     return res.status(200).json({
       success: true,
@@ -130,6 +211,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           email: user.email,
           role: userRole?.roleName || null,
         },
+        deviceRemembered: deviceTokenSet,
       },
     });
   } catch (err: any) {
@@ -711,6 +793,132 @@ export const setupNewPasswordHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to set up password",
+    });
+  }
+};
+
+// ============= TRUSTED DEVICE MANAGEMENT =============
+
+export const getTrustedDevicesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const devices = await getUserTrustedDevices(req.user.id);
+
+    logger.info("Retrieved trusted devices for user", { userId: req.user.id });
+    return res.status(200).json({
+      success: true,
+      message: "Trusted devices retrieved successfully",
+      data: devices,
+    });
+  } catch (err: any) {
+    logger.logApiError("Get trusted devices error", err, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve trusted devices",
+    });
+  }
+};
+
+export const revokeTrustedDeviceHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { deviceId } = req.params;
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Device ID is required",
+      });
+    }
+
+    const success = await revokeTrustedDevice(req.user.id, deviceId);
+
+    if (!success) {
+      return res.status(404).json({
+        success: false,
+        message: "Trusted device not found or already revoked",
+      });
+    }
+
+    logger.info("Trusted device revoked", { userId: req.user.id, deviceId });
+    return res.status(200).json({
+      success: true,
+      message: "Trusted device revoked successfully",
+    });
+  } catch (err: any) {
+    logger.logApiError("Revoke trusted device error", err, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke trusted device",
+    });
+  }
+};
+
+export const revokeAllTrustedDevicesHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const revokedCount = await revokeAllUserDevices(req.user.id);
+
+    // Clear the current device cookie as well
+    res.clearCookie("device_token");
+
+    logger.info("All trusted devices revoked", {
+      userId: req.user.id,
+      count: revokedCount,
+    });
+    return res.status(200).json({
+      success: true,
+      message: `Successfully revoked ${revokedCount} trusted devices`,
+      data: { revokedCount },
+    });
+  } catch (err: any) {
+    logger.logApiError("Revoke all trusted devices error", err, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke trusted devices",
+    });
+  }
+};
+
+export const logoutHandler = async (req: Request, res: Response) => {
+  try {
+    // Clear the device token cookie on logout
+    res.clearCookie("device_token");
+
+    logger.info("User logged out successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (err: any) {
+    logger.logApiError("Logout error", err, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to logout",
     });
   }
 };

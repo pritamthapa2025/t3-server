@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import index from "./routes/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -20,6 +21,7 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Health check endpoint (before routes)
 app.get("/health", (req, res) => {
