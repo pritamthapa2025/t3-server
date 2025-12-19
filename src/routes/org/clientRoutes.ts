@@ -86,11 +86,26 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
   },
   fileFilter: (req, file, cb) => {
-    // Accept only image files
-    if (file.mimetype.startsWith("image/")) {
+    // Accept image files and common document types
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "application/msword" ||
+      file.mimetype ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.mimetype === "application/vnd.ms-excel" ||
+      file.mimetype === "text/plain" ||
+      file.mimetype === "text/csv"
+    ) {
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed (PNG, JPG, SVG)"));
+      cb(
+        new Error(
+          "Only image files and documents are allowed (PNG, JPG, SVG, PDF, DOC, DOCX, XLSX, XLS, CSV, TXT)"
+        )
+      );
     }
   },
 }).any(); // Accept any files - controller will handle companyLogo and contactPicture_X pattern
