@@ -481,6 +481,18 @@ export const deleteClientNoteSchema = z.object({
 });
 
 // Client Document validation schemas
+export const getClientDocumentsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid client ID"),
+  }),
+  query: z.object({
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val) : 50)),
+  }),
+});
+
 export const createClientDocumentSchema = z.object({
   params: z.object({
     id: z.string().uuid("Invalid client ID"),

@@ -1400,6 +1400,65 @@ export const createClientDocument = async (data: {
   return document;
 };
 
+export const getClientDocuments = async (
+  organizationId: string,
+  limit = 50
+) => {
+  // Get all documents for a client with uploader info
+  const documents = await db
+    .select({
+      document: clientDocuments,
+      uploadedBy: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(clientDocuments)
+    .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
+    .where(
+      and(
+        eq(clientDocuments.organizationId, organizationId),
+        eq(clientDocuments.isDeleted, false)
+      )
+    )
+    .orderBy(desc(clientDocuments.createdAt))
+    .limit(limit);
+
+  // For each document, get its categories
+  const documentsWithCategories = await Promise.all(
+    documents.map(async (doc) => {
+      const categories = await db
+        .select({
+          id: documentCategories.id,
+          name: documentCategories.name,
+          color: documentCategories.color,
+        })
+        .from(documentCategories)
+        .innerJoin(
+          clientDocumentCategories,
+          eq(clientDocumentCategories.categoryId, documentCategories.id)
+        )
+        .where(eq(clientDocumentCategories.documentId, doc.document.id));
+
+      return {
+        id: doc.document.id,
+        organizationId: doc.document.organizationId,
+        fileName: doc.document.fileName,
+        filePath: doc.document.filePath,
+        fileType: doc.document.fileType,
+        fileSize: doc.document.fileSize,
+        description: doc.document.description,
+        uploadedBy: doc.uploadedBy,
+        categories: categories,
+        createdAt: doc.document.createdAt,
+        updatedAt: doc.document.updatedAt,
+      };
+    })
+  );
+
+  return documentsWithCategories;
+};
+
 export const getClientDocumentById = async (documentId: string) => {
   // Get document with uploader info
   const documentQuery = await db

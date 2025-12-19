@@ -31,6 +31,7 @@ import {
   deleteDocumentCategory,
   assignDocumentCategories,
   createClientDocument,
+  getClientDocuments,
   getClientDocumentById,
   updateClientDocument,
   deleteClientDocument,
@@ -1618,6 +1619,38 @@ export const createClientDocumentHandler = async (
       message: "An unexpected error occurred while creating the document",
       detail:
         process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const getClientDocumentsHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id: organizationId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required",
+      });
+    }
+
+    const documents = await getClientDocuments(organizationId, limit);
+
+    logger.info("Client documents fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: documents,
+      total: documents.length,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching client documents", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch client documents",
     });
   }
 };

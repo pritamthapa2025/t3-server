@@ -31,6 +31,7 @@ import {
   deleteDocumentCategoryHandler,
   assignDocumentCategoriesHandler,
   createClientDocumentHandler,
+  getClientDocumentsHandler,
   getClientDocumentByIdHandler,
   updateClientDocumentHandler,
   deleteClientDocumentHandler,
@@ -68,6 +69,7 @@ import {
   deleteDocumentCategorySchema,
   assignDocumentCategoriesSchema,
   createClientDocumentSchema,
+  getClientDocumentsSchema,
   updateClientDocumentSchema,
   createCategoryAndAssignToDocumentSchema,
   getClientSettingsSchema,
@@ -265,6 +267,7 @@ router
 // Client documents routes
 router
   .route("/clients/:id/documents")
+  .get(validate(getClientDocumentsSchema), getClientDocumentsHandler)
   .post(
     uploadDocument,
     handleMulterError,
