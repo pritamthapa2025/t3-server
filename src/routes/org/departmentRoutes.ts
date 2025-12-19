@@ -8,6 +8,7 @@ import {
   getDepartmentKPIsHandler,
   getDepartmentsListHandler,
 } from "../../controllers/DepartmentController.js";
+import { getUsersByRolesHandler } from "../../controllers/UserControler.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
@@ -18,6 +19,7 @@ import {
   updateDepartmentSchema,
   deleteDepartmentSchema,
 } from "../../validations/department.validations.js";
+import { getUsersByRolesSchema } from "../../validations/user.validations.js";
 
 const router = Router();
 
@@ -29,6 +31,9 @@ router.use(generalTransformer);
 
 router.route("/department/kpis").get(getDepartmentKPIsHandler);
 router.route("/department/list").get(getDepartmentsListHandler);
+router
+  .route("/department/leads")
+  .get(validate(getUsersByRolesSchema), getUsersByRolesHandler);
 
 router
   .route("/department")

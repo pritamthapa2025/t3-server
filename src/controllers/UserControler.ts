@@ -5,6 +5,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  getUsersByRoles,
 } from "../services/user.service.js";
 import { hashPassword } from "../utils/hash.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -317,6 +318,27 @@ export const deleteUserHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error deleting user", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getUsersByRolesHandler = async (req: Request, res: Response) => {
+  try {
+    // Get users with Executive and Manager roles
+    const roleNames = ["Executive", "Manager"];
+    const users = await getUsersByRoles(roleNames);
+
+    logger.info("Users with Executive/Manager roles fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: users,
+      total: users.length,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching users by roles", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

@@ -1,6 +1,6 @@
-import { and, count, eq, or, ilike } from "drizzle-orm";
+import { and, count, eq, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 
 export const getUsers = async (
   offset: number,
@@ -178,4 +178,31 @@ export const deleteUser = async (userId: string) => {
     .where(and(eq(users.id, userId), eq(users.isDeleted, false)))
     .returning();
   return user || null;
+};
+
+/**
+ * Get users by role names (e.g., 'Executive', 'Manager')
+ */
+export const getUsersByRoles = async (roleNames: string[]) => {
+  const result = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      roleName: roles.name,
+    })
+    .from(users)
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(
+      and(
+        eq(users.isDeleted, false),
+        eq(users.isActive, true),
+        eq(roles.isDeleted, false),
+        inArray(roles.name, roleNames)
+      )
+    )
+    .orderBy(users.fullName);
+
+  return result;
 };

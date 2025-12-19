@@ -185,3 +185,6 @@ export const deleteUserSchema = z.object({
     id: uuidSchema,
   }),
 });
+
+// Get users by roles validation (no parameters needed for Executive/Manager roles)
+export const getUsersByRolesSchema = z.object({});
