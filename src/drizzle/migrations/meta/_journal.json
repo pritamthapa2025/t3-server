@@ -33,162 +33,57 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1765000000000,
-      "tag": "0004_add_note_to_employees",
+      "when": 1765347738361,
+      "tag": "0004_gifted_bulldozer",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1765100000000,
-      "tag": "0005_add_profile_picture_to_users",
+      "when": 1765514904647,
+      "tag": "0005_enhanced_schema",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
-      "when": 1765347738361,
-      "tag": "0006_gifted_bulldozer",
+      "when": 1765951156572,
+      "tag": "0006_ambitious_white_queen",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1765514904647,
-      "tag": "0007_enhanced_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "7",
-      "when": 1765518904647,
-      "tag": "0017_add_compliance_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "7",
-      "when": 1765522904647,
-      "tag": "0018_add_capacity_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1765949850272,
-      "tag": "0001_enhanced_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "7",
-      "when": 1765949851272,
-      "tag": "0006_add_financial_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "7",
-      "when": 1765949852272,
-      "tag": "0008_add_employee_reviews_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "7",
-      "when": 1765949853272,
-      "tag": "0009_add_performance_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "7",
-      "when": 1765949854272,
-      "tag": "0010_add_employee_kpi_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "7",
-      "when": 1765949855272,
-      "tag": "0013_update_departments_and_positions_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "7",
-      "when": 1765949856272,
-      "tag": "0014_remove_open_positions_from_departments",
-      "breakpoints": true
-    },
-    {
-      "idx": 26,
-      "version": "7",
-      "when": 1765949857272,
-      "tag": "0015_make_clockout_nullable_in_timesheets",
-      "breakpoints": true
-    },
-    {
-      "idx": 27,
-      "version": "7",
-      "when": 1765949858272,
-      "tag": "0016_add_payroll_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 28,
-      "version": "7",
-      "when": 1765949859272,
-      "tag": "0019_add_is_deleted_to_positions",
-      "breakpoints": true
-    },
-    {
-      "idx": 29,
-      "version": "7",
-      "when": 1765949860272,
-      "tag": "0019_add_missing_columns_to_positions",
-      "breakpoints": true
-    },
-    {
-      "idx": 30,
-      "version": "7",
-      "when": 1765949861272,
-      "tag": "0020_comprehensive_schema_sync",
-      "breakpoints": true
-    },
-    {
-      "idx": 31,
-      "version": "7",
-      "when": 1765951156572,
-      "tag": "0031_ambitious_white_queen",
-      "breakpoints": true
-    },
-    {
-      "idx": 32,
-      "version": "7",
       "when": 1766033171475,
-      "tag": "0032_dazzling_hulk",
+      "tag": "0007_dazzling_hulk",
       "breakpoints": true
     },
     {
-      "idx": 33,
+      "idx": 8,
       "version": "7",
       "when": 1766066104487,
-      "tag": "0035_yummy_archangel",
+      "tag": "0008_yummy_archangel",
       "breakpoints": true
     },
     {
-      "idx": 36,
+      "idx": 9,
       "version": "7",
       "when": 1766230000000,
-      "tag": "0036_add_id_sequences",
+      "tag": "0009_add_id_sequences",
       "breakpoints": true
     },
     {
-      "idx": 37,
+      "idx": 10,
       "version": "7",
       "when": 1766120998899,
-      "tag": "0037_crazy_morlocks",
+      "tag": "0010_crazy_morlocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1766123475005,
+      "tag": "0011_sudden_gertrude_yorkes",
       "breakpoints": true
     }
   ]

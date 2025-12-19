@@ -257,6 +257,7 @@ export const organizations: any = org.table(
     }),
     status: clientStatusEnum("status").notNull().default("prospect"),
     priority: clientPriorityEnum("priority").default("medium"),
+    logo: varchar("logo", { length: 500 }),
 
     // Business Info
     industryClassificationId: integer("industry_classification_id").references(
@@ -369,7 +370,7 @@ export const clientContacts = org.table(
     email: varchar("email", { length: 150 }),
     phone: varchar("phone", { length: 20 }),
     mobilePhone: varchar("mobile_phone", { length: 20 }),
-    picture: varchar("picture", { length: 500 }), // Profile picture URL
+    picture: varchar("picture", { length: 500 }),
 
     contactType: contactTypeEnum("contact_type").notNull().default("primary"),
     isPrimary: boolean("is_primary").default(false),

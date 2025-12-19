@@ -12,6 +12,10 @@ import {
   getIndustryClassifications,
   createClientType,
   createIndustryClassification,
+  updateClientType,
+  updateIndustryClassification,
+  deleteClientType,
+  deleteIndustryClassification,
   getDocumentCategories,
   getDocumentCategories2,
   createDocumentCategory,
@@ -32,7 +36,10 @@ import {
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
 import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
-import { parseDatabaseError, isDatabaseError } from "../utils/database-error-parser.js";
+import {
+  parseDatabaseError,
+  isDatabaseError,
+} from "../utils/database-error-parser.js";
 
 // Get all clients with pagination
 export const getClientsHandler = async (req: Request, res: Response) => {
@@ -150,10 +157,10 @@ export const createClientHandler = async (req: Request, res: Response) => {
 
     // Handle file uploads for company logo and contact pictures
     const files = req.files as Express.Multer.File[];
-    
+
     if (files && files.length > 0) {
       // Upload company logo if provided
-      const companyLogoFile = files.find(f => f.fieldname === "companyLogo");
+      const companyLogoFile = files.find((f) => f.fieldname === "companyLogo");
       if (companyLogoFile) {
         try {
           const uploadResult = await uploadToSpaces(
@@ -175,7 +182,7 @@ export const createClientHandler = async (req: Request, res: Response) => {
       // Upload contact pictures if provided and match them to contacts by index
       // Pattern: contactPicture_0, contactPicture_1, etc.
       if (clientData.contacts && Array.isArray(clientData.contacts)) {
-        const contactPictureFiles = files.filter(f => 
+        const contactPictureFiles = files.filter((f) =>
           f.fieldname.startsWith("contactPicture_")
         );
 
@@ -193,10 +200,16 @@ export const createClientHandler = async (req: Request, res: Response) => {
                 );
                 clientData.contacts[index].picture = uploadResult.url;
               } catch (uploadError: any) {
-                logger.logApiError(`Contact picture ${index} upload error`, uploadError, req);
+                logger.logApiError(
+                  `Contact picture ${index} upload error`,
+                  uploadError,
+                  req
+                );
                 return res.status(500).json({
                   success: false,
-                  message: `Failed to upload contact picture for contact ${index + 1}. Please try again.`,
+                  message: `Failed to upload contact picture for contact ${
+                    index + 1
+                  }. Please try again.`,
                 });
               }
             }
@@ -252,22 +265,24 @@ export const createClientHandler = async (req: Request, res: Response) => {
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "An unexpected error occurred while creating the client",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -309,7 +324,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     // Handle file upload for company logo if provided
     const files = req.files as Express.Multer.File[];
     if (files && files.length > 0) {
-      const companyLogoFile = files.find(f => f.fieldname === "companyLogo");
+      const companyLogoFile = files.find((f) => f.fieldname === "companyLogo");
       if (companyLogoFile) {
         try {
           const uploadResult = await uploadToSpaces(
@@ -329,20 +344,10 @@ export const updateClientHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle logo in tags if provided
+    // Map companyLogo to logo field in database
     if (updateData.companyLogo) {
-      // Get existing client to preserve other tags
-      const existingClient = await getClientById(id);
-      let tags = existingClient?.tags || [];
-      if (Array.isArray(tags)) {
-        tags = [...tags, { logo: updateData.companyLogo }];
-      } else if (typeof tags === "object") {
-        tags = { ...tags, logo: updateData.companyLogo };
-      } else {
-        tags = { logo: updateData.companyLogo };
-      }
-      updateData.tags = tags;
-      delete updateData.companyLogo; // Remove from updateData as it's not a direct field
+      updateData.logo = updateData.companyLogo;
+      delete updateData.companyLogo;
     }
 
     // Pre-validate unique fields before attempting to update
@@ -367,7 +372,10 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     }
 
     // Check client ID uniqueness (if provided and different from current)
-    if (updateData.clientId && updateData.clientId !== existingClient.clientId) {
+    if (
+      updateData.clientId &&
+      updateData.clientId !== existingClient.clientId
+    ) {
       uniqueFieldChecks.push({
         field: "clientId",
         value: updateData.clientId,
@@ -402,22 +410,24 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "An unexpected error occurred while updating the client",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -605,22 +615,149 @@ export const createClientTypeHandler = async (req: Request, res: Response) => {
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "An unexpected error occurred while creating the client type",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const updateClientTypeHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client type ID is required",
+      });
+    }
+
+    const clientTypeId = parseInt(id);
+
+    if (isNaN(clientTypeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client type ID",
+      });
+    }
+
+    const clientType = await updateClientType(clientTypeId, req.body);
+
+    if (!clientType) {
+      return res.status(404).json({
+        success: false,
+        message: "Client type not found",
+      });
+    }
+
+    logger.info("Client type updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Client type updated successfully",
+      data: clientType,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating client type", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while updating the client type",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const deleteClientTypeHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client type ID is required",
+      });
+    }
+
+    const clientTypeId = parseInt(id);
+
+    if (isNaN(clientTypeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client type ID",
+      });
+    }
+
+    const success = await deleteClientType(clientTypeId);
+
+    if (!success) {
+      return res.status(404).json({
+        success: false,
+        message: "Client type not found",
+      });
+    }
+
+    logger.info("Client type deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Client type deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting client type", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while deleting the client type",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -666,22 +803,158 @@ export const createIndustryClassificationHandler = async (
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "An unexpected error occurred while creating the industry classification",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      message:
+        "An unexpected error occurred while creating the industry classification",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const updateIndustryClassificationHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Industry classification ID is required",
+      });
+    }
+
+    const industryId = parseInt(id);
+
+    if (isNaN(industryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid industry classification ID",
+      });
+    }
+
+    const industry = await updateIndustryClassification(industryId, req.body);
+
+    if (!industry) {
+      return res.status(404).json({
+        success: false,
+        message: "Industry classification not found",
+      });
+    }
+
+    logger.info("Industry classification updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Industry classification updated successfully",
+      data: industry,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating industry classification", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "An unexpected error occurred while updating the industry classification",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const deleteIndustryClassificationHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Industry classification ID is required",
+      });
+    }
+
+    const industryId = parseInt(id);
+
+    if (isNaN(industryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid industry classification ID",
+      });
+    }
+
+    const success = await deleteIndustryClassification(industryId);
+
+    if (!success) {
+      return res.status(404).json({
+        success: false,
+        message: "Industry classification not found",
+      });
+    }
+
+    logger.info("Industry classification deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Industry classification deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting industry classification", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "An unexpected error occurred while deleting the industry classification",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -727,22 +1000,25 @@ export const createDocumentCategoryHandler = async (
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "An unexpected error occurred while creating the document category",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      message:
+        "An unexpected error occurred while creating the document category",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -866,22 +1142,24 @@ export const createClientDocumentHandler = async (
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
       message: "An unexpected error occurred while creating the document",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -1198,22 +1476,25 @@ export const updateClientSettingsHandler = async (
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
-      
+
       return res.status(parsedError.statusCode).json({
         success: false,
         message: parsedError.userMessage,
         errorCode: parsedError.errorCode,
         suggestions: parsedError.suggestions,
-        technicalDetails: process.env.NODE_ENV === "development" 
-          ? parsedError.technicalMessage 
-          : undefined,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "An unexpected error occurred while updating the client settings",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      message:
+        "An unexpected error occurred while updating the client settings",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

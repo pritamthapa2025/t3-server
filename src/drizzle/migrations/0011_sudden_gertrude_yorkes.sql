@@ -1,0 +1,1 @@
+ALTER TABLE "org"."organizations" ADD COLUMN "logo" varchar(500);

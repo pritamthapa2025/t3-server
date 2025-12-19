@@ -11,8 +11,12 @@ import {
   getClientKPIsHandler,
   getClientTypesHandler,
   createClientTypeHandler,
+  updateClientTypeHandler,
+  deleteClientTypeHandler,
   getIndustryClassificationsHandler,
   createIndustryClassificationHandler,
+  updateIndustryClassificationHandler,
+  deleteIndustryClassificationHandler,
   getDocumentCategoriesHandler,
   createDocumentCategoryHandler,
   assignDocumentCategoriesHandler,
@@ -36,7 +40,9 @@ import {
   createClientContactSchema,
   createClientNoteSchema,
   createClientTypeSchema,
+  updateClientTypeSchema,
   createIndustryClassificationSchema,
+  updateIndustryClassificationSchema,
   createDocumentCategorySchema,
   assignDocumentCategoriesSchema,
   createClientDocumentSchema,
@@ -148,12 +154,25 @@ router
   .post(validate(createClientTypeSchema), createClientTypeHandler);
 
 router
+  .route("/client-types/:id")
+  .put(validate(updateClientTypeSchema), updateClientTypeHandler)
+  .delete(deleteClientTypeHandler);
+
+router
   .route("/industry-classifications")
   .get(getIndustryClassificationsHandler)
   .post(
     validate(createIndustryClassificationSchema),
     createIndustryClassificationHandler
   );
+
+router
+  .route("/industry-classifications/:id")
+  .put(
+    validate(updateIndustryClassificationSchema),
+    updateIndustryClassificationHandler
+  )
+  .delete(deleteIndustryClassificationHandler);
 
 // Main client routes
 router

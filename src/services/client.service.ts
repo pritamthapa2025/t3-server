@@ -45,7 +45,7 @@ export const generateClientId = async (): Promise<string> => {
     // Fallback to old method if sequence doesn't exist yet
     // (This handles cases where migration hasn't run yet)
     console.warn("Sequence not found, using fallback method:", error);
-    
+
     const result = await db
       .select({ clientId: organizations.clientId })
       .from(organizations)
@@ -167,6 +167,7 @@ export const getClients = async (
       id: organizations.id,
       name: organizations.name,
       status: organizations.status,
+      logo: organizations.logo,
       // Address fields
       streetAddress: organizations.streetAddress,
       city: organizations.city,
@@ -307,6 +308,7 @@ export const getClientById = async (id: string) => {
       clientTypeId: organizations.clientTypeId,
       status: organizations.status,
       priority: organizations.priority,
+      logo: organizations.logo,
       industryClassificationId: organizations.industryClassificationId,
       taxId: organizations.taxId,
       website: organizations.website,
@@ -557,14 +559,6 @@ export const createClient = async (data: {
   // Generate unique client ID
   const clientId = await generateClientId();
 
-  // Prepare tags - include logo if provided
-  let tags = data.tags || [];
-  if (data.companyLogo) {
-    tags = Array.isArray(tags)
-      ? [...tags, { logo: data.companyLogo }]
-      : [{ logo: data.companyLogo }];
-  }
-
   // Create client
   const result = await db
     .insert(organizations)
@@ -575,6 +569,7 @@ export const createClient = async (data: {
       clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : null,
       status: (data.status as any) || "prospect",
       priority: (data.priority as any) || "medium",
+      logo: data.companyLogo || null,
       industryClassificationId: data.industryClassificationId
         ? Number(data.industryClassificationId)
         : null,
@@ -598,7 +593,7 @@ export const createClient = async (data: {
       taxExempt: data.taxExempt || false,
       description: data.description || null,
       notes: data.notes || null,
-      tags: tags,
+      tags: data.tags || null,
       createdBy: data.createdBy || null,
     })
     .returning();
@@ -955,14 +950,43 @@ export const createClientType = async (data: {
   return Array.isArray(result) ? result[0] : result;
 };
 
-export const updateClientType = async (id: number, data: any) => {
+// Update client type
+export const updateClientType = async (
+  id: number,
+  data: {
+    name?: string;
+    description?: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  }
+) => {
   const result = await db
     .update(clientTypes)
-    .set({ ...data, updatedAt: new Date() })
+    .set({
+      name: data.name,
+      description: data.description,
+      sortOrder: data.sortOrder,
+      isActive: data.isActive,
+      updatedAt: new Date(),
+    })
     .where(eq(clientTypes.id, id))
     .returning();
 
-  return result[0] || null;
+  return Array.isArray(result) ? result[0] : null;
+};
+
+// Delete client type (soft delete)
+export const deleteClientType = async (id: number) => {
+  const result = await db
+    .update(clientTypes)
+    .set({
+      isActive: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(clientTypes.id, id))
+    .returning();
+
+  return Array.isArray(result) && result.length > 0;
 };
 
 // Industry Classifications Management
@@ -993,6 +1017,20 @@ export const updateIndustryClassification = async (id: number, data: any) => {
     .returning();
 
   return result[0] || null;
+};
+
+// Delete industry classification (soft delete)
+export const deleteIndustryClassification = async (id: number) => {
+  const result = await db
+    .update(industryClassifications)
+    .set({
+      isActive: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(industryClassifications.id, id))
+    .returning();
+
+  return Array.isArray(result) && result.length > 0;
 };
 
 // Document Categories Management
