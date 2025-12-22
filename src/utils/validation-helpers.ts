@@ -76,14 +76,16 @@ export const checkDepartmentNameExists = async (
 };
 
 /**
- * Check if a position with the given name already exists
+ * Check if a position with the given name already exists within the same department
  */
 export const checkPositionNameExists = async (
   name: string,
+  departmentId: number,
   excludePositionId?: number
 ): Promise<boolean> => {
   const conditions = [
     sql`LOWER(${positions.name}) = LOWER(${name})`, // Case-insensitive comparison
+    eq(positions.departmentId, departmentId), // Same department only
     eq(positions.isDeleted, false),
   ];
 
@@ -194,6 +196,116 @@ export const checkRoleNameExists = async (
   const [existing] = await db
     .select({ id: roles.id })
     .from(roles)
+    .where(and(...conditions))
+    .limit(1);
+
+  return !!existing;
+};
+
+/**
+ * Check if a bid number already exists for a specific organization
+ */
+export const checkBidNumberExists = async (
+  bidNumber: string,
+  organizationId: string,
+  excludeBidId?: string
+): Promise<boolean> => {
+  const { bidsTable } = await import("../drizzle/schema/bids.schema.js");
+  
+  const conditions = [
+    eq(bidsTable.bidNumber, bidNumber),
+    eq(bidsTable.organizationId, organizationId),
+    eq(bidsTable.isDeleted, false),
+  ];
+
+  if (excludeBidId) {
+    conditions.push(ne(bidsTable.id, excludeBidId));
+  }
+
+  const [existing] = await db
+    .select({ id: bidsTable.id })
+    .from(bidsTable)
+    .where(and(...conditions))
+    .limit(1);
+
+  return !!existing;
+};
+
+/**
+ * Check if a client type name already exists
+ */
+export const checkClientTypeNameExists = async (
+  name: string,
+  excludeClientTypeId?: number
+): Promise<boolean> => {
+  const { clientTypes } = await import("../drizzle/schema/org.schema.js");
+  
+  const conditions = [
+    sql`LOWER(${clientTypes.name}) = LOWER(${name})`, // Case-insensitive comparison
+    eq(clientTypes.isActive, true),
+  ];
+
+  if (excludeClientTypeId) {
+    conditions.push(ne(clientTypes.id, excludeClientTypeId));
+  }
+
+  const [existing] = await db
+    .select({ id: clientTypes.id })
+    .from(clientTypes)
+    .where(and(...conditions))
+    .limit(1);
+
+  return !!existing;
+};
+
+/**
+ * Check if an industry classification name already exists
+ */
+export const checkIndustryClassificationNameExists = async (
+  name: string,
+  excludeIndustryId?: number
+): Promise<boolean> => {
+  const { industryClassifications } = await import("../drizzle/schema/org.schema.js");
+  
+  const conditions = [
+    sql`LOWER(${industryClassifications.name}) = LOWER(${name})`, // Case-insensitive comparison
+    eq(industryClassifications.isActive, true),
+  ];
+
+  if (excludeIndustryId) {
+    conditions.push(ne(industryClassifications.id, excludeIndustryId));
+  }
+
+  const [existing] = await db
+    .select({ id: industryClassifications.id })
+    .from(industryClassifications)
+    .where(and(...conditions))
+    .limit(1);
+
+  return !!existing;
+};
+
+/**
+ * Check if an industry classification code already exists
+ */
+export const checkIndustryClassificationCodeExists = async (
+  code: string,
+  excludeIndustryId?: number
+): Promise<boolean> => {
+  const { industryClassifications } = await import("../drizzle/schema/org.schema.js");
+  
+  const conditions = [
+    eq(industryClassifications.code, code),
+    eq(industryClassifications.isActive, true),
+  ];
+
+  if (excludeIndustryId) {
+    conditions.push(ne(industryClassifications.id, excludeIndustryId));
+  }
+
+  const [existing] = await db
+    .select({ id: industryClassifications.id })
+    .from(industryClassifications)
     .where(and(...conditions))
     .limit(1);
 

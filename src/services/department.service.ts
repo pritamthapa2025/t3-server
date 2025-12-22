@@ -398,7 +398,7 @@ export const getDepartmentById = async (id: number) => {
   const endDateStr = endDate.toISOString().split("T")[0];
 
   // OPTIMIZATION: Run all queries in parallel
-  const [deptEmployees, deptPositions] = await Promise.all([
+  const [deptEmployees, deptPositions, teamLead] = await Promise.all([
     // Get all employees in this department
     db
       .select({
@@ -442,6 +442,19 @@ export const getDepartmentById = async (id: number) => {
           or(isNull(positions.isDeleted), eq(positions.isDeleted, false))
         )
       ),
+
+    // Get team lead directly from the leadId field
+    department.leadId
+      ? db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+            isActive: users.isActive,
+          })
+          .from(users)
+          .where(and(eq(users.id, department.leadId), eq(users.isActive, true)))
+          .then((result) => result[0] || null)
+      : Promise.resolve(null),
   ]);
 
   // Get timesheet data for utilisation calculation (rolling 30 days)
@@ -483,14 +496,7 @@ export const getDepartmentById = async (id: number) => {
     (e) => e.employee.status === "suspended"
   ).length;
 
-  // Get department lead/manager
-  const departmentLead =
-    deptEmployees.find(
-      (e) =>
-        e.position?.name?.toLowerCase().includes("manager") ||
-        e.position?.name?.toLowerCase().includes("director") ||
-        e.position?.name?.toLowerCase().includes("lead")
-    ) || deptEmployees[0];
+  // This is no longer needed since we fetch team lead directly from leadId
 
   // Average performance
   const performanceScores = deptEmployees
@@ -605,15 +611,10 @@ export const getDepartmentById = async (id: number) => {
     },
     headcount: totalPeople,
     openRoles,
-    teamLead: metadata.teamLeadId
+    teamLead: teamLead
       ? {
-          id: metadata.teamLeadId,
-          fullName: departmentLead?.user?.fullName || null,
-        }
-      : departmentLead?.user
-      ? {
-          id: departmentLead.user.id,
-          fullName: departmentLead.user.fullName,
+          id: teamLead.id,
+          fullName: teamLead.fullName,
         }
       : null,
     primaryLocation: metadata.primaryLocation || "San Francisco HQ",
@@ -664,39 +665,48 @@ export const createDepartment = async (data: {
     notes?: string;
   }>;
 }) => {
-  const [department] = await db
-    .insert(departments)
-    .values({
-      name: data.name,
-      description: data.description || null,
-      leadId: data.leadId || null,
-      contactEmail: data.contactEmail || null,
-      primaryLocation: data.primaryLocation || null,
-      shiftCoverage: data.shiftCoverage || null,
-      utilization: data.utilization ? String(data.utilization) : null,
-      isActive: data.isActive ?? true,
-      sortOrder: data.sortOrder || null,
-      isDeleted: false,
-    })
-    .returning();
+  // Use a database transaction to ensure atomicity
+  return await db.transaction(async (tx) => {
+    // Create the department first
+    const [department] = await tx
+      .insert(departments)
+      .values({
+        name: data.name,
+        description: data.description || null,
+        leadId: data.leadId || null,
+        contactEmail: data.contactEmail || null,
+        primaryLocation: data.primaryLocation || null,
+        shiftCoverage: data.shiftCoverage || null,
+        utilization: data.utilization ? String(data.utilization) : null,
+        isActive: data.isActive ?? true,
+        sortOrder: data.sortOrder || null,
+        isDeleted: false,
+      })
+      .returning();
 
-  // Create positions if positionPayBands are provided
-  if (data.positionPayBands && data.positionPayBands.length > 0 && department) {
-    const positionsToCreate = data.positionPayBands.map((band) => ({
-      name: band.positionTitle,
-      departmentId: department.id,
-      description: band.notes || null,
-      payRate: String(band.payRate),
-      payType: band.payType,
-      currency: "USD",
-      isActive: true,
-      isDeleted: false,
-    }));
+    // Create positions if positionPayBands are provided
+    if (
+      data.positionPayBands &&
+      data.positionPayBands.length > 0 &&
+      department
+    ) {
+      const positionsToCreate = data.positionPayBands.map((band) => ({
+        name: band.positionTitle,
+        departmentId: department.id,
+        description: band.notes || null,
+        payRate: String(band.payRate),
+        payType: band.payType,
+        currency: "USD",
+        isActive: true,
+        isDeleted: false,
+      }));
 
-    await db.insert(positions).values(positionsToCreate);
-  }
+      // This will throw an error if it fails, causing the entire transaction to rollback
+      await tx.insert(positions).values(positionsToCreate);
+    }
 
-  return department;
+    return department;
+  });
 };
 
 export const updateDepartment = async (
@@ -720,93 +730,99 @@ export const updateDepartment = async (
     }>;
   }
 ) => {
-  const updateData: any = {
-    updatedAt: new Date(),
-  };
+  // Use a database transaction to ensure atomicity
+  return await db.transaction(async (tx) => {
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
 
-  if (data.name !== undefined) updateData.name = data.name;
-  if (data.description !== undefined) updateData.description = data.description;
-  if (data.leadId !== undefined) updateData.leadId = data.leadId;
-  if (data.contactEmail !== undefined)
-    updateData.contactEmail = data.contactEmail;
-  if (data.primaryLocation !== undefined)
-    updateData.primaryLocation = data.primaryLocation;
-  if (data.shiftCoverage !== undefined)
-    updateData.shiftCoverage = data.shiftCoverage;
-  if (data.utilization !== undefined)
-    updateData.utilization = data.utilization ? String(data.utilization) : null;
-  if (data.isActive !== undefined) updateData.isActive = data.isActive;
-  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined)
+      updateData.description = data.description;
+    if (data.leadId !== undefined) updateData.leadId = data.leadId;
+    if (data.contactEmail !== undefined)
+      updateData.contactEmail = data.contactEmail;
+    if (data.primaryLocation !== undefined)
+      updateData.primaryLocation = data.primaryLocation;
+    if (data.shiftCoverage !== undefined)
+      updateData.shiftCoverage = data.shiftCoverage;
+    if (data.utilization !== undefined)
+      updateData.utilization = data.utilization
+        ? String(data.utilization)
+        : null;
+    if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
 
-  const [department] = await db
-    .update(departments)
-    .set(updateData)
-    .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
-    .returning();
+    const [department] = await tx
+      .update(departments)
+      .set(updateData)
+      .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
+      .returning();
 
-  // Update positions if positionPayBands are provided
-  if (data.positionPayBands && department) {
-    // Get existing positions for this department
-    const existingPositions = await db
-      .select()
-      .from(positions)
-      .where(
-        and(eq(positions.departmentId, id), eq(positions.isDeleted, false))
+    // Update positions if positionPayBands are provided
+    if (data.positionPayBands && department) {
+      // Get existing positions for this department
+      const existingPositions = await tx
+        .select()
+        .from(positions)
+        .where(
+          and(eq(positions.departmentId, id), eq(positions.isDeleted, false))
+        );
+
+      const existingPositionIds = new Set(
+        data.positionPayBands
+          .map((band) => band.id)
+          .filter((id): id is number => id !== undefined)
       );
 
-    const existingPositionIds = new Set(
-      data.positionPayBands
-        .map((band) => band.id)
-        .filter((id): id is number => id !== undefined)
-    );
-
-    // Soft delete positions that are no longer in the list
-    const positionsToDelete = existingPositions.filter(
-      (pos) => !existingPositionIds.has(pos.id)
-    );
-    if (positionsToDelete.length > 0) {
-      await db
-        .update(positions)
-        .set({ isDeleted: true, updatedAt: new Date() })
-        .where(
-          inArray(
-            positions.id,
-            positionsToDelete.map((p) => p.id)
-          )
-        );
-    }
-
-    // Update or create positions
-    for (const band of data.positionPayBands) {
-      if (band.id) {
-        // Update existing position
-        await db
+      // Soft delete positions that are no longer in the list
+      const positionsToDelete = existingPositions.filter(
+        (pos) => !existingPositionIds.has(pos.id)
+      );
+      if (positionsToDelete.length > 0) {
+        await tx
           .update(positions)
-          .set({
+          .set({ isDeleted: true, updatedAt: new Date() })
+          .where(
+            inArray(
+              positions.id,
+              positionsToDelete.map((p) => p.id)
+            )
+          );
+      }
+
+      // Update or create positions
+      for (const band of data.positionPayBands) {
+        if (band.id) {
+          // Update existing position
+          await tx
+            .update(positions)
+            .set({
+              name: band.positionTitle,
+              description: band.notes || null,
+              payRate: String(band.payRate),
+              payType: band.payType,
+              updatedAt: new Date(),
+            })
+            .where(eq(positions.id, band.id));
+        } else {
+          // Create new position
+          await tx.insert(positions).values({
             name: band.positionTitle,
+            departmentId: id,
             description: band.notes || null,
             payRate: String(band.payRate),
             payType: band.payType,
-            updatedAt: new Date(),
-          })
-          .where(eq(positions.id, band.id));
-      } else {
-        // Create new position
-        await db.insert(positions).values({
-          name: band.positionTitle,
-          departmentId: id,
-          description: band.notes || null,
-          payRate: String(band.payRate),
-          payType: band.payType,
-          currency: "USD",
-          isActive: true,
-          isDeleted: false,
-        });
+            currency: "USD",
+            isActive: true,
+            isDeleted: false,
+          });
+        }
       }
     }
-  }
 
-  return department || null;
+    return department || null;
+  });
 };
 
 export const deleteDepartment = async (id: number) => {

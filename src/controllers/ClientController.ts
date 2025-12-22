@@ -45,6 +45,9 @@ import { logger } from "../utils/logger.js";
 import {
   checkOrganizationNameExists,
   checkClientIdExists,
+  checkClientTypeNameExists,
+  checkIndustryClassificationNameExists,
+  checkIndustryClassificationCodeExists,
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
@@ -1000,6 +1003,27 @@ export const getClientTypesHandler = async (req: Request, res: Response) => {
 
 export const createClientTypeHandler = async (req: Request, res: Response) => {
   try {
+    const { name } = req.body;
+
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check client type name uniqueness
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkClientTypeNameExists(name),
+        message: `A client type with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     const clientType = await createClientType(req.body);
 
     logger.info("Client type created successfully");
@@ -1054,6 +1078,27 @@ export const updateClientTypeHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Invalid client type ID",
       });
+    }
+
+    const { name } = req.body;
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check client type name uniqueness (if provided)
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkClientTypeNameExists(name, clientTypeId),
+        message: `A client type with the name '${name}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const clientType = await updateClientType(clientTypeId, req.body);
@@ -1188,6 +1233,37 @@ export const createIndustryClassificationHandler = async (
   res: Response
 ) => {
   try {
+    const { name, code } = req.body;
+
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check industry classification name uniqueness
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkIndustryClassificationNameExists(name),
+        message: `An industry classification with the name '${name}' already exists`,
+      });
+    }
+
+    // Check industry classification code uniqueness (if provided)
+    if (code) {
+      uniqueFieldChecks.push({
+        field: "code",
+        value: code,
+        checkFunction: () => checkIndustryClassificationCodeExists(code),
+        message: `An industry classification with the code '${code}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
+
     const industry = await createIndustryClassification(req.body);
 
     logger.info("Industry classification created successfully");
@@ -1246,6 +1322,37 @@ export const updateIndustryClassificationHandler = async (
         success: false,
         message: "Invalid industry classification ID",
       });
+    }
+
+    const { name, code } = req.body;
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check industry classification name uniqueness (if provided)
+    if (name) {
+      uniqueFieldChecks.push({
+        field: "name",
+        value: name,
+        checkFunction: () => checkIndustryClassificationNameExists(name, industryId),
+        message: `An industry classification with the name '${name}' already exists`,
+      });
+    }
+
+    // Check industry classification code uniqueness (if provided)
+    if (code) {
+      uniqueFieldChecks.push({
+        field: "code",
+        value: code,
+        checkFunction: () => checkIndustryClassificationCodeExists(code, industryId),
+        message: `An industry classification with the code '${code}' already exists`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const industry = await updateIndustryClassification(industryId, req.body);

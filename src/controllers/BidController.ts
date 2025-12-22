@@ -40,6 +40,15 @@ const validateParams = (
 
 import { logger } from "../utils/logger.js";
 import {
+  checkBidNumberExists,
+  validateUniqueFields,
+  buildConflictResponse,
+} from "../utils/validation-helpers.js";
+import {
+  parseDatabaseError,
+  isDatabaseError,
+} from "../utils/database-error-parser.js";
+import {
   getBids,
   getBidById,
   createBid,
@@ -161,6 +170,26 @@ export const createBidHandler = async (req: Request, res: Response) => {
     if (!organizationId) return;
 
     const createdBy = req.user!.id;
+    const { bidNumber } = req.body;
+
+    // Pre-validate unique fields before attempting to create
+    const uniqueFieldChecks = [];
+
+    // Check bid number uniqueness within the organization
+    if (bidNumber) {
+      uniqueFieldChecks.push({
+        field: "bidNumber",
+        value: bidNumber,
+        checkFunction: () => checkBidNumberExists(bidNumber, organizationId),
+        message: `A bid with number '${bidNumber}' already exists in this organization`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
+    }
 
     const bidData = {
       ...req.body,
@@ -193,11 +222,30 @@ export const createBidHandler = async (req: Request, res: Response) => {
       data: bid,
       message: "Bid created successfully",
     });
-  } catch (error) {
-    logger.logApiError("Bid error", error, req);
+  } catch (error: any) {
+    logger.logApiError("Error creating bid", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while creating the bid",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -211,6 +259,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     if (!organizationId) return;
 
     const performedBy = req.user!.id;
+    const { bidNumber } = req.body;
 
     // Get original bid for history tracking
     const originalBid = await getBidById(id!, organizationId);
@@ -219,6 +268,25 @@ export const updateBidHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Bid not found",
       });
+    }
+
+    // Pre-validate unique fields before attempting to update
+    const uniqueFieldChecks = [];
+
+    // Check bid number uniqueness (if provided and different from current)
+    if (bidNumber && bidNumber !== originalBid.bidNumber) {
+      uniqueFieldChecks.push({
+        field: "bidNumber",
+        value: bidNumber,
+        checkFunction: () => checkBidNumberExists(bidNumber, organizationId, id),
+        message: `A bid with number '${bidNumber}' already exists in this organization`,
+      });
+    }
+
+    // Validate all unique fields
+    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
+    if (validationErrors.length > 0) {
+      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     const updatedBid = await updateBid(id!, organizationId, req.body);
@@ -252,11 +320,30 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       data: updatedBid,
       message: "Bid updated successfully",
     });
-  } catch (error) {
-    logger.logApiError("Bid error", error, req);
+  } catch (error: any) {
+    logger.logApiError("Error updating bid", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while updating the bid",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

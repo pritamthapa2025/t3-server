@@ -9,9 +9,7 @@ export const loginSchema = z.object({
       .email("Please provide a valid email address (e.g., john@example.com)")
       .trim()
       .toLowerCase(),
-    password: z
-      .string()
-      .min(1, "Password is required and cannot be empty"),
+    password: z.string().min(1, "Password is required and cannot be empty"),
   }),
 });
 
@@ -35,10 +33,8 @@ export const verify2FASchema = z.object({
       ),
     rememberDevice: z
       .union([z.boolean(), z.string()])
-      .transform((val) => 
-        typeof val === "string" 
-          ? val === "true" || val === "1" 
-          : val
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val
       )
       .pipe(z.boolean())
       .optional(),
@@ -181,9 +177,7 @@ export const confirmPasswordResetSchema = z.object({
 // Setup new password validation (for new users with token)
 export const setupNewPasswordSchema = z.object({
   body: z.object({
-    token: z
-      .string()
-      .min(1, "Setup token is required and cannot be empty"),
+    token: z.string().min(1, "Setup token is required and cannot be empty"),
     newPassword: z
       .string()
       .min(8, "Password must be at least 8 characters long")

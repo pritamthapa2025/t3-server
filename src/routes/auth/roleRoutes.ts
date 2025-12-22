@@ -21,30 +21,29 @@ import {
 
 const router = Router();
 
-// All role routes require authentication
-router.use(authenticate);
+// Authentication will be applied per route instead of globally to avoid conflicts
 
 // GET /roles - Get all roles with pagination and filtering
 router
   .route("/roles")
-  .get(validate(getRolesQuerySchema), getRolesHandler)
-  .post(validate(createRoleSchema), createRoleHandler);
+  .get(authenticate, validate(getRolesQuerySchema), getRolesHandler)
+  .post(authenticate, validate(createRoleSchema), createRoleHandler);
 
 // GET /roles/count - Get roles count
-router.route("/roles/count").get(getRolesCountHandler);
+router.route("/roles/count").get(authenticate, getRolesCountHandler);
 
 // GET /roles/check-name - Check if role name exists
 router
   .route("/roles/check-name")
-  .get(validate(checkRoleNameSchema), checkRoleNameHandler);
+  .get(authenticate, validate(checkRoleNameSchema), checkRoleNameHandler);
 
 // GET /roles/:id - Get role by ID
 // PUT /roles/:id - Update role
 // DELETE /roles/:id - Delete role (soft delete)
 router
   .route("/roles/:id")
-  .get(validate(getRoleByIdSchema), getRoleByIdHandler)
-  .put(validate(updateRoleSchema), updateRoleHandler)
-  .delete(validate(deleteRoleSchema), deleteRoleHandler);
+  .get(authenticate, validate(getRoleByIdSchema), getRoleByIdHandler)
+  .put(authenticate, validate(updateRoleSchema), updateRoleHandler)
+  .delete(authenticate, validate(deleteRoleSchema), deleteRoleHandler);
 
 export default router;
