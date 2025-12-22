@@ -106,13 +106,16 @@ export const getDepartments = async (
           )
         );
 
-      // Get all positions in this department (for open roles calculation)
+      // Get all positions in this department with pay information
       // Handle null isDeleted values (for rows created before migration)
       const deptPositions = await db
         .select({
           id: positions.id,
           name: positions.name,
           description: positions.description,
+          payRate: positions.payRate,
+          payType: positions.payType,
+          currency: positions.currency,
         })
         .from(positions)
         .where(
@@ -310,6 +313,78 @@ export const getDepartments = async (
         }
       });
 
+      // Create detailed pay range groups (like in getDepartmentById)
+      const hourlyPositions = deptPositions.filter(
+        (pos) => pos.payType?.toLowerCase() === "hourly"
+      );
+      const salaryPositions = deptPositions.filter(
+        (pos) => pos.payType?.toLowerCase() === "salary"
+      );
+
+      const payRangeGroups = [];
+
+      // Create salary range group
+      if (salaryPositions.length > 0) {
+        const salaryRates = salaryPositions
+          .map((pos) => Number(pos.payRate))
+          .filter((rate) => rate > 0);
+        if (salaryRates.length > 0) {
+          const minSalary = Math.min(...salaryRates);
+          const maxSalary = Math.max(...salaryRates);
+
+          payRangeGroups.push({
+            range:
+              minSalary === maxSalary
+                ? `$${Math.round(minSalary).toLocaleString()}/yr`
+                : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(
+                    maxSalary
+                  ).toLocaleString()}/yr`,
+            type: "salary",
+            positionCount: salaryPositions.length,
+            positions: salaryPositions.map((pos) => ({
+              id: pos.id,
+              name: pos.name,
+              payRate: `$${Math.round(Number(pos.payRate)).toLocaleString()}/yr`,
+              description: pos.description || "",
+            })),
+          });
+        }
+      }
+
+      // Create hourly range group
+      if (hourlyPositions.length > 0) {
+        const hourlyRates = hourlyPositions
+          .map((pos) => Number(pos.payRate))
+          .filter((rate) => rate > 0);
+        if (hourlyRates.length > 0) {
+          const minHourly = Math.min(...hourlyRates);
+          const maxHourly = Math.max(...hourlyRates);
+
+          payRangeGroups.push({
+            range:
+              minHourly === maxHourly
+                ? `$${minHourly.toFixed(2)}/hr`
+                : `$${minHourly.toFixed(2)} - $${maxHourly.toFixed(2)}/hr`,
+            type: "hourly",
+            positionCount: hourlyPositions.length,
+            positions: hourlyPositions.map((pos) => ({
+              id: pos.id,
+              name: pos.name,
+              payRate: `$${Number(pos.payRate).toFixed(2)}/hr`,
+              description: pos.description || "",
+            })),
+          });
+        }
+      }
+
+      // Create overall display summary for detailed structure
+      let detailedOverallRange = "Not Set";
+      if (payRangeGroups.length > 1) {
+        detailedOverallRange = payRangeGroups.map((group) => group.range).join(" • ");
+      } else if (payRangeGroups.length === 1 && payRangeGroups[0]) {
+        detailedOverallRange = payRangeGroups[0].range;
+      }
+
       return {
         department: {
           id: dept.id,
@@ -342,6 +417,8 @@ export const getDepartments = async (
           positionDetails: positionPayDetails.slice(0, 3), // Limit to 3 for display
           hasMore: positionPayDetails.length > 3,
         },
+        payRange: detailedOverallRange,
+        payRangeGroups: payRangeGroups,
         location: {
           primary: "San Francisco HQ", // Default - can be enhanced with actual location data
           operatingConditions: "Business Hours", // Default - can be enhanced
