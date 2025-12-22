@@ -12,6 +12,7 @@ import {
   max,
   inArray,
   isNull,
+  isNotNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -126,20 +127,22 @@ export const getDepartments = async (
         );
 
       // Calculate metrics
-      const totalPeople = deptEmployees.length;
+      // Filter to only active employees (matching the KPI logic)
       const activeEmployees = deptEmployees.filter(
         (e) => e.user?.isActive === true
       );
-      const inFieldCount = deptEmployees.filter(
+      // Total should only count active employees (not inactive users)
+      const totalPeople = activeEmployees.length;
+      const inFieldCount = activeEmployees.filter(
         (e) => e.employee.status === "in_field"
       ).length;
-      const availableCount = deptEmployees.filter(
+      const availableCount = activeEmployees.filter(
         (e) => e.employee.status === "available"
       ).length;
 
-      // Role breakdown
+      // Role breakdown (only for active employees)
       const roleCounts: Record<string, number> = {};
-      deptEmployees.forEach((e) => {
+      activeEmployees.forEach((e) => {
         const positionName = e.position?.name?.toLowerCase() || "";
         let role = "Office Staff";
 
@@ -163,8 +166,8 @@ export const getDepartments = async (
         roleCounts[role] = (roleCounts[role] || 0) + 1;
       });
 
-      // Average performance
-      const performanceScores = deptEmployees
+      // Average performance (only for active employees)
+      const performanceScores = activeEmployees
         .map((e) => e.employee.performance)
         .filter((p): p is number => p !== null && p !== undefined && p > 0);
       const avgPerformance =
@@ -173,19 +176,19 @@ export const getDepartments = async (
             performanceScores.length
           : 0;
 
-      // Get department lead/manager (first manager or first employee)
+      // Get department lead/manager (first manager or first employee from active employees)
       const departmentLead =
-        deptEmployees.find(
+        activeEmployees.find(
           (e) =>
             e.position?.name?.toLowerCase().includes("manager") ||
             e.position?.name?.toLowerCase().includes("director") ||
             e.position?.name?.toLowerCase().includes("lead")
-        ) || deptEmployees[0];
+        ) || activeEmployees[0];
 
       // Calculate utilisation (based on timesheets this month)
       let totalHours = 0;
-      if (deptEmployees.length > 0) {
-        const employeeIds = deptEmployees.map((e) => e.employee.id);
+      if (activeEmployees.length > 0) {
+        const employeeIds = activeEmployees.map((e) => e.employee.id);
         const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
         const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
         const timesheetData = await db
@@ -209,9 +212,9 @@ export const getDepartments = async (
       const utilisation =
         expectedHours > 0 ? Math.round((totalHours / expectedHours) * 100) : 0;
 
-      // Open roles (positions without employees)
+      // Open roles (positions without active employees)
       const filledPositionIds = new Set(
-        deptEmployees
+        activeEmployees
           .map((e) => e.employee.positionId)
           .filter((id) => id !== null)
       );
@@ -219,8 +222,8 @@ export const getDepartments = async (
         (p) => !filledPositionIds.has(p.id)
       ).length;
 
-      // Pay structure
-      const payRates = deptEmployees
+      // Pay structure (only for active employees)
+      const payRates = activeEmployees
         .map((e) => {
           const emp = e.employee;
           if (emp.hourlyRate) {
@@ -541,11 +544,16 @@ export const getDepartmentById = async (id: number) => {
       : Promise.resolve(null),
   ]);
 
+  // Filter to only active employees (matching the KPI logic)
+  const activeEmployees = deptEmployees.filter(
+    (e) => e.user?.isActive === true
+  );
+
   // Get timesheet data for utilisation calculation (rolling 30 days)
   // Only query if there are employees
   let timesheetData = { rows: [{ total_hours: "0" }] };
-  if (deptEmployees.length > 0) {
-    const employeeIds = deptEmployees.map((e) => e.employee.id);
+  if (activeEmployees.length > 0) {
+    const employeeIds = activeEmployees.map((e) => e.employee.id);
     const result = await db.execute<{
       total_hours: string;
     }>(
@@ -565,25 +573,22 @@ export const getDepartmentById = async (id: number) => {
     timesheetData = result;
   }
 
-  // Calculate metrics
-  const totalPeople = deptEmployees.length;
-  const activeEmployees = deptEmployees.filter(
-    (e) => e.user?.isActive === true
-  );
-  const inFieldCount = deptEmployees.filter(
+  // Calculate metrics (only for active employees)
+  const totalPeople = activeEmployees.length;
+  const inFieldCount = activeEmployees.filter(
     (e) => e.employee.status === "in_field"
   ).length;
-  const availableCount = deptEmployees.filter(
+  const availableCount = activeEmployees.filter(
     (e) => e.employee.status === "available"
   ).length;
-  const suspendedCount = deptEmployees.filter(
+  const suspendedCount = activeEmployees.filter(
     (e) => e.employee.status === "suspended"
   ).length;
 
   // This is no longer needed since we fetch team lead directly from leadId
 
-  // Average performance
-  const performanceScores = deptEmployees
+  // Average performance (only for active employees)
+  const performanceScores = activeEmployees
     .map((e) => e.employee.performance)
     .filter((p): p is number => p !== null && p !== undefined && p > 0);
   const avgPerformance =
@@ -1025,14 +1030,23 @@ export const getDepartmentKPIs = async () => {
       .from(departments)
       .where(eq(departments.isDeleted, false)),
 
-    // 2. Total headcount across all teams (active employees)
+    // 2. Total headcount across all teams (active employees WITH non-deleted departments only)
+    // Exclude employees without department assignments or with deleted departments
     db
       .select({
         count: sql<number>`COUNT(*)`,
       })
       .from(employees)
       .leftJoin(users, eq(employees.userId, users.id))
-      .where(and(eq(employees.isDeleted, false), eq(users.isActive, true))),
+      .leftJoin(departments, eq(employees.departmentId, departments.id))
+      .where(
+        and(
+          eq(employees.isDeleted, false),
+          eq(users.isActive, true),
+          isNotNull(employees.departmentId), // Only count employees with departments
+          eq(departments.isDeleted, false) // Only count employees in non-deleted departments
+        )
+      ),
 
     // 3. Open roles (positions without assigned employees)
     db.execute<{ count: string }>(
