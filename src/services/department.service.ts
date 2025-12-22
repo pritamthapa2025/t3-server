@@ -539,13 +539,14 @@ export const getDepartmentById = async (id: number) => {
     if (pos.payRate && pos.payType) {
       payType = pos.payType;
       const rate = Number(pos.payRate);
-      
+
       if (pos.payType.toLowerCase() === "hourly") {
         payAmount = `$${rate.toFixed(2)}/hr`;
       } else if (pos.payType.toLowerCase() === "salary") {
-        payAmount = rate >= 1000 
-          ? `$${Math.round(rate / 1000)}k/yr`
-          : `$${Math.round(rate)}/yr`;
+        payAmount =
+          rate >= 1000
+            ? `$${Math.round(rate / 1000)}k/yr`
+            : `$${Math.round(rate)}/yr`;
       }
     }
 
@@ -585,69 +586,81 @@ export const getDepartmentById = async (id: number) => {
     .map((p) => p.rate);
 
   // Group positions by pay type and create ranges
-  const hourlyPositions = deptPositions.filter(pos => pos.payType?.toLowerCase() === 'hourly');
-  const salaryPositions = deptPositions.filter(pos => pos.payType?.toLowerCase() === 'salary');
-  
+  const hourlyPositions = deptPositions.filter(
+    (pos) => pos.payType?.toLowerCase() === "hourly"
+  );
+  const salaryPositions = deptPositions.filter(
+    (pos) => pos.payType?.toLowerCase() === "salary"
+  );
+
   const payRangeGroups = [];
-  
+
   // Create salary range group
   if (salaryPositions.length > 0) {
-    const salaryRates = salaryPositions.map(pos => Number(pos.payRate)).filter(rate => rate > 0);
+    const salaryRates = salaryPositions
+      .map((pos) => Number(pos.payRate))
+      .filter((rate) => rate > 0);
     if (salaryRates.length > 0) {
       const minSalary = Math.min(...salaryRates);
       const maxSalary = Math.max(...salaryRates);
-      
+
       payRangeGroups.push({
-        range: minSalary === maxSalary 
-          ? `$${Math.round(minSalary).toLocaleString()}/yr`
-          : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(maxSalary).toLocaleString()}/yr`,
+        range:
+          minSalary === maxSalary
+            ? `$${Math.round(minSalary).toLocaleString()}/yr`
+            : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(
+                maxSalary
+              ).toLocaleString()}/yr`,
         type: "salary",
         positionCount: salaryPositions.length,
-        positions: salaryPositions.map(pos => ({
+        positions: salaryPositions.map((pos) => ({
           id: pos.id,
           name: pos.name,
           payRate: `$${Math.round(Number(pos.payRate)).toLocaleString()}/yr`,
-          description: pos.description || ""
-        }))
+          description: pos.description || "",
+        })),
       });
     }
   }
-  
-  // Create hourly range group  
+
+  // Create hourly range group
   if (hourlyPositions.length > 0) {
-    const hourlyRates = hourlyPositions.map(pos => Number(pos.payRate)).filter(rate => rate > 0);
+    const hourlyRates = hourlyPositions
+      .map((pos) => Number(pos.payRate))
+      .filter((rate) => rate > 0);
     if (hourlyRates.length > 0) {
       const minHourly = Math.min(...hourlyRates);
       const maxHourly = Math.max(...hourlyRates);
-      
+
       payRangeGroups.push({
-        range: minHourly === maxHourly 
-          ? `$${minHourly.toFixed(2)}/hr`
-          : `$${minHourly.toFixed(2)} - $${maxHourly.toFixed(2)}/hr`,
-        type: "hourly", 
+        range:
+          minHourly === maxHourly
+            ? `$${minHourly.toFixed(2)}/hr`
+            : `$${minHourly.toFixed(2)} - $${maxHourly.toFixed(2)}/hr`,
+        type: "hourly",
         positionCount: hourlyPositions.length,
-        positions: hourlyPositions.map(pos => ({
+        positions: hourlyPositions.map((pos) => ({
           id: pos.id,
           name: pos.name,
           payRate: `$${Number(pos.payRate).toFixed(2)}/hr`,
-          description: pos.description || ""
-        }))
+          description: pos.description || "",
+        })),
       });
     }
   }
-  
+
   // Create overall display summary
   let overallRange = "Not Set";
   if (payRangeGroups.length > 1) {
-    overallRange = payRangeGroups.map(group => group.range).join(" • ");
-  } else if (payRangeGroups.length === 1) {
+    overallRange = payRangeGroups.map((group) => group.range).join(" • ");
+  } else if (payRangeGroups.length === 1 && payRangeGroups[0]) {
     overallRange = payRangeGroups[0].range;
   }
-  
+
   const payRange = {
     display: overallRange,
     groups: payRangeGroups,
-    totalPositions: deptPositions.length
+    totalPositions: deptPositions.length,
   };
 
   return {
