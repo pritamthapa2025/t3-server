@@ -81,7 +81,6 @@ export const departments = org.table(
 
     // Department leadership
     leadId: uuid("lead_id").references(() => users.id, {
-      onDelete: "set null",
     }),
     contactEmail: varchar("contact_email", { length: 255 }),
 
@@ -118,7 +117,6 @@ export const positions = org.table(
     id: serial("id").primaryKey(),
     name: varchar("name", { length: 100 }).notNull(),
     departmentId: integer("department_id").references(() => departments.id, {
-      onDelete: "set null",
     }),
     description: text("description"),
 
@@ -155,17 +153,14 @@ export const employees = org.table(
   "employees",
   {
     id: serial("id").primaryKey(),
-    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, ),
     employeeId: varchar("employee_id", { length: 50 }).unique(), // T3-00001, T3-00002, etc.
 
     departmentId: integer("department_id").references(() => departments.id, {
-      onDelete: "set null",
     }),
     positionId: integer("position_id").references(() => positions.id, {
-      onDelete: "set null",
     }),
     reportsTo: uuid("reports_to").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     // Enhanced Date Fields
@@ -255,7 +250,6 @@ export const organizations: any = org.table(
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
     clientTypeId: integer("client_type_id").references(() => clientTypes.id, {
-      onDelete: "set null",
     }),
     status: clientStatusEnum("status").notNull().default("prospect"),
     priority: clientPriorityEnum("priority").default("medium"),
@@ -263,10 +257,7 @@ export const organizations: any = org.table(
 
     // Business Info
     industryClassificationId: integer("industry_classification_id").references(
-      () => industryClassifications.id,
-      {
-        onDelete: "set null",
-      }
+      () => industryClassifications.id
     ),
     taxId: varchar("tax_id", { length: 50 }),
     website: varchar("website", { length: 255 }),
@@ -285,10 +276,7 @@ export const organizations: any = org.table(
 
     // Billing Contact
     billingContactId: uuid("billing_contact_id").references(
-      () => clientContacts.id,
-      {
-        onDelete: "set null",
-      }
+      () => clientContacts.id
     ),
     billingDay: integer("billing_day"),
     taxExempt: boolean("tax_exempt").default(false),
@@ -300,7 +288,6 @@ export const organizations: any = org.table(
 
     // Metadata
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -326,10 +313,10 @@ export const userOrganizations = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     userType: userOrganizationTypeEnum("user_type")
       .notNull()
@@ -364,7 +351,7 @@ export const clientContacts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Contact Info
     fullName: varchar("full_name", { length: 150 }).notNull(),
@@ -399,7 +386,7 @@ export const clientNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     noteType: varchar("note_type", { length: 50 }), // call, meeting, email, general
     subject: varchar("subject", { length: 255 }),
@@ -407,7 +394,7 @@ export const clientNotes = org.table(
 
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -427,7 +414,7 @@ export const clientDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -437,7 +424,7 @@ export const clientDocuments = org.table(
 
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -472,10 +459,10 @@ export const clientDocumentCategories: any = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => clientDocuments.id, { onDelete: "cascade" }),
+      .references(() => clientDocuments.id, ),
     categoryId: integer("category_id")
       .notNull()
-      .references(() => documentCategories.id, { onDelete: "cascade" }),
+      .references(() => documentCategories.id, ),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -492,7 +479,7 @@ export const properties = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Basic Info
     propertyName: varchar("property_name", { length: 255 }).notNull(),
@@ -532,7 +519,6 @@ export const properties = org.table(
 
     // Metadata
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -558,7 +544,7 @@ export const propertyContacts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     propertyId: uuid("property_id")
       .notNull()
-      .references(() => properties.id, { onDelete: "cascade" }),
+      .references(() => properties.id, ),
 
     fullName: varchar("full_name", { length: 150 }).notNull(),
     title: varchar("title", { length: 100 }),
@@ -589,7 +575,7 @@ export const propertyEquipment = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     propertyId: uuid("property_id")
       .notNull()
-      .references(() => properties.id, { onDelete: "cascade" }),
+      .references(() => properties.id, ),
 
     // Equipment Info
     equipmentTag: varchar("equipment_tag", { length: 100 }), // Unit tag/ID
@@ -634,7 +620,7 @@ export const propertyDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     propertyId: uuid("property_id")
       .notNull()
-      .references(() => properties.id, { onDelete: "cascade" }),
+      .references(() => properties.id, ),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -646,7 +632,7 @@ export const propertyDocuments = org.table(
 
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -665,11 +651,10 @@ export const propertyServiceHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     propertyId: uuid("property_id")
       .notNull()
-      .references(() => properties.id, { onDelete: "cascade" }),
+      .references(() => properties.id, ),
 
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     bidId: uuid("bid_id").references(() => bidsTable.id, {
-      onDelete: "set null",
     }),
 
     serviceDate: date("service_date").notNull(),
@@ -677,7 +662,6 @@ export const propertyServiceHistory = org.table(
     description: text("description"),
 
     performedBy: uuid("performed_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     isDeleted: boolean("is_deleted").default(false),
@@ -697,7 +681,7 @@ export const financialSummary = org.table("financial_summary", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   periodStart: date("period_start").notNull(),
   periodEnd: date("period_end").notNull(),
   // Revenue metrics
@@ -741,7 +725,7 @@ export const financialCostCategories = org.table("financial_cost_categories", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   categoryKey: varchar("category_key", { length: 50 }).notNull(),
   categoryLabel: varchar("category_label", { length: 255 }).notNull(),
   spent: numeric("spent", { precision: 15, scale: 2 }).notNull().default("0"),
@@ -760,7 +744,7 @@ export const profitTrend = org.table("profit_trend", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   period: varchar("period", { length: 50 }).notNull(),
   periodDate: date("period_date").notNull(),
   revenue: numeric("revenue", { precision: 15, scale: 2 })
@@ -776,7 +760,7 @@ export const cashFlowProjection = org.table("cash_flow_projection", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   projectionDate: date("projection_date").notNull(),
   periodStart: date("period_start").notNull(),
   periodEnd: date("period_end").notNull(),
@@ -804,10 +788,10 @@ export const cashFlowScenarios = org.table("cash_flow_scenarios", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   projectionId: uuid("projection_id")
     .notNull()
-    .references(() => cashFlowProjection.id, { onDelete: "cascade" }),
+    .references(() => cashFlowProjection.id, ),
   scenarioType: varchar("scenario_type", { length: 20 }).notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
@@ -825,7 +809,7 @@ export const revenueForecast = org.table("revenue_forecast", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, ),
   month: varchar("month", { length: 10 }).notNull(),
   monthDate: date("month_date").notNull(),
   committed: numeric("committed", { precision: 15, scale: 2 })
@@ -847,7 +831,7 @@ export const financialReports = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     reportKey: varchar("report_key", { length: 50 }).notNull(),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),

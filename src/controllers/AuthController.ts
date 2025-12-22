@@ -59,8 +59,25 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
     // Check for trusted device token
     const deviceToken = req.cookies?.device_token;
+    logger.info("Device token check", { 
+      hasDeviceToken: !!deviceToken, 
+      userId: user.id,
+      cookieKeys: Object.keys(req.cookies || {}),
+      deviceTokenLength: deviceToken?.length,
+      requestOrigin: req.headers.origin,
+      requestHost: req.headers.host,
+      cookieHeader: req.headers.cookie,
+      userAgent: req.headers['user-agent']
+    });
+    
     if (deviceToken) {
       const trustedUserId = await validateDeviceToken(deviceToken);
+      logger.info("Device token validation result", { 
+        trustedUserId, 
+        userIdMatch: trustedUserId === user.id,
+        expectedUserId: user.id 
+      });
+      
       if (trustedUserId === user.id) {
         // Device is trusted, skip 2FA and login directly
 
@@ -80,6 +97,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
         return res.status(200).json({
           success: true,
           message: "Login successful",
+          requiresVerification: false,
           data: {
             token,
             user: {
@@ -181,17 +199,25 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
         ); // 30 days
 
         // Set secure httpOnly cookie with device token
-        res.cookie("device_token", deviceToken, {
+        const cookieOptions = {
           httpOnly: true,
-          secure: process.env.NODE_ENV === "production", // Use secure in production
-          sameSite: "strict",
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax" as const, // Recommended for same-site applications
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
-        });
+          path: "/", // Explicitly set path to root
+        };
+        
+        res.cookie("device_token", deviceToken, cookieOptions);
 
         deviceTokenSet = true;
         logger.info("Device token set for user", {
           userId: user.id,
           deviceId: trustedDevice?.id,
+          deviceTokenLength: deviceToken.length,
+          cookieOptions,
+          nodeEnv: process.env.NODE_ENV,
+          requestOrigin: req.headers.origin,
+          requestHost: req.headers.host
         });
       } catch (deviceError) {
         logger.logApiError("Failed to set device token", deviceError, req);
@@ -919,6 +945,38 @@ export const logoutHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to logout",
+    });
+  }
+};
+
+// Debug endpoint to check cookies
+export const debugCookiesHandler = async (req: Request, res: Response) => {
+  try {
+    logger.info("Debug cookies endpoint called", {
+      cookieKeys: Object.keys(req.cookies || {}),
+      cookies: req.cookies,
+      cookieHeader: req.headers.cookie,
+      requestOrigin: req.headers.origin,
+      requestHost: req.headers.host,
+      userAgent: req.headers['user-agent']
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cookie debug info",
+      data: {
+        cookieKeys: Object.keys(req.cookies || {}),
+        cookies: req.cookies || {},
+        cookieHeader: req.headers.cookie || null,
+        requestOrigin: req.headers.origin || null,
+        requestHost: req.headers.host || null,
+      }
+    });
+  } catch (err: any) {
+    logger.logApiError("Debug cookies error", err, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to debug cookies",
     });
   }
 };

@@ -344,7 +344,9 @@ export const getDepartments = async (
             positions: salaryPositions.map((pos) => ({
               id: pos.id,
               name: pos.name,
-              payRate: `$${Math.round(Number(pos.payRate)).toLocaleString()}/yr`,
+              payRate: `$${Math.round(
+                Number(pos.payRate)
+              ).toLocaleString()}/yr`,
               description: pos.description || "",
             })),
           });
@@ -380,7 +382,9 @@ export const getDepartments = async (
       // Create overall display summary for detailed structure
       let detailedOverallRange = "Not Set";
       if (payRangeGroups.length > 1) {
-        detailedOverallRange = payRangeGroups.map((group) => group.range).join(" • ");
+        detailedOverallRange = payRangeGroups
+          .map((group) => group.range)
+          .join(" • ");
       } else if (payRangeGroups.length === 1 && payRangeGroups[0]) {
         detailedOverallRange = payRangeGroups[0].range;
       }
@@ -1007,33 +1011,32 @@ export const getDepartmentKPIs = async () => {
   const endDateStr = endDate.toISOString().split("T")[0];
 
   // OPTIMIZATION: Run all queries in parallel for maximum performance
-  const [departmentsCount, totalHeadcount, openRolesCount, utilisationData] =
-    await Promise.all([
-      // 1. Count active departments (departments with at least one active employee)
-      db.execute<{ count: string }>(
-        sql.raw(`
-        SELECT COUNT(DISTINCT d.id)::text as count
-        FROM org.departments d
-        INNER JOIN org.employees e ON e.department_id = d.id
-        INNER JOIN auth.users u ON e.user_id = u.id
-        WHERE d.is_deleted = false
-          AND e.is_deleted = false
-          AND u.is_active = true
-      `)
-      ),
+  const [
+    departmentsCountResult,
+    totalHeadcount,
+    openRolesCount,
+    utilisationData,
+  ] = await Promise.all([
+    // 1. Count all departments (excluding soft deleted)
+    db
+      .select({
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(departments)
+      .where(eq(departments.isDeleted, false)),
 
-      // 2. Total headcount across all teams (active employees)
-      db
-        .select({
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(employees)
-        .leftJoin(users, eq(employees.userId, users.id))
-        .where(and(eq(employees.isDeleted, false), eq(users.isActive, true))),
+    // 2. Total headcount across all teams (active employees)
+    db
+      .select({
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(and(eq(employees.isDeleted, false), eq(users.isActive, true))),
 
-      // 3. Open roles (positions without assigned employees)
-      db.execute<{ count: string }>(
-        sql.raw(`
+    // 3. Open roles (positions without assigned employees)
+    db.execute<{ count: string }>(
+      sql.raw(`
         SELECT COUNT(*)::text as count
         FROM org.positions p
         WHERE p.department_id IS NOT NULL
@@ -1044,16 +1047,16 @@ export const getDepartmentKPIs = async () => {
               AND e.is_deleted = false
           )
       `)
-      ),
+    ),
 
-      // 4. Average utilisation (rolling 30 days)
-      // Calculate: (total hours worked / expected hours) * 100
-      // Expected hours = active employees * 8 hours/day * 30 days = 240 hours per employee
-      db.execute<{
-        total_hours: string;
-        active_employees: string;
-      }>(
-        sql.raw(`
+    // 4. Average utilisation (rolling 30 days)
+    // Calculate: (total hours worked / expected hours) * 100
+    // Expected hours = active employees * 8 hours/day * 30 days = 240 hours per employee
+    db.execute<{
+      total_hours: string;
+      active_employees: string;
+    }>(
+      sql.raw(`
         SELECT 
           COALESCE(SUM(CAST(t.total_hours AS NUMERIC)), 0)::text as total_hours,
           COUNT(DISTINCT e.id)::text as active_employees
@@ -1066,11 +1069,11 @@ export const getDepartmentKPIs = async () => {
           AND e.is_deleted = false
           AND u.is_active = true
       `)
-      ),
-    ]);
+    ),
+  ]);
 
   // Extract values
-  const departments = Number(departmentsCount.rows?.[0]?.count || 0);
+  const departmentsCount = Number(departmentsCountResult[0]?.count || 0);
   const headcount = Number(totalHeadcount[0]?.count || 0);
   const openRoles = Number(openRolesCount.rows?.[0]?.count || 0);
 
@@ -1086,8 +1089,8 @@ export const getDepartmentKPIs = async () => {
 
   return {
     departments: {
-      value: departments,
-      label: "Active teams",
+      value: departmentsCount,
+      label: "Total Departments",
     },
     headcount: {
       value: headcount,

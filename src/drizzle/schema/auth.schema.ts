@@ -102,10 +102,10 @@ export const rolePermissions = auth.table(
   {
     roleId: integer("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "cascade" }),
+      .references(() => roles.id, ),
     permissionId: integer("permission_id")
       .notNull()
-      .references(() => permissions.id, { onDelete: "cascade" }),
+      .references(() => permissions.id, ),
   },
   (table) => [primaryKey({ columns: [table.roleId, table.permissionId] })]
 );
@@ -116,10 +116,10 @@ export const userRoles = auth.table(
   {
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, ),
     roleId: integer("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "cascade" }),
+      .references(() => roles.id, ),
   },
   (table) => [primaryKey({ columns: [table.userId, table.roleId] })]
 );
@@ -131,7 +131,7 @@ export const trustedDevices = auth.table(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, ),
     deviceToken: varchar("device_token", { length: 255 }).notNull().unique(),
     deviceName: varchar("device_name", { length: 200 }), // Browser info or user-defined name
     ipAddress: varchar("ip_address", { length: 50 }),
@@ -155,9 +155,7 @@ export const auditLogs = auth.table(
   "audit_logs",
   {
     id: serial("id").primaryKey(), // ✅ Fixed - Now auto-incrementing
-    userId: uuid("user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    userId: uuid("user_id").references(() => users.id),
     eventType: varchar("event_type", { length: 100 }).notNull(),
     description: text("description"),
     ipAddress: varchar("ip_address", { length: 50 }),

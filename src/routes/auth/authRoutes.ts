@@ -17,6 +17,7 @@ import {
   revokeTrustedDeviceHandler,
   revokeAllTrustedDevicesHandler,
   logoutHandler,
+  debugCookiesHandler,
 } from "../../controllers/AuthController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -101,5 +102,8 @@ router
 
 // Logout route
 router.route("/logout").post(logoutHandler);
+
+// Debug route for cookies (development only)
+router.route("/debug-cookies").get(debugCookiesHandler);
 
 export default router;

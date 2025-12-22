@@ -47,7 +47,7 @@ export const bidsTable: any = org.table(
     // Client / Org
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     clientName: varchar("client_name", { length: 255 }),
     clientEmail: varchar("client_email", { length: 150 }),
     clientPhone: varchar("client_phone", { length: 20 }),
@@ -104,26 +104,22 @@ export const bidsTable: any = org.table(
     
     // Team Assignment
     primaryTeammate: uuid("primary_teammate").references(() => users.id, {
-      onDelete: "set null",
     }),
     supervisorManager: uuid("supervisor_manager").references(() => users.id, {
-      onDelete: "set null",
     }),
     technicianId: uuid("technician_id").references(() => users.id, {
-      onDelete: "set null",
     }),
     
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     assignedTo: uuid("assigned_to").references(() => users.id, {
-      onDelete: "set null",
     }),
     qtyNumber: varchar("qty_number", { length: 50 }),
     marked: varchar("marked", { length: 20 }), // "won" | "lost"
     convertToJob: boolean("convert_to_job").default(false),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -158,10 +154,10 @@ export const bidFinancialBreakdown = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .references(() => bidsTable.id, )
       .unique(),
     
     materialsEquipment: numeric("materials_equipment", {
@@ -204,10 +200,10 @@ export const bidMaterials = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     description: text("description").notNull(),
     quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull(),
@@ -237,10 +233,10 @@ export const bidLabor = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     role: varchar("role", { length: 100 }).notNull(),
     quantity: integer("quantity").notNull(),
@@ -275,10 +271,10 @@ export const bidTravel = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     employeeName: varchar("employee_name", { length: 255 }),
     vehicleName: varchar("vehicle_name", { length: 255 }),
@@ -320,10 +316,10 @@ export const bidOperatingExpenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .references(() => bidsTable.id, )
       .unique(),
     
     enabled: boolean("enabled").default(false),
@@ -385,10 +381,10 @@ export const bidSurveyData = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .references(() => bidsTable.id, )
       .unique(),
     
     buildingNumber: varchar("building_number", { length: 100 }),
@@ -408,7 +404,6 @@ export const bidSurveyData = org.table(
     siteConditions: text("site_conditions"),
     clientRequirements: text("client_requirements"),
     technicianId: uuid("technician_id").references(() => users.id, {
-      onDelete: "set null",
     }),
     
     isDeleted: boolean("is_deleted").default(false),
@@ -432,10 +427,10 @@ export const bidPlanSpecData = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .references(() => bidsTable.id, )
       .unique(),
     
     specifications: text("specifications"),
@@ -461,10 +456,10 @@ export const bidDesignBuildData = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .references(() => bidsTable.id, )
       .unique(),
     
     designRequirements: text("design_requirements"),
@@ -490,10 +485,10 @@ export const bidTimeline = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     event: varchar("event", { length: 255 }).notNull(),
     eventDate: timestamp("event_date").notNull(),
@@ -501,7 +496,6 @@ export const bidTimeline = org.table(
     description: text("description"),
     sortOrder: integer("sort_order").default(0),
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     
     isDeleted: boolean("is_deleted").default(false),
@@ -526,10 +520,10 @@ export const bidDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -538,7 +532,7 @@ export const bidDocuments = org.table(
     documentType: varchar("document_type", { length: 50 }), // proposal, contract, spec, plan, etc.
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -562,10 +556,10 @@ export const bidPlanSpecFiles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     fileType: varchar("file_type", { length: 20 }).notNull(), // "plan" | "spec"
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -573,7 +567,7 @@ export const bidPlanSpecFiles = org.table(
     fileSize: integer("file_size"),
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -595,17 +589,17 @@ export const bidDesignBuildFiles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileSize: integer("file_size"),
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -626,15 +620,15 @@ export const bidNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     note: text("note").notNull(),
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     isInternal: boolean("is_internal").default(true),
     
     isDeleted: boolean("is_deleted").default(false),
@@ -659,10 +653,10 @@ export const bidHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
+      .references(() => bidsTable.id, ),
     
     action: varchar("action", { length: 100 }).notNull(), // status_changed, amount_updated, assigned, etc.
     oldValue: text("old_value"),
@@ -670,7 +664,7 @@ export const bidHistory = org.table(
     description: text("description"),
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     
     createdAt: timestamp("created_at").defaultNow(),
   },

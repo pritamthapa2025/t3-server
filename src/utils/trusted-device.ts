@@ -59,6 +59,15 @@ export async function storeTrustedDevice(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiryDays);
 
+  console.log('Storing trusted device:', {
+    userId,
+    originalTokenLength: deviceToken.length,
+    hashedTokenLength: hashedToken.length,
+    deviceInfo,
+    expiresAt: expiresAt.toISOString(),
+    expiryDays
+  });
+
   const [trustedDevice] = await db.insert(trustedDevices).values({
     userId,
     deviceToken: hashedToken,
@@ -69,6 +78,13 @@ export async function storeTrustedDevice(
     lastUsedAt: new Date(),
   }).returning();
 
+  console.log('Trusted device stored:', {
+    deviceId: trustedDevice?.id,
+    userId: trustedDevice?.userId,
+    deviceToken: trustedDevice?.deviceToken,
+    expiresAt: trustedDevice?.expiresAt?.toISOString()
+  });
+
   return trustedDevice;
 }
 
@@ -76,17 +92,30 @@ export async function storeTrustedDevice(
  * Validate a device token and return user ID if valid
  */
 export async function validateDeviceToken(deviceToken: string): Promise<string | null> {
-  if (!deviceToken) return null;
+  if (!deviceToken) {
+    console.log('Device token validation: No token provided');
+    return null;
+  }
 
   try {
     const hashedToken = hashDeviceToken(deviceToken);
     const now = new Date();
+    
+    console.log('Device token validation:', {
+      originalTokenLength: deviceToken.length,
+      hashedTokenLength: hashedToken.length,
+      currentTime: now.toISOString()
+    });
 
     // Find active, non-expired device
     const [device] = await db
       .select({
         userId: trustedDevices.userId,
         id: trustedDevices.id,
+        deviceToken: trustedDevices.deviceToken,
+        isActive: trustedDevices.isActive,
+        expiresAt: trustedDevices.expiresAt,
+        lastUsedAt: trustedDevices.lastUsedAt,
       })
       .from(trustedDevices)
       .where(
@@ -98,7 +127,31 @@ export async function validateDeviceToken(deviceToken: string): Promise<string |
       )
       .limit(1);
 
-    if (!device) return null;
+    console.log('Device token query result:', {
+      deviceFound: !!device,
+      deviceId: device?.id,
+      userId: device?.userId,
+      isActive: device?.isActive,
+      expiresAt: device?.expiresAt?.toISOString(),
+      lastUsedAt: device?.lastUsedAt?.toISOString()
+    });
+
+    if (!device) {
+      // Let's also check if there are any devices for this token (ignoring active/expiry status)
+      const allDevicesWithToken = await db
+        .select({
+          userId: trustedDevices.userId,
+          id: trustedDevices.id,
+          isActive: trustedDevices.isActive,
+          expiresAt: trustedDevices.expiresAt,
+        })
+        .from(trustedDevices)
+        .where(eq(trustedDevices.deviceToken, hashedToken))
+        .limit(5);
+        
+      console.log('All devices with this token (ignoring filters):', allDevicesWithToken);
+      return null;
+    }
 
     // Update last used timestamp
     await db

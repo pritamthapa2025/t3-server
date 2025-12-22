@@ -34,7 +34,7 @@ export const employeeShifts = org.table(
     id: serial("id").primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
 
     // Shift Details
     shiftDate: date("shift_date").notNull(),
@@ -52,7 +52,7 @@ export const employeeShifts = org.table(
     notes: text("notes"),
 
     // Metadata
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, ),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -71,7 +71,7 @@ export const employeeAvailability = org.table(
     id: serial("id").primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
 
     // Current Status
     currentStatus: availabilityStatusEnum("current_status").notNull().default("available"),
@@ -82,12 +82,12 @@ export const employeeAvailability = org.table(
     expectedAvailableTime: timestamp("expected_available_time"), // When they'll be available again
 
     // Current Assignment
-    currentJobId: uuid("current_job_id").references(() => jobs.id, { onDelete: "set null" }),
+    currentJobId: uuid("current_job_id").references(() => jobs.id, ),
     currentTaskDescription: text("current_task_description"),
 
     // Metadata
     lastUpdated: timestamp("last_updated").defaultNow(),
-    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: uuid("updated_by").references(() => users.id, ),
   },
   (table) => [
     unique("unique_employee_availability").on(table.employeeId), // Ensure one record per employee
@@ -106,8 +106,8 @@ export const resourceAllocations = org.table(
     // Assignment Details
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     taskId: uuid("task_id"), // Link to specific job task if applicable
 
     // Time Allocation
@@ -126,8 +126,8 @@ export const resourceAllocations = org.table(
 
     // Metadata
     notes: text("notes"),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, ),
+    assignedBy: uuid("assigned_by").references(() => users.id, ),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -147,7 +147,7 @@ export const departmentCapacityMetrics = org.table(
     id: serial("id").primaryKey(),
     departmentId: integer("department_id")
       .notNull()
-      .references(() => departments.id, { onDelete: "cascade" }),
+      .references(() => departments.id, ),
 
     // Time Period
     metricDate: date("metric_date").notNull(),
@@ -173,7 +173,7 @@ export const departmentCapacityMetrics = org.table(
 
     // Metadata
     calculatedAt: timestamp("calculated_at").defaultNow(),
-    calculatedBy: uuid("calculated_by").references(() => users.id, { onDelete: "set null" }),
+    calculatedBy: uuid("calculated_by").references(() => users.id, ),
   },
   (table) => [
     unique("unique_dept_capacity_metric").on(table.departmentId, table.metricDate, table.periodType),
@@ -190,8 +190,8 @@ export const teamUtilizationHistory = org.table(
     id: serial("id").primaryKey(),
 
     // Scope
-    departmentId: integer("department_id").references(() => departments.id, { onDelete: "cascade" }),
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
+    departmentId: integer("department_id").references(() => departments.id, ),
+    employeeId: integer("employee_id").references(() => employees.id, ),
 
     // Time Period
     periodStart: date("period_start").notNull(),
@@ -229,7 +229,7 @@ export const capacityPlanningTemplates = org.table(
     // Template Info
     name: varchar("name", { length: 100 }).notNull(),
     description: text("description"),
-    departmentId: integer("department_id").references(() => departments.id, { onDelete: "cascade" }),
+    departmentId: integer("department_id").references(() => departments.id, ),
 
     // Schedule Pattern
     dayOfWeek: integer("day_of_week"), // 0=Sunday, 1=Monday, etc. (NULL for daily)
@@ -248,7 +248,7 @@ export const capacityPlanningTemplates = org.table(
     effectiveTo: date("effective_to"),
 
     // Metadata
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, ),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

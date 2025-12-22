@@ -123,7 +123,7 @@ export const inventorySuppliers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Basic Info
     supplierCode: varchar("supplier_code", { length: 50 }), // SUP-001
@@ -187,7 +187,7 @@ export const inventoryLocations: any = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     locationCode: varchar("location_code", { length: 50 }), // WH-A-S3, TR-B2
     name: varchar("name", { length: 255 }).notNull(),
@@ -196,7 +196,6 @@ export const inventoryLocations: any = org.table(
     // Hierarchical structure (optional parent location)
     parentLocationId: uuid("parent_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "set null" }
     ),
 
     // Address (for warehouses/facilities)
@@ -211,7 +210,6 @@ export const inventoryLocations: any = org.table(
 
     // Manager
     managerId: uuid("manager_id").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     // Access
@@ -270,7 +268,7 @@ export const inventoryItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Basic Info
     itemCode: varchar("item_code", { length: 100 }).notNull(), // SKU: MAT-STC-2IN-001
@@ -280,18 +278,17 @@ export const inventoryItems = org.table(
     // Categorization
     categoryId: integer("category_id")
       .notNull()
-      .references(() => inventoryCategories.id, { onDelete: "restrict" }),
+      .references(() => inventoryCategories.id, ),
 
     // Supplier
     primarySupplierId: uuid("primary_supplier_id").references(
       () => inventorySuppliers.id,
-      { onDelete: "set null" }
     ),
 
     // Unit of Measure
     unitOfMeasureId: integer("unit_of_measure_id")
       .notNull()
-      .references(() => inventoryUnitsOfMeasure.id, { onDelete: "restrict" }),
+      .references(() => inventoryUnitsOfMeasure.id, ),
 
     // Pricing
     unitCost: numeric("unit_cost", { precision: 15, scale: 2 })
@@ -334,7 +331,6 @@ export const inventoryItems = org.table(
     // Primary Location
     primaryLocationId: uuid("primary_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "set null" }
     ),
 
     // Product Details
@@ -399,13 +395,13 @@ export const inventoryItemLocations = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, ),
     locationId: uuid("location_id")
       .notNull()
-      .references(() => inventoryLocations.id, { onDelete: "cascade" }),
+      .references(() => inventoryLocations.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     quantity: numeric("quantity", { precision: 10, scale: 2 })
       .notNull()
@@ -439,16 +435,15 @@ export const inventoryTransactions = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     transactionNumber: varchar("transaction_number", { length: 100 }).notNull(), // TXN-2025-0001
 
     // Item & Location
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+      .references(() => inventoryItems.id, ),
     locationId: uuid("location_id").references(() => inventoryLocations.id, {
-      onDelete: "set null",
     }),
 
     // Transaction Details
@@ -466,21 +461,17 @@ export const inventoryTransactions = org.table(
     // Related Records
     purchaseOrderId: uuid("purchase_order_id").references(
       () => inventoryPurchaseOrders.id,
-      { onDelete: "set null" }
     ),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     bidId: uuid("bid_id").references(() => bidsTable.id, {
-      onDelete: "set null",
     }),
 
     // Transfer details (if transaction_type = 'transfer')
     fromLocationId: uuid("from_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "set null" }
     ),
     toLocationId: uuid("to_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "set null" }
     ),
 
     // Tracking
@@ -495,7 +486,7 @@ export const inventoryTransactions = org.table(
     // Metadata
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -530,14 +521,14 @@ export const inventoryPurchaseOrders = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     poNumber: varchar("po_number", { length: 100 }).notNull(), // PO-2025-0001
 
     // Supplier
     supplierId: uuid("supplier_id")
       .notNull()
-      .references(() => inventorySuppliers.id, { onDelete: "restrict" }),
+      .references(() => inventorySuppliers.id, ),
 
     // Dates
     orderDate: date("order_date").notNull(),
@@ -562,7 +553,6 @@ export const inventoryPurchaseOrders = org.table(
     // Shipping
     shipToLocationId: uuid("ship_to_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "set null" }
     ),
     shippingAddress: text("shipping_address"),
     trackingNumber: varchar("tracking_number", { length: 100 }),
@@ -581,9 +571,8 @@ export const inventoryPurchaseOrders = org.table(
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     approvedBy: uuid("approved_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     approvedAt: timestamp("approved_at"),
 
@@ -613,13 +602,13 @@ export const inventoryPurchaseOrderItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     purchaseOrderId: uuid("purchase_order_id")
       .notNull()
-      .references(() => inventoryPurchaseOrders.id, { onDelete: "cascade" }),
+      .references(() => inventoryPurchaseOrders.id, ),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+      .references(() => inventoryItems.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Quantities
     quantityOrdered: numeric("quantity_ordered", { precision: 10, scale: 2 })
@@ -660,16 +649,15 @@ export const inventoryAllocations = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, ),
 
     // Allocated To
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     bidId: uuid("bid_id").references(() => bidsTable.id, {
-      onDelete: "cascade",
     }),
 
     // Quantity
@@ -697,7 +685,7 @@ export const inventoryAllocations = org.table(
     // Metadata
     allocatedBy: uuid("allocated_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
     notes: text("notes"),
 
     isDeleted: boolean("is_deleted").default(false),
@@ -731,11 +719,11 @@ export const inventoryStockAlerts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, ),
 
     alertType: varchar("alert_type", { length: 50 }).notNull(), // low_stock, out_of_stock, overstock, expiring
     severity: varchar("severity", { length: 20 }).notNull(), // info, warning, critical
@@ -752,13 +740,11 @@ export const inventoryStockAlerts = org.table(
     // Status
     isAcknowledged: boolean("is_acknowledged").default(false),
     acknowledgedBy: uuid("acknowledged_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     acknowledgedAt: timestamp("acknowledged_at"),
 
     isResolved: boolean("is_resolved").default(false),
     resolvedBy: uuid("resolved_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     resolvedAt: timestamp("resolved_at"),
     resolutionNotes: text("resolution_notes"),
@@ -792,11 +778,11 @@ export const inventoryItemHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, ),
 
     action: varchar("action", { length: 100 }).notNull(), // created, updated, deleted, price_changed, etc.
     fieldChanged: varchar("field_changed", { length: 100 }), // Field name that changed
@@ -806,7 +792,7 @@ export const inventoryItemHistory = org.table(
 
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -834,13 +820,12 @@ export const inventoryCounts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     countNumber: varchar("count_number", { length: 100 }).notNull(), // CNT-2025-0001
     countType: varchar("count_type", { length: 50 }).notNull(), // full, cycle, spot
 
     locationId: uuid("location_id").references(() => inventoryLocations.id, {
-      onDelete: "set null",
     }),
 
     // Dates
@@ -853,7 +838,6 @@ export const inventoryCounts = org.table(
 
     // Performed By
     performedBy: uuid("performed_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     notes: text("notes"),
@@ -885,13 +869,13 @@ export const inventoryCountItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     countId: uuid("count_id")
       .notNull()
-      .references(() => inventoryCounts.id, { onDelete: "cascade" }),
+      .references(() => inventoryCounts.id, ),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+      .references(() => inventoryItems.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Quantities
     systemQuantity: numeric("system_quantity", { precision: 10, scale: 2 })

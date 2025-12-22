@@ -50,7 +50,7 @@ export const payPeriods = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Period Details
     periodNumber: integer("period_number").notNull(), // 1, 2, 3... for the year
@@ -72,7 +72,6 @@ export const payPeriods = org.table(
     lockStatus: lockStatusEnum("lock_status").notNull().default("unlocked"),
     lockedAt: timestamp("locked_at"),
     lockedBy: uuid("locked_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     // Timesheet integration tracking
@@ -83,13 +82,10 @@ export const payPeriods = org.table(
 
     // Personnel
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     approvedBy: uuid("approved_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     processedBy: uuid("processed_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     notes: text("notes"),
@@ -121,10 +117,10 @@ export const employeeCompensation = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Pay Structure
     baseSalary: numeric("base_salary", { precision: 15, scale: 2 }),
@@ -163,7 +159,6 @@ export const employeeCompensation = org.table(
     endDate: date("end_date"),
 
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     notes: text("notes"),
     isActive: boolean("is_active").default(true),
@@ -195,10 +190,10 @@ export const payrollRuns = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     payPeriodId: uuid("pay_period_id")
       .notNull()
-      .references(() => payPeriods.id, { onDelete: "cascade" }),
+      .references(() => payPeriods.id, ),
 
     // Run Details
     runNumber: varchar("run_number", { length: 50 }).notNull(), // PAY-2025-W-50-001
@@ -242,13 +237,10 @@ export const payrollRuns = org.table(
 
     // Personnel
     createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     approvedBy: uuid("approved_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     processedBy: uuid("processed_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     notes: text("notes"),
@@ -277,13 +269,13 @@ export const payrollEntries = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     payrollRunId: uuid("payroll_run_id")
       .notNull()
-      .references(() => payrollRuns.id, { onDelete: "cascade" }),
+      .references(() => payrollRuns.id, ),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
 
     // Entry Details
     entryNumber: varchar("entry_number", { length: 50 }).notNull(), // PAY-W-2025-50-001
@@ -377,7 +369,6 @@ export const payrollEntries = org.table(
       .default("direct_deposit"),
     bankAccountId: uuid("bank_account_id").references(
       () => userBankAccounts.id,
-      { onDelete: "set null" }
     ),
     checkNumber: varchar("check_number", { length: 50 }),
 
@@ -386,7 +377,6 @@ export const payrollEntries = org.table(
     processedDate: date("processed_date"),
     paidDate: date("paid_date"),
     processedBy: uuid("processed_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     notes: text("notes"),
@@ -421,7 +411,7 @@ export const timesheetPayrollIntegrationLog = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollEntryId: uuid("payroll_entry_id")
       .notNull()
-      .references(() => payrollEntries.id, { onDelete: "cascade" }),
+      .references(() => payrollEntries.id, ),
 
     // Source timesheet tracking
     timesheetIds: jsonb("timesheet_ids").notNull(), // Array of timesheet IDs that contributed
@@ -471,10 +461,10 @@ export const payrollTimesheetEntries = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollEntryId: uuid("payroll_entry_id")
       .notNull()
-      .references(() => payrollEntries.id, { onDelete: "cascade" }),
+      .references(() => payrollEntries.id, ),
     timesheetId: integer("timesheet_id")
       .notNull()
-      .references(() => timesheets.id, { onDelete: "cascade" }),
+      .references(() => timesheets.id, ),
 
     // Hours from timesheet
     hoursIncluded: numeric("hours_included", {
@@ -491,7 +481,7 @@ export const payrollTimesheetEntries = org.table(
     }).default("0"),
 
     // Job allocation (if timesheet has job references)
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => jobs.id, ),
     jobHours: numeric("job_hours", { precision: 8, scale: 2 }).default("0"),
 
     // Processing details
@@ -521,10 +511,9 @@ export const payrollApprovalWorkflow = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollRunId: uuid("payroll_run_id")
       .notNull()
-      .references(() => payrollRuns.id, { onDelete: "cascade" }),
+      .references(() => payrollRuns.id, ),
     payrollEntryId: uuid("payroll_entry_id").references(
       () => payrollEntries.id,
-      { onDelete: "cascade" }
     ),
 
     // Workflow details
@@ -535,7 +524,6 @@ export const payrollApprovalWorkflow = org.table(
     // Approval chain
     approvalChain: jsonb("approval_chain"), // Array of {step, approver, status, timestamp}
     currentApprover: uuid("current_approver").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     // Auto-approval tracking
@@ -546,7 +534,6 @@ export const payrollApprovalWorkflow = org.table(
     // Manual override capability
     manualOverrideAllowed: boolean("manual_override_allowed").default(true),
     overriddenBy: uuid("overridden_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     overrideReason: text("override_reason"),
 
@@ -574,7 +561,7 @@ export const payrollLocks = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Lock scope
     lockScope: varchar("lock_scope", { length: 50 }).notNull(), // "pay_period", "payroll_run", "individual_entry"
@@ -588,7 +575,6 @@ export const payrollLocks = org.table(
     // Lock metadata
     lockedAt: timestamp("locked_at").notNull(),
     lockedBy: uuid("locked_by").references(() => users.id, {
-      onDelete: "set null",
     }),
 
     // Unlock capability (for executives)
@@ -598,7 +584,6 @@ export const payrollLocks = org.table(
     // Unlock tracking
     unlockedAt: timestamp("unlocked_at"),
     unlockedBy: uuid("unlocked_by").references(() => users.id, {
-      onDelete: "set null",
     }),
     unlockReason: text("unlock_reason"),
 
@@ -630,7 +615,7 @@ export const payrollDeductions = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollEntryId: uuid("payroll_entry_id")
       .notNull()
-      .references(() => payrollEntries.id, { onDelete: "cascade" }),
+      .references(() => payrollEntries.id, ),
 
     // Deduction Details
     deductionType: deductionTypeEnum("deduction_type").notNull(),
@@ -674,10 +659,10 @@ export const employeeBenefits = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Benefit Details
     benefitType: benefitTypeEnum("benefit_type").notNull(),
@@ -726,10 +711,10 @@ export const employeeLeaveBalances = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Balance Details
     leaveType: leaveTypeEnum("leave_type").notNull(),
@@ -770,7 +755,7 @@ export const payrollAuditLog = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
 
     // Reference (payroll run, entry, compensation change)
     referenceType: varchar("reference_type", { length: 50 }).notNull(),
@@ -789,7 +774,7 @@ export const payrollAuditLog = org.table(
     // Personnel
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, ),
 
     createdAt: timestamp("created_at").defaultNow(),
   },

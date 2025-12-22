@@ -35,7 +35,7 @@ export const jobs: any = org.table(
     // Relationships
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     propertyId: uuid("property_id"), // Will reference properties from org schema
     bidId: uuid("bid_id"), // Will reference bids from bids schema
 
@@ -66,12 +66,8 @@ export const jobs: any = org.table(
     actualCost: numeric("actual_cost", { precision: 15, scale: 2 }),
 
     // Team Assignment
-    projectManager: uuid("project_manager").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    leadTechnician: uuid("lead_technician").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    projectManager: uuid("project_manager").references(() => users.id),
+    leadTechnician: uuid("lead_technician").references(() => users.id),
 
     // Completion
     completionNotes: text("completion_notes"),
@@ -81,9 +77,7 @@ export const jobs: any = org.table(
     }).default("0"),
 
     // Metadata
-    createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    createdBy: uuid("created_by").references(() => users.id),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -115,10 +109,10 @@ export const jobTeamMembers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, { onDelete: "cascade" }),
+      .references(() => jobs.id, ),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, ),
 
     role: varchar("role", { length: 100 }), // Lead, Assistant, Specialist
     assignedDate: date("assigned_date").defaultNow(),
@@ -146,10 +140,10 @@ export const jobFinancialSummary = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, { onDelete: "cascade" }),
+      .references(() => jobs.id, ),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, ),
     
     contractValue: numeric("contract_value", {
       precision: 15,

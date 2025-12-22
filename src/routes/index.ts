@@ -14,6 +14,7 @@ import payrollRoutes from "./org/payrollRoutes.js";
 import compensationRoutes from "./org/compensationRoutes.js";
 import capacityRoutes from "./org/capacityRoutes.js";
 import inventoryRoutes from "./org/inventoryRoutes.js";
+import complianceRoutes from "./org/complianceRoutes.js";
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use("/org/payroll", payrollRoutes);
 router.use("/org/compensation", compensationRoutes);
 router.use("/org/capacity", capacityRoutes);
 router.use("/org/inventory", inventoryRoutes);
+router.use("/org/compliance", complianceRoutes);
 
 export default router;

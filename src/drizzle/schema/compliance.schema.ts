@@ -11,6 +11,7 @@ import {
   date,
   unique,
   index,
+  serial,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 import { organizations, employees } from "./org.schema.js";
@@ -33,13 +34,14 @@ export const employeeComplianceCases = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
+    jobId: uuid("job_id").references(() => jobs.id),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id),
 
     // Case Details
-    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-3021
+    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-2024-001
     type: complianceCaseTypeEnum("type").notNull(),
     severity: complianceSeverityEnum("severity").notNull(),
     status: complianceStatusEnum("status").notNull().default("open"),
@@ -55,15 +57,9 @@ export const employeeComplianceCases = org.table(
     resolvedDate: date("resolved_date"),
 
     // Assignment
-    reportedBy: uuid("reported_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    assignedTo: uuid("assigned_to").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    resolvedBy: uuid("resolved_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    reportedBy: uuid("reported_by").references(() => users.id),
+    assignedTo: uuid("assigned_to").references(() => users.id),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
 
     // Impact Assessment
     impactLevel: varchar("impact_level", { length: 50 }), // "low_risk", "medium_risk", "high_risk"
@@ -79,8 +75,10 @@ export const employeeComplianceCases = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_compliance_cases_employee").on(table.employeeId),
     index("idx_compliance_cases_org").on(table.organizationId),
+    index("idx_compliance_cases_job").on(table.jobId),
+    index("idx_compliance_cases_employee").on(table.employeeId),
+    index("idx_compliance_cases_case_number").on(table.caseNumber),
     index("idx_compliance_cases_status").on(table.status),
     index("idx_compliance_cases_type").on(table.type),
     index("idx_compliance_cases_assigned_to").on(table.assignedTo),
@@ -95,10 +93,10 @@ export const employeeCertifications = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id),
 
     // Certification Details
     certificationName: varchar("certification_name", { length: 255 }).notNull(),
@@ -145,13 +143,12 @@ export const employeeViolationHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id),
     complianceCaseId: uuid("compliance_case_id").references(
-      () => employeeComplianceCases.id,
-      { onDelete: "set null" }
+      () => employeeComplianceCases.id
     ),
 
     // Violation Details
@@ -176,10 +173,10 @@ export const employeeViolationHistory = org.table(
     resolutionDate: date("resolution_date"),
     resolutionNotes: text("resolution_notes"),
 
-    createdBy: uuid("created_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    createdBy: uuid("created_by").references(() => users.id),
+    isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
     index("idx_violation_history_employee").on(table.employeeId),
@@ -197,7 +194,7 @@ export const vehicles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
 
     // Vehicle Identity
     vehicleId: varchar("vehicle_id", { length: 50 }).notNull().unique(), // VAN-014, TRK-001
@@ -210,12 +207,9 @@ export const vehicles = org.table(
     // Status & Assignment
     status: varchar("status", { length: 50 }).notNull().default("active"), // "active", "maintenance", "out_of_service"
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
-      () => employees.id,
-      { onDelete: "set null" }
+      () => employees.id
     ),
-    currentJobId: uuid("current_job_id").references(() => jobs.id, {
-      onDelete: "set null",
-    }),
+    currentJobId: uuid("current_job_id").references(() => jobs.id),
 
     // Specifications
     type: varchar("type", { length: 50 }).notNull(), // "truck", "van", "car", "specialized"
@@ -258,10 +252,10 @@ export const safetyInspections = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id, { onDelete: "cascade" }),
+      .references(() => vehicles.id),
 
     // Inspection Details
     inspectionNumber: varchar("inspection_number", { length: 50 })
@@ -271,12 +265,8 @@ export const safetyInspections = org.table(
     mileage: integer("mileage").notNull(),
 
     // Personnel
-    performedBy: uuid("performed_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    approvedBy: uuid("approved_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    performedBy: uuid("performed_by").references(() => users.id),
+    approvedBy: uuid("approved_by").references(() => users.id),
 
     // Results
     overallStatus: inspectionStatusEnum("overall_status").notNull(),
@@ -316,7 +306,7 @@ export const safetyInspectionItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     inspectionId: uuid("inspection_id")
       .notNull()
-      .references(() => safetyInspections.id, { onDelete: "cascade" }),
+      .references(() => safetyInspections.id),
 
     // Item Details
     category: varchar("category", { length: 100 }).notNull(), // "Lights", "Brakes", "Tires", etc.
@@ -327,7 +317,9 @@ export const safetyInspectionItems = org.table(
     notes: text("notes"),
     photo: varchar("photo", { length: 500 }), // Photo URL if applicable
 
+    isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
     index("idx_safety_inspection_items_inspection").on(table.inspectionId),
@@ -342,7 +334,7 @@ export const trainingPrograms = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
 
     // Program Details
     programName: varchar("program_name", { length: 255 }).notNull(),
@@ -363,6 +355,7 @@ export const trainingPrograms = org.table(
     externalUrl: varchar("external_url", { length: 500 }),
 
     isActive: boolean("is_active").default(true),
+    isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -379,13 +372,13 @@ export const employeeTrainingRecords = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id),
     trainingProgramId: uuid("training_program_id")
       .notNull()
-      .references(() => trainingPrograms.id, { onDelete: "cascade" }),
+      .references(() => trainingPrograms.id),
 
     // Progress Tracking
     status: trainingStatusEnum("status").notNull().default("not_started"),
@@ -406,6 +399,7 @@ export const employeeTrainingRecords = org.table(
 
     // Reminder Management
     reminderSent: boolean("reminder_sent").default(false),
+    isDeleted: boolean("is_deleted").default(false),
 
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -429,7 +423,7 @@ export const complianceAuditLog = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id),
 
     // Reference (can be employee, case, certification, etc.)
     referenceType: varchar("reference_type", { length: 50 }).notNull(), // "compliance_case", "certification", "training"
@@ -444,8 +438,9 @@ export const complianceAuditLog = org.table(
     // Personnel
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id),
 
+    isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
