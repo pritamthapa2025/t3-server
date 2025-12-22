@@ -379,6 +379,8 @@ export const createClientContactSchema = z.object({
     email: z.string().email().max(150).optional(),
     phone: z.string().max(20).optional(),
     mobilePhone: z.string().max(20).optional(),
+    // picture is extracted from the uploaded file and DigitalOcean upload result
+    // It should not be provided in the request body when uploading a file
     picture: z
       .union([
         z.string().url("Invalid picture URL").max(500),
@@ -411,6 +413,8 @@ export const updateClientContactSchema = z.object({
     email: z.string().email().max(150).optional(),
     phone: z.string().max(20).optional(),
     mobilePhone: z.string().max(20).optional(),
+    // picture is extracted from the uploaded file and DigitalOcean upload result
+    // It should not be provided in the request body when uploading a file
     picture: z
       .union([
         z.string().url("Invalid picture URL").max(500),
@@ -504,9 +508,15 @@ export const createClientDocumentSchema = z.object({
     id: z.string().uuid("Invalid client ID"),
   }),
   body: z.object({
-    fileName: z.string().min(1, "File name is required").max(255),
-    filePath: z.string().min(1, "File path is required").max(500),
+    // fileName and filePath are extracted from the uploaded file and DigitalOcean upload result
+    // They should not be provided in the request body
+    fileName: z.string().min(1, "File name is required").max(255).optional(),
+    filePath: z.string().min(1, "File path is required").max(500).optional(),
+    // fileType is extracted from the uploaded file's mimetype
+    // It should not be provided in the request body
     fileType: z.string().max(50).optional(),
+    // fileSize is extracted from the uploaded file's size
+    // It should not be provided in the request body
     fileSize: z
       .union([z.number(), z.string()])
       .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))

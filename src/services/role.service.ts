@@ -16,10 +16,10 @@ export const getRoleById = async (roleId: number) => {
 };
 
 /**
- * Get all roles for a specific user
+ * Get the role for a specific user (one user, one role)
  */
 export const getUserRoles = async (userId: string) => {
-  const result = await db
+  const [result] = await db
     .select({
       roleId: roles.id,
       roleName: roles.name,
@@ -27,26 +27,34 @@ export const getUserRoles = async (userId: string) => {
     })
     .from(userRoles)
     .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(and(eq(userRoles.userId, userId), eq(roles.isDeleted, false)));
+    .where(and(eq(userRoles.userId, userId), eq(roles.isDeleted, false)))
+    .limit(1);
 
-  return result;
+  return result || null;
 };
 
 /**
- * Assign a role to a user (creates entry in userRoles table)
+ * Assign a role to a user (upserts entry in userRoles table)
+ * Since userId is the primary key, this will update existing role or create new one
  */
 export const assignRoleToUser = async (userId: string, roleId: number) => {
   try {
-    // Check if the role assignment already exists
+    // Check if user already has a role assigned
     const existing = await db
       .select()
       .from(userRoles)
-      .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+      .where(eq(userRoles.userId, userId))
       .limit(1);
 
     if (existing.length > 0) {
-      // Role already assigned
-      return existing[0];
+      // Update existing role assignment
+      const [userRole] = await db
+        .update(userRoles)
+        .set({ roleId })
+        .where(eq(userRoles.userId, userId))
+        .returning();
+
+      return userRole;
     }
 
     // Create new role assignment
@@ -70,43 +78,43 @@ export const assignRoleToUser = async (userId: string, roleId: number) => {
         throw new Error(`Role with ID ${roleId} does not exist`);
       }
     }
+    if (error.code === "23505") {
+      // Unique constraint violation (shouldn't happen with PK, but just in case)
+      throw new Error(`User ${userId} already has a role assigned`);
+    }
     throw error;
   }
 };
 
 /**
- * Remove a role from a user
+ * Remove role from a user (deletes the user's role assignment)
+ * Since one user can only have one role, we only need userId
  */
-export const removeRoleFromUser = async (userId: string, roleId: number) => {
+export const removeRoleFromUser = async (userId: string) => {
   const [userRole] = await db
     .delete(userRoles)
-    .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+    .where(eq(userRoles.userId, userId))
     .returning();
 
   return userRole || null;
 };
 
 /**
- * Update user roles - removes all existing roles and assigns new ones
+ * Update user role - assigns a single role to a user (one user, one role)
+ * If roleId is null/undefined, removes the user's role
  */
-export const updateUserRoles = async (userId: string, roleIds: number[]) => {
-  // Delete all existing roles for the user
-  await db.delete(userRoles).where(eq(userRoles.userId, userId));
-
-  // If no new roles provided, we're done
-  if (!roleIds || roleIds.length === 0) {
-    return [];
+export const updateUserRoles = async (userId: string, roleId: number | null | undefined) => {
+  // If no role provided, remove existing role
+  if (roleId === null || roleId === undefined) {
+    const [deleted] = await db
+      .delete(userRoles)
+      .where(eq(userRoles.userId, userId))
+      .returning();
+    return deleted || null;
   }
 
-  // Insert new roles
-  const newRoles = roleIds.map((roleId) => ({
-    userId,
-    roleId,
-  }));
-
-  const result = await db.insert(userRoles).values(newRoles).returning();
-
-  return result;
+  // Use assignRoleToUser which handles upsert logic
+  return await assignRoleToUser(userId, roleId);
 };
 
 /**

@@ -103,9 +103,11 @@ export const getEmployees = async (
           )
       : [];
 
-  // Create a map of userId to roles
+  // Create a map of userId to role (one user, one role)
+  // Keeping as array for API response compatibility
   const rolesMap = new Map<string, Array<{ id: number; name: string; description: string | null }>>();
   for (const roleData of rolesData) {
+    // Since userId is now PK, each user will only have one role
     if (!rolesMap.has(roleData.userId)) {
       rolesMap.set(roleData.userId, []);
     }
@@ -185,10 +187,10 @@ export const getEmployees = async (
       overallRating = "Pending";
     }
 
-    // Get roles for this user
+    // Get role for this user (one user, one role - kept as array for API compatibility)
     const userRolesList = emp.userId ? rolesMap.get(emp.userId) || [] : [];
 
-    // Determine portal role from actual assigned roles (use first role if multiple)
+    // Determine portal role from assigned role (one user has one role)
     let portalRole = "Office Staff"; // default
     if (userRolesList.length > 0) {
       portalRole = userRolesList[0]!.name;
@@ -423,7 +425,7 @@ export const getEmployeeById = async (id: number) => {
       .orderBy(desc(timesheets.createdAt))
       .limit(10),
 
-    // Get user roles
+    // Get user role (one user, one role - kept as array for API compatibility)
     user?.id
       ? db
           .select({
@@ -436,6 +438,7 @@ export const getEmployeeById = async (id: number) => {
           .where(
             and(eq(userRoles.userId, user.id), eq(roles.isDeleted, false))
           )
+          .limit(1) // One user has one role
       : Promise.resolve([]),
   ]);
 

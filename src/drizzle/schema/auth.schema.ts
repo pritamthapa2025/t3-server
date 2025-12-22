@@ -102,27 +102,24 @@ export const rolePermissions = auth.table(
   {
     roleId: integer("role_id")
       .notNull()
-      .references(() => roles.id, ),
+      .references(() => roles.id),
     permissionId: integer("permission_id")
       .notNull()
-      .references(() => permissions.id, ),
+      .references(() => permissions.id),
   },
   (table) => [primaryKey({ columns: [table.roleId, table.permissionId] })]
 );
 
-// User Roles (Many-to-Many)
-export const userRoles = auth.table(
-  "user_roles",
-  {
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, ),
-    roleId: integer("role_id")
-      .notNull()
-      .references(() => roles.id, ),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.roleId] })]
-);
+// User Roles (One user, one role - many users can share same role)
+export const userRoles = auth.table("user_roles", {
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id)
+    .primaryKey(), // One user can have only one role
+  roleId: integer("role_id")
+    .notNull()
+    .references(() => roles.id), // Same role can have multiple users
+});
 
 // Trusted Devices for 2FA Skip
 export const trustedDevices = auth.table(
@@ -131,7 +128,7 @@ export const trustedDevices = auth.table(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, ),
+      .references(() => users.id),
     deviceToken: varchar("device_token", { length: 255 }).notNull().unique(),
     deviceName: varchar("device_name", { length: 200 }), // Browser info or user-defined name
     ipAddress: varchar("ip_address", { length: 50 }),
