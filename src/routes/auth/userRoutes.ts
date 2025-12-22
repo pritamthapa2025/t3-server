@@ -51,16 +51,16 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
   next();
 };
 
-// Apply authentication middleware to all user routes
-router.use(authenticate);
+// Authentication will be applied per route instead of globally to avoid conflicts
 
 // Apply timezone transformation to all GET responses
 router.use(userTransformer);
 
 router
   .route("/users")
-  .get(validate(getUsersQuerySchema), getUsersHandler)
+  .get(authenticate, validate(getUsersQuerySchema), getUsersHandler)
   .post(
+    authenticate,
     (req, res, next) => {
       // Apply multer only if Content-Type is multipart/form-data
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
@@ -80,8 +80,9 @@ router
   );
 router
   .route("/users/:id")
-  .get(validate(getUserByIdSchema), getUserByIdHandler)
+  .get(authenticate, validate(getUserByIdSchema), getUserByIdHandler)
   .put(
+    authenticate,
     (req, res, next) => {
       // Apply multer only if Content-Type is multipart/form-data
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
@@ -99,6 +100,6 @@ router
     validate(updateUserSchema),
     updateUserHandler
   )
-  .delete(validate(deleteUserSchema), deleteUserHandler);
+  .delete(authenticate, validate(deleteUserSchema), deleteUserHandler);
 
 export default router;

@@ -116,7 +116,7 @@ export const positions = org.table(
   "positions",
   {
     id: serial("id").primaryKey(),
-    name: varchar("name", { length: 100 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
     departmentId: integer("department_id").references(() => departments.id, {
       onDelete: "set null",
     }),
@@ -139,6 +139,8 @@ export const positions = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
+    // Unique constraint: position names must be unique within the same department
+    unique("unique_position_name_per_dept").on(table.name, table.departmentId),
     // Index for department positions lookup
     index("idx_positions_department").on(table.departmentId),
     // Index for active positions

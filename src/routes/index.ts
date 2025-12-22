@@ -17,7 +17,10 @@ import inventoryRoutes from "./org/inventoryRoutes.js";
 
 const router = Router();
 
-router.use("/auth", authRoutes, userRoutes, roleRoutes);
+// Mount auth routes - authRoutes should be mounted first to handle public routes
+router.use("/auth", authRoutes);
+router.use("/auth", userRoutes);
+router.use("/auth", roleRoutes);
 
 router.use(
   "/org",

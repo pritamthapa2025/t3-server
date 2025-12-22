@@ -73,13 +73,13 @@ export const createPositionHandler = async (req: Request, res: Response) => {
     // Pre-validate unique fields before attempting to create
     const uniqueFieldChecks = [];
 
-    // Check position name uniqueness
-    if (name) {
+    // Check position name uniqueness within the same department
+    if (name && departmentId) {
       uniqueFieldChecks.push({
         field: "name",
         value: name,
-        checkFunction: () => checkPositionNameExists(name),
-        message: `A position with the name '${name}' already exists`,
+        checkFunction: () => checkPositionNameExists(name, departmentId),
+        message: `A position with the name '${name}' already exists in this department`,
       });
     }
 
@@ -155,13 +155,16 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
     // Pre-validate unique fields before attempting to update
     const uniqueFieldChecks = [];
 
-    // Check position name uniqueness (if provided and different from current)
-    if (name && name !== existingPosition.name) {
+    // Determine which department to check against (new departmentId or existing)
+    const targetDepartmentId = departmentId || existingPosition.departmentId;
+
+    // Check position name uniqueness within the target department (if provided and different from current)
+    if (name && (name !== existingPosition.name || departmentId !== existingPosition.departmentId)) {
       uniqueFieldChecks.push({
         field: "name",
         value: name,
-        checkFunction: () => checkPositionNameExists(name, id),
-        message: `A position with the name '${name}' already exists`,
+        checkFunction: () => checkPositionNameExists(name, targetDepartmentId, id),
+        message: `A position with the name '${name}' already exists in this department`,
       });
     }
 
