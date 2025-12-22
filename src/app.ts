@@ -8,14 +8,15 @@ import { errorHandler } from "./middleware/errorHandler.js";
 dotenv.config();
 
 const app = express();
+console.log("old1", process.env.CLIENT_URL_Old);
 
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
       process.env.CLIENT_URL || "http://localhost:3000",
-      "https://t3-mechnical-old-portal.luh0ni.easypanel.host",
-    ],
+      process.env.CLIENT_URL_Old,
+    ].filter((url): url is string => Boolean(url)),
     credentials: true,
   })
 );
