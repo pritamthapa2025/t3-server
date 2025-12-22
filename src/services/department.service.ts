@@ -427,13 +427,16 @@ export const getDepartmentById = async (id: number) => {
         and(eq(employees.departmentId, id), eq(employees.isDeleted, false))
       ),
 
-    // Get all positions in this department
+    // Get all positions in this department with pay information
     // Handle null isDeleted values (for rows created before migration)
     db
       .select({
         id: positions.id,
         name: positions.name,
         description: positions.description,
+        payRate: positions.payRate,
+        payType: positions.payType,
+        currency: positions.currency,
       })
       .from(positions)
       .where(
@@ -529,21 +532,20 @@ export const getDepartmentById = async (id: number) => {
 
   // Pay structure - get all positions with their pay details
   const positionPayBands = deptPositions.map((pos) => {
-    const posEmployees = deptEmployees.filter(
-      (e) => e.employee.positionId === pos.id
-    );
-
     let payType: string = "Not Set";
     let payAmount: string = "Not Set";
 
-    if (posEmployees.length > 0 && posEmployees[0]) {
-      const firstEmp = posEmployees[0].employee;
-      if (firstEmp.hourlyRate) {
-        payType = "Hourly";
-        payAmount = `$${Math.round(Number(firstEmp.hourlyRate))}/hr`;
-      } else if (firstEmp.salary) {
-        payType = "Salary";
-        payAmount = `$${Math.round(Number(firstEmp.salary) / 1000)}k/yr`;
+    // Use position's pay information directly (not employee-based)
+    if (pos.payRate && pos.payType) {
+      payType = pos.payType;
+      const rate = Number(pos.payRate);
+      
+      if (pos.payType.toLowerCase() === "hourly") {
+        payAmount = `$${rate.toFixed(2)}/hr`;
+      } else if (pos.payType.toLowerCase() === "salary") {
+        payAmount = rate >= 1000 
+          ? `$${Math.round(rate / 1000)}k/yr`
+          : `$${Math.round(rate)}/yr`;
       }
     }
 
@@ -556,14 +558,17 @@ export const getDepartmentById = async (id: number) => {
     };
   });
 
-  // Calculate overall pay range
-  const allPayRates = deptEmployees
-    .map((e) => {
-      const emp = e.employee;
-      if (emp.hourlyRate) {
-        return { type: "hourly" as const, rate: Number(emp.hourlyRate) };
-      } else if (emp.salary) {
-        return { type: "salary" as const, rate: Number(emp.salary) };
+  // Calculate overall pay range from positions (not employees)
+  const allPayRates = deptPositions
+    .map((pos) => {
+      if (pos.payRate && pos.payType) {
+        const rate = Number(pos.payRate);
+        const type = pos.payType.toLowerCase();
+        if (type === "hourly") {
+          return { type: "hourly" as const, rate };
+        } else if (type === "salary") {
+          return { type: "salary" as const, rate };
+        }
       }
       return null;
     })
@@ -579,28 +584,71 @@ export const getDepartmentById = async (id: number) => {
     .filter((p) => p.type === "salary")
     .map((p) => p.rate);
 
-  let payRange = "Not Set";
-  if (hourlyRates.length > 0 && salaryRates.length > 0) {
-    const minHourly = Math.min(...hourlyRates);
-    const maxHourly = Math.max(...hourlyRates);
-    const minSalary = Math.min(...salaryRates);
-    const maxSalary = Math.max(...salaryRates);
-    payRange = `$${Math.round(minHourly)} - $${Math.round(
-      maxHourly
-    )}/hr or $${Math.round(minSalary / 1000)}k - $${Math.round(
-      maxSalary / 1000
-    )}k/yr`;
-  } else if (hourlyRates.length > 0) {
-    const minRate = Math.min(...hourlyRates);
-    const maxRate = Math.max(...hourlyRates);
-    payRange = `$${Math.round(minRate)} - $${Math.round(maxRate)}/hr`;
-  } else if (salaryRates.length > 0) {
-    const minRate = Math.min(...salaryRates);
-    const maxRate = Math.max(...salaryRates);
-    payRange = `$${Math.round(minRate / 1000)}k - $${Math.round(
-      maxRate / 1000
-    )}k/yr`;
+  // Group positions by pay type and create ranges
+  const hourlyPositions = deptPositions.filter(pos => pos.payType?.toLowerCase() === 'hourly');
+  const salaryPositions = deptPositions.filter(pos => pos.payType?.toLowerCase() === 'salary');
+  
+  const payRangeGroups = [];
+  
+  // Create salary range group
+  if (salaryPositions.length > 0) {
+    const salaryRates = salaryPositions.map(pos => Number(pos.payRate)).filter(rate => rate > 0);
+    if (salaryRates.length > 0) {
+      const minSalary = Math.min(...salaryRates);
+      const maxSalary = Math.max(...salaryRates);
+      
+      payRangeGroups.push({
+        range: minSalary === maxSalary 
+          ? `$${Math.round(minSalary).toLocaleString()}/yr`
+          : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(maxSalary).toLocaleString()}/yr`,
+        type: "salary",
+        positionCount: salaryPositions.length,
+        positions: salaryPositions.map(pos => ({
+          id: pos.id,
+          name: pos.name,
+          payRate: `$${Math.round(Number(pos.payRate)).toLocaleString()}/yr`,
+          description: pos.description || ""
+        }))
+      });
+    }
   }
+  
+  // Create hourly range group  
+  if (hourlyPositions.length > 0) {
+    const hourlyRates = hourlyPositions.map(pos => Number(pos.payRate)).filter(rate => rate > 0);
+    if (hourlyRates.length > 0) {
+      const minHourly = Math.min(...hourlyRates);
+      const maxHourly = Math.max(...hourlyRates);
+      
+      payRangeGroups.push({
+        range: minHourly === maxHourly 
+          ? `$${minHourly.toFixed(2)}/hr`
+          : `$${minHourly.toFixed(2)} - $${maxHourly.toFixed(2)}/hr`,
+        type: "hourly", 
+        positionCount: hourlyPositions.length,
+        positions: hourlyPositions.map(pos => ({
+          id: pos.id,
+          name: pos.name,
+          payRate: `$${Number(pos.payRate).toFixed(2)}/hr`,
+          description: pos.description || ""
+        }))
+      });
+    }
+  }
+  
+  // Create overall display summary
+  let overallRange = "Not Set";
+  if (payRangeGroups.length > 1) {
+    overallRange = payRangeGroups.map(group => group.range).join(" • ");
+  } else if (payRangeGroups.length === 1) {
+    overallRange = payRangeGroups[0].range;
+  }
+  
+  const payRange = {
+    display: overallRange,
+    groups: payRangeGroups,
+    totalPositions: deptPositions.length
+  };
 
   return {
     department: {
@@ -633,7 +681,8 @@ export const getDepartmentById = async (id: number) => {
       period: "rolling 30 days",
     },
     positionPayBands: {
-      payRange,
+      payRange: payRange.display,
+      payRangeGroups: payRange.groups,
       totalPositions: deptPositions.length,
       positions: positionPayBands,
     },
