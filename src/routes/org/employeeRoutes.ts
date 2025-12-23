@@ -8,6 +8,11 @@ import {
   deleteEmployeeHandler,
   getEmployeeKPIsHandler,
 } from "../../controllers/EmployeeController.js";
+import {
+  getEmployeeReviews,
+  createEmployeeReview,
+  getEmployeeReviewSummary,
+} from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { userTransformer } from "../../middleware/response-transformer.js";
@@ -18,6 +23,11 @@ import {
   updateEmployeeSchema,
   deleteEmployeeSchema,
 } from "../../validations/employee.validations.js";
+import {
+  getReviewsByEmployeeIdSchema,
+  createEmployeeReviewSchema,
+  getEmployeeReviewSummarySchema,
+} from "../../validations/review.validations.js";
 
 const router = Router();
 
@@ -93,5 +103,28 @@ router
   .get(validate(getEmployeeByIdSchema), getEmployeeByIdHandler)
   .put(validate(updateEmployeeSchema), updateEmployeeHandler)
   .delete(validate(deleteEmployeeSchema), deleteEmployeeHandler);
+
+// ==================== EMPLOYEE REVIEW ROUTES ====================
+
+// Get reviews for specific employee
+router.get(
+  "/employees/:employeeId/reviews",
+  validate(getReviewsByEmployeeIdSchema),
+  getEmployeeReviews
+);
+
+// Create review for specific employee
+router.post(
+  "/employees/:employeeId/reviews",
+  validate(createEmployeeReviewSchema),
+  createEmployeeReview
+);
+
+// Get employee review summary
+router.get(
+  "/employees/:employeeId/reviews/summary",
+  validate(getEmployeeReviewSummarySchema),
+  getEmployeeReviewSummary
+);
 
 export default router;

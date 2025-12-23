@@ -792,10 +792,11 @@ export const getTeamAssignments = async () => {
   // Create employees lookup map grouped by reportsTo
   const employeesMap = reportingEmployees.reduce((acc, emp) => {
     if (emp.reportsTo) {
-      if (!acc[emp.reportsTo]) {
-        acc[emp.reportsTo] = [];
+      const reportsToId = emp.reportsTo;
+      if (!acc[reportsToId]) {
+        acc[reportsToId] = [];
       }
-      acc[emp.reportsTo].push({
+      acc[reportsToId].push({
         name: emp.employeeName || 'Unknown',
         employeeId: emp.employeeId || '',
       });
