@@ -63,33 +63,50 @@ function transformObject(obj: any, config: TransformConfig): any {
 
   // Transform date fields (MM/DD/YYYY)
   dateFields.forEach((field) => {
-    if (obj[field]) {
+    if (obj[field] !== null && obj[field] !== undefined) {
       try {
         obj[field] = formatToEasternMMDDYYYY(obj[field]);
       } catch (error) {
-        console.warn(`Failed to transform date field ${field}:`, error);
+        console.warn(`Failed to transform date field ${field}:`, {
+          fieldValue: obj[field],
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Set field to null instead of leaving invalid value
+        obj[field] = null;
       }
     }
   });
 
   // Transform datetime fields (MM/DD/YYYY HH:mm)
   dateTimeFields.forEach((field) => {
-    if (obj[field]) {
+    if (obj[field] !== null && obj[field] !== undefined) {
       try {
         obj[field] = formatToEasternDateTime(obj[field]);
       } catch (error) {
-        console.warn(`Failed to transform datetime field ${field}:`, error);
+        console.warn(`Failed to transform datetime field ${field}:`, {
+          fieldValue: obj[field],
+          fieldType: typeof obj[field],
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Set field to null instead of leaving invalid value
+        obj[field] = null;
       }
     }
   });
 
   // Transform full date fields (MM/DD/YYYY HH:mm:ss AM/PM EST/EDT)
   fullDateFields.forEach((field) => {
-    if (obj[field]) {
+    if (obj[field] !== null && obj[field] !== undefined) {
       try {
         obj[field] = formatToEasternFull(obj[field]);
       } catch (error) {
-        console.warn(`Failed to transform full date field ${field}:`, error);
+        console.warn(`Failed to transform full date field ${field}:`, {
+          fieldValue: obj[field],
+          fieldType: typeof obj[field],
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Set field to null instead of leaving invalid value
+        obj[field] = null;
       }
     }
   });

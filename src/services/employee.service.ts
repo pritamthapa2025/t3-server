@@ -51,6 +51,8 @@ export const getEmployees = async (
       performance: employees.performance,
       violations: employees.violations,
       startDate: employees.startDate,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
 
       // User data
       userId: users.id,

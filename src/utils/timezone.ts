@@ -8,9 +8,20 @@ export const US_EASTERN_TZ = 'America/New_York';
  * Convert UTC timestamp to US Eastern Time
  * @param utcDate - UTC date (from database)
  * @returns Date object in Eastern Time
+ * @throws Error if the date is invalid
  */
 export function toEasternTime(utcDate: Date | string): Date {
+  if (!utcDate) {
+    throw new Error('Date value is null or undefined');
+  }
+  
   const date = typeof utcDate === 'string' ? parseISO(utcDate) : utcDate;
+  
+  // Check if the date is valid
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date value: ${utcDate}`);
+  }
+  
   return toZonedTime(date, US_EASTERN_TZ);
 }
 
@@ -27,8 +38,13 @@ export function fromEasternTime(easternDate: Date): Date {
  * Format date to MM/DD/YYYY in Eastern Time
  * @param utcDate - UTC date from database
  * @returns Formatted date string
+ * @throws Error if the date is invalid
  */
 export function formatToEasternMMDDYYYY(utcDate: Date | string): string {
+  if (!utcDate) {
+    throw new Error('Date value is required for formatting');
+  }
+  
   const easternDate = toEasternTime(utcDate);
   return format(easternDate, 'MM/dd/yyyy', { timeZone: US_EASTERN_TZ });
 }
@@ -37,8 +53,13 @@ export function formatToEasternMMDDYYYY(utcDate: Date | string): string {
  * Format date to MM/DD/YYYY HH:mm in Eastern Time
  * @param utcDate - UTC date from database
  * @returns Formatted datetime string
+ * @throws Error if the date is invalid
  */
 export function formatToEasternDateTime(utcDate: Date | string): string {
+  if (!utcDate) {
+    throw new Error('Date value is required for formatting');
+  }
+  
   const easternDate = toEasternTime(utcDate);
   return format(easternDate, 'MM/dd/yyyy HH:mm', { timeZone: US_EASTERN_TZ });
 }
@@ -47,8 +68,13 @@ export function formatToEasternDateTime(utcDate: Date | string): string {
  * Format date to full Eastern Time display
  * @param utcDate - UTC date from database
  * @returns Formatted datetime with timezone
+ * @throws Error if the date is invalid
  */
 export function formatToEasternFull(utcDate: Date | string): string {
+  if (!utcDate) {
+    throw new Error('Date value is required for formatting');
+  }
+  
   const easternDate = toEasternTime(utcDate);
   return format(easternDate, 'MM/dd/yyyy hh:mm:ss a zzz', { timeZone: US_EASTERN_TZ });
 }
