@@ -6,4 +6,5 @@ export * from "./schema/bids.schema.js";
 export * from "./schema/payroll.schema.js";
 export * from "./schema/compliance.schema.js";
 export * from "./schema/capacity.schema.js";
+export * from "./schema/expenses.schema.js";
 export * from "./enums/index.js";

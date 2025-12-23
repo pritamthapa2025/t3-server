@@ -77,10 +77,13 @@ export const authenticate = async (
       });
     }
 
-    // Attach user info to request object (no organizationId - employees work for T3)
+    // Attach user info to request object
     req.user = {
       id: user.id,
       ...(user.email && { email: user.email }),
+      // For T3 internal operations - use a default org ID or the user's employee context
+      organizationId: process.env.T3_ORGANIZATION_ID || "t3-org-default",
+      ...(user.employeeId && { employeeId: user.employeeId }),
     };
 
     // Proceed to next middleware/route handler

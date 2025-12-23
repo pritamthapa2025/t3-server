@@ -49,8 +49,12 @@ export const getUserByIdForAuth = async (userId: string) => {
       email: users.email,
       isActive: users.isActive,
       isDeleted: users.isDeleted,
+      // Employee context for internal T3 staff
+      employeeId: employees.id,
+      employeeNumber: employees.employeeId,
     })
     .from(users)
+    .leftJoin(employees, eq(users.id, employees.userId))
     .where(eq(users.id, userId));
 
   return user || null;
