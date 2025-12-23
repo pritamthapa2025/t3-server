@@ -9,17 +9,20 @@ export const getDashboardKPIs = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
-    
+
     const { date } = req.query;
 
-    const kpis = await capacityService.getDashboardKPIs(organizationId, date as string);
+    const kpis = await capacityService.getDashboardKPIs(
+      organizationId,
+      date as string
+    );
 
     res.json({
       success: true,
-      data: kpis
+      data: kpis,
     });
   } catch (error: any) {
     console.error("Error fetching dashboard KPIs:", error);
@@ -38,15 +41,15 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
-      startDate, 
-      endDate, 
-      departmentId, 
-      periodType = 'monthly' 
+    const {
+      startDate,
+      endDate,
+      departmentId,
+      periodType = "monthly",
     } = req.query;
 
     const metrics = await capacityService.getUtilizationMetrics(
@@ -54,14 +57,16 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
       {
         startDate: startDate as string,
         endDate: endDate as string,
-        departmentId: departmentId ? parseInt(departmentId as string) : undefined,
-        periodType: periodType as 'daily' | 'weekly' | 'monthly' | 'quarterly'
+        departmentId: departmentId
+          ? parseInt(departmentId as string)
+          : undefined,
+        periodType: periodType as "daily" | "weekly" | "monthly" | "quarterly",
       }
     );
 
     res.json({
       success: true,
-      data: metrics
+      data: metrics,
     });
   } catch (error: any) {
     console.error("Error fetching utilization metrics:", error);
@@ -80,15 +85,15 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
-      startDate, 
-      endDate, 
-      periodType = 'monthly',
-      departmentId 
+    const {
+      startDate,
+      endDate,
+      periodType = "monthly",
+      departmentId,
     } = req.query;
 
     const chartData = await capacityService.getUtilizationChartData(
@@ -96,14 +101,16 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
       {
         startDate: startDate as string,
         endDate: endDate as string,
-        periodType: periodType as 'daily' | 'weekly' | 'monthly' | 'quarterly',
-        departmentId: departmentId ? parseInt(departmentId as string) : undefined
+        periodType: periodType as "daily" | "weekly" | "monthly" | "quarterly",
+        departmentId: departmentId
+          ? parseInt(departmentId as string)
+          : undefined,
       }
     );
 
     res.json({
       success: true,
-      data: chartData
+      data: chartData,
     });
   } catch (error: any) {
     console.error("Error fetching utilization chart data:", error);
@@ -122,7 +129,7 @@ export const getCoverageByTeam = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
@@ -135,7 +142,7 @@ export const getCoverageByTeam = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: teamCoverage
+      data: teamCoverage,
     });
   } catch (error: any) {
     console.error("Error fetching team coverage:", error);
@@ -154,16 +161,11 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
-      status, 
-      departmentId,
-      page = 1, 
-      limit = 10 
-    } = req.query;
+    const { status, departmentId, page = 1, limit = 10 } = req.query;
 
     const result = await capacityService.getEmployeeAvailability(
       parseInt(page as string),
@@ -171,7 +173,9 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
       {
         organizationId,
         status: status as string,
-        departmentId: departmentId ? parseInt(departmentId as string) : undefined
+        departmentId: departmentId
+          ? parseInt(departmentId as string)
+          : undefined,
       }
     );
 
@@ -183,7 +187,7 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
         limit: parseInt(limit as string),
         total: result.total,
         pages: Math.ceil(result.total / parseInt(limit as string)),
-      }
+      },
     });
   } catch (error: any) {
     console.error("Error fetching employee availability:", error);
@@ -196,14 +200,17 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
 };
 
 // Update employee availability status
-export const updateEmployeeAvailability = async (req: Request, res: Response) => {
+export const updateEmployeeAvailability = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
     if (!organizationId || !userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
@@ -213,23 +220,21 @@ export const updateEmployeeAvailability = async (req: Request, res: Response) =>
     if (!employeeId) {
       return res.status(400).json({
         success: false,
-        message: "Employee ID is required"
+        message: "Employee ID is required",
       });
     }
 
-    const updatedAvailability = await capacityService.updateEmployeeAvailability(
-      parseInt(employeeId),
-      {
+    const updatedAvailability =
+      await capacityService.updateEmployeeAvailability(parseInt(employeeId), {
         ...updateData,
         updatedBy: userId,
-        lastUpdated: new Date()
-      }
-    );
+        lastUpdated: new Date(),
+      });
 
     res.json({
       success: true,
       message: "Employee availability updated successfully",
-      data: updatedAvailability
+      data: updatedAvailability,
     });
   } catch (error: any) {
     console.error("Error updating employee availability:", error);
@@ -248,11 +253,11 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
+    const {
       startDate,
       endDate,
       employeeId,
@@ -260,7 +265,7 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
       status,
       priority,
       page = 1,
-      limit = 10 
+      limit = 10,
     } = req.query;
 
     const result = await capacityService.getResourceAllocations(
@@ -273,7 +278,7 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
         employeeId: employeeId ? parseInt(employeeId as string) : undefined,
         jobId: jobId as string,
         status: status as string,
-        priority: priority ? parseInt(priority as string) : undefined
+        priority: priority ? parseInt(priority as string) : undefined,
       }
     );
 
@@ -285,7 +290,7 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
         limit: parseInt(limit as string),
         total: result.total,
         pages: Math.ceil(result.total / parseInt(limit as string)),
-      }
+      },
     });
   } catch (error: any) {
     console.error("Error fetching resource allocations:", error);
@@ -305,7 +310,7 @@ export const createResourceAllocation = async (req: Request, res: Response) => {
     if (!organizationId || !userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
@@ -314,13 +319,13 @@ export const createResourceAllocation = async (req: Request, res: Response) => {
     const newAllocation = await capacityService.createResourceAllocation({
       ...allocationData,
       createdBy: userId,
-      assignedBy: userId
+      assignedBy: userId,
     });
 
     res.status(201).json({
       success: true,
       message: "Resource allocation created successfully",
-      data: newAllocation
+      data: newAllocation,
     });
   } catch (error: any) {
     console.error("Error creating resource allocation:", error);
@@ -340,7 +345,7 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
     if (!organizationId || !userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
@@ -350,7 +355,7 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
     if (!allocationId) {
       return res.status(400).json({
         success: false,
-        message: "Allocation ID is required"
+        message: "Allocation ID is required",
       });
     }
 
@@ -358,14 +363,14 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
       allocationId,
       {
         ...updateData,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       }
     );
 
     res.json({
       success: true,
       message: "Resource allocation updated successfully",
-      data: updatedAllocation
+      data: updatedAllocation,
     });
   } catch (error: any) {
     console.error("Error updating resource allocation:", error);
@@ -384,18 +389,18 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
+    const {
       startDate,
       endDate,
       employeeId,
       departmentId,
       isActive,
       page = 1,
-      limit = 10 
+      limit = 10,
     } = req.query;
 
     const result = await capacityService.getEmployeeShifts(
@@ -406,8 +411,10 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
         startDate: startDate as string,
         endDate: endDate as string,
         employeeId: employeeId ? parseInt(employeeId as string) : undefined,
-        departmentId: departmentId ? parseInt(departmentId as string) : undefined,
-        isActive: isActive === 'true'
+        departmentId: departmentId
+          ? parseInt(departmentId as string)
+          : undefined,
+        isActive: isActive === "true",
       }
     );
 
@@ -419,7 +426,7 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
         limit: parseInt(limit as string),
         total: result.total,
         pages: Math.ceil(result.total / parseInt(limit as string)),
-      }
+      },
     });
   } catch (error: any) {
     console.error("Error fetching employee shifts:", error);
@@ -439,7 +446,7 @@ export const createEmployeeShift = async (req: Request, res: Response) => {
     if (!organizationId || !userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
@@ -447,13 +454,13 @@ export const createEmployeeShift = async (req: Request, res: Response) => {
 
     const newShift = await capacityService.createEmployeeShift({
       ...shiftData,
-      createdBy: userId
+      createdBy: userId,
     });
 
     res.status(201).json({
       success: true,
       message: "Employee shift created successfully",
-      data: newShift
+      data: newShift,
     });
   } catch (error: any) {
     console.error("Error creating employee shift:", error);
@@ -472,7 +479,7 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
@@ -482,7 +489,7 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
     if (!shiftId) {
       return res.status(400).json({
         success: false,
-        message: "Shift ID is required"
+        message: "Shift ID is required",
       });
     }
 
@@ -490,14 +497,14 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
       parseInt(shiftId),
       {
         ...updateData,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       }
     );
 
     res.json({
       success: true,
       message: "Employee shift updated successfully",
-      data: updatedShift
+      data: updatedShift,
     });
   } catch (error: any) {
     console.error("Error updating employee shift:", error);
@@ -516,7 +523,7 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
@@ -525,7 +532,7 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
     if (!shiftId) {
       return res.status(400).json({
         success: false,
-        message: "Shift ID is required"
+        message: "Shift ID is required",
       });
     }
 
@@ -533,7 +540,7 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: "Employee shift deleted successfully"
+      message: "Employee shift deleted successfully",
     });
   } catch (error: any) {
     console.error("Error deleting employee shift:", error);
@@ -546,34 +553,33 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
 };
 
 // Department capacity overview
-export const getDepartmentCapacityOverview = async (req: Request, res: Response) => {
+export const getDepartmentCapacityOverview = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const organizationId = req.user?.organizationId;
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
-      startDate,
-      endDate,
-      periodType = 'daily'
-    } = req.query;
+    const { startDate, endDate, periodType = "daily" } = req.query;
 
     const overview = await capacityService.getDepartmentCapacityOverview(
       organizationId,
       {
         startDate: startDate as string,
         endDate: endDate as string,
-        periodType: periodType as 'daily' | 'weekly' | 'monthly' | 'quarterly'
+        periodType: periodType as "daily" | "weekly" | "monthly" | "quarterly",
       }
     );
 
     res.json({
       success: true,
-      data: overview
+      data: overview,
     });
   } catch (error: any) {
     console.error("Error fetching department capacity overview:", error);
@@ -586,30 +592,30 @@ export const getDepartmentCapacityOverview = async (req: Request, res: Response)
 };
 
 // Capacity planning templates
-export const getCapacityPlanningTemplates = async (req: Request, res: Response) => {
+export const getCapacityPlanningTemplates = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const organizationId = req.user?.organizationId;
     if (!organizationId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required"
+        message: "Organization access required",
       });
     }
 
-    const { 
-      departmentId,
-      isActive,
-      page = 1,
-      limit = 10 
-    } = req.query;
+    const { departmentId, isActive, page = 1, limit = 10 } = req.query;
 
     const result = await capacityService.getCapacityPlanningTemplates(
       parseInt(page as string),
       parseInt(limit as string),
       {
         organizationId,
-        departmentId: departmentId ? parseInt(departmentId as string) : undefined,
-        isActive: isActive === 'true'
+        departmentId: departmentId
+          ? parseInt(departmentId as string)
+          : undefined,
+        isActive: isActive === "true",
       }
     );
 
@@ -621,7 +627,7 @@ export const getCapacityPlanningTemplates = async (req: Request, res: Response) 
         limit: parseInt(limit as string),
         total: result.total,
         pages: Math.ceil(result.total / parseInt(limit as string)),
-      }
+      },
     });
   } catch (error: any) {
     console.error("Error fetching capacity planning templates:", error);
@@ -634,14 +640,17 @@ export const getCapacityPlanningTemplates = async (req: Request, res: Response) 
 };
 
 // Create capacity planning template
-export const createCapacityPlanningTemplate = async (req: Request, res: Response) => {
+export const createCapacityPlanningTemplate = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
     if (!organizationId || !userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
@@ -649,13 +658,13 @@ export const createCapacityPlanningTemplate = async (req: Request, res: Response
 
     const newTemplate = await capacityService.createCapacityPlanningTemplate({
       ...templateData,
-      createdBy: userId
+      createdBy: userId,
     });
 
     res.status(201).json({
       success: true,
       message: "Capacity planning template created successfully",
-      data: newTemplate
+      data: newTemplate,
     });
   } catch (error: any) {
     console.error("Error creating capacity planning template:", error);
@@ -668,21 +677,15 @@ export const createCapacityPlanningTemplate = async (req: Request, res: Response
 };
 
 // Assignments & Managers - Team assignments with contact details
+// T3 employees can see all teams (no organization filtering needed)
 export const getTeamAssignments = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required"
-      });
-    }
-
-    const teamAssignments = await capacityService.getTeamAssignments(organizationId);
+    // No organizationId needed - T3 employees work for the company and see all teams
+    const teamAssignments = await capacityService.getTeamAssignments();
 
     res.json({
       success: true,
-      data: teamAssignments
+      data: teamAssignments,
     });
   } catch (error: any) {
     console.error("Error fetching team assignments:", error);
