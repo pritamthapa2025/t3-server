@@ -15,6 +15,9 @@ import compensationRoutes from "./org/compensationRoutes.js";
 import capacityRoutes from "./org/capacityRoutes.js";
 import inventoryRoutes from "./org/inventoryRoutes.js";
 import complianceRoutes from "./org/complianceRoutes.js";
+import invoiceRoutes from "./org/invoiceRoutes.js";
+import paymentRoutes from "./org/paymentRoutes.js";
+import reviewRoutes from "./org/reviewRoutes.js";
 
 const router = Router();
 
@@ -40,5 +43,8 @@ router.use("/org/compensation", compensationRoutes);
 router.use("/org/capacity", capacityRoutes);
 router.use("/org/inventory", inventoryRoutes);
 router.use("/org/compliance", complianceRoutes);
+router.use("/org/invoices", invoiceRoutes);
+router.use("/org/payments", paymentRoutes);
+router.use("/org/reviews", reviewRoutes);
 
 export default router;

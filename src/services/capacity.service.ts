@@ -25,7 +25,7 @@ import {
 } from "../drizzle/schema/capacity.schema.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
 // Dashboard KPIs - Status cards
 export const getDashboardKPIs = async (organizationId: string, date?: string) => {
@@ -716,24 +716,24 @@ export const createCapacityPlanningTemplate = async (data: any) => {
   return newTemplate;
 };
 
-// Team Assignments - Get all teams with managers and technicians
-export const getTeamAssignments = async (organizationId: string) => {
-  // Get all departments with their managers
-  const teamsWithManagers = await db
+// Team Assignments - Get all teams with managers and their direct reports
+// T3 employees can see all teams (no organization filtering needed)
+export const getTeamAssignments = async () => {
+  // Get all departments with their team leads (managers)
+  const departmentsWithLeads = await db
     .select({
-      // Team info
-      teamId: departments.id,
-      teamName: departments.name,
-      coverageArea: departments.primaryLocation, // Using existing field for coverage
+      // Department info
+      departmentId: departments.id,
+      departmentName: departments.name,
+      location: departments.primaryLocation,
       
-      // Manager info  
-      managerId: departments.leadId,
-      managerName: users.fullName,
-      managerEmail: users.email,
-      managerPhone: users.phone,
+      // Team lead info
+      teamLeadId: departments.leadId,
+      teamLeadName: users.fullName,
+      teamLeadEmail: users.email,
+      teamLeadPhone: users.phone,
     })
     .from(departments)
-    .leftJoin(employees, eq(departments.leadId, employees.userId))
     .leftJoin(users, eq(departments.leadId, users.id))
     .where(
       and(
@@ -743,77 +743,77 @@ export const getTeamAssignments = async (organizationId: string) => {
     )
     .orderBy(departments.sortOrder, departments.name);
 
-  // Get job counts per department
-  const jobCounts = await db
-    .select({
-      departmentId: employees.departmentId,
-      jobsCount: count(jobs.id),
-    })
-    .from(jobs)
-    .innerJoin(resourceAllocations, eq(resourceAllocations.jobId, jobs.id))
-    .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
-    .where(
-      and(
-        inArray(jobs.status, ['assigned', 'in_progress']),
-        eq(jobs.isDeleted, false)
-      )
-    )
-    .groupBy(employees.departmentId);
+  // Get roles for all team leads in one query
+  const teamLeadIds = departmentsWithLeads
+    .map(d => d.teamLeadId)
+    .filter((id): id is string => id !== null);
 
-  // Get technicians for each department
-  const technicians = await db
-    .select({
-      departmentId: employees.departmentId,
-      technicianId: employees.id,
-      technicianName: users.fullName,
-      employeeId: employees.employeeId, // EMP001, EMP002, etc.
-    })
-    .from(employees)
-    .innerJoin(users, eq(employees.userId, users.id))
-    .where(
-      and(
-        eq(employees.isDeleted, false),
-        ne(employees.id, employees.departmentId) // Exclude managers from technician list
-      )
-    )
-    .orderBy(users.fullName);
+  const teamLeadRoles = teamLeadIds.length > 0
+    ? await db
+        .select({
+          userId: userRoles.userId,
+          roleName: roles.name,
+        })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(
+          and(
+            inArray(userRoles.userId, teamLeadIds),
+            eq(roles.isDeleted, false)
+          )
+        )
+    : [];
 
-  // Create lookup maps for efficiency
-  const jobCountMap = jobCounts.reduce((acc, item) => {
-    if (item.departmentId) {
-      acc[item.departmentId] = item.jobsCount;
-    }
+  // Create role lookup map
+  const roleMap = teamLeadRoles.reduce((acc, item) => {
+    acc[item.userId] = item.roleName;
     return acc;
-  }, {} as Record<number, number>);
+  }, {} as Record<string, string>);
 
-  const technicianMap = technicians.reduce((acc, tech) => {
-    if (tech.departmentId && tech.employeeId) {
-      if (!acc[tech.departmentId]) {
-        acc[tech.departmentId] = [];
+  // Get employees who report to each team lead
+  const reportingEmployees = teamLeadIds.length > 0
+    ? await db
+        .select({
+          reportsTo: employees.reportsTo,
+          employeeName: users.fullName,
+          employeeId: employees.employeeId,
+        })
+        .from(employees)
+        .innerJoin(users, eq(employees.userId, users.id))
+        .where(
+          and(
+            inArray(employees.reportsTo, teamLeadIds),
+            eq(employees.isDeleted, false)
+          )
+        )
+        .orderBy(users.fullName)
+    : [];
+
+  // Create employees lookup map grouped by reportsTo
+  const employeesMap = reportingEmployees.reduce((acc, emp) => {
+    if (emp.reportsTo) {
+      const reportsToId = emp.reportsTo;
+      if (!acc[reportsToId]) {
+        acc[reportsToId] = [];
       }
-      acc[tech.departmentId]!.push({
-        id: tech.technicianId,
-        name: tech.technicianName || 'Unknown',
-        employeeId: tech.employeeId,
+      acc[reportsToId].push({
+        name: emp.employeeName || 'Unknown',
+        employeeId: emp.employeeId || '',
       });
     }
     return acc;
-  }, {} as Record<number, Array<{ id: number; name: string; employeeId: string }>>);
+  }, {} as Record<string, Array<{ name: string; employeeId: string }>>);
 
-  // Combine all data
-  return teamsWithManagers.map(team => ({
-    id: team.teamId,
-    name: team.teamName,
-    coverageArea: team.coverageArea || 'Not specified',
-    jobsCount: jobCountMap[team.teamId] || 0,
-    
-    manager: team.managerId ? {
-      id: team.managerId,
-      name: team.managerName || 'Unassigned',
-      email: team.managerEmail || '',
-      phone: team.managerPhone || '',
+  // Combine all data into simplified structure
+  return departmentsWithLeads.map(dept => ({
+    departmentName: dept.departmentName,
+    location: dept.location || 'Not specified',
+    teamLead: dept.teamLeadId ? {
+      role: roleMap[dept.teamLeadId] || 'No role assigned',
+      name: dept.teamLeadName || 'Unassigned',
+      email: dept.teamLeadEmail || '',
+      phone: dept.teamLeadPhone || '',
     } : null,
-    
-    technicians: technicianMap[team.teamId] || [],
+    employees: dept.teamLeadId ? (employeesMap[dept.teamLeadId] || []) : [],
   }));
 };
