@@ -425,3 +425,4 @@ export const applyCreditNoteSchema = z.object({
     notes: z.string().optional(),
   }),
 });
+

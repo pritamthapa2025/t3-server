@@ -246,6 +246,62 @@ export const createEmployeeReview = async (req: Request, res: Response) => {
 };
 
 /**
+ * Update review for specific employee
+ * PUT /employees/:employeeId/reviews/:reviewId
+ */
+export const updateEmployeeReview = async (req: Request, res: Response) => {
+  try {
+    const { employeeId, reviewId } = req.params;
+    if (!employeeId || !reviewId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID and Review ID are required",
+      });
+    }
+
+    // First verify the review belongs to the employee
+    const existingReview = await reviewService.getReviewById(parseInt(reviewId, 10));
+    if (!existingReview) {
+      return res.status(404).json({
+        success: false,
+        message: "Review not found",
+      });
+    }
+
+    if (existingReview.employeeId !== parseInt(employeeId, 10)) {
+      return res.status(400).json({
+        success: false,
+        message: "Review does not belong to the specified employee",
+      });
+    }
+
+    const updatedReview = await reviewService.updateReview(parseInt(reviewId, 10), req.body);
+
+    if (!updatedReview) {
+      return res.status(404).json({
+        success: false,
+        message: "Review not found or could not be updated",
+      });
+    }
+
+    const fullReview = await reviewService.getReviewById(updatedReview.id);
+
+    res.json({
+      success: true,
+      data: { review: fullReview },
+      message: "Employee review updated successfully",
+    });
+  } catch (error: any) {
+    console.error("Error updating employee review:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update employee review",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get employee review summary
  * GET /employees/:employeeId/reviews/summary
  */

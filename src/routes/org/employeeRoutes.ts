@@ -11,6 +11,7 @@ import {
 import {
   getEmployeeReviews,
   createEmployeeReview,
+  updateEmployeeReview,
   getEmployeeReviewSummary,
 } from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
@@ -26,6 +27,7 @@ import {
 import {
   getReviewsByEmployeeIdSchema,
   createEmployeeReviewSchema,
+  updateEmployeeReviewSchema,
   getEmployeeReviewSummarySchema,
 } from "../../validations/review.validations.js";
 
@@ -118,6 +120,13 @@ router.post(
   "/employees/:employeeId/reviews",
   validate(createEmployeeReviewSchema),
   createEmployeeReview
+);
+
+// Update review for specific employee
+router.put(
+  "/employees/:employeeId/reviews/:reviewId",
+  validate(updateEmployeeReviewSchema),
+  updateEmployeeReview
 );
 
 // Get employee review summary

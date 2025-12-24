@@ -776,3 +776,4 @@ export const expenseHistory = org.table(
     index("idx_expense_history_action").on(table.action),
   ]
 );
+

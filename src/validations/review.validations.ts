@@ -108,6 +108,21 @@ export const createEmployeeReviewSchema = z.object({
   }),
 });
 
+// Update Review for Employee Schema (when updating via employee endpoint)
+export const updateEmployeeReviewSchema = z.object({
+  params: z.object({
+    employeeId: z.string().transform((val) => parseInt(val, 10)),
+    reviewId: z.string().transform((val) => parseInt(val, 10)),
+  }),
+  body: z.object({
+    reviewerId: uuidString.optional(),
+    title: z.string().min(1, "Review title is required").max(150, "Title too long").optional(),
+    reviewDate: dateString.optional(),
+    ratings: flexibleRatingsSchema.optional(),
+    notes: z.string().optional(),
+  }),
+});
+
 // Update Review Schema
 export const updateReviewSchema = z.object({
   params: z.object({
@@ -180,3 +195,4 @@ export const reviewTemplateSchema = z.object({
     isActive: z.boolean().default(true),
   }),
 });
+
