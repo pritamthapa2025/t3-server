@@ -5,6 +5,7 @@ import { comparePassword, hashPassword } from "../utils/hash.js";
 import { generateToken, verifyToken } from "../utils/jwt.js";
 import { db } from "../config/db.js";
 import { userRoles, roles, users } from "../drizzle/schema/auth.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 import {
   generate2FACode,
@@ -91,6 +92,16 @@ export const loginUserHandler = async (req: Request, res: Response) => {
           .where(eq(userRoles.userId, user.id))
           .limit(1);
 
+        // Fetch employee data if user is an employee
+        const [employeeData] = await db
+          .select({
+            id: employees.id,
+            employeeId: employees.employeeId,
+          })
+          .from(employees)
+          .where(eq(employees.userId, user.id))
+          .limit(1);
+
         const token = generateToken(user.id);
 
         logger.info("Login successful via trusted device", { userId: user.id });
@@ -105,6 +116,10 @@ export const loginUserHandler = async (req: Request, res: Response) => {
               name: user.fullName,
               email: user.email,
               role: userRole?.roleName || null,
+              ...(employeeData && {
+                employeeTableId: employeeData.id,
+                employeeId: employeeData.employeeId,
+              }),
             },
             trustedDevice: true,
           },
@@ -184,6 +199,16 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
       .where(eq(userRoles.userId, user.id))
       .limit(1);
 
+    // Fetch employee data if user is an employee
+    const [employeeData] = await db
+      .select({
+        id: employees.id,
+        employeeId: employees.employeeId,
+      })
+      .from(employees)
+      .where(eq(employees.userId, user.id))
+      .limit(1);
+
     const token = generateToken(user.id);
 
     // Handle "Remember Device" functionality
@@ -236,6 +261,10 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           name: user.fullName,
           email: user.email,
           role: userRole?.roleName || null,
+          ...(employeeData && {
+            employeeTableId: employeeData.id,
+            employeeId: employeeData.employeeId,
+          }),
         },
         deviceRemembered: deviceTokenSet,
       },
