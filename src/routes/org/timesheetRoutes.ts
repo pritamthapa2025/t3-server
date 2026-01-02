@@ -11,6 +11,7 @@ import {
   rejectTimesheetHandler,
   getWeeklyTimesheetsByEmployeeHandler,
   getMyTimesheetsHandler,
+  createTimesheetWithClockDataHandler,
 } from "../../controllers/TimesheetController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -27,6 +28,7 @@ import {
   rejectTimesheetSchema,
   getWeeklyTimesheetsByEmployeeQuerySchema,
   getMyTimesheetsQuerySchema,
+  createTimesheetWithClockDataSchema,
 } from "../../validations/timesheet.validations.js";
 
 const router = Router();
@@ -59,6 +61,12 @@ router
 router
   .route("/timesheets/clock-out")
   .post(validate(clockOutSchema), clockOutHandler);
+router
+  .route("/timesheets/clock")
+  .post(
+    validate(createTimesheetWithClockDataSchema),
+    createTimesheetWithClockDataHandler
+  );
 
 router
   .route("/timesheets/:id/approve")

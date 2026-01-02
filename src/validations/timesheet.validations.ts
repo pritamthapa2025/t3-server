@@ -345,3 +345,55 @@ export const getMyTimesheetsQuerySchema = z.object({
     search: z.string().optional(),
   }),
 });
+
+// Create timesheet with both clock-in and clock-out validation
+export const createTimesheetWithClockDataSchema = z.object({
+  body: z.object({
+    employeeId: z
+      .number()
+      .int("Employee ID must be a whole number")
+      .positive("Employee ID is required and must be a positive number"),
+    clockInDate: z
+      .union([z.string(), z.date()])
+      .transform((val) => (typeof val === "string" ? new Date(val) : val))
+      .refine((val) => !isNaN(val.getTime()), {
+        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
+      }),
+    clockInTime: z
+      .string()
+      .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
+      }),
+    clockOutDate: z
+      .union([z.string(), z.date()])
+      .transform((val) => (typeof val === "string" ? new Date(val) : val))
+      .refine((val) => !isNaN(val.getTime()), {
+        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
+      })
+      .optional(),
+    clockOutTime: z
+      .string()
+      .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
+      })
+      .optional(),
+    jobIds: z.array(uuidSchema).optional(),
+    notes: z.string().optional(),
+    breakMinutes: z
+      .union([z.number().int(), z.string()])
+      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+      .pipe(z.number().int("Break minutes must be a whole number").nonnegative("Break minutes cannot be negative"))
+      .optional(),
+  }).refine(
+    (data) => {
+      // If clockOutDate is provided, clockOutTime must also be provided and vice versa
+      const hasClockOutDate = !!data.clockOutDate;
+      const hasClockOutTime = !!data.clockOutTime;
+      return hasClockOutDate === hasClockOutTime;
+    },
+    {
+      message: "Both clockOutDate and clockOutTime must be provided together, or both omitted",
+      path: ["clockOutTime"],
+    }
+  ),
+});

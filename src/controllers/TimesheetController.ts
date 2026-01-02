@@ -12,6 +12,7 @@ import {
   getTimesheetsByEmployee,
   getWeeklyTimesheetsByEmployee,
   getMyWeeklyTimesheets,
+  createTimesheetWithClockData,
 } from "../services/timesheet.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -356,6 +357,58 @@ export const clockOutHandler = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createTimesheetWithClockDataHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const {
+      employeeId,
+      clockInDate,
+      clockInTime,
+      clockOutDate,
+      clockOutTime,
+      breakMinutes,
+      notes,
+    } = req.body;
+
+    const timesheet = await createTimesheetWithClockData({
+      employeeId,
+      clockInDate,
+      clockInTime,
+      clockOutDate,
+      clockOutTime,
+      breakMinutes,
+      notes,
+    });
+
+    logger.info("Timesheet created successfully with clock data");
+    return res.status(201).json({
+      success: true,
+      message: "Timesheet created successfully",
+      data: timesheet,
+    });
+  } catch (error: any) {
+    logger.logApiError("Create timesheet with clock data error", error, req);
+
+    if (
+      error.message === "Timesheet for this employee and date already exists" ||
+      error.code === "23505"
+    ) {
+      // PostgreSQL unique constraint violation
+      return res.status(409).json({
+        success: false,
+        message: "Timesheet for this employee and date already exists",
       });
     }
 
