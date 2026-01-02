@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import {
   getEmployees,
+  getEmployeesSimple,
   getEmployeeById,
   createEmployee,
   updateEmployee,
@@ -61,6 +62,27 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error fetching employees", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getEmployeesSimpleHandler = async (req: Request, res: Response) => {
+  try {
+    const search = req.query.search as string | undefined;
+
+    // Get simplified employee list (no pagination)
+    const employees = await getEmployeesSimple(search);
+
+    logger.info("Employees (simple) fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: employees,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching employees (simple)", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

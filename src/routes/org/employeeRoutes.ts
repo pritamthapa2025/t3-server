@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import {
   getEmployeesHandler,
+  getEmployeesSimpleHandler,
   createEmployeeHandler,
   getEmployeeByIdHandler,
   updateEmployeeHandler,
@@ -19,6 +20,7 @@ import { validate } from "../../middleware/validate.js";
 import { userTransformer } from "../../middleware/response-transformer.js";
 import {
   getEmployeesQuerySchema,
+  getEmployeesSimpleQuerySchema,
   getEmployeeByIdSchema,
   createEmployeeSchema,
   updateEmployeeSchema,
@@ -79,6 +81,12 @@ router.use(authenticate);
 router.use(userTransformer);
 
 router.get("/employees/kpis", getEmployeeKPIsHandler);
+router.get(
+  "/employees/simple",
+  validate(getEmployeesSimpleQuerySchema),
+  getEmployeesSimpleHandler
+);
+
 router
   .route("/employees")
   .get(validate(getEmployeesQuerySchema), getEmployeesHandler)

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
+const uuidSchema = z
+  .string()
+  .uuid({ message: "Invalid ID format - must be a valid UUID" });
 
 // Helper to handle empty strings for numeric fields
 const stringToIntOrUndefined = z
@@ -24,6 +26,13 @@ export const getEmployeesQuerySchema = z.object({
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
+  }),
+});
+
+// Get employees simple query validation (no pagination, search only)
+export const getEmployeesSimpleQuerySchema = z.object({
+  query: z.object({
+    search: z.string().optional(),
   }),
 });
 
@@ -81,7 +90,8 @@ export const createEmployeeSchema = z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15)",
+          message:
+            "Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15)",
         })
         .optional(),
       emergencyContactName: z
@@ -92,7 +102,8 @@ export const createEmployeeSchema = z
         .string()
         .optional()
         .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
-          message: "Please provide a valid emergency contact phone number (e.g., +1234567890)",
+          message:
+            "Please provide a valid emergency contact phone number (e.g., +1234567890)",
         }),
       // Employee fields
       employeeId: z
@@ -134,7 +145,8 @@ export const createEmployeeSchema = z
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
+          message:
+            "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
         })
         .optional(),
       // Bank account fields
@@ -255,21 +267,26 @@ export const updateEmployeeSchema = z.object({
         .union([z.string(), z.date()])
         .transform((val) => (typeof val === "string" ? new Date(val) : val))
         .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
+          message:
+            "Invalid start date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
         })
         .optional(),
       endDate: z
         .union([z.string(), z.date(), z.null()])
-        .transform((val) => 
-          val === null || val === undefined ? null : 
-          typeof val === "string" ? new Date(val) : val
+        .transform((val) =>
+          val === null || val === undefined
+            ? null
+            : typeof val === "string"
+            ? new Date(val)
+            : val
         )
         .refine((val) => val === null || !isNaN(val.getTime()), {
-          message: "Invalid end date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)",
+          message:
+            "Invalid end date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)",
         })
         .optional()
         .nullable(),
-      
+
       // User fields (from General Information section)
       fullName: z
         .string()
@@ -305,7 +322,7 @@ export const updateEmployeeSchema = z.object({
         .string()
         .max(20, "ZIP code is too long (maximum 20 characters)")
         .optional(),
-      
+
       // Bank account fields (from Payroll Information section)
       accountHolderName: z
         .string()
@@ -367,4 +384,3 @@ export const deleteEmployeeSchema = z.object({
       .pipe(z.number().int().positive("Invalid employee ID")),
   }),
 });
-

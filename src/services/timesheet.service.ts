@@ -198,6 +198,7 @@ export const clockIn = async (data: {
   employeeId: number;
   clockInDate: Date;
   clockInTime: string;
+  jobIds?: string[];
   notes?: string;
 }) => {
   // Combine date and time into a single datetime
@@ -253,6 +254,7 @@ export const clockOut = async (data: {
   employeeId: number;
   clockOutDate: Date;
   clockOutTime: string;
+  jobIds?: string[];
   notes?: string;
   breakMinutes?: number;
 }) => {

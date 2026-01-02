@@ -680,6 +680,76 @@ export const getEmployeeById = async (id: number) => {
   };
 };
 
+// Get simplified employee list (no pagination, minimal fields)
+export const getEmployeesSimple = async (search?: string) => {
+  let whereConditions = [eq(employees.isDeleted, false)];
+
+  // Add search filter if provided
+  if (search) {
+    whereConditions.push(
+      or(
+        ilike(users.fullName, `%${search}%`),
+        ilike(users.email, `%${search}%`),
+        ilike(employees.employeeId, `%${search}%`)
+      )!
+    );
+  }
+
+  // Get employees with minimal data
+  const result = await db
+    .select({
+      id: employees.id,
+      employeeId: employees.employeeId,
+      status: employees.status,
+      userId: users.id,
+      fullName: users.fullName,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(and(...whereConditions))
+    .orderBy(users.fullName);
+
+  // Fetch roles for all users
+  const userIds = result.map((emp) => emp.userId).filter(Boolean) as string[];
+  const rolesData =
+    userIds.length > 0
+      ? await db
+          .select({
+            userId: userRoles.userId,
+            roleName: roles.name,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(
+            and(
+              sql`${userRoles.userId} = ANY(ARRAY[${sql.raw(
+                userIds.map((id) => `'${id}'`).join(",")
+              )}]::uuid[])`,
+              eq(roles.isDeleted, false)
+            )
+          )
+      : [];
+
+  // Create a map of userId to role name
+  const rolesMap = new Map<string, string>();
+  for (const roleData of rolesData) {
+    // Get the first role name for each user
+    if (!rolesMap.has(roleData.userId)) {
+      rolesMap.set(roleData.userId, roleData.roleName);
+    }
+  }
+
+  // Return simplified data
+  return result.map((emp) => ({
+    id: emp.id,
+    employeeId: emp.employeeId,
+    userId: emp.userId,
+    name: emp.fullName,
+    role: emp.userId ? rolesMap.get(emp.userId) || null : null,
+    status: emp.status || "available",
+  }));
+};
+
 // Generate next employee ID in T3-00001 format using PostgreSQL sequence
 // This is THREAD-SAFE and prevents race conditions
 export const generateEmployeeId = async (): Promise<string> => {

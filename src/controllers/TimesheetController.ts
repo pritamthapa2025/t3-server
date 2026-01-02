@@ -287,12 +287,13 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
 
 export const clockInHandler = async (req: Request, res: Response) => {
   try {
-    const { employeeId, clockInDate, clockInTime, notes } = req.body;
+    const { employeeId, clockInDate, clockInTime, jobIds, notes } = req.body;
 
     const timesheet = await clockIn({
       employeeId,
       clockInDate,
       clockInTime,
+      jobIds,
       notes,
     });
 
@@ -321,13 +322,20 @@ export const clockInHandler = async (req: Request, res: Response) => {
 
 export const clockOutHandler = async (req: Request, res: Response) => {
   try {
-    const { employeeId, clockOutDate, clockOutTime, notes, breakMinutes } =
-      req.body;
+    const {
+      employeeId,
+      clockOutDate,
+      clockOutTime,
+      jobIds,
+      notes,
+      breakMinutes,
+    } = req.body;
 
     const timesheet = await clockOut({
       employeeId,
       clockOutDate,
       clockOutTime,
+      jobIds,
       notes,
       breakMinutes,
     });
