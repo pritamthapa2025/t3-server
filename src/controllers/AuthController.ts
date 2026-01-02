@@ -342,6 +342,16 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       .where(eq(userRoles.userId, user.id))
       .limit(1);
 
+    // Fetch employee data if user is an employee
+    const [employeeData] = await db
+      .select({
+        id: employees.id,
+        employeeId: employees.employeeId,
+      })
+      .from(employees)
+      .where(eq(employees.userId, user.id))
+      .limit(1);
+
     logger.info("Current user retrieved successfully");
     return res.status(200).json({
       success: true,
@@ -358,6 +368,10 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
         lastLogin: user.lastLogin,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+        ...(employeeData && {
+          employeeTableId: employeeData.id,
+          employeeId: employeeData.employeeId,
+        }),
       },
     });
   } catch (err: any) {
