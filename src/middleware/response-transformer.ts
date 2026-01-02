@@ -32,6 +32,15 @@ const DEFAULT_CONFIG: TransformConfig = {
 };
 
 /**
+ * Check if a string is already in MM/DD/YYYY HH:mm format
+ */
+function isAlreadyFormattedDateTime(value: any): boolean {
+  if (typeof value !== 'string') return false;
+  // Check for MM/DD/YYYY HH:mm pattern (e.g., "01/02/2026 08:50")
+  return /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/.test(value);
+}
+
+/**
  * Transform a single object's timestamp fields in-place
  */
 function transformObject(obj: any, config: TransformConfig): any {
@@ -64,6 +73,10 @@ function transformObject(obj: any, config: TransformConfig): any {
   // Transform date fields (MM/DD/YYYY)
   dateFields.forEach((field) => {
     if (obj[field] !== null && obj[field] !== undefined) {
+      // Skip if already formatted
+      if (isAlreadyFormattedDateTime(obj[field])) {
+        return;
+      }
       try {
         obj[field] = formatToEasternMMDDYYYY(obj[field]);
       } catch (error) {
@@ -80,16 +93,44 @@ function transformObject(obj: any, config: TransformConfig): any {
   // Transform datetime fields (MM/DD/YYYY HH:mm)
   dateTimeFields.forEach((field) => {
     if (obj[field] !== null && obj[field] !== undefined) {
-      try {
-        obj[field] = formatToEasternDateTime(obj[field]);
-      } catch (error) {
-        console.warn(`Failed to transform datetime field ${field}:`, {
-          fieldValue: obj[field],
-          fieldType: typeof obj[field],
-          error: error instanceof Error ? error.message : String(error),
-        });
-        // Set field to null instead of leaving invalid value
-        obj[field] = null;
+      // Skip if already formatted (MM/DD/YYYY HH:mm pattern like "01/02/2026 08:50")
+      if (isAlreadyFormattedDateTime(obj[field])) {
+        // Already formatted, skip transformation
+        return;
+      }
+      
+      // Transform Date objects
+      if (obj[field] instanceof Date) {
+        try {
+          obj[field] = formatToEasternDateTime(obj[field]);
+        } catch (error) {
+          console.warn(`Failed to transform datetime field ${field}:`, {
+            fieldValue: obj[field],
+            fieldType: typeof obj[field],
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Keep original value if transformation fails
+        }
+      } else if (typeof obj[field] === 'string') {
+        // Try to parse as ISO string or other date format
+        // Skip if it looks like it's already formatted (starts with MM/DD/YYYY)
+        if (!/^\d{2}\/\d{2}\/\d{4}/.test(obj[field])) {
+          try {
+            const dateValue = new Date(obj[field]);
+            if (!isNaN(dateValue.getTime())) {
+              obj[field] = formatToEasternDateTime(dateValue);
+            }
+            // If parsing fails, keep original value
+          } catch (error) {
+            console.warn(`Failed to transform datetime field ${field}:`, {
+              fieldValue: obj[field],
+              fieldType: typeof obj[field],
+              error: error instanceof Error ? error.message : String(error),
+            });
+            // Keep original value if transformation fails
+          }
+        }
+        // If it matches the pattern, it's already formatted, so keep it as is
       }
     }
   });
@@ -126,10 +167,17 @@ function deepTransform(data: any, config: TransformConfig): any {
     // Transform the current object
     const transformed = transformObject({ ...data }, config);
 
-    // Recursively transform nested objects
+    // Recursively transform nested objects, but skip if they're already transformed
     Object.keys(transformed).forEach((key) => {
-      if (typeof transformed[key] === "object" && transformed[key] !== null) {
-        transformed[key] = deepTransform(transformed[key], config);
+      if (typeof transformed[key] === "object" && transformed[key] !== null && !(transformed[key] instanceof Date)) {
+        // Check if this is a nested object that might have date fields
+        // Skip transformation if it looks like it's already been processed
+        const nested = transformed[key];
+        if (Array.isArray(nested)) {
+          transformed[key] = nested.map((item) => deepTransform(item, config));
+        } else if (nested && typeof nested === "object") {
+          transformed[key] = deepTransform(nested, config);
+        }
       }
     });
 

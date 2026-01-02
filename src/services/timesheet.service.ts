@@ -482,6 +482,7 @@ export const getWeeklyTimesheetsByEmployee = async (
   const employeeWhereClause = and(...employeeWhereConditions);
 
   // Get all timesheets for the week with employee and user details
+  // Select timesheet fields explicitly to ensure clockIn/clockOut are retrieved correctly
   const result = await db
     .select({
       timesheet: {
@@ -497,6 +498,8 @@ export const getWeeklyTimesheetsByEmployee = async (
         status: timesheets.status,
         rejectedBy: timesheets.rejectedBy,
         approvedBy: timesheets.approvedBy,
+        createdAt: timesheets.createdAt,
+        updatedAt: timesheets.updatedAt,
       },
       employee: {
         id: employees.id,
@@ -638,7 +641,7 @@ export const getWeeklyTimesheetsByEmployee = async (
     const empId = row.employee.id;
     const employeeData = employeeMap.get(empId);
 
-    if (employeeData) {
+    if (employeeData && row.timesheet.sheetDate) {
       const dayIndex = employeeData.weekDays.findIndex(
         (day: any) => day.date === row.timesheet.sheetDate
       );
@@ -648,13 +651,56 @@ export const getWeeklyTimesheetsByEmployee = async (
         const overtimeHours = parseFloat(row.timesheet.overtimeHours || "0");
         const regularHours = Math.max(0, totalHours - overtimeHours);
 
-        employeeData.weekDays[dayIndex] = {
+        // Build the day object with flattened timesheet data
+        const dayData: any = {
           date: row.timesheet.sheetDate,
           dayName: employeeData.weekDays[dayIndex].dayName,
-          timesheet: row.timesheet,
           hours: totalHours.toFixed(1),
           status: row.timesheet.clockOut ? row.timesheet.status : "clocked_in",
         };
+
+        // Only include timesheet fields if timesheet exists
+        if (row.timesheet.id) {
+          dayData.timesheetId = row.timesheet.id;
+          
+          // Always include clockIn and clockOut (even if null)
+          // Convert to Date object if it's a string to ensure proper handling by timezone transformer
+          if (row.timesheet.clockIn !== null && row.timesheet.clockIn !== undefined) {
+            dayData.clockIn = row.timesheet.clockIn instanceof Date 
+              ? row.timesheet.clockIn 
+              : new Date(row.timesheet.clockIn);
+          } else {
+            dayData.clockIn = null;
+          }
+          
+          if (row.timesheet.clockOut !== null && row.timesheet.clockOut !== undefined) {
+            dayData.clockOut = row.timesheet.clockOut instanceof Date 
+              ? row.timesheet.clockOut 
+              : new Date(row.timesheet.clockOut);
+          } else {
+            dayData.clockOut = null;
+          }
+          
+          dayData.breakMinutes = row.timesheet.breakMinutes || 0;
+          dayData.totalHours = row.timesheet.totalHours || "0";
+          dayData.overtimeHours = row.timesheet.overtimeHours || "0";
+          dayData.regularHours = regularHours.toFixed(2);
+          
+          // Only include optional fields if they're not null
+          if (row.timesheet.notes !== null && row.timesheet.notes !== undefined) {
+            dayData.notes = row.timesheet.notes;
+          }
+          
+          if (row.timesheet.approvedBy !== null && row.timesheet.approvedBy !== undefined) {
+            dayData.approvedBy = row.timesheet.approvedBy;
+          }
+          
+          if (row.timesheet.rejectedBy !== null && row.timesheet.rejectedBy !== undefined) {
+            dayData.rejectedBy = row.timesheet.rejectedBy;
+          }
+        }
+
+        employeeData.weekDays[dayIndex] = dayData;
 
         // Update totals
         employeeData.totals.regular += regularHours;
@@ -670,8 +716,8 @@ export const getWeeklyTimesheetsByEmployee = async (
   const formattedData = Array.from(employeeMap.values()).map((emp) => ({
     ...emp,
     weekDays: emp.weekDays.map((day: any) => {
-      // If there's already timesheet data, keep the existing status
-      if (day.timesheet) {
+      // If there's already timesheet data (has timesheetId), keep it as is
+      if (day.timesheetId) {
         return day;
       }
 
