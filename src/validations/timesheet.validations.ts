@@ -220,7 +220,6 @@ export const clockInSchema = z.object({
       .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
         message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
       }),
-    jobIds: z.array(uuidSchema).optional(),
     notes: z.string().optional(),
   }),
 });
@@ -243,7 +242,6 @@ export const clockOutSchema = z.object({
       .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
         message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
       }),
-    jobIds: z.array(uuidSchema).optional(),
     notes: z.string().optional(),
     breakMinutes: z
       .union([z.number().int(), z.string()])

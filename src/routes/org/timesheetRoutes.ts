@@ -53,8 +53,13 @@ router
     getWeeklyTimesheetsByEmployeeHandler
   );
 
-router.route("/clock-in").post(validate(clockInSchema), clockInHandler);
-router.route("/clock-out").post(validate(clockOutSchema), clockOutHandler);
+router
+  .route("/timesheets/clock-in")
+  .post(validate(clockInSchema), clockInHandler);
+router
+  .route("/timesheets/clock-out")
+  .post(validate(clockOutSchema), clockOutHandler);
+
 router
   .route("/timesheets/:id/approve")
   .post(validate(approveTimesheetSchema), approveTimesheetHandler);
