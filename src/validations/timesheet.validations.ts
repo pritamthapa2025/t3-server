@@ -316,6 +316,26 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
         { message: "Week start date must be a Monday (start of the work week)" }
       ),
     search: z.string().optional(),
+    departmentId: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : undefined))
+      .pipe(z.number().int().positive("Department ID must be a positive number").optional()),
+    status: z
+      .enum(["pending", "submitted", "approved", "rejected"], {
+        message: "Status must be one of: pending, submitted, approved, or rejected",
+      })
+      .optional(),
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 1))
+      .pipe(z.number().int().positive("Page number must be a positive number")),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 10))
+      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
   }),
 });
 
@@ -343,6 +363,30 @@ export const getMyTimesheetsQuerySchema = z.object({
         { message: "Week start date must be a Monday (start of the work week)" }
       ),
     search: z.string().optional(),
+  }),
+});
+
+// Get timesheet KPIs validation
+export const getTimesheetKPIsQuerySchema = z.object({
+  query: z.object({
+    weekStartDate: z
+      .string()
+      .min(1, "Week start date is required")
+      .refine(
+        (val) => {
+          const date = new Date(val);
+          return !isNaN(date.getTime());
+        },
+        { message: "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)" }
+      )
+      .refine(
+        (val) => {
+          const date = new Date(val);
+          // Check if it's a Monday (0 = Sunday, 1 = Monday)
+          return date.getDay() === 1;
+        },
+        { message: "Week start date must be a Monday (start of the work week)" }
+      ),
   }),
 });
 

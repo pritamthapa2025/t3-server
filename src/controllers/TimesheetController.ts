@@ -13,6 +13,7 @@ import {
   getWeeklyTimesheetsByEmployee,
   getMyWeeklyTimesheets,
   createTimesheetWithClockData,
+  getTimesheetKPIs,
 } from "../services/timesheet.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -137,11 +138,16 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
   res: Response
 ) => {
   try {
-    const { weekStartDate, search } = req.query;
+    const { weekStartDate, search, departmentId, status, page, limit } =
+      req.query;
 
     const weeklyTimesheets = await getWeeklyTimesheetsByEmployee(
       weekStartDate as string,
-      search as string | undefined
+      search as string | undefined,
+      departmentId ? parseInt(departmentId as string, 10) : undefined,
+      status as string | undefined,
+      page ? parseInt(page as string, 10) : 1,
+      limit ? parseInt(limit as string, 10) : 10
     );
 
     logger.info("Weekly timesheets by employee fetched successfully");
@@ -412,6 +418,51 @@ export const createTimesheetWithClockDataHandler = async (
       });
     }
 
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getTimesheetKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    const { weekStartDate } = req.query;
+
+    if (!weekStartDate || typeof weekStartDate !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "weekStartDate query parameter is required",
+      });
+    }
+
+    // Validate that weekStartDate is a Monday
+    const date = new Date(weekStartDate);
+    if (isNaN(date.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid date format for weekStartDate. Please use YYYY-MM-DD format",
+      });
+    }
+
+    if (date.getDay() !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Week start date must be a Monday (start of the work week)",
+      });
+    }
+
+    const kpis = await getTimesheetKPIs(weekStartDate);
+
+    logger.info("Timesheet KPIs fetched successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Timesheet KPIs retrieved successfully",
+      data: kpis,
+    });
+  } catch (error) {
+    logger.logApiError("Get timesheet KPIs error", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

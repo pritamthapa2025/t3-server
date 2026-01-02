@@ -12,6 +12,7 @@ import {
   getWeeklyTimesheetsByEmployeeHandler,
   getMyTimesheetsHandler,
   createTimesheetWithClockDataHandler,
+  getTimesheetKPIsHandler,
 } from "../../controllers/TimesheetController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -29,6 +30,7 @@ import {
   getWeeklyTimesheetsByEmployeeQuerySchema,
   getMyTimesheetsQuerySchema,
   createTimesheetWithClockDataSchema,
+  getTimesheetKPIsQuerySchema,
 } from "../../validations/timesheet.validations.js";
 
 const router = Router();
@@ -54,6 +56,10 @@ router
     validate(getWeeklyTimesheetsByEmployeeQuerySchema),
     getWeeklyTimesheetsByEmployeeHandler
   );
+
+router
+  .route("/timesheets/kpis")
+  .get(validate(getTimesheetKPIsQuerySchema), getTimesheetKPIsHandler);
 
 router
   .route("/timesheets/clock-in")

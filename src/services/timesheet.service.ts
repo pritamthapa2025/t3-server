@@ -1,6 +1,6 @@
-import { count, eq, and, or, ilike, sql } from "drizzle-orm";
+import { count, eq, and, or, ilike, sql, sum } from "drizzle-orm";
 import { db } from "../config/db.js";
-import { employees } from "../drizzle/schema/org.schema.js";
+import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
@@ -370,13 +370,18 @@ export const createTimesheetWithClockData = async (data: {
     const breakMinutes = data.breakMinutes || 0;
 
     // Calculate total hours worked
-    const totalMilliseconds = clockOutDateTime.getTime() - clockInDateTime.getTime();
-    const totalMinutes = Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
+    const totalMilliseconds =
+      clockOutDateTime.getTime() - clockInDateTime.getTime();
+    const totalMinutes =
+      Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
     const totalHours = (totalMinutes / 60).toFixed(2);
 
     // Calculate overtime (assuming 8 hours is regular time)
     const regularHours = 8;
-    const overtimeHours = Math.max(0, parseFloat(totalHours) - regularHours).toFixed(2);
+    const overtimeHours = Math.max(
+      0,
+      parseFloat(totalHours) - regularHours
+    ).toFixed(2);
 
     // Create new timesheet with both clock-in and clock-out
     const [newTimesheet] = await db
@@ -422,7 +427,11 @@ export const createTimesheetWithClockData = async (data: {
 
 export const getWeeklyTimesheetsByEmployee = async (
   weekStartDate: string, // YYYY-MM-DD format
-  search?: string
+  search?: string,
+  departmentId?: number,
+  status?: string,
+  page: number = 1,
+  limit: number = 10
 ) => {
   // Calculate week end date (6 days after start)
   const startDate = new Date(weekStartDate);
@@ -432,14 +441,17 @@ export const getWeeklyTimesheetsByEmployee = async (
   const startDateStr = startDate.toISOString().split("T")[0];
   const endDateStr = endDate.toISOString().split("T")[0];
 
+  const offset = (page - 1) * limit;
+
   let whereConditions: any[] = [];
+  let employeeWhereConditions: any[] = [eq(employees.isDeleted, false)];
 
   // Add date range filter for the week
   whereConditions.push(
     sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`
   );
 
-  // Add search filter if provided
+  // Add search filter if provided (technician name)
   if (search) {
     whereConditions.push(
       or(
@@ -447,9 +459,27 @@ export const getWeeklyTimesheetsByEmployee = async (
         ilike(users.fullName, `%${search}%`)
       )!
     );
+    employeeWhereConditions.push(
+      or(
+        ilike(employees.employeeId, `%${search}%`),
+        ilike(users.fullName, `%${search}%`)
+      )!
+    );
+  }
+
+  // Add department filter if provided
+  if (departmentId) {
+    whereConditions.push(eq(employees.departmentId, departmentId));
+    employeeWhereConditions.push(eq(employees.departmentId, departmentId));
+  }
+
+  // Add status filter if provided
+  if (status) {
+    whereConditions.push(eq(timesheets.status, status as any));
   }
 
   const whereClause = and(...whereConditions);
+  const employeeWhereClause = and(...employeeWhereConditions);
 
   // Get all timesheets for the week with employee and user details
   const result = await db
@@ -480,16 +510,23 @@ export const getWeeklyTimesheetsByEmployee = async (
         fullName: users.fullName,
         email: users.email,
       },
+      department: {
+        id: departments.id,
+        name: departments.name,
+      },
     })
     .from(timesheets)
     .innerJoin(employees, eq(timesheets.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
     .where(whereClause)
     .orderBy(users.fullName, timesheets.sheetDate);
 
-  // Get all employees (even those without timesheets this week) if no search
+  // Get all employees (even those without timesheets this week) if no search and no status filter
+  // If status filter is applied, we only want employees with timesheets matching that status
+  // If departmentId is provided, we still want to show all employees from that department
   let allEmployees;
-  if (!search) {
+  if (!search && !status) {
     allEmployees = await db
       .select({
         employee: {
@@ -504,9 +541,15 @@ export const getWeeklyTimesheetsByEmployee = async (
           fullName: users.fullName,
           email: users.email,
         },
+        department: {
+          id: departments.id,
+          name: departments.name,
+        },
       })
       .from(employees)
       .innerJoin(users, eq(employees.userId, users.id))
+      .leftJoin(departments, eq(employees.departmentId, departments.id))
+      .where(employeeWhereClause)
       .orderBy(users.fullName);
   }
 
@@ -535,6 +578,7 @@ export const getWeeklyTimesheetsByEmployee = async (
           id: row.employee.id,
           employeeId: row.employee.employeeId,
           departmentId: row.employee.departmentId,
+          departmentName: row.department?.name || null,
           positionId: row.employee.positionId,
           hourlyRate: row.employee.hourlyRate,
           fullName: row.user.fullName,
@@ -566,6 +610,7 @@ export const getWeeklyTimesheetsByEmployee = async (
             id: emp.employee.id,
             employeeId: emp.employee.employeeId,
             departmentId: emp.employee.departmentId,
+            departmentName: emp.department?.name || null,
             positionId: emp.employee.positionId,
             hourlyRate: emp.employee.hourlyRate,
             fullName: emp.user.fullName,
@@ -654,13 +699,23 @@ export const getWeeklyTimesheetsByEmployee = async (
     },
   }));
 
+  // Apply pagination
+  const total = formattedData.length;
+  const paginatedData = formattedData.slice(offset, offset + limit);
+
   return {
     weekInfo: {
       startDate: startDateStr,
       endDate: endDateStr,
       weekDays: weekDays,
     },
-    employees: formattedData,
+    employees: paginatedData,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
   };
 };
 
@@ -672,18 +727,18 @@ export const getMyWeeklyTimesheets = async (
 ) => {
   // Get all weekly data
   const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, search);
-  
+
   // Filter to only include the current employee's data
   const myEmployeeData = weeklyData.employees.find(
     (emp) => emp.employeeInfo.id === employeeId
   );
-  
+
   if (!myEmployeeData) {
     // If no data found for this employee, create empty structure
     const startDate = new Date(weekStartDate);
     const endDate = new Date(startDate);
     endDate.setDate(startDate.getDate() + 6);
-    
+
     const weekDays: Array<{ date: string; dayName: string }> = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(startDate);
@@ -695,9 +750,9 @@ export const getMyWeeklyTimesheets = async (
           .toLowerCase(),
       });
     }
-    
+
     const today = new Date().toISOString().split("T")[0]!;
-    
+
     return {
       weekInfo: weeklyData.weekInfo,
       employee: {
@@ -719,13 +774,13 @@ export const getMyWeeklyTimesheets = async (
         }),
         totals: {
           regular: "0.0",
-          overtime: "0.0", 
+          overtime: "0.0",
           doubleTime: "0.0",
         },
       },
     };
   }
-  
+
   return {
     weekInfo: weeklyData.weekInfo,
     employee: myEmployeeData,
@@ -897,4 +952,121 @@ export const rejectTimesheet = async (
     .where(eq(timesheets.id, timesheetId))
     .returning();
   return timesheet || null;
+};
+
+export const getTimesheetKPIs = async (weekStartDate: string) => {
+  // Calculate week end date (6 days after start)
+  const startDate = new Date(weekStartDate);
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 6);
+
+  const startDateStr = startDate.toISOString().split("T")[0];
+  const endDateStr = endDate.toISOString().split("T")[0];
+
+  // 1. Technicians: Total active employees vs employees with timesheets
+  const [totalEmployeesResult] = await db
+    .select({ count: count() })
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(employees.status, "available") // Only count available employees
+      )
+    );
+
+  const totalEmployees = totalEmployeesResult?.count || 0;
+
+  // Count distinct employees with timesheets in the week
+  const employeesWithTimesheetsData = await db
+    .select({ employeeId: timesheets.employeeId })
+    .from(timesheets)
+    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(
+      and(
+        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
+        eq(employees.isDeleted, false)
+      )
+    );
+
+  // Get unique employee IDs
+  const uniqueEmployeeIds = new Set(
+    employeesWithTimesheetsData.map((row) => row.employeeId)
+  );
+  const employeesWithTimesheets = uniqueEmployeeIds.size;
+
+  // 2. Tracked Hours: Sum of totalHours + overtimeHours for the week
+  const hoursResult = await db
+    .select({
+      totalHours: sum(timesheets.totalHours),
+      overtimeHours: sum(timesheets.overtimeHours),
+    })
+    .from(timesheets)
+    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(
+      and(
+        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
+        eq(employees.isDeleted, false)
+      )
+    );
+
+  const totalHours = parseFloat(hoursResult[0]?.totalHours || "0");
+  const overtimeHours = parseFloat(hoursResult[0]?.overtimeHours || "0");
+  const trackedHours = totalHours + overtimeHours;
+
+  // 3. Pending Approvals: Count of timesheets with status "pending" or "submitted"
+  const [pendingApprovalsResult] = await db
+    .select({ count: count() })
+    .from(timesheets)
+    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(
+      and(
+        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
+        eq(employees.isDeleted, false),
+        or(
+          eq(timesheets.status, "pending"),
+          eq(timesheets.status, "submitted")
+        )!
+      )
+    );
+
+  const pendingApprovals = pendingApprovalsResult?.count || 0;
+
+  // 4. Rejected Entries: Count of timesheets with status "rejected"
+  const [rejectedEntriesResult] = await db
+    .select({ count: count() })
+    .from(timesheets)
+    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(
+      and(
+        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
+        eq(employees.isDeleted, false),
+        eq(timesheets.status, "rejected")
+      )
+    );
+
+  const rejectedEntries = rejectedEntriesResult?.count || 0;
+
+  return {
+    technicians: {
+      total: totalEmployees,
+      withTimesheets: employeesWithTimesheets,
+      label: `${employeesWithTimesheets} of ${totalEmployees} scheduled`,
+    },
+    trackedHours: {
+      total: trackedHours,
+      regular: totalHours,
+      overtime: overtimeHours,
+      doubleTime: 0, // If double time is tracked separately, add it here
+      label: `${trackedHours.toFixed(1)}h Regular + OT + Double`,
+    },
+    pendingApprovals: {
+      count: pendingApprovals,
+      label: `${pendingApprovals} Need manager review`,
+    },
+    rejectedEntries: {
+      count: rejectedEntries,
+      label: `${rejectedEntries} Awaiting technician edits`,
+    },
+  };
 };
