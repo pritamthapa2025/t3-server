@@ -236,6 +236,7 @@ export const employeeReviews = org.table("employee_reviews", {
   ratings: jsonb("ratings").notNull(), // All rating categories
   averageScore: varchar("average_score", { length: 10 }),
   notes: text("notes"),
+  isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

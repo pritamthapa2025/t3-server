@@ -69,7 +69,7 @@ export const getReviews = async (options: {
   const limit = Math.min(options.limit || 10, 100);
   const offset = (page - 1) * limit;
 
-  let whereConditions: any[] = [];
+  let whereConditions: any[] = [eq(employeeReviews.isDeleted, false)];
 
   if (options.employeeId) {
     whereConditions.push(eq(employeeReviews.employeeId, options.employeeId));
@@ -210,7 +210,7 @@ export const getReviewById = async (id: number) => {
     .leftJoin(employees, eq(employeeReviews.employeeId, employees.id))
     .leftJoin(sql`auth.users as employee_user`, eq(employees.userId, sql`employee_user.id`))
     .leftJoin(users, eq(employeeReviews.reviewerId, users.id))
-    .where(eq(employeeReviews.id, id))
+    .where(and(eq(employeeReviews.id, id), eq(employeeReviews.isDeleted, false)))
     .limit(1);
 
   if (!review) return null;
@@ -296,11 +296,15 @@ export const updateReview = async (
 };
 
 /**
- * Delete review
+ * Delete review (soft delete)
  */
 export const deleteReview = async (id: number) => {
   const [deletedReview] = await db
-    .delete(employeeReviews)
+    .update(employeeReviews)
+    .set({ 
+      isDeleted: true,
+      updatedAt: new Date()
+    })
     .where(eq(employeeReviews.id, id))
     .returning();
 
@@ -338,7 +342,10 @@ export const getEmployeeReviewSummary = async (
     period?: string;
   }
 ) => {
-  let whereConditions: any[] = [eq(employeeReviews.employeeId, employeeId)];
+  let whereConditions: any[] = [
+    eq(employeeReviews.employeeId, employeeId),
+    eq(employeeReviews.isDeleted, false)
+  ];
 
   // Handle period filtering
   if (options.period) {
@@ -389,7 +396,10 @@ export const getEmployeeReviewSummary = async (
       averageScore: employeeReviews.averageScore,
     })
     .from(employeeReviews)
-    .where(eq(employeeReviews.employeeId, employeeId))
+    .where(and(
+      eq(employeeReviews.employeeId, employeeId),
+      eq(employeeReviews.isDeleted, false)
+    ))
     .orderBy(desc(employeeReviews.reviewDate))
     .limit(5);
 
@@ -411,7 +421,7 @@ export const getReviewAnalytics = async (options: {
   departmentId?: number;
   period?: string;
 }) => {
-  let whereConditions: any[] = [];
+  let whereConditions: any[] = [eq(employeeReviews.isDeleted, false)];
   let joinConditions: any[] = [];
 
   // Handle period filtering

@@ -20,6 +20,7 @@ import {
 } from "../drizzle/schema/org.schema.js";
 import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
 import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
+import { deleteUser } from "./user.service.js";
 
 export const getEmployees = async (
   offset: number,
@@ -268,7 +269,7 @@ export const getEmployees = async (
 };
 
 export const getEmployeeById = async (id: number) => {
-  // Get employee with all related data
+  // Get employee with all related data (only non-deleted employees)
   const employeeQuery = await db
     .select({
       // Employee data
@@ -286,7 +287,7 @@ export const getEmployeeById = async (id: number) => {
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
     // Organization join removed - employees are T3 internal staff
-    .where(eq(employees.id, id))
+    .where(and(eq(employees.id, id), eq(employees.isDeleted, false)))
     .limit(1);
 
   if (employeeQuery.length === 0) {
@@ -352,11 +353,14 @@ export const getEmployeeById = async (id: number) => {
           .limit(1)
       : Promise.resolve([]),
 
-    // Get latest performance review - optimized query
+    // Get latest performance review - optimized query (only non-deleted reviews)
     db
       .select()
       .from(employeeReviews)
-      .where(eq(employeeReviews.employeeId, id))
+      .where(and(
+        eq(employeeReviews.employeeId, id),
+        eq(employeeReviews.isDeleted, false)
+      ))
       .orderBy(desc(employeeReviews.reviewDate))
       .limit(1),
 
@@ -393,7 +397,10 @@ export const getEmployeeById = async (id: number) => {
       })
       .from(employeeReviews)
       .leftJoin(users, eq(employeeReviews.reviewerId, users.id))
-      .where(eq(employeeReviews.employeeId, id))
+      .where(and(
+        eq(employeeReviews.employeeId, id),
+        eq(employeeReviews.isDeleted, false)
+      ))
       .orderBy(desc(employeeReviews.reviewDate))
       .limit(5),
 
@@ -785,10 +792,41 @@ export const updateEmployee = async (
 };
 
 export const deleteEmployee = async (id: number) => {
+  // First, check if employee exists and is not already deleted
+  const [existingEmployee] = await db
+    .select()
+    .from(employees)
+    .where(and(eq(employees.id, id), eq(employees.isDeleted, false)))
+    .limit(1);
+
+  if (!existingEmployee) {
+    return null;
+  }
+
+  // Soft delete all related reviews
+  await db
+    .update(employeeReviews)
+    .set({ 
+      isDeleted: true,
+      updatedAt: new Date()
+    })
+    .where(eq(employeeReviews.employeeId, id));
+
+  // Soft delete the associated user account if it exists
+  if (existingEmployee.userId) {
+    await deleteUser(existingEmployee.userId);
+  }
+
+  // Soft delete the employee
   const [employee] = await db
-    .delete(employees)
+    .update(employees)
+    .set({ 
+      isDeleted: true,
+      updatedAt: new Date()
+    })
     .where(eq(employees.id, id))
     .returning();
+
   return employee || null;
 };
 

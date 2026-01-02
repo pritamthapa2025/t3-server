@@ -1,0 +1,1 @@
+ALTER TABLE "org"."employee_reviews" ADD COLUMN "is_deleted" boolean DEFAULT false;

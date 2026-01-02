@@ -721,11 +721,32 @@ export const deleteEmployeeHandler = async (req: Request, res: Response) => {
       success: true,
       message: "Employee deleted successfully",
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Error deleting employee", error, req);
+
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        // Include technical details in development mode
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+
+    // Fallback for non-database errors
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "An unexpected error occurred while deleting the employee",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
