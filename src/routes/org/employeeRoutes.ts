@@ -100,6 +100,7 @@ router
     validate(createEmployeeSchema),
     createEmployeeHandler
   );
+
 router
   .route("/employees/:id")
   .get(validate(getEmployeeByIdSchema), getEmployeeByIdHandler)
