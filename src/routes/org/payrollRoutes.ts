@@ -33,90 +33,86 @@ import {
 const router = Router();
 
 // Payroll KPIs Routes
-router.get(
-  "/kpis",
-  authenticate,
-  validate(getPayrollDashboardQuerySchema),
-  getPayrollDashboardHandler
-);
+router
+  .route("/kpis")
+  .get(
+    authenticate,
+    validate(getPayrollDashboardQuerySchema),
+    getPayrollDashboardHandler
+  );
 
 // Payroll Entry Routes
-router.get(
-  "/entries",
-  authenticate,
-  validate(getPayrollEntriesQuerySchema),
-  getPayrollEntriesHandler
-);
+router
+  .route("/entries")
+  .get(
+    authenticate,
+    validate(getPayrollEntriesQuerySchema),
+    getPayrollEntriesHandler
+  )
+  .post(
+    authenticate,
+    validate(createPayrollEntrySchema),
+    createPayrollEntryHandler
+  );
 
-router.get(
-  "/entries/:id",
-  authenticate,
-  validate(getPayrollEntryByIdSchema),
-  getPayrollEntryByIdHandler
-);
+router
+  .route("/entries/:id")
+  .get(
+    authenticate,
+    validate(getPayrollEntryByIdSchema),
+    getPayrollEntryByIdHandler
+  )
+  .put(
+    authenticate,
+    validate(updatePayrollEntrySchema),
+    updatePayrollEntryHandler
+  )
+  .delete(
+    authenticate,
+    validate(deletePayrollEntrySchema),
+    deletePayrollEntryHandler
+  );
 
-router.post(
-  "/entries",
-  authenticate,
-  validate(createPayrollEntrySchema),
-  createPayrollEntryHandler
-);
+router
+  .route("/entries/:id/approve")
+  .post(
+    authenticate,
+    validate(approvePayrollEntrySchema),
+    approvePayrollEntryHandler
+  );
 
-router.put(
-  "/entries/:id",
-  authenticate,
-  validate(updatePayrollEntrySchema),
-  updatePayrollEntryHandler
-);
-
-router.delete(
-  "/entries/:id",
-  authenticate,
-  validate(deletePayrollEntrySchema),
-  deletePayrollEntryHandler
-);
-
-router.post(
-  "/entries/:id/approve",
-  authenticate,
-  validate(approvePayrollEntrySchema),
-  approvePayrollEntryHandler
-);
-
-router.post(
-  "/entries/:id/reject",
-  authenticate,
-  validate(rejectPayrollEntrySchema),
-  rejectPayrollEntryHandler
-);
+router
+  .route("/entries/:id/reject")
+  .post(
+    authenticate,
+    validate(rejectPayrollEntrySchema),
+    rejectPayrollEntryHandler
+  );
 
 // Payroll Run Routes
-router.get(
-  "/runs",
-  authenticate,
-  validate(getPayrollRunsQuerySchema),
-  getPayrollRunsHandler
-);
+router
+  .route("/runs")
+  .get(authenticate, validate(getPayrollRunsQuerySchema), getPayrollRunsHandler)
+  .post(
+    authenticate,
+    validate(createPayrollRunSchema),
+    createPayrollRunHandler
+  );
 
-router.get(
-  "/runs/:id",
-  authenticate,
-  validate(getPayrollRunByIdSchema),
-  getPayrollRunByIdHandler
-);
+router
+  .route("/runs/:id")
+  .get(
+    authenticate,
+    validate(getPayrollRunByIdSchema),
+    getPayrollRunByIdHandler
+  );
 
-router.post(
-  "/runs",
-  authenticate,
-  validate(createPayrollRunSchema),
-  createPayrollRunHandler
-);
-
-router.post(
-  "/runs/:id/process",
-  authenticate,
-  validate(processPayrollRunSchema),
-  processPayrollRunHandler
-);
+router
+  .route("/runs/:id/process")
+  .post(
+    authenticate,
+    validate(processPayrollRunSchema),
+    processPayrollRunHandler
+  );
 
 export default router;

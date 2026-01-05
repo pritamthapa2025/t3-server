@@ -49,7 +49,6 @@ export const getPayrollEntriesHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
-    const organizationId = req.query.organizationId as string;
     const payPeriodId = req.query.payPeriodId as string | undefined;
     const status = req.query.status as string | undefined;
     const employeeId = req.query.employeeId as string | undefined;
@@ -58,7 +57,6 @@ export const getPayrollEntriesHandler = async (req: Request, res: Response) => {
 
     const result = await getPayrollEntries(offset, limit, {
       search,
-      organizationId,
       payPeriodId,
       status,
       employeeId,
@@ -359,14 +357,12 @@ export const getPayrollRunsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
-    const organizationId = req.query.organizationId as string;
     const status = req.query.status as string | undefined;
 
     const offset = (page - 1) * limit;
 
     const result = await getPayrollRuns(offset, limit, {
       search,
-      organizationId,
       status,
     });
 

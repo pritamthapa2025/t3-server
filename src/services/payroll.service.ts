@@ -35,7 +35,6 @@ interface PayrollDashboardFilters {
 
 interface PayrollEntriesFilters {
   search?: string | undefined;
-  organizationId: string;
   payPeriodId?: string | undefined;
   status?: string | undefined;
   employeeId?: string | undefined;
@@ -43,9 +42,11 @@ interface PayrollEntriesFilters {
 
 interface PayrollRunsFilters {
   search?: string | undefined;
-  organizationId: string;
   status?: string | undefined;
 }
+
+// T3 internal organization ID for audit logs
+const T3_ORGANIZATION_ID = process.env.T3_ORGANIZATION_ID || "00000000-0000-0000-0000-000000000000";
 
 // Dashboard Service (T3 internal - no organizationId filter)
 export const getPayrollDashboard = async (
@@ -133,14 +134,13 @@ export const getPayrollDashboard = async (
   };
 };
 
-// Payroll Entries Service
+// Payroll Entries Service (T3 internal - no organizationId filter)
 export const getPayrollEntries = async (
   offset: number,
   limit: number,
   filters: PayrollEntriesFilters
 ) => {
   let whereConditions = [
-    eq(payrollEntries.organizationId, filters.organizationId),
     eq(payrollEntries.isDeleted, false),
   ];
 
@@ -360,8 +360,8 @@ export const createPayrollEntry = async (data: any) => {
   // Calculate pay amounts
   const calculatedData = calculatePayAmounts(data);
   
-  // Generate entry number
-  const entryNumber = await generatePayrollEntryNumber(data.organizationId);
+  // Generate entry number (T3 internal - no organizationId needed)
+  const entryNumber = await generatePayrollEntryNumber();
 
   const result = await db.transaction(async (tx) => {
     // Insert payroll entry
@@ -369,15 +369,16 @@ export const createPayrollEntry = async (data: any) => {
       .insert(payrollEntries)
       .values({
         ...calculatedData,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         entryNumber,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     await tx.insert(payrollAuditLog).values({
-      organizationId: data.organizationId,
+      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_entry",
       referenceId: newEntry!.id,
       action: "created",
@@ -428,9 +429,9 @@ export const updatePayrollEntry = async (id: string, data: any) => {
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     await tx.insert(payrollAuditLog).values({
-      organizationId: data.organizationId,
+      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_entry",
       referenceId: id,
       action: "updated",
@@ -453,7 +454,6 @@ export const deletePayrollEntry = async (id: string, deletedBy: string) => {
   const entry = await db
     .select({ 
       isLocked: payrollEntries.isLocked,
-      organizationId: payrollEntries.organizationId,
     })
     .from(payrollEntries)
     .where(eq(payrollEntries.id, id))
@@ -480,10 +480,10 @@ export const deletePayrollEntry = async (id: string, deletedBy: string) => {
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: entry[0].organizationId,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "deleted",
@@ -504,7 +504,6 @@ export const approvePayrollEntry = async (id: string, approvedBy: string, notes?
   const entry = await db
     .select({ 
       status: payrollEntries.status,
-      organizationId: payrollEntries.organizationId,
     })
     .from(payrollEntries)
     .where(eq(payrollEntries.id, id))
@@ -531,10 +530,10 @@ export const approvePayrollEntry = async (id: string, approvedBy: string, notes?
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: entry[0].organizationId,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "approved",
@@ -555,7 +554,6 @@ export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason:
   const entry = await db
     .select({ 
       status: payrollEntries.status,
-      organizationId: payrollEntries.organizationId,
     })
     .from(payrollEntries)
     .where(eq(payrollEntries.id, id))
@@ -583,10 +581,10 @@ export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason:
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: entry[0].organizationId,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "rejected",
@@ -603,14 +601,13 @@ export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason:
   return result;
 };
 
-// Payroll Runs Service
+// Payroll Runs Service (T3 internal - no organizationId filter)
 export const getPayrollRuns = async (
   offset: number,
   limit: number,
   filters: PayrollRunsFilters
 ) => {
   let whereConditions = [
-    eq(payrollRuns.organizationId, filters.organizationId),
     eq(payrollRuns.isDeleted, false),
   ];
 
@@ -716,13 +713,12 @@ export const getPayrollRunById = async (id: string) => {
 };
 
 export const createPayrollRun = async (data: any) => {
-  // Check for duplicate run
+  // Check for duplicate run (T3 internal - no organizationId filter)
   const existingRun = await db
     .select({ id: payrollRuns.id })
     .from(payrollRuns)
     .where(
       and(
-        eq(payrollRuns.organizationId, data.organizationId),
         eq(payrollRuns.payPeriodId, data.payPeriodId),
         ne(payrollRuns.status, "cancelled"),
         eq(payrollRuns.isDeleted, false)
@@ -736,23 +732,24 @@ export const createPayrollRun = async (data: any) => {
     throw error;
   }
 
-  // Generate run number
-  const runNumber = await generatePayrollRunNumber(data.organizationId);
+  // Generate run number (T3 internal - no organizationId needed)
+  const runNumber = await generatePayrollRunNumber();
 
   const result = await db.transaction(async (tx) => {
     const [newRun] = await tx
       .insert(payrollRuns)
       .values({
         ...data,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         runNumber,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning();
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     await tx.insert(payrollAuditLog).values({
-      organizationId: data.organizationId,
+      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_run",
       referenceId: newRun!.id,
       action: "created",
@@ -772,7 +769,6 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
   const run = await db
     .select({ 
       status: payrollRuns.status,
-      organizationId: payrollRuns.organizationId,
     })
     .from(payrollRuns)
     .where(eq(payrollRuns.id, id))
@@ -811,10 +807,10 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
       })
       .where(eq(payrollEntries.payrollRunId, id));
 
-    // Create audit log
+    // Create audit log (T3 internal - use default organization)
     if (run[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: run[0].organizationId,
+        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_run",
       referenceId: id,
       action: "processed",
@@ -874,38 +870,32 @@ const calculatePayAmounts = (data: any) => {
   };
 };
 
-const generatePayrollEntryNumber = async (organizationId: string): Promise<string> => {
+const generatePayrollEntryNumber = async (): Promise<string> => {
   const currentYear = new Date().getFullYear();
   const currentWeek = getWeekNumber(new Date());
   
-  // Get count of entries for this organization this week
+  // Get count of entries this week (T3 internal - no organizationId filter)
   const countResult = await db
     .select({ count: count() })
     .from(payrollEntries)
     .where(
-      and(
-        eq(payrollEntries.organizationId, organizationId),
-        gte(payrollEntries.createdAt, new Date(currentYear, 0, 1))
-      )
+      gte(payrollEntries.createdAt, new Date(currentYear, 0, 1))
     );
 
   const sequence = (countResult[0]?.count || 0) + 1;
   return `PAY-${currentYear}-W${currentWeek.toString().padStart(2, '0')}-${sequence.toString().padStart(3, '0')}`;
 };
 
-const generatePayrollRunNumber = async (organizationId: string): Promise<string> => {
+const generatePayrollRunNumber = async (): Promise<string> => {
   const currentYear = new Date().getFullYear();
   const currentWeek = getWeekNumber(new Date());
   
-  // Get count of runs for this organization this week
+  // Get count of runs this week (T3 internal - no organizationId filter)
   const countResult = await db
     .select({ count: count() })
     .from(payrollRuns)
     .where(
-      and(
-        eq(payrollRuns.organizationId, organizationId),
-        gte(payrollRuns.createdAt, new Date(currentYear, 0, 1))
-      )
+      gte(payrollRuns.createdAt, new Date(currentYear, 0, 1))
     );
 
   const sequence = (countResult[0]?.count || 0) + 1;

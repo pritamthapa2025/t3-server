@@ -11,7 +11,7 @@ export const getPayrollDashboardQuerySchema = z.object({
   }),
 });
 
-// Get payroll entries query validation
+// Get payroll entries query validation (T3 internal - no organizationId needed)
 export const getPayrollEntriesQuerySchema = z.object({
   query: z.object({
     page: z
@@ -25,7 +25,6 @@ export const getPayrollEntriesQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     search: z.string().optional(),
-    organizationId: uuidSchema,
     payPeriodId: uuidSchema.optional(),
     status: z
       .enum([
@@ -53,10 +52,9 @@ export const getPayrollEntryByIdSchema = z.object({
   }),
 });
 
-// Create payroll entry validation
+// Create payroll entry validation (T3 internal - no organizationId needed)
 export const createPayrollEntrySchema = z.object({
   body: z.object({
-    organizationId: uuidSchema,
     payrollRunId: uuidSchema,
     employeeId: z.number().int().positive(),
     
@@ -261,7 +259,7 @@ export const rejectPayrollEntrySchema = z.object({
   }),
 });
 
-// Get payroll runs query validation
+// Get payroll runs query validation (T3 internal - no organizationId needed)
 export const getPayrollRunsQuerySchema = z.object({
   query: z.object({
     page: z
@@ -275,7 +273,6 @@ export const getPayrollRunsQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     search: z.string().optional(),
-    organizationId: uuidSchema,
     status: z
       .enum([
         "draft",
@@ -297,10 +294,9 @@ export const getPayrollRunByIdSchema = z.object({
   }),
 });
 
-// Create payroll run validation
+// Create payroll run validation (T3 internal - no organizationId needed)
 export const createPayrollRunSchema = z.object({
   body: z.object({
-    organizationId: uuidSchema,
     payPeriodId: uuidSchema,
     runType: z.enum(["regular", "bonus", "correction"], {
       message: "Run type must be one of: regular, bonus, or correction"

@@ -107,8 +107,12 @@ export const createTimesheet = async (data: {
     // Parse times to calculate hours
     const clockInParts = data.clockIn.split(":");
     const clockOutParts = data.clockOut.split(":");
-    const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
-    const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+    const clockInMinutes =
+      parseInt(clockInParts[0] || "0", 10) * 60 +
+      parseInt(clockInParts[1] || "0", 10);
+    const clockOutMinutes =
+      parseInt(clockOutParts[0] || "0", 10) * 60 +
+      parseInt(clockOutParts[1] || "0", 10);
     const breakMinutes = data.breakMinutes || 0;
     const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
     calculatedTotalHours = (totalMinutes / 60).toFixed(2);
@@ -210,7 +214,7 @@ export const updateTimesheet = async (
     // Store clockIn as time string directly (HH:MM format)
     updateData.clockIn = data.clockIn;
   }
-  
+
   if (data.clockOut !== undefined) {
     // Store clockOut as time string directly (HH:MM format)
     updateData.clockOut = data.clockOut;
@@ -221,8 +225,12 @@ export const updateTimesheet = async (
       // Parse times to calculate hours
       const clockInParts = clockInTime.split(":");
       const clockOutParts = data.clockOut.split(":");
-      const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
-      const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+      const clockInMinutes =
+        parseInt(clockInParts[0] || "0", 10) * 60 +
+        parseInt(clockInParts[1] || "0", 10);
+      const clockOutMinutes =
+        parseInt(clockOutParts[0] || "0", 10) * 60 +
+        parseInt(clockOutParts[1] || "0", 10);
       const breakMins =
         data.breakMinutes !== undefined
           ? data.breakMinutes
@@ -368,8 +376,12 @@ export const clockOut = async (data: {
   // Parse times to calculate hours
   const clockInParts = clockInTimeStr.split(":");
   const clockOutParts = clockOutTimeStr.split(":");
-  const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
-  const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+  const clockInMinutes =
+    parseInt(clockInParts[0] || "0", 10) * 60 +
+    parseInt(clockInParts[1] || "0", 10);
+  const clockOutMinutes =
+    parseInt(clockOutParts[0] || "0", 10) * 60 +
+    parseInt(clockOutParts[1] || "0", 10);
   const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
   const totalHours = (totalMinutes / 60).toFixed(2);
 
@@ -439,8 +451,12 @@ export const createTimesheetWithClockData = async (data: {
     // Calculate total hours worked using time strings
     const clockInParts = clockInTime.split(":");
     const clockOutParts = clockOutTime.split(":");
-    const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
-    const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+    const clockInMinutes =
+      parseInt(clockInParts[0] || "0", 10) * 60 +
+      parseInt(clockInParts[1] || "0", 10);
+    const clockOutMinutes =
+      parseInt(clockOutParts[0] || "0", 10) * 60 +
+      parseInt(clockOutParts[1] || "0", 10);
     const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
     const totalHours = (totalMinutes / 60).toFixed(2);
 
@@ -519,20 +535,35 @@ export const getWeeklyTimesheetsByEmployee = async (
     sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`
   );
 
-  // Add search filter if provided (technician name)
+  // Add search filter if provided (technician name or employee ID)
+  // Supports multiple search terms separated by commas
+  // Full name uses word boundary matching to avoid substring matches (e.g., "Rene" won't match "Serene")
   if (search) {
-    whereConditions.push(
-      or(
-        ilike(employees.employeeId, `%${search}%`),
-        ilike(users.fullName, `%${search}%`)
-      )!
-    );
-    employeeWhereConditions.push(
-      or(
-        ilike(employees.employeeId, `%${search}%`),
-        ilike(users.fullName, `%${search}%`)
-      )!
-    );
+    const searchTerms = search
+      .split(",")
+      .map((term) => term.trim())
+      .filter((term) => term.length > 0);
+
+    if (searchTerms.length > 0) {
+      const searchConditions = searchTerms.flatMap((term) => {
+        // Escape special regex characters in the search term for PostgreSQL regex
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        // Create regex pattern with word boundaries for whole word matching
+        // PostgreSQL uses \y for word boundaries, ~* for case-insensitive match
+        // Escape single quotes for SQL string literal
+        const wordBoundaryPattern = `\\y${escapedTerm}\\y`.replace(/'/g, "''");
+        return [
+          // Employee ID: partial match (for codes like "T3-00015")
+          ilike(employees.employeeId, `%${term}%`),
+          // Full name: whole word match only (using regex word boundaries)
+          // Use raw SQL with full column reference
+          sql.raw(`"auth"."users"."full_name" ~* '${wordBoundaryPattern}'`),
+        ];
+      });
+
+      whereConditions.push(or(...searchConditions)!);
+      employeeWhereConditions.push(or(...searchConditions)!);
+    }
   }
 
   // Add department filter if provided
@@ -593,11 +624,11 @@ export const getWeeklyTimesheetsByEmployee = async (
     .where(whereClause)
     .orderBy(users.fullName, timesheets.sheetDate);
 
-  // Get all employees (even those without timesheets this week) if no search and no status filter
+  // Get all employees (even those without timesheets this week) if no status filter
   // If status filter is applied, we only want employees with timesheets matching that status
-  // If departmentId is provided, we still want to show all employees from that department
+  // If search or departmentId is provided, we still want to show all matching employees
   let allEmployees;
-  if (!search && !status) {
+  if (!status) {
     allEmployees = await db
       .select({
         employee: {
@@ -671,8 +702,8 @@ export const getWeeklyTimesheetsByEmployee = async (
     }
   });
 
-  // Add employees without timesheets if no search filter
-  if (!search && allEmployees) {
+  // Add employees without timesheets (matching search/department filters if provided)
+  if (allEmployees) {
     allEmployees.forEach((emp) => {
       const empId = emp.employee.id;
       if (!employeeMap.has(empId)) {
