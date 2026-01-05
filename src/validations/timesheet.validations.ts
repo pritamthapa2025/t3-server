@@ -85,16 +85,14 @@ export const createTimesheetSchema = z.object({
         message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
       }),
     clockIn: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid clock-in datetime format. Please use ISO 8601 format (e.g., 2024-01-15T08:00:00Z)",
+      .string()
+      .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
       }),
     clockOut: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid clock-out datetime format. Please use ISO 8601 format (e.g., 2024-01-15T17:00:00Z)",
+      .string()
+      .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+        message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
       })
       .optional(),
     breakMinutes: z
@@ -113,13 +111,6 @@ export const createTimesheetSchema = z.object({
       .pipe(z.number().nonnegative("Overtime hours cannot be negative"))
       .optional(),
     notes: z.string().optional(),
-    status: z
-      .enum(["pending", "submitted", "approved", "rejected"], {
-        message: "Status must be one of: pending, submitted, approved, or rejected"
-      })
-      .optional(),
-    rejectedBy: uuidSchema.optional().nullable(),
-    approvedBy: uuidSchema.optional().nullable(),
   }),
 });
 
@@ -146,17 +137,15 @@ export const updateTimesheetSchema = z.object({
         })
         .optional(),
       clockIn: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid clock-in datetime format. Please use ISO 8601 format (e.g., 2024-01-15T08:00:00Z)",
+        .string()
+        .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+          message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
         })
         .optional(),
       clockOut: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid clock-out datetime format. Please use ISO 8601 format (e.g., 2024-01-15T17:00:00Z)",
+        .string()
+        .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+          message: "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
         })
         .optional(),
       breakMinutes: z

@@ -37,8 +37,10 @@ export const getTimesheets = async (
     .limit(limit)
     .offset(offset);
 
-  // Extract timesheet data from result
-  const timesheetData = result.map((row) => row.timesheet);
+  // Extract timesheet data from result and format
+  const timesheetData = result.map((row) =>
+    formatTimesheetResponse(row.timesheet)
+  );
 
   const total = await db
     .select({ count: count() })
@@ -68,42 +70,111 @@ export const getTimesheetById = async (id: number) => {
   return timesheet || null;
 };
 
+// Helper function to format timesheet response with time-only format
+export const formatTimesheetResponse = (timesheet: any) => {
+  if (!timesheet) return timesheet;
+
+  const formatted = { ...timesheet };
+
+  // Format clockIn to HH:MM (using UTC to avoid timezone issues)
+  if (timesheet.clockIn) {
+    const clockInDate =
+      timesheet.clockIn instanceof Date
+        ? timesheet.clockIn
+        : new Date(timesheet.clockIn);
+    const hours = clockInDate.getUTCHours().toString().padStart(2, "0");
+    const minutes = clockInDate.getUTCMinutes().toString().padStart(2, "0");
+    formatted.clockIn = `${hours}:${minutes}`;
+  } else {
+    formatted.clockIn = null;
+  }
+
+  // Format clockOut to HH:MM (using UTC to avoid timezone issues)
+  if (timesheet.clockOut) {
+    const clockOutDate =
+      timesheet.clockOut instanceof Date
+        ? timesheet.clockOut
+        : new Date(timesheet.clockOut);
+    const hours = clockOutDate.getUTCHours().toString().padStart(2, "0");
+    const minutes = clockOutDate.getUTCMinutes().toString().padStart(2, "0");
+    formatted.clockOut = `${hours}:${minutes}`;
+  } else {
+    formatted.clockOut = null;
+  }
+
+  return formatted;
+};
+
 export const createTimesheet = async (data: {
   employeeId: number;
   sheetDate: Date;
-  clockIn: Date;
-  clockOut?: Date; // Now optional - can be null if employee hasn't clocked out yet
+  clockIn: string; // Now accepts time string (HH:MM)
+  clockOut?: string; // Now accepts time string (HH:MM)
   breakMinutes?: number;
   totalHours?: string;
   overtimeHours?: string;
   notes?: string;
-  status?: "pending" | "submitted" | "approved" | "rejected";
-  rejectedBy?: string;
-  approvedBy?: string;
 }) => {
   // Convert sheetDate to YYYY-MM-DD string format for date column
-  const sheetDateStr =
-    data.sheetDate instanceof Date
-      ? data.sheetDate.toISOString().split("T")[0]
-      : data.sheetDate;
+  const sheetDateObj =
+    data.sheetDate instanceof Date ? data.sheetDate : new Date(data.sheetDate);
+  const sheetDateStr = sheetDateObj.toISOString().split("T")[0];
+
+  // Combine sheetDate with clockIn time
+  const clockInTimeParts = data.clockIn.split(":");
+  const clockInHours = parseInt(clockInTimeParts[0] || "0", 10);
+  const clockInMinutes = parseInt(clockInTimeParts[1] || "0", 10);
+  const clockInDateTime = new Date(sheetDateObj);
+  clockInDateTime.setHours(clockInHours, clockInMinutes, 0, 0);
+
+  // Combine sheetDate with clockOut time if provided
+  let clockOutDateTime: Date | null = null;
+  if (data.clockOut) {
+    const clockOutTimeParts = data.clockOut.split(":");
+    const clockOutHours = parseInt(clockOutTimeParts[0] || "0", 10);
+    const clockOutMinutes = parseInt(clockOutTimeParts[1] || "0", 10);
+    clockOutDateTime = new Date(sheetDateObj);
+    clockOutDateTime.setHours(clockOutHours, clockOutMinutes, 0, 0);
+  }
+
+  // Calculate totalHours and overtimeHours if clockOut is provided
+  let calculatedTotalHours = data.totalHours || "0";
+  let calculatedOvertimeHours = data.overtimeHours || "0";
+
+  if (data.clockOut && clockOutDateTime) {
+    const totalMilliseconds =
+      clockOutDateTime.getTime() - clockInDateTime.getTime();
+    const breakMinutes = data.breakMinutes || 0;
+    const totalMinutes =
+      Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
+    calculatedTotalHours = (totalMinutes / 60).toFixed(2);
+
+    // Calculate overtime (assuming 8 hours is regular time)
+    const regularHours = 8;
+    calculatedOvertimeHours = Math.max(
+      0,
+      parseFloat(calculatedTotalHours) - regularHours
+    ).toFixed(2);
+  }
 
   const [timesheet] = await db
     .insert(timesheets)
     .values({
       employeeId: data.employeeId,
       sheetDate: sheetDateStr as string,
-      clockIn: data.clockIn,
-      clockOut: data.clockOut || null, // Can be null if not provided
+      clockIn: clockInDateTime,
+      clockOut: clockOutDateTime,
       breakMinutes: data.breakMinutes || 0,
-      totalHours: data.totalHours || "0",
-      overtimeHours: data.overtimeHours || "0",
+      totalHours: calculatedTotalHours,
+      overtimeHours: calculatedOvertimeHours,
       notes: data.notes || null,
-      status: data.status || "pending",
-      rejectedBy: data.rejectedBy || null,
-      approvedBy: data.approvedBy || null,
+      status: "pending", // Always set to pending
+      rejectedBy: null,
+      approvedBy: null,
     })
     .returning();
-  return timesheet;
+
+  return formatTimesheetResponse(timesheet);
 };
 
 export const updateTimesheet = async (
@@ -111,8 +182,8 @@ export const updateTimesheet = async (
   data: {
     employeeId?: number;
     sheetDate?: Date;
-    clockIn?: Date;
-    clockOut?: Date;
+    clockIn?: string; // Now accepts time string (HH:MM)
+    clockOut?: string; // Now accepts time string (HH:MM)
     breakMinutes?: number;
     totalHours?: string;
     overtimeHours?: string;
@@ -122,6 +193,16 @@ export const updateTimesheet = async (
     approvedBy?: string;
   }
 ) => {
+  // Get existing timesheet to use sheetDate if clockIn/clockOut are provided
+  const [existingTimesheet] = await db
+    .select()
+    .from(timesheets)
+    .where(eq(timesheets.id, id));
+
+  if (!existingTimesheet) {
+    return null;
+  }
+
   const updateData: {
     employeeId?: number;
     sheetDate?: string;
@@ -142,6 +223,14 @@ export const updateTimesheet = async (
   if (data.employeeId !== undefined) {
     updateData.employeeId = data.employeeId;
   }
+
+  // Determine which sheetDate to use (new one or existing)
+  const sheetDateToUse = data.sheetDate
+    ? data.sheetDate instanceof Date
+      ? data.sheetDate
+      : new Date(data.sheetDate)
+    : new Date(existingTimesheet.sheetDate);
+
   if (data.sheetDate !== undefined) {
     // Convert sheetDate to YYYY-MM-DD string format for date column
     const sheetDateStr: string =
@@ -150,11 +239,50 @@ export const updateTimesheet = async (
         : String(data.sheetDate);
     updateData.sheetDate = sheetDateStr;
   }
+
   if (data.clockIn !== undefined) {
-    updateData.clockIn = data.clockIn;
+    // Combine sheetDate with clockIn time
+    const clockInTimeParts = data.clockIn.split(":");
+    const clockInHours = parseInt(clockInTimeParts[0] || "0", 10);
+    const clockInMinutes = parseInt(clockInTimeParts[1] || "0", 10);
+    const clockInDateTime = new Date(sheetDateToUse);
+    clockInDateTime.setHours(clockInHours, clockInMinutes, 0, 0);
+    updateData.clockIn = clockInDateTime;
   }
+
   if (data.clockOut !== undefined) {
-    updateData.clockOut = data.clockOut;
+    // Combine sheetDate with clockOut time
+    const clockOutTimeParts = data.clockOut.split(":");
+    const clockOutHours = parseInt(clockOutTimeParts[0] || "0", 10);
+    const clockOutMinutes = parseInt(clockOutTimeParts[1] || "0", 10);
+    const clockOutDateTime = new Date(sheetDateToUse);
+    clockOutDateTime.setHours(clockOutHours, clockOutMinutes, 0, 0);
+    updateData.clockOut = clockOutDateTime;
+
+    // Recalculate hours if clockOut is updated
+    const clockInTime = updateData.clockIn || existingTimesheet.clockIn;
+    if (clockInTime) {
+      const totalMilliseconds =
+        clockOutDateTime.getTime() -
+        (clockInTime instanceof Date
+          ? clockInTime.getTime()
+          : new Date(clockInTime).getTime());
+      const breakMins =
+        data.breakMinutes !== undefined
+          ? data.breakMinutes
+          : existingTimesheet.breakMinutes || 0;
+      const totalMinutes =
+        Math.floor(totalMilliseconds / (1000 * 60)) - breakMins;
+      const calculatedTotalHours = (totalMinutes / 60).toFixed(2);
+      const regularHours = 8;
+      const calculatedOvertimeHours = Math.max(
+        0,
+        parseFloat(calculatedTotalHours) - regularHours
+      ).toFixed(2);
+
+      updateData.totalHours = calculatedTotalHours;
+      updateData.overtimeHours = calculatedOvertimeHours;
+    }
   }
   if (data.breakMinutes !== undefined) {
     updateData.breakMinutes = data.breakMinutes || null;
@@ -247,7 +375,7 @@ export const clockIn = async (data: {
     })
     .returning();
 
-  return timesheet;
+  return formatTimesheetResponse(timesheet);
 };
 
 export const clockOut = async (data: {
@@ -319,7 +447,7 @@ export const clockOut = async (data: {
     .where(eq(timesheets.id, existingTimesheet.id))
     .returning();
 
-  return updatedTimesheet;
+  return formatTimesheetResponse(updatedTimesheet);
 };
 
 export const createTimesheetWithClockData = async (data: {
@@ -401,7 +529,7 @@ export const createTimesheetWithClockData = async (data: {
       })
       .returning();
 
-    return newTimesheet;
+    return formatTimesheetResponse(newTimesheet);
   } else {
     // Create new timesheet with only clock-in
     const [newTimesheet] = await db
@@ -662,40 +790,57 @@ export const getWeeklyTimesheetsByEmployee = async (
         // Only include timesheet fields if timesheet exists
         if (row.timesheet.id) {
           dayData.timesheetId = row.timesheet.id;
-          
+
           // Always include clockIn and clockOut (even if null)
           // Convert to Date object if it's a string to ensure proper handling by timezone transformer
-          if (row.timesheet.clockIn !== null && row.timesheet.clockIn !== undefined) {
-            dayData.clockIn = row.timesheet.clockIn instanceof Date 
-              ? row.timesheet.clockIn 
-              : new Date(row.timesheet.clockIn);
+          if (
+            row.timesheet.clockIn !== null &&
+            row.timesheet.clockIn !== undefined
+          ) {
+            dayData.clockIn =
+              row.timesheet.clockIn instanceof Date
+                ? row.timesheet.clockIn
+                : new Date(row.timesheet.clockIn);
           } else {
             dayData.clockIn = null;
           }
-          
-          if (row.timesheet.clockOut !== null && row.timesheet.clockOut !== undefined) {
-            dayData.clockOut = row.timesheet.clockOut instanceof Date 
-              ? row.timesheet.clockOut 
-              : new Date(row.timesheet.clockOut);
+
+          if (
+            row.timesheet.clockOut !== null &&
+            row.timesheet.clockOut !== undefined
+          ) {
+            dayData.clockOut =
+              row.timesheet.clockOut instanceof Date
+                ? row.timesheet.clockOut
+                : new Date(row.timesheet.clockOut);
           } else {
             dayData.clockOut = null;
           }
-          
+
           dayData.breakMinutes = row.timesheet.breakMinutes || 0;
           dayData.totalHours = row.timesheet.totalHours || "0";
           dayData.overtimeHours = row.timesheet.overtimeHours || "0";
           dayData.regularHours = regularHours.toFixed(2);
-          
+
           // Only include optional fields if they're not null
-          if (row.timesheet.notes !== null && row.timesheet.notes !== undefined) {
+          if (
+            row.timesheet.notes !== null &&
+            row.timesheet.notes !== undefined
+          ) {
             dayData.notes = row.timesheet.notes;
           }
-          
-          if (row.timesheet.approvedBy !== null && row.timesheet.approvedBy !== undefined) {
+
+          if (
+            row.timesheet.approvedBy !== null &&
+            row.timesheet.approvedBy !== undefined
+          ) {
             dayData.approvedBy = row.timesheet.approvedBy;
           }
-          
-          if (row.timesheet.rejectedBy !== null && row.timesheet.rejectedBy !== undefined) {
+
+          if (
+            row.timesheet.rejectedBy !== null &&
+            row.timesheet.rejectedBy !== undefined
+          ) {
             dayData.rejectedBy = row.timesheet.rejectedBy;
           }
         }

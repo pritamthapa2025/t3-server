@@ -171,14 +171,23 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
 
     const timesheet = await getTimesheetById(id);
     if (!timesheet) {
-      return res.status(404).send("Timesheet not found");
+      return res.status(404).json({
+        success: false,
+        message: "Timesheet not found",
+      });
     }
 
     logger.info("Timesheet fetched successfully");
-    return res.status(200).send(timesheet);
+    return res.status(200).json({
+      success: true,
+      data: timesheet,
+    });
   } catch (error) {
     logger.logApiError("Timesheet error", error, req);
-    return res.status(500).send("Internal server error");
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 
@@ -193,9 +202,6 @@ export const createTimesheetHandler = async (req: Request, res: Response) => {
       totalHours,
       overtimeHours,
       notes,
-      status,
-      rejectedBy,
-      approvedBy,
     } = req.body;
 
     const timesheet = await createTimesheet({
@@ -207,21 +213,26 @@ export const createTimesheetHandler = async (req: Request, res: Response) => {
       totalHours,
       overtimeHours,
       notes,
-      status,
-      rejectedBy,
-      approvedBy,
     });
     logger.info("Timesheet created successfully");
-    return res.status(201).send(timesheet);
+    return res.status(201).json({
+      success: true,
+      message: "Timesheet created successfully",
+      data: timesheet,
+    });
   } catch (error: any) {
     logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
       // PostgreSQL unique constraint violation
-      return res
-        .status(409)
-        .send("Timesheet for this employee and date already exists");
+      return res.status(409).json({
+        success: false,
+        message: "Timesheet for this employee and date already exists",
+      });
     }
-    return res.status(500).send("Internal server error");
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 
@@ -258,11 +269,18 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
 
     const timesheet = await updateTimesheet(id, updateData);
     if (!timesheet) {
-      return res.status(404).send("Timesheet not found");
+      return res.status(404).json({
+        success: false,
+        message: "Timesheet not found",
+      });
     }
 
     logger.info("Timesheet updated successfully");
-    return res.status(200).send(timesheet);
+    return res.status(200).json({
+      success: true,
+      message: "Timesheet updated successfully",
+      data: timesheet,
+    });
   } catch (error: any) {
     logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
@@ -285,10 +303,16 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
     }
 
     logger.info("Timesheet deleted successfully");
-    return res.status(200).send("Timesheet deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Timesheet deleted successfully",
+    });
   } catch (error) {
     logger.logApiError("Timesheet error", error, req);
-    return res.status(500).send("Internal server error");
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 
