@@ -1,15 +1,4 @@
-import {
-  count,
-  eq,
-  desc,
-  and,
-  or,
-  sql,
-  gte,
-  lte,
-  sum,
-  ilike,
-} from "drizzle-orm";
+import { count, eq, desc, and, or, sql, ilike, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   employees,
@@ -17,31 +6,12 @@ import {
   positions,
   userBankAccounts,
   employeeReviews,
+  organizations,
 } from "../drizzle/schema/org.schema.js";
 import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
-import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
-import { deleteUser } from "./user.service.js";
+import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
-export const getEmployees = async (
-  offset: number,
-  limit: number,
-  search?: string
-) => {
-  let whereConditions = [eq(employees.isDeleted, false)];
-
-  // Add search filter if provided
-  if (search) {
-    whereConditions.push(
-      or(
-        ilike(users.fullName, `%${search}%`),
-        ilike(users.email, `%${search}%`),
-        ilike(employees.employeeId, `%${search}%`),
-        ilike(departments.name, `%${search}%`),
-        ilike(positions.name, `%${search}%`)
-      )!
-    );
-  }
-
+export const getEmployees = async (offset: number, limit: number) => {
   // Get employees with all related data for table view
   const result = await db
     .select({
@@ -52,8 +22,6 @@ export const getEmployees = async (
       performance: employees.performance,
       violations: employees.violations,
       startDate: employees.startDate,
-      createdAt: employees.createdAt,
-      updatedAt: employees.updatedAt,
 
       // User data
       userId: users.id,
@@ -79,183 +47,108 @@ export const getEmployees = async (
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
     // Remove organization join - employees are T3 internal staff
-    .where(and(...whereConditions))
+    .where(eq(employees.isDeleted, false))
     .limit(limit)
     .offset(offset);
-
-  // Fetch roles for all users in the result
-  const userIds = result.map((emp) => emp.userId).filter(Boolean) as string[];
-  const rolesData =
-    userIds.length > 0
-      ? await db
-          .select({
-            userId: userRoles.userId,
-            roleId: roles.id,
-            roleName: roles.name,
-            roleDescription: roles.description,
-          })
-          .from(userRoles)
-          .innerJoin(roles, eq(userRoles.roleId, roles.id))
-          .where(
-            and(
-              sql`${userRoles.userId} = ANY(ARRAY[${sql.raw(
-                userIds.map((id) => `'${id}'`).join(",")
-              )}]::uuid[])`,
-              eq(roles.isDeleted, false)
-            )
-          )
-      : [];
-
-  // Create a map of userId to role (one user, one role)
-  // Keeping as array for API response compatibility
-  const rolesMap = new Map<string, Array<{ id: number; name: string; description: string | null }>>();
-  for (const roleData of rolesData) {
-    // Since userId is now PK, each user will only have one role
-    if (!rolesMap.has(roleData.userId)) {
-      rolesMap.set(roleData.userId, []);
-    }
-    rolesMap.get(roleData.userId)!.push({
-      id: roleData.roleId,
-      name: roleData.roleName,
-      description: roleData.roleDescription,
-    });
-  }
 
   // Get total count for pagination
   const totalResult = await db
     .select({ count: count() })
     .from(employees)
-    .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(positions, eq(employees.positionId, positions.id))
-    .where(and(...whereConditions));
+    .where(eq(employees.isDeleted, false));
 
   const total = totalResult[0]?.count ?? 0;
 
-  // OPTIMIZATION: Fetch all latest reviews in a single query using PostgreSQL DISTINCT ON
-  // This is much more efficient than N+1 queries or OR conditions
-  const employeeIds = result.map((emp) => emp.id);
+  // For each employee, get additional calculated data
+  const employeesWithDetails = await Promise.all(
+    result.map(async (emp) => {
+      // Get latest performance review for rating
+      const latestReview = await db
+        .select({
+          averageScore: employeeReviews.averageScore,
+          reviewDate: employeeReviews.reviewDate,
+        })
+        .from(employeeReviews)
+        .where(eq(employeeReviews.employeeId, emp.id))
+        .orderBy(desc(employeeReviews.reviewDate))
+        .limit(1);
 
-  // Use raw SQL with DISTINCT ON for optimal performance (PostgreSQL-specific)
-  // This gets the latest review per employee in a single efficient query
-  // Using parameterized query to prevent SQL injection
-  const latestReviews =
-    employeeIds.length > 0
-      ? await db.execute<{
-          employee_id: number;
-          average_score: string | null;
-          review_date: Date | null;
-        }>(
-          sql.raw(`
-            SELECT DISTINCT ON (employee_id) 
-              employee_id,
-              average_score,
-              review_date
-            FROM org.employee_reviews
-            WHERE employee_id = ANY(ARRAY[${employeeIds.join(",")}])
-            ORDER BY employee_id, review_date DESC NULLS LAST
-          `)
-        )
-      : { rows: [] };
+      // Calculate overall rating from performance and reviews
+      const reviewScore = latestReview[0]?.averageScore
+        ? parseFloat(latestReview[0].averageScore)
+        : null;
+      const performanceScore = emp.performance || 0;
 
-  // Create a map for quick lookup
-  const reviewMap = new Map<
-    number,
-    { averageScore: string | null; reviewDate: Date | null }
-  >();
-  for (const review of latestReviews.rows || []) {
-    reviewMap.set(review.employee_id, {
-      averageScore: review.average_score,
-      reviewDate: review.review_date,
-    });
-  }
-
-  // Process employees with pre-fetched reviews (no async needed)
-  const employeesWithDetails = result.map((emp) => {
-    // Get latest performance review from the map
-    const latestReview = reviewMap.get(emp.id);
-
-    // Calculate overall rating from performance and reviews
-    const reviewScore = latestReview?.averageScore
-      ? parseFloat(latestReview.averageScore)
-      : null;
-    const performanceScore = emp.performance || 0;
-
-    let overallRating: string | null = null;
-    if (reviewScore !== null) {
-      overallRating = `${reviewScore.toFixed(1)} Rating`;
-    } else if (performanceScore > 0) {
-      overallRating = `${(performanceScore / 10).toFixed(1)} Rating`; // Convert percentage to 10-point scale
-    } else {
-      overallRating = "Pending";
-    }
-
-    // Get role for this user (one user, one role - kept as array for API compatibility)
-    const userRolesList = emp.userId ? rolesMap.get(emp.userId) || [] : [];
-
-    // Determine portal role from assigned role (one user has one role)
-    let portalRole = "Office Staff"; // default
-    if (userRolesList.length > 0) {
-      portalRole = userRolesList[0]!.name;
-    } else if (emp.positionName) {
-      // Fallback to position-based role if no roles assigned
-      if (
-        emp.positionName.toLowerCase().includes("director") ||
-        emp.positionName.toLowerCase().includes("admin")
-      ) {
-        portalRole = "Administrator";
-      } else if (
-        emp.positionName.toLowerCase().includes("manager") ||
-        emp.positionName.toLowerCase().includes("supervisor")
-      ) {
-        portalRole = "Manager";
-      } else if (
-        emp.positionName.toLowerCase().includes("technician") ||
-        emp.positionName.toLowerCase().includes("engineer")
-      ) {
-        portalRole = "Technician";
+      let overallRating: string | null = null;
+      if (reviewScore !== null) {
+        overallRating = `${reviewScore.toFixed(1)} Rating`;
+      } else if (performanceScore > 0) {
+        overallRating = `${(performanceScore / 10).toFixed(1)} Rating`; // Convert percentage to 10-point scale
+      } else {
+        overallRating = "Pending";
       }
-    }
 
-    return {
-      id: emp.id,
-      employeeId: emp.employeeId,
+      // Determine portal role (this might need to be added to your schema)
+      // For now, using position as a proxy for portal role
+      let portalRole = "Office Staff"; // default
+      if (emp.positionName) {
+        if (
+          emp.positionName.toLowerCase().includes("director") ||
+          emp.positionName.toLowerCase().includes("admin")
+        ) {
+          portalRole = "Administrator";
+        } else if (
+          emp.positionName.toLowerCase().includes("manager") ||
+          emp.positionName.toLowerCase().includes("supervisor")
+        ) {
+          portalRole = "Manager";
+        } else if (
+          emp.positionName.toLowerCase().includes("technician") ||
+          emp.positionName.toLowerCase().includes("engineer")
+        ) {
+          portalRole = "Technician";
+        }
+      }
 
-      // Personal Information
-      user: {
-        id: emp.userId,
-        fullName: emp.fullName,
-        email: emp.email,
-        phone: emp.phone,
-        profilePicture: emp.profilePicture,
-        isActive: emp.isActive,
-        lastLogin: emp.lastLogin,
-      },
+      return {
+        id: emp.id,
+        employeeId: emp.employeeId,
 
-      // Role and Position
-      portalRole: portalRole,
-      roles: userRolesList, // Include full role data
-      jobTitle: emp.positionName || "N/A",
-      department: emp.departmentName || "N/A",
+        // Personal Information
+        user: {
+          id: emp.userId,
+          fullName: emp.fullName,
+          email: emp.email,
+          phone: emp.phone,
+          profilePicture: emp.profilePicture,
+          isActive: emp.isActive,
+          lastLogin: emp.lastLogin,
+        },
 
-      // TODO: Implement pay rate - this will need a separate payroll/compensation table
-      payRate: {
-        amount: null, // Will be implemented when payroll table is added
-        type: null, // 'hourly' | 'salary'
-        display: "Not Set",
-      },
+        // Role and Position
+        portalRole: portalRole,
+        jobTitle: emp.positionName || "N/A",
+        department: emp.departmentName || "N/A",
 
-      // Performance Metrics
-      performance: emp.performance ? `${emp.performance}%` : "N/A",
-      violations: emp.violations || 0,
-      status: emp.status || "available",
-      rating: overallRating,
+        // TODO: Implement pay rate - this will need a separate payroll/compensation table
+        payRate: {
+          amount: null, // Will be implemented when payroll table is added
+          type: null, // 'hourly' | 'salary'
+          display: "Not Set",
+        },
 
-      // Metadata
-      startDate: emp.startDate,
-      // TODO: Add current client assignments here
-    };
-  });
+        // Performance Metrics
+        performance: emp.performance ? `${emp.performance}%` : "N/A",
+        violations: emp.violations || 0,
+        status: emp.status || "available",
+        rating: overallRating,
+
+        // Metadata
+        startDate: emp.startDate,
+        // TODO: Add current client assignments here
+      };
+    })
+  );
 
   return {
     data: employeesWithDetails,
@@ -269,7 +162,7 @@ export const getEmployees = async (
 };
 
 export const getEmployeeById = async (id: number) => {
-  // Get employee with all related data (only non-deleted employees)
+  // Get employee with all related data
   const employeeQuery = await db
     .select({
       // Employee data
@@ -280,14 +173,15 @@ export const getEmployeeById = async (id: number) => {
       department: departments,
       // Position data
       position: positions,
-      // Organization removed - employees work for T3, not client organizations
+      // Organization data
+      organization: organizations,
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
-    // Organization join removed - employees are T3 internal staff
-    .where(and(eq(employees.id, id), eq(employees.isDeleted, false)))
+    // Remove organization join - employees are T3 internal staff
+    .where(eq(employees.id, id))
     .limit(1);
 
   if (employeeQuery.length === 0) {
@@ -300,8 +194,46 @@ export const getEmployeeById = async (id: number) => {
   const department = result.department;
   const position = result.position;
 
-  // OPTIMIZATION: Run ALL independent queries in parallel using a single Promise.all
-  // This reduces total query time from sequential (2.68s) to parallel execution
+  // Get manager information separately
+  let managerData = null;
+  if (employee.reportsTo) {
+    const managerResult = await db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.id, employee.reportsTo))
+      .limit(1);
+
+    managerData = managerResult[0] || null;
+  }
+
+  // Get bank account information
+  const bankAccount = user?.id
+    ? await db
+        .select()
+        .from(userBankAccounts)
+        .where(
+          and(
+            eq(userBankAccounts.userId, user.id),
+            eq(userBankAccounts.isPrimary, true),
+            eq(userBankAccounts.isDeleted, false)
+          )
+        )
+        .limit(1)
+    : [];
+
+  // Get latest performance review
+  const latestReview = await db
+    .select()
+    .from(employeeReviews)
+    .where(eq(employeeReviews.employeeId, id))
+    .orderBy(desc(employeeReviews.reviewDate))
+    .limit(1);
+
+  // Get timesheet statistics for current month
   const currentMonth = new Date();
   const startOfMonth = new Date(
     currentMonth.getFullYear(),
@@ -314,79 +246,37 @@ export const getEmployeeById = async (id: number) => {
     0
   );
 
-  // Run ALL queries in parallel for maximum performance
-  const [
-    managerResult,
-    bankAccountResult,
-    latestReviewResult,
-    timesheetStatsResult,
-    reviewsResult,
-    approvalsResult,
-    submissionsResult,
-    userRolesResult,
-  ] = await Promise.all([
-    // Get manager information (only if reportsTo exists)
-    employee.reportsTo
-      ? db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-            email: users.email,
-          })
-          .from(users)
-          .where(eq(users.id, employee.reportsTo))
-          .limit(1)
-      : Promise.resolve([]),
+  const timesheetStats = await db
+    .select({
+      totalHours: timesheets.totalHours,
+      status: timesheets.status,
+      sheetDate: timesheets.sheetDate,
+    })
+    .from(timesheets)
+    .where(eq(timesheets.employeeId, id))
+    .orderBy(desc(timesheets.sheetDate))
+    .limit(30);
 
-    // Get bank account information (only if user exists)
-    user?.id
-      ? db
-          .select()
-          .from(userBankAccounts)
-          .where(
-            and(
-              eq(userBankAccounts.userId, user.id),
-              eq(userBankAccounts.isPrimary, true),
-              eq(userBankAccounts.isDeleted, false)
-            )
-          )
-          .limit(1)
-      : Promise.resolve([]),
+  // Calculate performance metrics
+  const totalTimesheets = timesheetStats.length;
+  const onTimeEntries = timesheetStats.filter(
+    (t) => t.status === "approved"
+  ).length;
+  const onTimeRate =
+    totalTimesheets > 0
+      ? Math.round((onTimeEntries / totalTimesheets) * 100)
+      : 0;
 
-    // Get latest performance review - optimized query (only non-deleted reviews)
-    db
-      .select()
-      .from(employeeReviews)
-      .where(and(
-        eq(employeeReviews.employeeId, id),
-        eq(employeeReviews.isDeleted, false)
-      ))
-      .orderBy(desc(employeeReviews.reviewDate))
-      .limit(1),
+  const totalHoursThisMonth = timesheetStats
+    .filter((t) => {
+      const sheetDate = new Date(t.sheetDate);
+      return sheetDate >= startOfMonth && sheetDate <= endOfMonth;
+    })
+    .reduce((sum, t) => sum + parseFloat(t.totalHours || "0"), 0);
 
-    // Get timesheet statistics - optimized to filter by date in SQL
-    (() => {
-      const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
-      const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
-      return db
-        .select({
-          totalHours: timesheets.totalHours,
-          status: timesheets.status,
-          sheetDate: timesheets.sheetDate,
-        })
-        .from(timesheets)
-        .where(
-          and(
-            eq(timesheets.employeeId, id),
-            gte(timesheets.sheetDate, startOfMonthStr),
-            lte(timesheets.sheetDate, endOfMonthStr)
-          )
-        )
-        .orderBy(desc(timesheets.sheetDate))
-        .limit(30);
-    })(),
-
-    // Get recent performance reviews (for activity log)
+  // Get actual recent activity from multiple sources
+  const activityPromises = [
+    // Get recent performance reviews
     db
       .select({
         type: sql<string>`'review'`,
@@ -397,14 +287,11 @@ export const getEmployeeById = async (id: number) => {
       })
       .from(employeeReviews)
       .leftJoin(users, eq(employeeReviews.reviewerId, users.id))
-      .where(and(
-        eq(employeeReviews.employeeId, id),
-        eq(employeeReviews.isDeleted, false)
-      ))
+      .where(eq(employeeReviews.employeeId, id))
       .orderBy(desc(employeeReviews.reviewDate))
       .limit(5),
 
-    // Get recent timesheet approvals (for activity log)
+    // Get recent timesheet approvals
     db
       .select({
         type: sql<string>`'timesheet'`,
@@ -420,62 +307,24 @@ export const getEmployeeById = async (id: number) => {
       .orderBy(desc(timesheetApprovals.createdAt))
       .limit(10),
 
-    // Get recent timesheet creations (for activity log)
+    // Get recent timesheet submissions
     db
       .select({
-        type: sql<string>`'timesheet'`,
-        action: sql<string>`'timesheet_created'`,
-        performedBy: sql<string>`'System'`, // No longer track who submitted
+        type: sql<string>`'submission'`,
+        action: sql<string>`'timesheet_submitted'`,
+        performedBy: users.fullName,
         timestamp: timesheets.createdAt,
         details: timesheets.sheetDate,
       })
       .from(timesheets)
+      .leftJoin(users, eq(timesheets.approvedBy, users.id))
       .where(eq(timesheets.employeeId, id))
       .orderBy(desc(timesheets.createdAt))
       .limit(10),
+  ];
 
-    // Get user role (one user, one role - kept as array for API compatibility)
-    user?.id
-      ? db
-          .select({
-            roleId: roles.id,
-            roleName: roles.name,
-            roleDescription: roles.description,
-          })
-          .from(userRoles)
-          .innerJoin(roles, eq(userRoles.roleId, roles.id))
-          .where(
-            and(eq(userRoles.userId, user.id), eq(roles.isDeleted, false))
-          )
-          .limit(1) // One user has one role
-      : Promise.resolve([]),
-  ]);
-
-  const managerData = managerResult[0] || null;
-  const bankAccount = bankAccountResult;
-  const latestReview = latestReviewResult;
-  const timesheetStats = timesheetStatsResult;
-  const reviews = reviewsResult;
-  const approvals = approvalsResult;
-  const submissions = submissionsResult;
-  const userRolesData = userRolesResult;
-
-  // Calculate performance metrics
-  // timesheetStats already filtered to current month by SQL query
-  const totalTimesheets = timesheetStats.length;
-  const onTimeEntries = timesheetStats.filter(
-    (t) => t.status === "approved"
-  ).length;
-  const onTimeRate =
-    totalTimesheets > 0
-      ? Math.round((onTimeEntries / totalTimesheets) * 100)
-      : 0;
-
-  // Calculate total hours for current month (already filtered by SQL)
-  const totalHoursThisMonth = timesheetStats.reduce(
-    (sum, t) => sum + parseFloat(t.totalHours || "0"),
-    0
-  );
+  const activityResults = await Promise.all(activityPromises);
+  const [reviews, approvals, submissions] = activityResults;
 
   // Combine and format all activities
   const allActivities: Array<{
@@ -603,13 +452,6 @@ export const getEmployeeById = async (id: number) => {
         }
       : null,
 
-    // Roles information
-    roles: userRolesData.map((r) => ({
-      id: r.roleId,
-      name: r.roleName,
-      description: r.roleDescription,
-    })),
-
     // Department information
     department: department
       ? {
@@ -680,100 +522,17 @@ export const getEmployeeById = async (id: number) => {
   };
 };
 
-// Get simplified employee list (no pagination, minimal fields)
-export const getEmployeesSimple = async (search?: string) => {
-  let whereConditions = [eq(employees.isDeleted, false)];
-
-  // Add search filter if provided
-  if (search) {
-    whereConditions.push(
-      or(
-        ilike(users.fullName, `%${search}%`),
-        ilike(users.email, `%${search}%`),
-        ilike(employees.employeeId, `%${search}%`)
-      )!
-    );
-  }
-
-  // Get employees with minimal data
-  const result = await db
-    .select({
-      id: employees.id,
-      employeeId: employees.employeeId,
-      status: employees.status,
-      userId: users.id,
-      fullName: users.fullName,
-    })
-    .from(employees)
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(and(...whereConditions))
-    .orderBy(users.fullName);
-
-  // Fetch roles for all users
-  const userIds = result.map((emp) => emp.userId).filter(Boolean) as string[];
-  const rolesData =
-    userIds.length > 0
-      ? await db
-          .select({
-            userId: userRoles.userId,
-            roleName: roles.name,
-          })
-          .from(userRoles)
-          .innerJoin(roles, eq(userRoles.roleId, roles.id))
-          .where(
-            and(
-              sql`${userRoles.userId} = ANY(ARRAY[${sql.raw(
-                userIds.map((id) => `'${id}'`).join(",")
-              )}]::uuid[])`,
-              eq(roles.isDeleted, false)
-            )
-          )
-      : [];
-
-  // Create a map of userId to role name
-  const rolesMap = new Map<string, string>();
-  for (const roleData of rolesData) {
-    // Get the first role name for each user
-    if (!rolesMap.has(roleData.userId)) {
-      rolesMap.set(roleData.userId, roleData.roleName);
-    }
-  }
-
-  // Return simplified data
-  return result.map((emp) => ({
-    id: emp.id,
-    employeeId: emp.employeeId,
-    userId: emp.userId,
-    name: emp.fullName,
-    role: emp.userId ? rolesMap.get(emp.userId) || null : null,
-    status: emp.status || "available",
-  }));
-};
-
-// Generate next employee ID in T3-00001 format using PostgreSQL sequence
-// This is THREAD-SAFE and prevents race conditions
 export const generateEmployeeId = async (): Promise<string> => {
-  try {
-    // Use PostgreSQL sequence for atomic ID generation
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`)
-    );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    return `T3-${nextNumber.toString().padStart(5, "0")}`;
-  } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet
-    // (This handles cases where migration hasn't run yet)
-    console.warn("Sequence not found, using fallback method:", error);
-    
-    const totalResult = await db
-      .select({ count: count() })
-      .from(employees)
-      .where(eq(employees.isDeleted, false));
-    const total = totalResult[0]?.count ?? 0;
-    const nextNumber = total + 1;
-    return `T3-${nextNumber.toString().padStart(5, "0")}`;
-  }
+  // Count all T3 employees to generate next ID
+  const totalResult = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(eq(employees.isDeleted, false));
+  const total = totalResult[0]?.count ?? 0;
+  const nextNumber = total + 1;
+  // Format: T3-00001, T3-00002, etc. (5 digits padding)
+  const employeeId = `T3-${String(nextNumber).padStart(5, "0")}`;
+  return employeeId;
 };
 
 export const createEmployee = async (data: {
@@ -809,9 +568,6 @@ export const updateEmployee = async (
     departmentId?: number;
     positionId?: number;
     reportsTo?: string;
-    status?: "available" | "in_field" | "on_leave" | "terminated" | "suspended";
-    startDate?: Date;
-    endDate?: Date | null;
   }
 ) => {
   const updateData: {
@@ -820,9 +576,6 @@ export const updateEmployee = async (
     departmentId?: number | null;
     positionId?: number | null;
     reportsTo?: string | null;
-    status?: "available" | "in_field" | "on_leave" | "terminated" | "suspended";
-    startDate?: Date | null;
-    endDate?: Date | null;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -843,15 +596,6 @@ export const updateEmployee = async (
   if (data.reportsTo !== undefined) {
     updateData.reportsTo = data.reportsTo || null;
   }
-  if (data.status !== undefined) {
-    updateData.status = data.status;
-  }
-  if (data.startDate !== undefined) {
-    updateData.startDate = data.startDate || null;
-  }
-  if (data.endDate !== undefined) {
-    updateData.endDate = data.endDate || null;
-  }
 
   const [employee] = await db
     .update(employees)
@@ -862,120 +606,71 @@ export const updateEmployee = async (
 };
 
 export const deleteEmployee = async (id: number) => {
-  // First, check if employee exists and is not already deleted
-  const [existingEmployee] = await db
-    .select()
-    .from(employees)
-    .where(and(eq(employees.id, id), eq(employees.isDeleted, false)))
-    .limit(1);
-
-  if (!existingEmployee) {
-    return null;
-  }
-
-  // Soft delete all related reviews
-  await db
-    .update(employeeReviews)
-    .set({ 
-      isDeleted: true,
-      updatedAt: new Date()
-    })
-    .where(eq(employeeReviews.employeeId, id));
-
-  // Soft delete the associated user account if it exists
-  if (existingEmployee.userId) {
-    await deleteUser(existingEmployee.userId);
-  }
-
-  // Soft delete the employee
   const [employee] = await db
-    .update(employees)
-    .set({ 
-      isDeleted: true,
-      updatedAt: new Date()
-    })
+    .delete(employees)
     .where(eq(employees.id, id))
     .returning();
-
   return employee || null;
 };
 
-export const getEmployeeKPIs = async () => {
-  // Calculate date range for current month (for attendance calculation)
-  const currentDate = new Date();
-  const startOfMonth = new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
-    1
-  );
-  const endOfMonth = new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth() + 1,
-    0
-  );
+export const getEmployeesSimple = async (search?: string) => {
+  let whereConditions = [eq(employees.isDeleted, false)];
 
-  // Format dates as YYYY-MM-DD strings for date column comparison
-  const startDateStr = startOfMonth.toISOString().split("T")[0];
-  const endDateStr = endOfMonth.toISOString().split("T")[0];
+  if (search) {
+    whereConditions.push(
+      or(
+        ilike(users.fullName, `%${search}%`),
+        ilike(users.email, `%${search}%`),
+        ilike(employees.employeeId, `%${search}%`)
+      )!
+    );
+  }
 
-  // OPTIMIZATION: Use raw SQL with optimized EXISTS subquery
-  // This is faster than INNER JOIN as PostgreSQL can use indexes and stop at first match
-  const [aggregatedMetrics, employeesWithTimesheetsResult] = await Promise.all([
-    // Single query for: total employees, active employees, in field count, and violations sum
-    db
-      .select({
-        totalEmployees: sql<number>`COUNT(*)`,
-        activeEmployees: sql<number>`COUNT(*) FILTER (WHERE ${users.isActive} = true)`,
-        inField: sql<number>`COUNT(*) FILTER (WHERE ${employees.status} = 'in_field')`,
-        violations: sql<string>`COALESCE(SUM(${employees.violations}), '0')`,
-      })
-      .from(employees)
-      .leftJoin(users, eq(employees.userId, users.id))
-      .where(eq(employees.isDeleted, false)),
+  const result = await db
+    .select({
+      id: employees.id,
+      employeeId: employees.employeeId,
+      status: employees.status,
+      userId: users.id,
+      fullName: users.fullName,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(and(...whereConditions))
+    .orderBy(users.fullName);
 
-    // OPTIMIZED: Use raw SQL with EXISTS subquery for maximum performance
-    // This allows PostgreSQL to use indexes efficiently and stops at first match
-    db.execute<{ count: string }>(
-      sql.raw(`
-        SELECT COUNT(*)::text as count
-        FROM org.employees e
-        INNER JOIN auth.users u ON e.user_id = u.id
-        WHERE e.is_deleted = false
-          AND u.is_active = true
-          AND EXISTS (
-            SELECT 1 
-            FROM org.timesheets t
-            WHERE t.employee_id = e.id
-              AND t.sheet_date >= '${startDateStr}'::date
-              AND t.sheet_date <= '${endDateStr}'::date
-              AND t.status IN ('submitted', 'approved')
-            LIMIT 1
+  // Get roles for all users
+  const userIds = result.map((emp) => emp.userId).filter(Boolean) as string[];
+  const rolesData =
+    userIds.length > 0
+      ? await db
+          .select({
+            userId: userRoles.userId,
+            roleName: roles.name,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(
+            and(
+              inArray(userRoles.userId, userIds),
+              eq(roles.isDeleted, false)
+            )
           )
-      `)
-    ),
-  ]);
+      : [];
 
-  const totalEmployees = Number(aggregatedMetrics[0]?.totalEmployees ?? 0);
-  const activeEmployees = Number(aggregatedMetrics[0]?.activeEmployees ?? 0);
-  const inField = Number(aggregatedMetrics[0]?.inField ?? 0);
-  const violations = parseInt(aggregatedMetrics[0]?.violations ?? "0", 10);
+  const rolesMap = new Map<string, string>();
+  for (const roleData of rolesData) {
+    if (!rolesMap.has(roleData.userId)) {
+      rolesMap.set(roleData.userId, roleData.roleName);
+    }
+  }
 
-  // Calculate attendance percentage
-  // Percentage of active employees who have submitted timesheets this month
-  const employeesWithTimesheetsCount = employeesWithTimesheetsResult.rows
-    ? Number(employeesWithTimesheetsResult.rows[0]?.count ?? 0)
-    : 0;
-
-  const attendance =
-    activeEmployees > 0
-      ? Math.round((employeesWithTimesheetsCount / activeEmployees) * 100)
-      : 0;
-
-  return {
-    totalEmployees,
-    activeEmployees,
-    inField,
-    attendance: `${attendance}%`,
-    timesheetViolations: violations,
-  };
+  return result.map((emp) => ({
+    id: emp.id,
+    employeeId: emp.employeeId,
+    userId: emp.userId,
+    name: emp.fullName,
+    role: emp.userId ? rolesMap.get(emp.userId) || null : null,
+    status: emp.status || "available",
+  }));
 };

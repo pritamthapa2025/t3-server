@@ -47,13 +47,11 @@ interface PayrollRunsFilters {
   status?: string | undefined;
 }
 
-// Dashboard Service
+// Dashboard Service (T3 internal - no organizationId filter)
 export const getPayrollDashboard = async (
-  organizationId: string,
   filters: PayrollDashboardFilters
 ) => {
   let whereConditions = [
-    eq(payrollEntries.organizationId, organizationId),
     eq(payrollEntries.isDeleted, false),
   ];
 

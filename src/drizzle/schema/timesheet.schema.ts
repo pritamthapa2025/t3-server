@@ -36,8 +36,8 @@ export const timesheets = org.table(
 
     sheetDate: date("sheet_date").notNull(),
 
-    clockIn: timestamp("clock_in").notNull(),
-    clockOut: timestamp("clock_out"), // Nullable - populated when employee clocks out
+    clockIn: varchar("clock_in", { length: 5 }).notNull(), // HH:MM format (24-hour)
+    clockOut: varchar("clock_out", { length: 5 }), // HH:MM format (24-hour) // Nullable - populated when employee clocks out
 
     breakMinutes: integer("break_minutes").default(0),
 
@@ -72,7 +72,7 @@ export const timesheets = org.table(
  * Tracks approval actions on timesheets
  */
 export const timesheetApprovals = org.table(
-  "timesheet_approvals", 
+  "timesheet_approvals",
   {
     id: serial("id").primaryKey(),
 

@@ -98,6 +98,11 @@ function transformObject(obj: any, config: TransformConfig): any {
         // Already formatted, skip transformation
         return;
       }
+      // Skip if already in HH:MM format (time-only string like "08:30")
+      if (typeof obj[field] === 'string' && /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(obj[field])) {
+        // Already in HH:MM format, skip transformation
+        return;
+      }
       
       // Transform Date objects
       if (obj[field] instanceof Date) {
@@ -312,7 +317,7 @@ export function largeDataTransformer(config?: TransformConfig) {
  */
 export const timesheetTransformer = easternTimeTransformer({
   dateFields: ["sheetDate"],
-  dateTimeFields: ["clockIn", "clockOut", "createdAt", "updatedAt"],
+  dateTimeFields: ["createdAt", "updatedAt"], // clockIn/clockOut are formatted manually as HH:MM
   preserveOriginal: false,
 });
 

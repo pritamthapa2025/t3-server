@@ -15,14 +15,16 @@ import {
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
 
-export const getPayrollDashboardHandler = async (req: Request, res: Response) => {
+export const getPayrollDashboardHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    const organizationId = req.query.organizationId as string;
     const payPeriodId = req.query.payPeriodId as string;
     const dateFrom = req.query.dateFrom as string | undefined;
     const dateTo = req.query.dateTo as string | undefined;
 
-    const dashboard = await getPayrollDashboard(organizationId, {
+    const dashboard = await getPayrollDashboard({
       payPeriodId,
       dateFrom,
       dateTo,
@@ -78,7 +80,10 @@ export const getPayrollEntriesHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getPayrollEntryByIdHandler = async (req: Request, res: Response) => {
+export const getPayrollEntryByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = req.params.id as string;
 
@@ -111,7 +116,10 @@ export const getPayrollEntryByIdHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const createPayrollEntryHandler = async (req: Request, res: Response) => {
+export const createPayrollEntryHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const payrollEntryData = req.body;
     const createdBy = (req as any).user?.id;
@@ -133,7 +141,8 @@ export const createPayrollEntryHandler = async (req: Request, res: Response) => 
     if ((error as any).code === "DUPLICATE_ENTRY") {
       return res.status(400).json({
         success: false,
-        message: "Payroll entry already exists for this employee in the selected period",
+        message:
+          "Payroll entry already exists for this employee in the selected period",
       });
     }
 
@@ -144,7 +153,10 @@ export const createPayrollEntryHandler = async (req: Request, res: Response) => 
   }
 };
 
-export const updatePayrollEntryHandler = async (req: Request, res: Response) => {
+export const updatePayrollEntryHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = req.params.id as string;
     const updateData = req.body;
@@ -192,7 +204,10 @@ export const updatePayrollEntryHandler = async (req: Request, res: Response) => 
   }
 };
 
-export const deletePayrollEntryHandler = async (req: Request, res: Response) => {
+export const deletePayrollEntryHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = req.params.id as string;
     const deletedBy = (req as any).user?.id;
@@ -235,7 +250,10 @@ export const deletePayrollEntryHandler = async (req: Request, res: Response) => 
   }
 };
 
-export const approvePayrollEntryHandler = async (req: Request, res: Response) => {
+export const approvePayrollEntryHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = req.params.id as string;
     const approvedBy = (req as any).user?.id;
@@ -280,7 +298,10 @@ export const approvePayrollEntryHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const rejectPayrollEntryHandler = async (req: Request, res: Response) => {
+export const rejectPayrollEntryHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = req.params.id as string;
     const rejectedBy = (req as any).user?.id;
@@ -474,13 +495,3 @@ export const processPayrollRunHandler = async (req: Request, res: Response) => {
     });
   }
 };
-
-
-
-
-
-
-
-
-
-

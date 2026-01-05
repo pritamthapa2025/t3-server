@@ -2,10 +2,9 @@ import { z } from "zod";
 
 const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
 
-// Get payroll dashboard query validation
+// Get payroll dashboard query validation (T3 internal - no organizationId needed)
 export const getPayrollDashboardQuerySchema = z.object({
   query: z.object({
-    organizationId: uuidSchema,
     payPeriodId: uuidSchema.optional(),
     dateFrom: z.string().date().optional(),
     dateTo: z.string().date().optional(),

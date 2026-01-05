@@ -67,42 +67,14 @@ export const getTimesheetById = async (id: number) => {
     .select()
     .from(timesheets)
     .where(eq(timesheets.id, id));
-  return timesheet || null;
+  return timesheet ? formatTimesheetResponse(timesheet) : null;
 };
 
-// Helper function to format timesheet response with time-only format
+// Helper function to format timesheet response (clockIn/clockOut are already strings, just return as-is)
 export const formatTimesheetResponse = (timesheet: any) => {
   if (!timesheet) return timesheet;
-
-  const formatted = { ...timesheet };
-
-  // Format clockIn to HH:MM (using UTC to avoid timezone issues)
-  if (timesheet.clockIn) {
-    const clockInDate =
-      timesheet.clockIn instanceof Date
-        ? timesheet.clockIn
-        : new Date(timesheet.clockIn);
-    const hours = clockInDate.getUTCHours().toString().padStart(2, "0");
-    const minutes = clockInDate.getUTCMinutes().toString().padStart(2, "0");
-    formatted.clockIn = `${hours}:${minutes}`;
-  } else {
-    formatted.clockIn = null;
-  }
-
-  // Format clockOut to HH:MM (using UTC to avoid timezone issues)
-  if (timesheet.clockOut) {
-    const clockOutDate =
-      timesheet.clockOut instanceof Date
-        ? timesheet.clockOut
-        : new Date(timesheet.clockOut);
-    const hours = clockOutDate.getUTCHours().toString().padStart(2, "0");
-    const minutes = clockOutDate.getUTCMinutes().toString().padStart(2, "0");
-    formatted.clockOut = `${hours}:${minutes}`;
-  } else {
-    formatted.clockOut = null;
-  }
-
-  return formatted;
+  // clockIn and clockOut are already stored as HH:MM strings, no conversion needed
+  return timesheet;
 };
 
 export const createTimesheet = async (data: {
@@ -116,37 +88,29 @@ export const createTimesheet = async (data: {
   notes?: string;
 }) => {
   // Convert sheetDate to YYYY-MM-DD string format for date column
-  const sheetDateObj =
-    data.sheetDate instanceof Date ? data.sheetDate : new Date(data.sheetDate);
-  const sheetDateStr = sheetDateObj.toISOString().split("T")[0];
+  const sheetDateStr =
+    data.sheetDate instanceof Date
+      ? data.sheetDate.toISOString().split("T")[0]!
+      : typeof data.sheetDate === "string"
+      ? data.sheetDate
+      : new Date(data.sheetDate).toISOString().split("T")[0]!;
 
-  // Combine sheetDate with clockIn time
-  const clockInTimeParts = data.clockIn.split(":");
-  const clockInHours = parseInt(clockInTimeParts[0] || "0", 10);
-  const clockInMinutes = parseInt(clockInTimeParts[1] || "0", 10);
-  const clockInDateTime = new Date(sheetDateObj);
-  clockInDateTime.setHours(clockInHours, clockInMinutes, 0, 0);
-
-  // Combine sheetDate with clockOut time if provided
-  let clockOutDateTime: Date | null = null;
-  if (data.clockOut) {
-    const clockOutTimeParts = data.clockOut.split(":");
-    const clockOutHours = parseInt(clockOutTimeParts[0] || "0", 10);
-    const clockOutMinutes = parseInt(clockOutTimeParts[1] || "0", 10);
-    clockOutDateTime = new Date(sheetDateObj);
-    clockOutDateTime.setHours(clockOutHours, clockOutMinutes, 0, 0);
-  }
+  // Store clockIn and clockOut as time strings directly (HH:MM format)
+  const clockInTime = data.clockIn; // Already in HH:MM format
+  const clockOutTime = data.clockOut || null; // Already in HH:MM format or null
 
   // Calculate totalHours and overtimeHours if clockOut is provided
   let calculatedTotalHours = data.totalHours || "0";
   let calculatedOvertimeHours = data.overtimeHours || "0";
 
-  if (data.clockOut && clockOutDateTime) {
-    const totalMilliseconds =
-      clockOutDateTime.getTime() - clockInDateTime.getTime();
+  if (data.clockOut) {
+    // Parse times to calculate hours
+    const clockInParts = data.clockIn.split(":");
+    const clockOutParts = data.clockOut.split(":");
+    const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
+    const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
     const breakMinutes = data.breakMinutes || 0;
-    const totalMinutes =
-      Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
+    const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
     calculatedTotalHours = (totalMinutes / 60).toFixed(2);
 
     // Calculate overtime (assuming 8 hours is regular time)
@@ -162,8 +126,8 @@ export const createTimesheet = async (data: {
     .values({
       employeeId: data.employeeId,
       sheetDate: sheetDateStr as string,
-      clockIn: clockInDateTime,
-      clockOut: clockOutDateTime,
+      clockIn: clockInTime,
+      clockOut: clockOutTime,
       breakMinutes: data.breakMinutes || 0,
       totalHours: calculatedTotalHours,
       overtimeHours: calculatedOvertimeHours,
@@ -206,8 +170,8 @@ export const updateTimesheet = async (
   const updateData: {
     employeeId?: number;
     sheetDate?: string;
-    clockIn?: Date;
-    clockOut?: Date;
+    clockIn?: string;
+    clockOut?: string;
     breakMinutes?: number | null;
     totalHours?: string | null;
     overtimeHours?: string | null;
@@ -224,12 +188,14 @@ export const updateTimesheet = async (
     updateData.employeeId = data.employeeId;
   }
 
-  // Determine which sheetDate to use (new one or existing)
-  const sheetDateToUse = data.sheetDate
+  // Determine which sheetDate string to use (new one or existing)
+  const sheetDateStrToUse = data.sheetDate
     ? data.sheetDate instanceof Date
+      ? data.sheetDate.toISOString().split("T")[0]!
+      : typeof data.sheetDate === "string"
       ? data.sheetDate
-      : new Date(data.sheetDate)
-    : new Date(existingTimesheet.sheetDate);
+      : new Date(data.sheetDate).toISOString().split("T")[0]!
+    : existingTimesheet.sheetDate;
 
   if (data.sheetDate !== undefined) {
     // Convert sheetDate to YYYY-MM-DD string format for date column
@@ -241,38 +207,27 @@ export const updateTimesheet = async (
   }
 
   if (data.clockIn !== undefined) {
-    // Combine sheetDate with clockIn time
-    const clockInTimeParts = data.clockIn.split(":");
-    const clockInHours = parseInt(clockInTimeParts[0] || "0", 10);
-    const clockInMinutes = parseInt(clockInTimeParts[1] || "0", 10);
-    const clockInDateTime = new Date(sheetDateToUse);
-    clockInDateTime.setHours(clockInHours, clockInMinutes, 0, 0);
-    updateData.clockIn = clockInDateTime;
+    // Store clockIn as time string directly (HH:MM format)
+    updateData.clockIn = data.clockIn;
   }
-
+  
   if (data.clockOut !== undefined) {
-    // Combine sheetDate with clockOut time
-    const clockOutTimeParts = data.clockOut.split(":");
-    const clockOutHours = parseInt(clockOutTimeParts[0] || "0", 10);
-    const clockOutMinutes = parseInt(clockOutTimeParts[1] || "0", 10);
-    const clockOutDateTime = new Date(sheetDateToUse);
-    clockOutDateTime.setHours(clockOutHours, clockOutMinutes, 0, 0);
-    updateData.clockOut = clockOutDateTime;
+    // Store clockOut as time string directly (HH:MM format)
+    updateData.clockOut = data.clockOut;
 
     // Recalculate hours if clockOut is updated
     const clockInTime = updateData.clockIn || existingTimesheet.clockIn;
     if (clockInTime) {
-      const totalMilliseconds =
-        clockOutDateTime.getTime() -
-        (clockInTime instanceof Date
-          ? clockInTime.getTime()
-          : new Date(clockInTime).getTime());
+      // Parse times to calculate hours
+      const clockInParts = clockInTime.split(":");
+      const clockOutParts = data.clockOut.split(":");
+      const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
+      const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
       const breakMins =
         data.breakMinutes !== undefined
           ? data.breakMinutes
           : existingTimesheet.breakMinutes || 0;
-      const totalMinutes =
-        Math.floor(totalMilliseconds / (1000 * 60)) - breakMins;
+      const totalMinutes = clockOutMinutes - clockInMinutes - breakMins;
       const calculatedTotalHours = (totalMinutes / 60).toFixed(2);
       const regularHours = 8;
       const calculatedOvertimeHours = Math.max(
@@ -329,18 +284,13 @@ export const clockIn = async (data: {
   jobIds?: string[];
   notes?: string;
 }) => {
-  // Combine date and time into a single datetime
-  const timeParts = data.clockInTime.split(":");
-  const hours = parseInt(timeParts[0] || "0", 10);
-  const minutes = parseInt(timeParts[1] || "0", 10);
-  const clockInDateTime = new Date(data.clockInDate);
-  clockInDateTime.setHours(hours, minutes, 0, 0);
-
   // Get today's date for the sheet
   const sheetDate = new Date(data.clockInDate);
   sheetDate.setHours(0, 0, 0, 0); // Set to start of day
-
   const sheetDateStr = sheetDate.toISOString().split("T")[0];
+
+  // Store clockIn time as string directly (HH:MM format)
+  const clockInTime = data.clockInTime;
 
   // Check if there's already a timesheet for this employee today
   const existingTimesheet = await db
@@ -363,7 +313,7 @@ export const clockIn = async (data: {
     .values({
       employeeId: data.employeeId,
       sheetDate: sheetDateStr as string,
-      clockIn: clockInDateTime,
+      clockIn: clockInTime,
       clockOut: null, // Will be populated when employee clocks out
       breakMinutes: 0,
       totalHours: "0",
@@ -386,18 +336,13 @@ export const clockOut = async (data: {
   notes?: string;
   breakMinutes?: number;
 }) => {
-  // Combine date and time into a single datetime
-  const timeParts = data.clockOutTime.split(":");
-  const hours = parseInt(timeParts[0] || "0", 10);
-  const minutes = parseInt(timeParts[1] || "0", 10);
-  const clockOutDateTime = new Date(data.clockOutDate);
-  clockOutDateTime.setHours(hours, minutes, 0, 0);
-
   // Get today's date for the sheet
   const sheetDate = new Date(data.clockOutDate);
   sheetDate.setHours(0, 0, 0, 0); // Set to start of day
-
   const sheetDateStr = sheetDate.toISOString().split("T")[0];
+
+  // Store clockOut time as string directly (HH:MM format)
+  const clockOutTimeStr = data.clockOutTime;
 
   // Find existing timesheet for today
   const [existingTimesheet] = await db
@@ -416,14 +361,16 @@ export const clockOut = async (data: {
     );
   }
 
-  // Calculate total hours worked
-  const clockInTime = new Date(existingTimesheet.clockIn);
-  const clockOutTime = clockOutDateTime;
+  // Calculate total hours worked using time strings
+  const clockInTimeStr = existingTimesheet.clockIn;
   const breakMinutes = data.breakMinutes || existingTimesheet.breakMinutes || 0;
 
-  const totalMilliseconds = clockOutTime.getTime() - clockInTime.getTime();
-  const totalMinutes =
-    Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
+  // Parse times to calculate hours
+  const clockInParts = clockInTimeStr.split(":");
+  const clockOutParts = clockOutTimeStr.split(":");
+  const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
+  const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+  const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
   const totalHours = (totalMinutes / 60).toFixed(2);
 
   // Calculate overtime (assuming 8 hours is regular time)
@@ -437,7 +384,7 @@ export const clockOut = async (data: {
   const [updatedTimesheet] = await db
     .update(timesheets)
     .set({
-      clockOut: clockOutDateTime,
+      clockOut: clockOutTimeStr,
       breakMinutes: breakMinutes,
       totalHours: totalHours,
       overtimeHours: overtimeHours,
@@ -459,17 +406,13 @@ export const createTimesheetWithClockData = async (data: {
   breakMinutes?: number;
   notes?: string;
 }) => {
-  // Combine clockInDate and clockInTime into a single datetime
-  const timeParts = data.clockInTime.split(":");
-  const hours = parseInt(timeParts[0] || "0", 10);
-  const minutes = parseInt(timeParts[1] || "0", 10);
-  const clockInDateTime = new Date(data.clockInDate);
-  clockInDateTime.setHours(hours, minutes, 0, 0);
-
   // Get the sheet date (start of day)
   const sheetDate = new Date(data.clockInDate);
   sheetDate.setHours(0, 0, 0, 0);
   const sheetDateStr = sheetDate.toISOString().split("T")[0];
+
+  // Store clockIn time as string directly (HH:MM format)
+  const clockInTime = data.clockInTime;
 
   // Check if timesheet already exists for this employee and date
   const [existingTimesheet] = await db
@@ -488,20 +431,17 @@ export const createTimesheetWithClockData = async (data: {
 
   // If clock-out data is provided
   if (data.clockOutDate && data.clockOutTime) {
-    // Combine clockOutDate and clockOutTime into a single datetime
-    const clockOutTimeParts = data.clockOutTime.split(":");
-    const clockOutHours = parseInt(clockOutTimeParts[0] || "0", 10);
-    const clockOutMinutes = parseInt(clockOutTimeParts[1] || "0", 10);
-    const clockOutDateTime = new Date(data.clockOutDate);
-    clockOutDateTime.setHours(clockOutHours, clockOutMinutes, 0, 0);
+    // Store clockOut time as string directly (HH:MM format)
+    const clockOutTime = data.clockOutTime;
 
     const breakMinutes = data.breakMinutes || 0;
 
-    // Calculate total hours worked
-    const totalMilliseconds =
-      clockOutDateTime.getTime() - clockInDateTime.getTime();
-    const totalMinutes =
-      Math.floor(totalMilliseconds / (1000 * 60)) - breakMinutes;
+    // Calculate total hours worked using time strings
+    const clockInParts = clockInTime.split(":");
+    const clockOutParts = clockOutTime.split(":");
+    const clockInMinutes = parseInt(clockInParts[0] || "0", 10) * 60 + parseInt(clockInParts[1] || "0", 10);
+    const clockOutMinutes = parseInt(clockOutParts[0] || "0", 10) * 60 + parseInt(clockOutParts[1] || "0", 10);
+    const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
     const totalHours = (totalMinutes / 60).toFixed(2);
 
     // Calculate overtime (assuming 8 hours is regular time)
@@ -517,8 +457,8 @@ export const createTimesheetWithClockData = async (data: {
       .values({
         employeeId: data.employeeId,
         sheetDate: sheetDateStr as string,
-        clockIn: clockInDateTime,
-        clockOut: clockOutDateTime,
+        clockIn: clockInTime,
+        clockOut: clockOutTime,
         breakMinutes: breakMinutes,
         totalHours: totalHours,
         overtimeHours: overtimeHours,
@@ -537,7 +477,7 @@ export const createTimesheetWithClockData = async (data: {
       .values({
         employeeId: data.employeeId,
         sheetDate: sheetDateStr as string,
-        clockIn: clockInDateTime,
+        clockIn: clockInTime,
         clockOut: null,
         breakMinutes: data.breakMinutes || 0,
         totalHours: "0",
@@ -791,31 +731,9 @@ export const getWeeklyTimesheetsByEmployee = async (
         if (row.timesheet.id) {
           dayData.timesheetId = row.timesheet.id;
 
-          // Always include clockIn and clockOut (even if null)
-          // Convert to Date object if it's a string to ensure proper handling by timezone transformer
-          if (
-            row.timesheet.clockIn !== null &&
-            row.timesheet.clockIn !== undefined
-          ) {
-            dayData.clockIn =
-              row.timesheet.clockIn instanceof Date
-                ? row.timesheet.clockIn
-                : new Date(row.timesheet.clockIn);
-          } else {
-            dayData.clockIn = null;
-          }
-
-          if (
-            row.timesheet.clockOut !== null &&
-            row.timesheet.clockOut !== undefined
-          ) {
-            dayData.clockOut =
-              row.timesheet.clockOut instanceof Date
-                ? row.timesheet.clockOut
-                : new Date(row.timesheet.clockOut);
-          } else {
-            dayData.clockOut = null;
-          }
+          // clockIn and clockOut are already stored as HH:MM strings, use directly
+          dayData.clockIn = row.timesheet.clockIn || null;
+          dayData.clockOut = row.timesheet.clockOut || null;
 
           dayData.breakMinutes = row.timesheet.breakMinutes || 0;
           dayData.totalHours = row.timesheet.totalHours || "0";
@@ -1079,8 +997,8 @@ export const getTimesheetsByEmployee = async (
       acc.push(employeeGroup);
     }
 
-    // Add timesheet to employee group
-    employeeGroup.timesheets.push(row.timesheet);
+    // Add timesheet to employee group (format clockIn/clockOut)
+    employeeGroup.timesheets.push(formatTimesheetResponse(row.timesheet));
 
     return acc;
   }, []);
@@ -1122,7 +1040,7 @@ export const approveTimesheet = async (
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
-  return timesheet || null;
+  return timesheet ? formatTimesheetResponse(timesheet) : null;
 };
 
 export const rejectTimesheet = async (
@@ -1142,7 +1060,7 @@ export const rejectTimesheet = async (
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
-  return timesheet || null;
+  return timesheet ? formatTimesheetResponse(timesheet) : null;
 };
 
 export const getTimesheetKPIs = async (weekStartDate: string) => {

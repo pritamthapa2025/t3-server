@@ -32,9 +32,9 @@ import {
 
 const router = Router();
 
-// Dashboard Routes
+// Payroll KPIs Routes
 router.get(
-  "/dashboard",
+  "/kpis",
   authenticate,
   validate(getPayrollDashboardQuerySchema),
   getPayrollDashboardHandler
@@ -120,12 +120,3 @@ router.post(
 );
 
 export default router;
-
-
-
-
-
-
-
-
-
