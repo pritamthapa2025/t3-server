@@ -3,8 +3,6 @@ import { z } from "zod";
 // Dashboard KPIs Query Schema
 export const getDashboardKPIsQuerySchema = z.object({
   query: z.object({
-    organizationId: z.string().uuid().optional(),
-    jobId: z.string().uuid().optional(),
     dateFrom: z.string().optional(),
     dateTo: z.string().optional(),
   }),
@@ -24,7 +22,7 @@ export const getComplianceCasesQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     search: z.string().optional(),
-    organizationId: z.string().uuid(),
+    organizationId: z.string().uuid().optional(),
     jobId: z.string().uuid().optional(),
     employeeId: z.string().transform(Number).optional(),
     type: z.enum(["safety", "timesheet", "conduct", "training", "certification", "other"]).optional(),
@@ -48,7 +46,7 @@ export const getComplianceCaseByIdSchema = z.object({
 // Create Compliance Case Schema
 export const createComplianceCaseSchema = z.object({
   body: z.object({
-    organizationId: z.string().uuid(),
+    organizationId: z.string().uuid().optional(),
     jobId: z.string().uuid().optional(),
     employeeId: z.number().int().positive(),
     caseNumber: z.string().min(1).max(50),
@@ -120,7 +118,7 @@ export const updateCaseStatusSchema = z.object({
 // Violation Watchlist Query Schema
 export const getViolationWatchlistQuerySchema = z.object({
   query: z.object({
-    organizationId: z.string().uuid(),
+    organizationId: z.string().uuid().optional(),
     page: z
       .string()
       .optional()
@@ -144,7 +142,7 @@ export const getViolationWatchlistQuerySchema = z.object({
 // Violation Counts Query Schema
 export const getViolationCountsQuerySchema = z.object({
   query: z.object({
-    organizationId: z.string().uuid(),
+    organizationId: z.string().uuid().optional(),
     jobId: z.string().uuid().optional(),
     employeeId: z.string().transform(Number).optional(),
     dateFrom: z.string().optional(),

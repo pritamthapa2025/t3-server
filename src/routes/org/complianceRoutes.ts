@@ -31,7 +31,7 @@ router.use(authenticate);
 
 // Dashboard KPIs
 router.get(
-  "/dashboard/kpis",
+  "/kpis",
   validate(getDashboardKPIsQuerySchema),
   getDashboardKPIsHandler
 );

@@ -9,6 +9,7 @@ import expenseRoutes from "./org/expenseRoutes.js";
 import timesheetRoutes from "./org/timesheetRoutes.js";
 import financialRoutes from "./org/financialRoutes.js";
 import bidRoutes from "./org/bidRoutes.js";
+import jobRoutes from "./org/jobRoutes.js";
 import clientRoutes from "./org/clientRoutes.js";
 import propertyRoutes from "./org/propertyRoutes.js";
 import payrollRoutes from "./org/payrollRoutes.js";
@@ -36,6 +37,7 @@ router.use(
   timesheetRoutes,
   financialRoutes,
   bidRoutes,
+  jobRoutes,
   clientRoutes,
   propertyRoutes
 );
