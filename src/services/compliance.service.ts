@@ -31,20 +31,14 @@ import type {
 
 // Dashboard KPIs Service
 export const getDashboardKPIs = async (filters: {
-  organizationId?: string;
-  jobId?: string;
   dateFrom?: string;
   dateTo?: string;
 }): Promise<DashboardKPIs> => {
-  const { organizationId, jobId, dateFrom, dateTo } = filters;
+  const { dateFrom, dateTo } = filters;
 
-  // Base query conditions
+  // Base query conditions - only filter by date and deleted status
   const conditions = [
     eq(employeeComplianceCases.isDeleted, false),
-    ...(organizationId
-      ? [eq(employeeComplianceCases.organizationId, organizationId)]
-      : []),
-    ...(jobId ? [eq(employeeComplianceCases.jobId, jobId)] : []),
     ...(dateFrom
       ? [gte(employeeComplianceCases.createdAt, new Date(dateFrom))]
       : []),
@@ -90,17 +84,14 @@ export const getDashboardKPIs = async (filters: {
       and(
         eq(employeeViolationHistory.isDeleted, false),
         eq(employeeViolationHistory.severity, "critical"),
-        eq(employeeViolationHistory.isResolved, false),
-        ...(organizationId
-          ? [eq(employeeViolationHistory.organizationId, organizationId)]
-          : [])
+        eq(employeeViolationHistory.isResolved, false)
       )
     );
 
   // Average Resolution Time (in days)
   const avgResolutionResult = await db
     .select({
-      avgDays: sql<number>`AVG(EXTRACT(DAY FROM (resolved_date - opened_on)))`,
+      avgDays: sql<number>`AVG(resolved_date - opened_on)`,
     })
     .from(employeeComplianceCases)
     .where(
@@ -125,7 +116,7 @@ export const getComplianceCases = async (
   limit: number,
   filters: {
     search?: string;
-    organizationId: string;
+    organizationId?: string;
     jobId?: string;
     employeeId?: number;
     type?: string;
@@ -156,7 +147,7 @@ export const getComplianceCases = async (
   // Build conditions
   const conditions = [
     eq(employeeComplianceCases.isDeleted, false),
-    eq(employeeComplianceCases.organizationId, organizationId),
+    ...(organizationId ? [eq(employeeComplianceCases.organizationId, organizationId)] : []),
     ...(jobId ? [eq(employeeComplianceCases.jobId, jobId)] : []),
     ...(employeeId ? [eq(employeeComplianceCases.employeeId, employeeId)] : []),
     ...(type ? [eq(employeeComplianceCases.type, type as any)] : []),
@@ -303,6 +294,10 @@ export const getComplianceCaseById = async (id: string) => {
 
 // Create Compliance Case
 export const createComplianceCase = async (data: CreateComplianceCaseData) => {
+  if (!data.organizationId) {
+    throw new Error("Organization ID is required");
+  }
+  
   const insertData: any = {
     organizationId: data.organizationId,
     employeeId: data.employeeId,
@@ -412,7 +407,7 @@ export const getViolationWatchlist = async (
   offset: number,
   limit: number,
   filters: {
-    organizationId: string;
+    organizationId?: string;
     minViolations?: number;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
@@ -428,6 +423,15 @@ export const getViolationWatchlist = async (
     sortBy = "violationCount",
     sortOrder = "desc",
   } = filters;
+
+  // Build join conditions
+  const violationJoinConditions = [
+    eq(employeeViolationHistory.employeeId, employees.id),
+    eq(employeeViolationHistory.isDeleted, false),
+  ];
+  if (organizationId) {
+    violationJoinConditions.push(eq(employeeViolationHistory.organizationId, organizationId));
+  }
 
   // Get employees with violation counts
   const watchlistQuery = db
@@ -445,11 +449,7 @@ export const getViolationWatchlist = async (
     .leftJoin(sql`departments`, sql`departments.id = employees.department_id`)
     .leftJoin(
       employeeViolationHistory,
-      and(
-        eq(employeeViolationHistory.employeeId, employees.id),
-        eq(employeeViolationHistory.organizationId, organizationId),
-        eq(employeeViolationHistory.isDeleted, false)
-      )
+      and(...violationJoinConditions)
     )
     .where(eq(employees.isDeleted, false))
     .groupBy(employees.id, users.id, sql`departments.name`)
@@ -490,7 +490,7 @@ export const getViolationWatchlist = async (
 
 // Get Violation Counts
 export const getViolationCounts = async (filters: {
-  organizationId: string;
+  organizationId?: string;
   jobId?: string;
   employeeId?: number;
   dateFrom?: string;
@@ -509,7 +509,7 @@ export const getViolationCounts = async (filters: {
   // Base conditions
   const conditions = [
     eq(employeeViolationHistory.isDeleted, false),
-    eq(employeeViolationHistory.organizationId, organizationId),
+    ...(organizationId ? [eq(employeeViolationHistory.organizationId, organizationId)] : []),
     ...(jobId ? [eq(employeeComplianceCases.jobId, jobId)] : []),
     ...(employeeId
       ? [eq(employeeViolationHistory.employeeId, employeeId)]

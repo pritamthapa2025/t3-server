@@ -15,11 +15,9 @@ import { logger } from "../utils/logger.js";
 // Dashboard KPIs Handler
 export const getDashboardKPIsHandler = async (req: Request, res: Response) => {
   try {
-    const { organizationId, jobId, dateFrom, dateTo } = req.query;
+    const { dateFrom, dateTo } = req.query;
 
     const kpis = await getDashboardKPIs({
-      organizationId: organizationId as string,
-      jobId: jobId as string,
       dateFrom: dateFrom as string,
       dateTo: dateTo as string,
     });
@@ -63,11 +61,10 @@ export const getComplianceCasesHandler = async (
 
     const offset = (page - 1) * limit;
 
-    const filters: any = {
-      organizationId: organizationId as string,
-    };
-    
+    const filters: any = {};
+
     if (search) filters.search = search as string;
+    if (organizationId) filters.organizationId = organizationId as string;
     if (jobId) filters.jobId = jobId as string;
     if (employeeId) filters.employeeId = parseInt(employeeId as string);
     if (type) filters.type = type as string;
@@ -141,6 +138,11 @@ export const createComplianceCaseHandler = async (
 ) => {
   try {
     const caseData = req.body;
+
+    // Use organizationId from body or fallback to user's organizationId
+    if (!caseData.organizationId && req.user?.organizationId) {
+      caseData.organizationId = req.user.organizationId;
+    }
 
     const newCase = await createComplianceCase(caseData);
 
@@ -296,10 +298,11 @@ export const getViolationWatchlistHandler = async (
 
     const offset = (page - 1) * limit;
 
-    const watchlistFilters: any = {
-      organizationId: organizationId as string,
-    };
-    if (minViolations) watchlistFilters.minViolations = parseInt(minViolations as string);
+    const watchlistFilters: any = {};
+    if (organizationId)
+      watchlistFilters.organizationId = organizationId as string;
+    if (minViolations)
+      watchlistFilters.minViolations = parseInt(minViolations as string);
     if (sortBy) watchlistFilters.sortBy = sortBy as string;
     if (sortOrder) watchlistFilters.sortOrder = sortOrder as "asc" | "desc";
 
@@ -330,9 +333,8 @@ export const getViolationCountsHandler = async (
     const { organizationId, jobId, employeeId, dateFrom, dateTo, groupBy } =
       req.query;
 
-    const countFilters: any = {
-      organizationId: organizationId as string,
-    };
+    const countFilters: any = {};
+    if (organizationId) countFilters.organizationId = organizationId as string;
     if (jobId) countFilters.jobId = jobId as string;
     if (employeeId) countFilters.employeeId = parseInt(employeeId as string);
     if (dateFrom) countFilters.dateFrom = dateFrom as string;

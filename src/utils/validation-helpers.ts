@@ -232,6 +232,35 @@ export const checkBidNumberExists = async (
 };
 
 /**
+ * Check if a job number already exists for a specific organization
+ */
+export const checkJobNumberExists = async (
+  jobNumber: string,
+  organizationId: string,
+  excludeJobId?: string
+): Promise<boolean> => {
+  const { jobs } = await import("../drizzle/schema/jobs.schema.js");
+  
+  const conditions = [
+    eq(jobs.jobNumber, jobNumber),
+    eq(jobs.organizationId, organizationId),
+    eq(jobs.isDeleted, false),
+  ];
+
+  if (excludeJobId) {
+    conditions.push(ne(jobs.id, excludeJobId));
+  }
+
+  const [existing] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(...conditions))
+    .limit(1);
+
+  return !!existing;
+};
+
+/**
  * Check if a client type name already exists
  */
 export const checkClientTypeNameExists = async (

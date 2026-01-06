@@ -31,7 +31,7 @@ export interface ComplianceCase {
 }
 
 export interface CreateComplianceCaseData {
-  organizationId: string;
+  organizationId?: string;
   jobId?: string;
   employeeId: number;
   caseNumber: string;
