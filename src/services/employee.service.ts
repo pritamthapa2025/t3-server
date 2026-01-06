@@ -8,7 +8,10 @@ import {
   employeeReviews,
   organizations,
 } from "../drizzle/schema/org.schema.js";
-import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
+import {
+  timesheets,
+  timesheetApprovals,
+} from "../drizzle/schema/timesheet.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
 export const getEmployees = async (offset: number, limit: number) => {
@@ -568,6 +571,9 @@ export const updateEmployee = async (
     departmentId?: number;
     positionId?: number;
     reportsTo?: string;
+    status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
+    startDate?: Date | null;
+    endDate?: Date | null;
   }
 ) => {
   const updateData: {
@@ -576,6 +582,9 @@ export const updateEmployee = async (
     departmentId?: number | null;
     positionId?: number | null;
     reportsTo?: string | null;
+    status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
+    startDate?: Date | null;
+    endDate?: Date | null;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -595,6 +604,15 @@ export const updateEmployee = async (
   }
   if (data.reportsTo !== undefined) {
     updateData.reportsTo = data.reportsTo || null;
+  }
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+  if (data.startDate !== undefined) {
+    updateData.startDate = data.startDate;
+  }
+  if (data.endDate !== undefined) {
+    updateData.endDate = data.endDate;
   }
 
   const [employee] = await db
@@ -651,10 +669,7 @@ export const getEmployeesSimple = async (search?: string) => {
           .from(userRoles)
           .innerJoin(roles, eq(userRoles.roleId, roles.id))
           .where(
-            and(
-              inArray(userRoles.userId, userIds),
-              eq(roles.isDeleted, false)
-            )
+            and(inArray(userRoles.userId, userIds), eq(roles.isDeleted, false))
           )
       : [];
 
