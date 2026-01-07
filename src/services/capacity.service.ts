@@ -228,57 +228,60 @@ export const getUtilizationChartData = async (
 export const getCoverageByTeam = async (organizationId: string, date?: string | undefined) => {
   const queryDate = date || new Date().toISOString().split('T')[0];
 
-  // Get team coverage data
-  const teamCoverage = await db
-    .select({
-      departmentId: departments.id,
-      teamName: departments.name,
-      managerId: departments.leadId,
-      managerName: users.fullName,
-      totalTechnicians: count(employees.id),
-      coverageAreas: departmentCapacityMetrics.coverageAreas,
-    })
-    .from(departments)
-    .leftJoin(users, eq(departments.leadId, users.id))
-    .leftJoin(employees, and(
-      eq(employees.departmentId, departments.id),
-      eq(employees.isDeleted, false)
-    ))
-    .leftJoin(departmentCapacityMetrics, and(
-      eq(departmentCapacityMetrics.departmentId, departments.id),
-      queryDate ? eq(departmentCapacityMetrics.metricDate, queryDate) : sql`true`
-    ))
-    .where(
-      and(
-        eq(departments.isDeleted, false)
-        // Note: Organization filtering temporarily removed until schema is clarified
+  // Optimized: Run both queries in parallel for better performance
+  const [teamCoverage, jobsInProgress] = await Promise.all([
+    // Get team coverage data
+    db
+      .select({
+        departmentId: departments.id,
+        teamName: departments.name,
+        managerId: departments.leadId,
+        managerName: users.fullName,
+        totalTechnicians: count(employees.id),
+        coverageAreas: departmentCapacityMetrics.coverageAreas,
+      })
+      .from(departments)
+      .leftJoin(users, eq(departments.leadId, users.id))
+      .leftJoin(employees, and(
+        eq(employees.departmentId, departments.id),
+        eq(employees.isDeleted, false)
+      ))
+      .leftJoin(departmentCapacityMetrics, and(
+        eq(departmentCapacityMetrics.departmentId, departments.id),
+        queryDate ? eq(departmentCapacityMetrics.metricDate, queryDate) : sql`true`
+      ))
+      .where(
+        and(
+          eq(departments.isDeleted, false)
+          // Note: Organization filtering temporarily removed until schema is clarified
+        )
       )
-    )
-    .groupBy(
-      departments.id,
-      departments.name,
-      departments.leadId,
-      users.fullName,
-      departmentCapacityMetrics.coverageAreas
-    );
-
-  // Get jobs in progress for each department
-  const jobsInProgress = await db
-    .select({
-      departmentId: employees.departmentId,
-      jobsCount: count(jobs.id),
-    })
-    .from(jobs)
-    .innerJoin(resourceAllocations, eq(resourceAllocations.jobId, jobs.id))
-    .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
-    .where(
-      and(
-        inArray(jobs.status, ['in_progress', 'assigned']),
-        eq(jobs.isDeleted, false),
-        inArray(resourceAllocations.status, ['assigned', 'in_progress'])
+      .groupBy(
+        departments.id,
+        departments.name,
+        departments.leadId,
+        users.fullName,
+        departmentCapacityMetrics.coverageAreas
+      ),
+    
+    // Get jobs in progress for each department
+    db
+      .select({
+        departmentId: employees.departmentId,
+        jobsCount: count(jobs.id),
+      })
+      .from(jobs)
+      .innerJoin(resourceAllocations, eq(resourceAllocations.jobId, jobs.id))
+      .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
+      .where(
+        and(
+          inArray(jobs.status, ['in_progress', 'scheduled']),
+          eq(jobs.isDeleted, false),
+          inArray(resourceAllocations.status, ['assigned', 'in_progress'])
+        )
       )
-    )
-    .groupBy(employees.departmentId);
+      .groupBy(employees.departmentId)
+  ]);
 
   // Combine data
   const jobsMap = jobsInProgress.reduce((acc, item) => {
