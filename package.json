@@ -20,7 +20,8 @@
     "db:erd": "tsx scripts/generate-erd.ts",
     "migrate:enhanced": "tsx scripts/migrate.ts",
     "migrate:rollback": "tsx scripts/migrate.ts rollback",
-    "migrate:interactive": "node scripts/run-migration.js"
+    "migrate:interactive": "node scripts/run-migration.js",
+    "health-check": "tsx scripts/health-check.ts"
   },
   "keywords": [],
   "author": "",

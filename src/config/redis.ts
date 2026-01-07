@@ -3,12 +3,15 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Make Redis optional - don't crash if REDIS_URL is not set
 if (!process.env.REDIS_URL) {
-  throw new Error("REDIS_URL is not set in .env file");
+  // Silent - no warning needed if Redis is intentionally disabled
 }
 
-const redis = new Redis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null,
+// Create a dummy Redis instance if REDIS_URL is not set
+const redis = process.env.REDIS_URL 
+  ? new Redis(process.env.REDIS_URL, {
+  maxRetriesPerRequest: null, // Allow unlimited retries per request
   retryStrategy: (times) => {
     // Retry with exponential backoff, max 3 retries
     if (times > 3) {
@@ -18,39 +21,69 @@ const redis = new Redis(process.env.REDIS_URL, {
   },
   enableReadyCheck: true,
   lazyConnect: true, // Don't connect immediately - connect on first use
-  connectTimeout: 10000, // Increased to 10 seconds
-  commandTimeout: 5000, // Increased to 5 seconds
+  connectTimeout: 10000, // 10 seconds
+  commandTimeout: 5000, // 5 seconds
   keepAlive: 30000,
   enableOfflineQueue: true, // Queue commands when offline
   showFriendlyErrorStack: true,
-});
+  enableAutoPipelining: false, // Disable to avoid pipelining issues
+})
+  : ({
+      // Dummy Redis instance with no-op methods when REDIS_URL is not set
+      get: async () => null,
+      set: async () => "OK",
+      del: async () => 0,
+      exists: async () => 0,
+      expire: async () => 0,
+      quit: async () => "OK",
+      connect: async () => {},
+      status: "end" as const,
+    } as unknown as Redis);
 
-redis.on("error", (err: Error) => {
-  // Only log errors, don't crash the application
-  // Redis is used for 2FA codes, so the app can still function without it
-  console.error("❌ Redis Error:", err.message);
-});
+if (process.env.REDIS_URL) {
+  // Enhanced error logging with debug information
+  redis.on("error", (err: Error) => {
+    console.error("❌ Redis Error:", err.message);
+    console.error("   Error Code:", (err as any).code);
+    console.error("   Error Type:", err.constructor.name);
+    if ((err as any).command) {
+      console.error("   Failed Command:", (err as any).command.name, (err as any).command.args);
+    }
+    if (err.stack) {
+      console.error("   Stack:", err.stack);
+    }
+  });
 
-redis.on("connect", () => {
-  console.log("✅ Redis connected");
-});
+  redis.on("connect", () => {
+    console.log("✅ Redis connected");
+  });
 
-redis.on("ready", () => {
-  console.log("✅ Redis ready");
-});
+  redis.on("ready", () => {
+    console.log("✅ Redis ready");
+  });
 
-redis.on("close", () => {
-  console.warn("⚠️ Redis connection closed");
-});
+  redis.on("close", () => {
+    console.warn("⚠️ Redis connection closed");
+    console.warn("   Debug: Connection was closed. Redis will attempt to reconnect on next use.");
+  });
 
-redis.on("reconnecting", () => {
-  console.log("🔄 Redis reconnecting...");
-});
+  redis.on("reconnecting", (delay: number) => {
+    console.log(`🔄 Redis reconnecting in ${delay}ms...`);
+  });
 
-// Attempt to connect in the background (non-blocking)
-// This allows the server to start even if Redis is unavailable
-redis.connect().catch((err) => {
-  console.warn("⚠️ Redis initial connection failed (will retry on first use):", err.message);
-});
+  redis.on("end", () => {
+    console.warn("⚠️ Redis connection ended");
+    console.warn("   Debug: Connection ended. No automatic reconnection will occur.");
+  });
+
+  // Attempt to connect in the background (non-blocking)
+  redis.connect().catch((err: Error) => {
+    console.error("❌ Redis initial connection failed:");
+    console.error("   Error:", err.message);
+    console.error("   Error Code:", (err as any).code);
+    console.error("   Redis URL:", process.env.REDIS_URL?.replace(/:[^:@]+@/, ":****@") || "not set");
+    console.error("   Debug: Server will continue without Redis. Redis will retry on first use.");
+  });
+}
 
 export default redis;

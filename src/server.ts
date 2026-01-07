@@ -7,6 +7,12 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Validate critical environment variables before starting
+if (!process.env.DATABASE_URL) {
+  console.error("❌ DATABASE_URL environment variable is not set!");
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 4000;
 
 const server = http.createServer(app);
@@ -49,11 +55,11 @@ const gracefulShutdown = async (signal: string) => {
 };
 
 // Handle unhandled promise rejections
-process.on("unhandledRejection", (reason: Error | unknown, promise: Promise<unknown>) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  // Don't exit in production, just log the error
-  if (process.env.NODE_ENV === "production") {
-    console.error("Unhandled rejection logged, continuing...");
+process.on("unhandledRejection", (reason: Error | unknown) => {
+  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  console.error("❌ Unhandled Rejection:", errorMessage);
+  if (reason instanceof Error && reason.stack) {
+    console.error(reason.stack);
   }
 });
 
@@ -72,7 +78,6 @@ initDB()
   .then(() => {
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
-      console.log(`📡 API available at http://localhost:${PORT}`);
     });
     
     // Handle server errors
