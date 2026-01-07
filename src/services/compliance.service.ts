@@ -29,6 +29,23 @@ import type {
   ViolationCounts,
 } from "../types/compliance.types.js";
 
+// Helper function to validate organizationId (client ID) - returns UUID or null
+// organizationId is optional and only used to track which client the compliance case relates to
+const validateOrganizationId = (organizationId: string | undefined): string | null => {
+  if (!organizationId) {
+    return null; // No client association - T3 internal case
+  }
+  
+  // Check if it's a valid UUID format (client ID)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(organizationId)) {
+    return organizationId; // Valid client UUID
+  }
+  
+  // If not a valid UUID (e.g., "t3-org-default"), return null (no client association)
+  return null;
+};
+
 // Dashboard KPIs Service
 export const getDashboardKPIs = async (filters: {
   dateFrom?: string;
@@ -342,15 +359,13 @@ export const generateCaseNumber = async (): Promise<string> => {
 
 // Create Compliance Case
 export const createComplianceCase = async (data: CreateComplianceCaseData) => {
-  if (!data.organizationId) {
-    throw new Error("Organization ID is required");
-  }
+  // Validate organizationId (client ID) - only include if it's a valid UUID
+  const validatedOrgId = validateOrganizationId(data.organizationId);
   
   // Auto-generate case number if not provided
   const caseNumber = data.caseNumber || (await generateCaseNumber());
   
   const insertData: any = {
-    organizationId: data.organizationId,
     employeeId: data.employeeId,
     caseNumber: caseNumber,
     type: data.type,
@@ -360,6 +375,11 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
     description: data.description,
     openedOn: data.openedOn instanceof Date ? data.openedOn.toISOString().split('T')[0] : data.openedOn,
   };
+
+  // Only include organizationId if it's a valid client UUID
+  if (validatedOrgId) {
+    insertData.organizationId = validatedOrgId;
+  }
 
   if (data.jobId) insertData.jobId = data.jobId;
   if (data.notes) insertData.notes = data.notes;

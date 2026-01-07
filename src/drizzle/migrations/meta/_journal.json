@@ -155,6 +155,13 @@
       "when": 1767773339711,
       "tag": "0021_fluffy_leo",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1767774000000,
+      "tag": "0022_make_compliance_org_id_nullable",
+      "breakpoints": true
     }
   ]
 }

@@ -38,8 +38,7 @@ export const employeeComplianceCases = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id), // Optional - only set if case is related to a specific client
     jobId: uuid("job_id").references(() => jobs.id),
     employeeId: integer("employee_id")
       .notNull()

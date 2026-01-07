@@ -139,10 +139,9 @@ export const createComplianceCaseHandler = async (
   try {
     const caseData = req.body;
 
-    // Use organizationId from body or fallback to user's organizationId
-    if (!caseData.organizationId && req.user?.organizationId) {
-      caseData.organizationId = req.user.organizationId;
-    }
+    // organizationId is optional - only include if provided in body and is a valid client UUID
+    // Don't use req.user.organizationId as it may be "t3-org-default" which is not a valid UUID
+    // The service will validate and only include organizationId if it's a valid client UUID
 
     const newCase = await createComplianceCase(caseData);
 
