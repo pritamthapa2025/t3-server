@@ -251,6 +251,15 @@ export const authenticate = async (
   res: Response,
   next: NextFunction
 ) => {
+  // Check if we've already processed this request - prevent duplicate processing
+  if ((req as any).__authProcessed) {
+    // Already processed - skip and continue to next middleware
+    return next();
+  }
+
+  // Mark as processed immediately to prevent duplicate processing
+  (req as any).__authProcessed = true;
+
   try {
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
@@ -303,7 +312,11 @@ export const authenticate = async (
       if (cached) {
         // Use cached user (already validated for expiration in get())
         user = cached.user;
-        console.log(`✅ Auth: from cache (${cacheTime}ms)`);
+        console.log(
+          `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
+            req.originalUrl || req.url
+          }]`
+        );
       } else {
         // Fetch user from database
         const dbStart = Date.now();
@@ -318,14 +331,22 @@ export const authenticate = async (
             lastAccessed: Date.now(),
           });
         }
-        console.log(`✅ Auth: from db (${dbTime}ms)`);
+        console.log(
+          `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+            req.originalUrl || req.url
+          }]`
+        );
       }
     } else {
       // Cache disabled - always fetch from DB
       const dbStart = Date.now();
       user = await getUserByIdForAuth(userId);
       dbTime = Date.now() - dbStart;
-      console.log(`✅ Auth: from db (${dbTime}ms)`);
+      console.log(
+        `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+          req.originalUrl || req.url
+        }]`
+      );
     }
 
     if (!user) {

@@ -30,20 +30,17 @@ router.use("/auth", authRoutes);
 router.use("/auth", userRoutes);
 router.use("/auth", roleRoutes);
 
-router.use(
-  "/org",
-  departmentRoutes,
-  positionRoutes,
-  employeeRoutes,
-  expenseRoutes,
-  timesheetRoutes,
-  financialRoutes,
-  bidRoutes,
-  jobRoutes,
-  clientRoutes,
-  propertyRoutes
-);
-
+// Mount routers - each router's authenticate middleware will only run for matching routes
+router.use("/org", departmentRoutes);
+router.use("/org", positionRoutes);
+router.use("/org", employeeRoutes);
+router.use("/org", expenseRoutes);
+router.use("/org", timesheetRoutes);
+router.use("/org", financialRoutes);
+router.use("/org", bidRoutes);
+router.use("/org", jobRoutes);
+router.use("/org", clientRoutes);
+router.use("/org", propertyRoutes);
 router.use("/org/payroll", payrollRoutes);
 router.use("/org/compensation", compensationRoutes);
 router.use("/org/capacity", capacityRoutes);
