@@ -91,11 +91,13 @@ export const authenticate = async (
     let dbTime = 0;
 
     if (CACHE_ENABLED) {
+      const cacheStart = Date.now();
       const cached = authCache.get(userId);
       if (cached && cached.expiresAt > Date.now()) {
         // Use cached user
+        const cacheTime = Date.now() - cacheStart;
         user = cached.user;
-        console.log(`✅ Auth: from cache`);
+        console.log(`✅ Auth: from cache (${cacheTime}ms)`);
       } else {
         // Fetch user from database
         const dbStart = Date.now();
