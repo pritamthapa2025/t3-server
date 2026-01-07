@@ -13,6 +13,14 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+if (!process.env.REDIS_URL) {
+  console.error("❌ REDIS_URL environment variable is not set!");
+  console.error(
+    "Redis is required for 2FA, password reset, and email change features."
+  );
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 4000;
 
 const server = http.createServer(app);
@@ -20,11 +28,11 @@ const server = http.createServer(app);
 // Graceful shutdown handler
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
-  
+
   // Stop accepting new connections
   server.close(async () => {
     console.log("HTTP server closed");
-    
+
     try {
       // Close database connection pool
       await pool.end();
@@ -32,7 +40,7 @@ const gracefulShutdown = async (signal: string) => {
     } catch (error) {
       console.error("Error closing database pool:", error);
     }
-    
+
     try {
       // Close Redis connection (only if connected)
       if (redis.status !== "end") {
@@ -42,11 +50,11 @@ const gracefulShutdown = async (signal: string) => {
     } catch (error) {
       console.error("Error closing Redis connection:", error);
     }
-    
+
     console.log("Graceful shutdown completed");
     process.exit(0);
   });
-  
+
   // Force shutdown after 30 seconds
   setTimeout(() => {
     console.error("Forced shutdown after timeout");
@@ -56,7 +64,8 @@ const gracefulShutdown = async (signal: string) => {
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason: Error | unknown) => {
-  const errorMessage = reason instanceof Error ? reason.message : String(reason);
+  const errorMessage =
+    reason instanceof Error ? reason.message : String(reason);
   console.error("❌ Unhandled Rejection:", errorMessage);
   if (reason instanceof Error && reason.stack) {
     console.error(reason.stack);
@@ -79,15 +88,15 @@ initDB()
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
     });
-    
+
     // Handle server errors
     server.on("error", (error: NodeJS.ErrnoException) => {
       if (error.syscall !== "listen") {
         throw error;
       }
-      
+
       const bind = typeof PORT === "string" ? `Pipe ${PORT}` : `Port ${PORT}`;
-      
+
       switch (error.code) {
         case "EACCES":
           console.error(`${bind} requires elevated privileges`);
