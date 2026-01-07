@@ -3,43 +3,248 @@ import { verifyToken } from "../utils/jwt.js";
 import { getUserByIdForAuth } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
 
-// Simple in-memory cache for user auth data
+// Optimized LRU (Least Recently Used) cache with automatic eviction
 // Configurable via environment variables
 interface CachedUser {
   user: Awaited<ReturnType<typeof getUserByIdForAuth>>;
   expiresAt: number;
+  lastAccessed: number; // For LRU tracking
 }
 
-const authCache = new Map<string, CachedUser>();
-// Cache TTL: 5 minutes (300000ms = 5 * 60 * 1000)
-const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || '300000', 10); // Default: 5 minutes
-// Max cache size: ~10,000 users ≈ 5 MB (assuming ~500 bytes per user entry)
-const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || '10000', 10); // ~5 MB limit
-const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== 'false'; // Default enabled
+// LRU Cache Node for efficient O(1) operations
+class LRUNode {
+  key: string;
+  value: CachedUser;
+  prev: LRUNode | null = null;
+  next: LRUNode | null = null;
 
-// Clean up expired cache entries periodically
-setInterval(() => {
-  if (!CACHE_ENABLED) return;
-  
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [key, cached] of authCache.entries()) {
-    if (cached.expiresAt < now) {
-      authCache.delete(key);
-      cleaned++;
+  constructor(key: string, value: CachedUser) {
+    this.key = key;
+    this.value = value;
+  }
+}
+
+// Optimized LRU Cache implementation
+class LRUCache {
+  private capacity: number;
+  private cache: Map<string, LRUNode>;
+  private head: LRUNode;
+  private tail: LRUNode;
+  private size: number = 0;
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private isCleaning: boolean = false;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.cache = new Map();
+
+    // Create dummy head and tail nodes for O(1) operations
+    this.head = new LRUNode("", {} as CachedUser);
+    this.tail = new LRUNode("", {} as CachedUser);
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
+  }
+
+  // Add node to head (most recently used)
+  private addToHead(node: LRUNode): void {
+    node.prev = this.head;
+    node.next = this.head.next;
+    if (this.head.next) {
+      this.head.next.prev = node;
+    }
+    this.head.next = node;
+  }
+
+  // Remove node from list
+  private removeNode(node: LRUNode): void {
+    if (node.prev) {
+      node.prev.next = node.next;
+    }
+    if (node.next) {
+      node.next.prev = node.prev;
     }
   }
-  
-  // If cache is too large, remove oldest entries (LRU-like cleanup)
-  if (authCache.size > MAX_CACHE_SIZE) {
-    const entries = Array.from(authCache.entries())
-      .sort((a, b) => a[1].expiresAt - b[1].expiresAt);
-    const toRemove = authCache.size - MAX_CACHE_SIZE;
-    for (let i = 0; i < toRemove; i++) {
-      authCache.delete(entries[i]![0]!);
+
+  // Move node to head (mark as recently used)
+  private moveToHead(node: LRUNode): void {
+    this.removeNode(node);
+    this.addToHead(node);
+  }
+
+  // Remove tail node (least recently used)
+  private removeTail(): LRUNode | null {
+    const lastNode = this.tail.prev;
+    if (lastNode && lastNode !== this.head) {
+      this.removeNode(lastNode);
+      return lastNode;
+    }
+    return null;
+  }
+
+  // Get value from cache (O(1))
+  get(key: string): CachedUser | null {
+    const node = this.cache.get(key);
+    if (!node) {
+      return null;
+    }
+
+    // Check if expired
+    const now = Date.now();
+    if (node.value.expiresAt < now) {
+      // Expired - remove it
+      this.removeNode(node);
+      this.cache.delete(key);
+      this.size--;
+      return null;
+    }
+
+    // Update last accessed time and move to head (LRU)
+    node.value.lastAccessed = now;
+    this.moveToHead(node);
+    return node.value;
+  }
+
+  // Set value in cache (O(1))
+  set(key: string, value: CachedUser): void {
+    const existingNode = this.cache.get(key);
+
+    if (existingNode) {
+      // Update existing node
+      existingNode.value = value;
+      existingNode.value.lastAccessed = Date.now();
+      this.moveToHead(existingNode);
+      return;
+    }
+
+    // Check if we need to evict
+    if (this.size >= this.capacity) {
+      const tail = this.removeTail();
+      if (tail) {
+        this.cache.delete(tail.key);
+        this.size--;
+      }
+    }
+
+    // Add new node
+    const newNode = new LRUNode(key, value);
+    value.lastAccessed = Date.now();
+    this.addToHead(newNode);
+    this.cache.set(key, newNode);
+    this.size++;
+  }
+
+  // Delete from cache (O(1))
+  delete(key: string): void {
+    const node = this.cache.get(key);
+    if (node) {
+      this.removeNode(node);
+      this.cache.delete(key);
+      this.size--;
     }
   }
-}, 60 * 1000); // Clean up every minute
+
+  // Get current size
+  getSize(): number {
+    return this.size;
+  }
+
+  // Clean expired entries (non-blocking, batched)
+  private async cleanExpired(): Promise<void> {
+    if (this.isCleaning || this.size === 0) {
+      return;
+    }
+
+    this.isCleaning = true;
+    const now = Date.now();
+    const batchSize = 100; // Process in batches to avoid blocking
+    let cleaned = 0;
+    let processed = 0;
+
+    // Use iterator for memory efficiency
+    const iterator = this.cache.entries();
+    const toDelete: string[] = [];
+
+    // Process batch
+    for (const [key, node] of iterator) {
+      if (processed >= batchSize) {
+        break;
+      }
+
+      if (node.value.expiresAt < now) {
+        toDelete.push(key);
+        cleaned++;
+      }
+      processed++;
+    }
+
+    // Delete expired entries
+    for (const key of toDelete) {
+      this.delete(key);
+    }
+
+    this.isCleaning = false;
+
+    // If we cleaned items or cache is still large, schedule next cleanup
+    if (cleaned > 0 || this.size > this.capacity * 0.9) {
+      // Schedule next cleanup in smaller batches if cache is large
+      setTimeout(() => this.cleanExpired(), 1000);
+    }
+  }
+
+  // Start periodic cleanup (non-blocking)
+  startCleanup(intervalMs: number = 60000): void {
+    if (this.cleanupInterval) {
+      return; // Already started
+    }
+
+    // Initial cleanup after 30 seconds
+    setTimeout(() => this.cleanExpired(), 30000);
+
+    // Periodic cleanup
+    this.cleanupInterval = setInterval(() => {
+      // Use setImmediate for non-blocking execution
+      setImmediate(() => this.cleanExpired());
+    }, intervalMs);
+  }
+
+  // Stop cleanup
+  stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+  }
+
+  // Clear all entries
+  clear(): void {
+    this.cache.clear();
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
+    this.size = 0;
+  }
+}
+
+// Cache configuration
+const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || "300000", 10); // Default: 5 minutes
+const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || "10000", 10); // Default: 10k entries
+const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== "false"; // Default enabled
+
+// Initialize optimized LRU cache
+const authCache = new LRUCache(MAX_CACHE_SIZE);
+
+// Start automatic cleanup if cache is enabled
+if (CACHE_ENABLED) {
+  authCache.startCleanup(60000); // Clean every minute
+
+  // Log cache stats periodically (optional, for monitoring)
+  if (process.env.NODE_ENV === "development") {
+    setInterval(() => {
+      logger.debug(
+        `Auth cache stats: ${authCache.getSize()}/${MAX_CACHE_SIZE} entries`
+      );
+    }, 300000); // Every 5 minutes
+  }
+}
 
 export const authenticate = async (
   req: Request,
@@ -93,9 +298,10 @@ export const authenticate = async (
     if (CACHE_ENABLED) {
       const cacheStart = Date.now();
       const cached = authCache.get(userId);
-      if (cached && cached.expiresAt > Date.now()) {
-        // Use cached user
-        const cacheTime = Date.now() - cacheStart;
+      const cacheTime = Date.now() - cacheStart;
+
+      if (cached) {
+        // Use cached user (already validated for expiration in get())
         user = cached.user;
         console.log(`✅ Auth: from cache (${cacheTime}ms)`);
       } else {
@@ -105,15 +311,14 @@ export const authenticate = async (
         dbTime = Date.now() - dbStart;
 
         if (user) {
-          // Cache the user data (only if under max size)
-          if (authCache.size < MAX_CACHE_SIZE) {
-            authCache.set(userId, {
-              user,
-              expiresAt: Date.now() + CACHE_TTL,
-            });
-          }
-          console.log(`✅ Auth: from db (${dbTime}ms)`);
+          // Cache the user data (LRU will auto-evict if needed)
+          authCache.set(userId, {
+            user,
+            expiresAt: Date.now() + CACHE_TTL,
+            lastAccessed: Date.now(),
+          });
         }
+        console.log(`✅ Auth: from db (${dbTime}ms)`);
       }
     } else {
       // Cache disabled - always fetch from DB
