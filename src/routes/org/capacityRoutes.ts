@@ -19,6 +19,7 @@ import {
   getDepartmentCapacityOverviewQuerySchema,
   getCapacityPlanningTemplatesQuerySchema,
   createCapacityPlanningTemplateSchema,
+  createDepartmentCapacityMetricSchema,
 } from "../../validations/capacity.validations.js";
 
 const router = Router();
@@ -127,6 +128,13 @@ router.get(
   "/capacity/overview",
   validate(z.object({ query: getDepartmentCapacityOverviewQuerySchema })),
   capacityController.getDepartmentCapacityOverview
+);
+
+// Create Department Capacity Metric
+router.post(
+  "/capacity/metrics",
+  validate(z.object({ body: createDepartmentCapacityMetricSchema })),
+  capacityController.createDepartmentCapacityMetric
 );
 
 // Capacity Planning Templates Routes

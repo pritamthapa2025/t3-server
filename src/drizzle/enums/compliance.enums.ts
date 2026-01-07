@@ -43,14 +43,8 @@ export const trainingStatusEnum = pgEnum("training_status_enum", [
   "overdue"
 ]);
 
-// Safety inspection enums
-export const inspectionStatusEnum = pgEnum("inspection_status_enum", [
-  "passed",
-  "failed", 
-  "conditional_pass",
-  "scheduled",
-  "overdue"
-]);
+// Note: inspectionStatusEnum is now defined in fleet.enums.ts
+// Import it from there if needed: import { inspectionStatusEnum } from "./fleet.enums.js";
 
 
 

@@ -526,16 +526,36 @@ export const getEmployeeById = async (id: number) => {
 };
 
 export const generateEmployeeId = async (): Promise<string> => {
-  // Count all T3 employees to generate next ID
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(eq(employees.isDeleted, false));
-  const total = totalResult[0]?.count ?? 0;
-  const nextNumber = total + 1;
-  // Format: T3-00001, T3-00002, etc. (5 digits padding)
-  const employeeId = `T3-${String(nextNumber).padStart(5, "0")}`;
-  return employeeId;
+  try {
+    // Use PostgreSQL sequence for atomic ID generation (thread-safe)
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`)
+    );
+
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+    
+    // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
+    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
+    const numDigits = String(nextNumber).length;
+    const padding = Math.max(4, numDigits);
+    return `T3-${String(nextNumber).padStart(padding, "0")}`;
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    console.warn("Employee ID sequence not found, using fallback method:", error);
+
+    const totalResult = await db
+      .select({ count: count() })
+      .from(employees)
+      .where(eq(employees.isDeleted, false));
+    const total = totalResult[0]?.count ?? 0;
+    const nextNumber = total + 1;
+    
+    // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
+    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
+    const numDigits = String(nextNumber).length;
+    const padding = Math.max(4, numDigits);
+    return `T3-${String(nextNumber).padStart(padding, "0")}`;
+  }
 };
 
 export const createEmployee = async (data: {

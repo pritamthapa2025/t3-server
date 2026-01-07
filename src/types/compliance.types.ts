@@ -34,7 +34,7 @@ export interface CreateComplianceCaseData {
   organizationId?: string;
   jobId?: string;
   employeeId: number;
-  caseNumber: string;
+  caseNumber?: string; // Auto-generated if not provided
   type: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
   severity: "low" | "medium" | "high" | "critical";
   status?: "open" | "investigating" | "resolved" | "closed" | "escalated";

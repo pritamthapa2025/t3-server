@@ -16,13 +16,18 @@ import {
 import { users } from "./auth.schema.js";
 import { organizations, employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
+// Import fleet tables (vehicles, safetyInspections, safetyInspectionItems) from fleet schema
+import {
+  vehicles,
+  safetyInspections,
+  safetyInspectionItems,
+} from "./fleet.schema.js";
 import {
   complianceCaseTypeEnum,
   complianceSeverityEnum,
   complianceStatusEnum,
   certificationStatusEnum,
   trainingStatusEnum,
-  inspectionStatusEnum,
 } from "../enums/compliance.enums.js";
 
 const org = pgSchema("org");
@@ -187,145 +192,10 @@ export const employeeViolationHistory = org.table(
   ]
 );
 
-// 4. Vehicle Safety Inspections (New - Fleet Module)
-export const vehicles = org.table(
-  "vehicles",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
-
-    // Vehicle Identity
-    vehicleId: varchar("vehicle_id", { length: 50 }).notNull().unique(), // VAN-014, TRK-001
-    make: varchar("make", { length: 100 }).notNull(),
-    model: varchar("model", { length: 100 }).notNull(),
-    year: integer("year").notNull(),
-    vin: varchar("vin", { length: 17 }),
-    licensePlate: varchar("license_plate", { length: 20 }),
-
-    // Status & Assignment
-    status: varchar("status", { length: 50 }).notNull().default("active"), // "active", "maintenance", "out_of_service"
-    assignedToEmployeeId: integer("assigned_to_employee_id").references(
-      () => employees.id
-    ),
-    currentJobId: uuid("current_job_id").references(() => jobs.id),
-
-    // Specifications
-    type: varchar("type", { length: 50 }).notNull(), // "truck", "van", "car", "specialized"
-    color: varchar("color", { length: 50 }),
-    mileage: integer("mileage").default(0),
-    fuelLevel: numeric("fuel_level", { precision: 5, scale: 2 }).default("100"), // 0-100%
-
-    // Maintenance Schedule
-    lastServiceDate: date("last_service_date"),
-    nextServiceDate: date("next_service_date"),
-    nextServiceMileage: integer("next_service_mileage"),
-    nextInspectionDate: date("next_inspection_date"),
-
-    // Financial
-    purchaseDate: date("purchase_date"),
-    purchaseCost: numeric("purchase_cost", { precision: 15, scale: 2 }),
-    estimatedValue: numeric("estimated_value", { precision: 15, scale: 2 }),
-
-    // Rates (for billing)
-    mileageRate: numeric("mileage_rate", { precision: 10, scale: 4 }).default(
-      "0.67"
-    ), // per mile
-    dayRate: numeric("day_rate", { precision: 10, scale: 2 }).default("95.00"), // per day
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_vehicles_org").on(table.organizationId),
-    index("idx_vehicles_status").on(table.status),
-    index("idx_vehicles_assigned_to").on(table.assignedToEmployeeId),
-    index("idx_vehicles_next_inspection").on(table.nextInspectionDate),
-  ]
-);
-
-export const safetyInspections = org.table(
-  "safety_inspections",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
-    vehicleId: uuid("vehicle_id")
-      .notNull()
-      .references(() => vehicles.id),
-
-    // Inspection Details
-    inspectionNumber: varchar("inspection_number", { length: 50 })
-      .notNull()
-      .unique(), // SI-003
-    inspectionDate: date("inspection_date").notNull(),
-    mileage: integer("mileage").notNull(),
-
-    // Personnel
-    performedBy: uuid("performed_by").references(() => users.id),
-    approvedBy: uuid("approved_by").references(() => users.id),
-
-    // Results
-    overallStatus: inspectionStatusEnum("overall_status").notNull(),
-    totalItems: integer("total_items").notNull(),
-    passedItems: integer("passed_items").notNull(),
-    failedItems: integer("failed_items").notNull(),
-
-    // Documentation
-    inspectionNotes: text("inspection_notes"),
-    beforePhotos: jsonb("before_photos"), // Array of photo URLs
-    exteriorPhotos: jsonb("exterior_photos"),
-    interiorPhotos: jsonb("interior_photos"),
-
-    // Next Inspection
-    nextInspectionDue: date("next_inspection_due"),
-
-    // Auto-generated repairs (if failed)
-    repairsGenerated: boolean("repairs_generated").default(false),
-    generatedRepairIds: jsonb("generated_repair_ids"), // Array of repair record IDs
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_safety_inspections_vehicle").on(table.vehicleId),
-    index("idx_safety_inspections_org").on(table.organizationId),
-    index("idx_safety_inspections_status").on(table.overallStatus),
-    index("idx_safety_inspections_date").on(table.inspectionDate),
-    index("idx_safety_inspections_next_due").on(table.nextInspectionDue),
-  ]
-);
-
-export const safetyInspectionItems = org.table(
-  "safety_inspection_items",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    inspectionId: uuid("inspection_id")
-      .notNull()
-      .references(() => safetyInspections.id),
-
-    // Item Details
-    category: varchar("category", { length: 100 }).notNull(), // "Lights", "Brakes", "Tires", etc.
-    item: varchar("item", { length: 255 }).notNull(), // "Headlights", "Brake pads", etc.
-    status: varchar("status", { length: 20 }).notNull(), // "passed", "failed", "n/a"
-
-    // Additional Info
-    notes: text("notes"),
-    photo: varchar("photo", { length: 500 }), // Photo URL if applicable
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_safety_inspection_items_inspection").on(table.inspectionId),
-    index("idx_safety_inspection_items_status").on(table.status),
-  ]
-);
+// 4. Vehicle Safety Inspections
+// Note: Vehicles, safety inspections, and inspection items are now defined in fleet.schema.ts
+// These are re-exported here for backward compatibility and compliance module access
+export { vehicles, safetyInspections, safetyInspectionItems } from "./fleet.schema.js";
 
 // 5. Training Management
 export const trainingPrograms = org.table(

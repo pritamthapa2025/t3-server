@@ -676,6 +676,40 @@ export const createCapacityPlanningTemplate = async (
   }
 };
 
+// Create department capacity metric
+export const createDepartmentCapacityMetric = async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const userId = req.user?.id;
+    if (!organizationId || !userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const metricData = req.body;
+
+    const newMetric = await capacityService.createDepartmentCapacityMetric({
+      ...metricData,
+      calculatedBy: userId,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Department capacity metric created successfully",
+      data: newMetric,
+    });
+  } catch (error: any) {
+    console.error("Error creating department capacity metric:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create department capacity metric",
+      error: error.message,
+    });
+  }
+};
+
 // Assignments & Managers - Team assignments with contact details
 // T3 employees can see all teams (no organization filtering needed)
 export const getTeamAssignments = async (req: Request, res: Response) => {

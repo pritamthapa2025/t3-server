@@ -448,3 +448,67 @@ export const createCapacityPlanningTemplateSchema = z.object({
     path: ["effectiveTo"],
   }
 );
+
+// Department capacity metrics validation
+export const createDepartmentCapacityMetricSchema = z.object({
+  departmentId: z
+    .number()
+    .int("Department ID must be a whole number")
+    .positive("Department ID is required and must be a positive number"),
+  metricDate: z.string().refine(
+    (val) => !isNaN(Date.parse(val)),
+    { message: "Invalid metric date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)" }
+  ),
+  periodType: z.enum(['daily', 'weekly', 'monthly', 'quarterly'], {
+    message: "Period type must be one of: daily, weekly, monthly, or quarterly"
+  }).optional().default('monthly'),
+  totalEmployees: z
+    .number()
+    .int("Total employees must be a whole number")
+    .min(0, "Total employees cannot be negative")
+    .optional()
+    .default(0),
+  availableEmployees: z
+    .number()
+    .int("Available employees must be a whole number")
+    .min(0, "Available employees cannot be negative")
+    .optional()
+    .default(0),
+  totalPlannedHours: z
+    .number()
+    .min(0, "Total planned hours cannot be negative")
+    .optional()
+    .default(0),
+  totalScheduledHours: z
+    .number()
+    .min(0, "Total scheduled hours cannot be negative")
+    .optional()
+    .default(0),
+  totalActualHours: z
+    .number()
+    .min(0, "Total actual hours cannot be negative")
+    .optional(),
+  utilizationPercentage: z
+    .number()
+    .min(0, "Utilization percentage cannot be negative")
+    .max(200, "Utilization percentage cannot exceed 200%")
+    .optional(),
+  efficiencyPercentage: z
+    .number()
+    .min(0, "Efficiency percentage cannot be negative")
+    .max(200, "Efficiency percentage cannot exceed 200%")
+    .optional(),
+  activeJobsCount: z
+    .number()
+    .int("Active jobs count must be a whole number")
+    .min(0, "Active jobs count cannot be negative")
+    .optional()
+    .default(0),
+  completedJobsCount: z
+    .number()
+    .int("Completed jobs count must be a whole number")
+    .min(0, "Completed jobs count cannot be negative")
+    .optional()
+    .default(0),
+  coverageAreas: z.array(z.string()).optional(),
+});

@@ -716,6 +716,19 @@ export const createCapacityPlanningTemplate = async (data: any) => {
   return newTemplate;
 };
 
+// Create department capacity metric
+export const createDepartmentCapacityMetric = async (data: any) => {
+  const [newMetric] = await db
+    .insert(departmentCapacityMetrics)
+    .values({
+      ...data,
+      calculatedAt: new Date(),
+    })
+    .returning();
+
+  return newMetric;
+};
+
 // Team Assignments - Get all teams with managers and their direct reports
 // T3 employees can see all teams (no organization filtering needed)
 export const getTeamAssignments = async () => {

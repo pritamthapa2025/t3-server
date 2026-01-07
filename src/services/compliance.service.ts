@@ -292,16 +292,67 @@ export const getComplianceCaseById = async (id: string) => {
   return caseResult[0] || null;
 };
 
+// Generate Case Number using PostgreSQL sequence (thread-safe)
+export const generateCaseNumber = async (): Promise<string> => {
+  try {
+    // Use PostgreSQL sequence for atomic ID generation
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.case_number_seq')::text as nextval`)
+    );
+
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+    
+    // Format: CASE-0001 to CASE-9999 (4 digits), then CASE-10001 (5 digits), CASE-100001 (6 digits), etc.
+    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
+    const numDigits = String(nextNumber).length;
+    const padding = Math.max(4, numDigits);
+    return `CASE-${String(nextNumber).padStart(padding, "0")}`;
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    console.warn("Case number sequence not found, using fallback method:", error);
+
+    const result = await db
+      .select({ caseNumber: employeeComplianceCases.caseNumber })
+      .from(employeeComplianceCases)
+      .where(
+        and(
+          eq(employeeComplianceCases.isDeleted, false),
+          sql`${employeeComplianceCases.caseNumber} ~ '^CASE-\\d+$'`
+        )
+      )
+      .orderBy(desc(employeeComplianceCases.caseNumber))
+      .limit(1);
+
+    let nextNumber = 1;
+    if (result.length && result[0]?.caseNumber) {
+      const lastCaseNumber = result[0].caseNumber;
+      const match = lastCaseNumber.match(/^CASE-(\d+)$/);
+      if (match) {
+        nextNumber = parseInt(match[1]!) + 1;
+      }
+    }
+
+    // Format: CASE-0001 to CASE-9999 (4 digits), then CASE-10001 (5 digits), CASE-100001 (6 digits), etc.
+    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
+    const numDigits = String(nextNumber).length;
+    const padding = Math.max(4, numDigits);
+    return `CASE-${String(nextNumber).padStart(padding, "0")}`;
+  }
+};
+
 // Create Compliance Case
 export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   if (!data.organizationId) {
     throw new Error("Organization ID is required");
   }
   
+  // Auto-generate case number if not provided
+  const caseNumber = data.caseNumber || (await generateCaseNumber());
+  
   const insertData: any = {
     organizationId: data.organizationId,
     employeeId: data.employeeId,
-    caseNumber: data.caseNumber,
+    caseNumber: caseNumber,
     type: data.type,
     severity: data.severity,
     status: data.status || "open",

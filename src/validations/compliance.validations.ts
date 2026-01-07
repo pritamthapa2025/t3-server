@@ -49,7 +49,7 @@ export const createComplianceCaseSchema = z.object({
     organizationId: z.string().uuid().optional(),
     jobId: z.string().uuid().optional(),
     employeeId: z.number().int().positive(),
-    caseNumber: z.string().min(1).max(50),
+    caseNumber: z.string().min(1).max(50).optional(), // Auto-generated if not provided
     type: z.enum(["safety", "timesheet", "conduct", "training", "certification", "other"]),
     severity: z.enum(["low", "medium", "high", "critical"]),
     status: z.enum(["open", "investigating", "resolved", "closed", "escalated"]).optional().default("open"),
