@@ -11,7 +11,8 @@ interface CachedUser {
 }
 
 const authCache = new Map<string, CachedUser>();
-const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || '300000', 10); // Default 5 minutes (300000ms)
+// Cache TTL: 5 minutes (300000ms = 5 * 60 * 1000)
+const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || '300000', 10); // Default: 5 minutes
 // Max cache size: ~10,000 users ≈ 5 MB (assuming ~500 bytes per user entry)
 const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || '10000', 10); // ~5 MB limit
 const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== 'false'; // Default enabled

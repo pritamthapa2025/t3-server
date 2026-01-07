@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import * as invoicingService from "../services/invoicing.service.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Get invoices with pagination and filtering
@@ -17,12 +18,13 @@ export const getInvoices = async (req: Request, res: Response) => {
 
     const result = await invoicingService.getInvoices(organizationId, req.query as any);
 
+    logger.info("Invoices fetched successfully");
     res.json({
       success: true,
       data: result,
     });
   } catch (error: any) {
-    console.error("Error fetching invoices:", error);
+    logger.logApiError("Error fetching invoices", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch invoices",
@@ -61,12 +63,13 @@ export const getInvoiceById = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Invoice ${id} fetched successfully`);
     res.json({
       success: true,
       data: { invoice },
     });
   } catch (error: any) {
-    console.error("Error fetching invoice:", error);
+    logger.logApiError("Error fetching invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch invoice",
@@ -100,13 +103,14 @@ export const createInvoice = async (req: Request, res: Response) => {
       includeLineItems: true,
     });
 
+    logger.info(`Invoice ${invoiceId} created successfully`);
     res.status(201).json({
       success: true,
       data: { invoice },
       message: "Invoice created successfully",
     });
   } catch (error: any) {
-    console.error("Error creating invoice:", error);
+    logger.logApiError("Error creating invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create invoice",
@@ -147,13 +151,14 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Invoice ${id} updated successfully`);
     res.json({
       success: true,
       data: { invoice },
       message: "Invoice updated successfully",
     });
   } catch (error: any) {
-    console.error("Error updating invoice:", error);
+    logger.logApiError("Error updating invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update invoice",
@@ -187,12 +192,13 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     }
     await invoicingService.deleteInvoice(id, organizationId, userId);
 
+    logger.info(`Invoice ${id} deleted successfully`);
     res.json({
       success: true,
       message: "Invoice deleted successfully",
     });
   } catch (error: any) {
-    console.error("Error deleting invoice:", error);
+    logger.logApiError("Error deleting invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete invoice",
@@ -242,6 +248,7 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Invoice ${id} sent successfully`);
     res.json({
       success: true,
       data: {
@@ -251,7 +258,7 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
       message: "Invoice sent successfully",
     });
   } catch (error: any) {
-    console.error("Error sending invoice:", error);
+    logger.logApiError("Error sending invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to send invoice",
@@ -285,13 +292,14 @@ export const markInvoiceAsPaid = async (req: Request, res: Response) => {
     }
     const invoice = await invoicingService.markInvoiceAsPaid(id, organizationId, req.body, userId);
 
+    logger.info(`Invoice ${id} marked as paid`);
     res.json({
       success: true,
       data: { invoice },
       message: "Invoice marked as paid",
     });
   } catch (error: any) {
-    console.error("Error marking invoice as paid:", error);
+    logger.logApiError("Error marking invoice as paid", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to mark invoice as paid",
@@ -325,13 +333,14 @@ export const voidInvoice = async (req: Request, res: Response) => {
     }
     const invoice = await invoicingService.voidInvoice(id, organizationId, req.body, userId);
 
+    logger.info(`Invoice ${id} voided successfully`);
     res.json({
       success: true,
       data: { invoice },
       message: "Invoice voided successfully",
     });
   } catch (error: any) {
-    console.error("Error voiding invoice:", error);
+    logger.logApiError("Error voiding invoice", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to void invoice",
@@ -375,6 +384,7 @@ export const getInvoiceLineItems = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Invoice line items for invoice ${invoiceId} fetched successfully`);
     res.json({
       success: true,
       data: {
@@ -382,7 +392,7 @@ export const getInvoiceLineItems = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching line items:", error);
+    logger.logApiError("Error fetching invoice line items", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch line items",
@@ -433,7 +443,7 @@ export const createInvoiceLineItem = async (req: Request, res: Response) => {
       message: "Line item creation not yet implemented - use invoice update instead",
     });
   } catch (error: any) {
-    console.error("Error creating line item:", error);
+    logger.logApiError("Error creating invoice line item", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create line item",
@@ -467,7 +477,7 @@ export const updateInvoiceLineItem = async (req: Request, res: Response) => {
       message: "Line item update not yet implemented - use invoice update instead",
     });
   } catch (error: any) {
-    console.error("Error updating line item:", error);
+    logger.logApiError("Error updating invoice line item", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update line item",
@@ -501,7 +511,7 @@ export const deleteInvoiceLineItem = async (req: Request, res: Response) => {
       message: "Line item deletion not yet implemented - use invoice update instead",
     });
   } catch (error: any) {
-    console.error("Error deleting line item:", error);
+    logger.logApiError("Error deleting invoice line item", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete line item",
@@ -526,12 +536,13 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
 
     const summary = await invoicingService.getInvoiceSummary(organizationId, req.query as any);
 
+    logger.info("Invoice summary fetched successfully");
     res.json({
       success: true,
       data: { summary },
     });
   } catch (error: any) {
-    console.error("Error fetching invoice summary:", error);
+    logger.logApiError("Error fetching invoice summary", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch invoice summary",

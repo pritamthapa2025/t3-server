@@ -945,6 +945,7 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid travel deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Travel deleted successfully",
@@ -1197,6 +1198,7 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
 
     const timeline = await getBidTimeline(bidId!, organizationId);
 
+    logger.info("Bid timeline fetched successfully");
     return res.status(200).json({
       success: true,
       data: timeline,
@@ -1462,6 +1464,7 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Bid note updated successfully");
     return res.status(200).json({
       success: true,
       data: note,

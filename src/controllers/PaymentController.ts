@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import * as invoicingService from "../services/invoicing.service.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Get payments with pagination and filtering
@@ -17,12 +18,13 @@ export const getPayments = async (req: Request, res: Response) => {
 
     const result = await invoicingService.getPayments(organizationId, req.query as any);
 
+    logger.info("Payments fetched successfully");
     res.json({
       success: true,
       data: result,
     });
   } catch (error: any) {
-    console.error("Error fetching payments:", error);
+    logger.logApiError("Error fetching payments", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch payments",
@@ -61,12 +63,13 @@ export const getPaymentById = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Payment ${id} fetched successfully`);
     res.json({
       success: true,
       data: { payment },
     });
   } catch (error: any) {
-    console.error("Error fetching payment:", error);
+    logger.logApiError("Error fetching payment", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch payment",
@@ -100,6 +103,7 @@ export const createPayment = async (req: Request, res: Response) => {
     // Get updated invoice to return in response
     const invoice = await invoicingService.getInvoiceById(req.body.invoiceId, organizationId);
 
+    logger.info(`Payment ${paymentId} created successfully`);
     res.status(201).json({
       success: true,
       data: {
@@ -113,7 +117,7 @@ export const createPayment = async (req: Request, res: Response) => {
       message: "Payment recorded successfully",
     });
   } catch (error: any) {
-    console.error("Error creating payment:", error);
+    logger.logApiError("Error creating payment", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create payment",
@@ -154,13 +158,14 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Payment ${id} updated successfully`);
     res.json({
       success: true,
       data: { payment },
       message: "Payment updated successfully",
     });
   } catch (error: any) {
-    console.error("Error updating payment:", error);
+    logger.logApiError("Error updating payment", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update payment",
@@ -194,12 +199,13 @@ export const deletePayment = async (req: Request, res: Response) => {
     }
     await invoicingService.deletePayment(id, organizationId, userId);
 
+    logger.info(`Payment ${id} deleted successfully`);
     res.json({
       success: true,
       message: "Payment deleted successfully",
     });
   } catch (error: any) {
-    console.error("Error deleting payment:", error);
+    logger.logApiError("Error deleting payment", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete payment",
@@ -245,13 +251,14 @@ export const processPayment = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Payment ${id} processed successfully`);
     res.json({
       success: true,
       data: { payment },
       message: "Payment processed successfully",
     });
   } catch (error: any) {
-    console.error("Error processing payment:", error);
+    logger.logApiError("Error processing payment", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to process payment",
@@ -297,13 +304,14 @@ export const markPaymentAsCleared = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Payment ${id} marked as cleared`);
     res.json({
       success: true,
       data: { payment },
       message: "Payment marked as cleared",
     });
   } catch (error: any) {
-    console.error("Error marking payment as cleared:", error);
+    logger.logApiError("Error marking payment as cleared", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to mark payment as cleared",
@@ -346,6 +354,7 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Payment allocations for payment ${paymentId} fetched successfully`);
     res.json({
       success: true,
       data: {
@@ -353,7 +362,7 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching payment allocations:", error);
+    logger.logApiError("Error fetching payment allocations", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch payment allocations",
@@ -387,7 +396,7 @@ export const createPaymentAllocation = async (req: Request, res: Response) => {
       message: "Payment allocation creation not yet fully implemented",
     });
   } catch (error: any) {
-    console.error("Error creating payment allocation:", error);
+    logger.logApiError("Error creating payment allocation", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create payment allocation",
@@ -421,7 +430,7 @@ export const updatePaymentAllocation = async (req: Request, res: Response) => {
       message: "Payment allocation update not yet fully implemented",
     });
   } catch (error: any) {
-    console.error("Error updating payment allocation:", error);
+    logger.logApiError("Error updating payment allocation", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update payment allocation",
@@ -455,7 +464,7 @@ export const deletePaymentAllocation = async (req: Request, res: Response) => {
       message: "Payment allocation deletion not yet fully implemented",
     });
   } catch (error: any) {
-    console.error("Error deleting payment allocation:", error);
+    logger.logApiError("Error deleting payment allocation", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete payment allocation",
@@ -480,12 +489,13 @@ export const getPaymentSummary = async (req: Request, res: Response) => {
 
     const summary = await invoicingService.getPaymentSummary(organizationId, req.query as any);
 
+    logger.info("Payment summary fetched successfully");
     res.json({
       success: true,
       data: { summary },
     });
   } catch (error: any) {
-    console.error("Error fetching payment summary:", error);
+    logger.logApiError("Error fetching payment summary", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch payment summary",

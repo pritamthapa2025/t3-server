@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as capacityService from "../services/capacity.service.js";
+import { logger } from "../utils/logger.js";
 
 // Dashboard KPIs - Status cards (In Field, Available, Suspended, Total Technicians)
 export const getDashboardKPIs = async (req: Request, res: Response) => {
@@ -20,12 +21,13 @@ export const getDashboardKPIs = async (req: Request, res: Response) => {
       date as string
     );
 
+    logger.info("Capacity dashboard KPIs fetched successfully");
     res.json({
       success: true,
       data: kpis,
     });
   } catch (error: any) {
-    console.error("Error fetching dashboard KPIs:", error);
+    logger.logApiError("Error fetching capacity dashboard KPIs", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch dashboard KPIs",
@@ -64,12 +66,13 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info("Utilization metrics fetched successfully");
     res.json({
       success: true,
       data: metrics,
     });
   } catch (error: any) {
-    console.error("Error fetching utilization metrics:", error);
+    logger.logApiError("Error fetching utilization metrics", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch utilization metrics",
@@ -108,12 +111,13 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info("Utilization chart data fetched successfully");
     res.json({
       success: true,
       data: chartData,
     });
   } catch (error: any) {
-    console.error("Error fetching utilization chart data:", error);
+    logger.logApiError("Error fetching utilization chart data", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch utilization chart data",
@@ -140,12 +144,13 @@ export const getCoverageByTeam = async (req: Request, res: Response) => {
       date as string
     );
 
+    logger.info("Team coverage fetched successfully");
     res.json({
       success: true,
       data: teamCoverage,
     });
   } catch (error: any) {
-    console.error("Error fetching team coverage:", error);
+    logger.logApiError("Error fetching team coverage", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch team coverage",
@@ -179,6 +184,7 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info("Employee availability fetched successfully");
     res.json({
       success: true,
       data: result.employees,
@@ -190,7 +196,7 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching employee availability:", error);
+    logger.logApiError("Error fetching employee availability", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch employee availability",
@@ -231,13 +237,14 @@ export const updateEmployeeAvailability = async (
         lastUpdated: new Date(),
       });
 
+    logger.info(`Employee availability for employee ${employeeId} updated successfully`);
     res.json({
       success: true,
       message: "Employee availability updated successfully",
       data: updatedAvailability,
     });
   } catch (error: any) {
-    console.error("Error updating employee availability:", error);
+    logger.logApiError("Error updating employee availability", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update employee availability",
@@ -282,6 +289,7 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info("Resource allocations fetched successfully");
     res.json({
       success: true,
       data: result.allocations,
@@ -293,7 +301,7 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching resource allocations:", error);
+    logger.logApiError("Error fetching resource allocations", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch resource allocations",
@@ -322,13 +330,14 @@ export const createResourceAllocation = async (req: Request, res: Response) => {
       assignedBy: userId,
     });
 
+    logger.info(`Resource allocation ${newAllocation?.id || 'unknown'} created successfully`);
     res.status(201).json({
       success: true,
       message: "Resource allocation created successfully",
       data: newAllocation,
     });
   } catch (error: any) {
-    console.error("Error creating resource allocation:", error);
+    logger.logApiError("Error creating resource allocation", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create resource allocation",
@@ -367,13 +376,14 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info(`Resource allocation ${allocationId} updated successfully`);
     res.json({
       success: true,
       message: "Resource allocation updated successfully",
       data: updatedAllocation,
     });
   } catch (error: any) {
-    console.error("Error updating resource allocation:", error);
+    logger.logApiError("Error updating resource allocation", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update resource allocation",
@@ -418,6 +428,7 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info("Employee shifts fetched successfully");
     res.json({
       success: true,
       data: result.shifts,
@@ -429,7 +440,7 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching employee shifts:", error);
+    logger.logApiError("Error fetching employee shifts", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch employee shifts",
@@ -457,13 +468,14 @@ export const createEmployeeShift = async (req: Request, res: Response) => {
       createdBy: userId,
     });
 
+    logger.info(`Employee shift ${newShift?.id || 'unknown'} created successfully`);
     res.status(201).json({
       success: true,
       message: "Employee shift created successfully",
       data: newShift,
     });
   } catch (error: any) {
-    console.error("Error creating employee shift:", error);
+    logger.logApiError("Error creating employee shift", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create employee shift",
@@ -501,13 +513,14 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
       }
     );
 
+    logger.info(`Employee shift ${shiftId} updated successfully`);
     res.json({
       success: true,
       message: "Employee shift updated successfully",
       data: updatedShift,
     });
   } catch (error: any) {
-    console.error("Error updating employee shift:", error);
+    logger.logApiError("Error updating employee shift", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update employee shift",
@@ -538,12 +551,13 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
 
     await capacityService.deleteEmployeeShift(parseInt(shiftId));
 
+    logger.info(`Employee shift ${shiftId} deleted successfully`);
     res.json({
       success: true,
       message: "Employee shift deleted successfully",
     });
   } catch (error: any) {
-    console.error("Error deleting employee shift:", error);
+    logger.logApiError("Error deleting employee shift", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete employee shift",
@@ -577,12 +591,13 @@ export const getDepartmentCapacityOverview = async (
       }
     );
 
+    logger.info("Department capacity overview fetched successfully");
     res.json({
       success: true,
       data: overview,
     });
   } catch (error: any) {
-    console.error("Error fetching department capacity overview:", error);
+    logger.logApiError("Error fetching department capacity overview", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch department capacity overview",
@@ -619,6 +634,7 @@ export const getCapacityPlanningTemplates = async (
       }
     );
 
+    logger.info("Capacity planning templates fetched successfully");
     res.json({
       success: true,
       data: result.templates,
@@ -630,7 +646,7 @@ export const getCapacityPlanningTemplates = async (
       },
     });
   } catch (error: any) {
-    console.error("Error fetching capacity planning templates:", error);
+    logger.logApiError("Error fetching capacity planning templates", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch capacity planning templates",
@@ -661,13 +677,14 @@ export const createCapacityPlanningTemplate = async (
       createdBy: userId,
     });
 
+    logger.info(`Capacity planning template ${newTemplate?.id || 'unknown'} created successfully`);
     res.status(201).json({
       success: true,
       message: "Capacity planning template created successfully",
       data: newTemplate,
     });
   } catch (error: any) {
-    console.error("Error creating capacity planning template:", error);
+    logger.logApiError("Error creating capacity planning template", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create capacity planning template",
@@ -695,13 +712,14 @@ export const createDepartmentCapacityMetric = async (req: Request, res: Response
       calculatedBy: userId,
     });
 
+    logger.info(`Department capacity metric ${newMetric?.id || 'unknown'} created successfully`);
     res.status(201).json({
       success: true,
       message: "Department capacity metric created successfully",
       data: newMetric,
     });
   } catch (error: any) {
-    console.error("Error creating department capacity metric:", error);
+    logger.logApiError("Error creating department capacity metric", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create department capacity metric",
@@ -717,12 +735,13 @@ export const getTeamAssignments = async (req: Request, res: Response) => {
     // No organizationId needed - T3 employees work for the company and see all teams
     const teamAssignments = await capacityService.getTeamAssignments();
 
+    logger.info("Team assignments fetched successfully");
     res.json({
       success: true,
       data: teamAssignments,
     });
   } catch (error: any) {
-    console.error("Error fetching team assignments:", error);
+    logger.logApiError("Error fetching team assignments", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch team assignments",

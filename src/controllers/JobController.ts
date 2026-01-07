@@ -1011,6 +1011,7 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Job labor deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Labor deleted successfully",
@@ -1171,6 +1172,7 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Job travel deleted successfully");
     return res.status(200).json({
       success: true,
       message: "Travel deleted successfully",
@@ -1276,6 +1278,7 @@ export const getJobTimelineHandler = async (req: Request, res: Response) => {
 
     const timeline = await getJobTimeline(jobId!, organizationId);
 
+    logger.info("Job timeline fetched successfully");
     return res.status(200).json({
       success: true,
       data: timeline,
@@ -1541,6 +1544,7 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
       performedBy: performedBy,
     });
 
+    logger.info("Job note updated successfully");
     return res.status(200).json({
       success: true,
       data: note,

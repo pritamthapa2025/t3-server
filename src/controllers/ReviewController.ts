@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import * as reviewService from "../services/review.service.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Get reviews with pagination and filtering
@@ -9,12 +10,13 @@ export const getReviews = async (req: Request, res: Response) => {
   try {
     const result = await reviewService.getReviews(req.query as any);
 
+    logger.info("Reviews fetched successfully");
     res.json({
       success: true,
       data: result,
     });
   } catch (error: any) {
-    console.error("Error fetching reviews:", error);
+    logger.logApiError("Error fetching reviews", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch reviews",
@@ -46,12 +48,13 @@ export const getReviewById = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Review ${id} fetched successfully`);
     res.json({
       success: true,
       data: { review },
     });
   } catch (error: any) {
-    console.error("Error fetching review:", error);
+    logger.logApiError("Error fetching review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch review",
@@ -77,13 +80,14 @@ export const createReview = async (req: Request, res: Response) => {
 
     const fullReview = await reviewService.getReviewById(review.id);
 
+    logger.info(`Review ${review.id} created successfully`);
     res.status(201).json({
       success: true,
       data: { review: fullReview },
       message: "Review created successfully",
     });
   } catch (error: any) {
-    console.error("Error creating review:", error);
+    logger.logApiError("Error creating review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create review",
@@ -117,13 +121,14 @@ export const updateReview = async (req: Request, res: Response) => {
 
     const fullReview = await reviewService.getReviewById(updatedReview.id);
 
+    logger.info(`Review ${id} updated successfully`);
     res.json({
       success: true,
       data: { review: fullReview },
       message: "Review updated successfully",
     });
   } catch (error: any) {
-    console.error("Error updating review:", error);
+    logger.logApiError("Error updating review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update review",
@@ -155,12 +160,13 @@ export const deleteReview = async (req: Request, res: Response) => {
       });
     }
 
+    logger.info(`Review ${id} deleted successfully`);
     res.json({
       success: true,
       message: "Review deleted successfully",
     });
   } catch (error: any) {
-    console.error("Error deleting review:", error);
+    logger.logApiError("Error deleting review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to delete review",
@@ -188,12 +194,13 @@ export const getEmployeeReviews = async (req: Request, res: Response) => {
       req.query as any
     );
 
+    logger.info(`Reviews for employee ${employeeId} fetched successfully`);
     res.json({
       success: true,
       data: result,
     });
   } catch (error: any) {
-    console.error("Error fetching employee reviews:", error);
+    logger.logApiError("Error fetching employee reviews", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch employee reviews",
@@ -230,13 +237,14 @@ export const createEmployeeReview = async (req: Request, res: Response) => {
 
     const fullReview = await reviewService.getReviewById(review.id);
 
+    logger.info(`Employee review ${review.id} created successfully`);
     res.status(201).json({
       success: true,
       data: { review: fullReview },
       message: "Employee review created successfully",
     });
   } catch (error: any) {
-    console.error("Error creating employee review:", error);
+    logger.logApiError("Error creating employee review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to create employee review",
@@ -286,13 +294,14 @@ export const updateEmployeeReview = async (req: Request, res: Response) => {
 
     const fullReview = await reviewService.getReviewById(updatedReview.id);
 
+    logger.info(`Employee review ${reviewId} updated successfully`);
     res.json({
       success: true,
       data: { review: fullReview },
       message: "Employee review updated successfully",
     });
   } catch (error: any) {
-    console.error("Error updating employee review:", error);
+    logger.logApiError("Error updating employee review", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to update employee review",
@@ -320,12 +329,13 @@ export const getEmployeeReviewSummary = async (req: Request, res: Response) => {
       req.query as any
     );
 
+    logger.info(`Employee review summary for employee ${employeeId} fetched successfully`);
     res.json({
       success: true,
       data: { summary },
     });
   } catch (error: any) {
-    console.error("Error fetching employee review summary:", error);
+    logger.logApiError("Error fetching employee review summary", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch employee review summary",
@@ -342,12 +352,13 @@ export const getReviewAnalytics = async (req: Request, res: Response) => {
   try {
     const analytics = await reviewService.getReviewAnalytics(req.query as any);
 
+    logger.info("Review analytics fetched successfully");
     res.json({
       success: true,
       data: { analytics },
     });
   } catch (error: any) {
-    console.error("Error fetching review analytics:", error);
+    logger.logApiError("Error fetching review analytics", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch review analytics",
@@ -373,6 +384,7 @@ export const bulkCreateReviews = async (req: Request, res: Response) => {
 
     const createdReviews = await reviewService.bulkCreateReviews(reviews);
 
+    logger.info(`${createdReviews.length} reviews created successfully in bulk`);
     res.status(201).json({
       success: true,
       data: {
@@ -383,7 +395,7 @@ export const bulkCreateReviews = async (req: Request, res: Response) => {
       message: `Successfully created ${createdReviews.length} reviews`,
     });
   } catch (error: any) {
-    console.error("Error bulk creating reviews:", error);
+    logger.logApiError("Error bulk creating reviews", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to bulk create reviews",
@@ -492,12 +504,13 @@ export const getReviewTemplates = async (req: Request, res: Response) => {
       },
     ];
 
+    logger.info("Review templates fetched successfully");
     res.json({
       success: true,
       data: { templates },
     });
   } catch (error: any) {
-    console.error("Error fetching review templates:", error);
+    logger.logApiError("Error fetching review templates", error, req);
     res.status(500).json({
       success: false,
       message: "Failed to fetch review templates",

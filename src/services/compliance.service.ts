@@ -3,7 +3,7 @@ import {
   employeeComplianceCases,
   employeeViolationHistory,
 } from "../drizzle/schema/compliance.schema.js";
-import { employees, organizations } from "../drizzle/schema/org.schema.js";
+import { employees, organizations, departments } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import {
@@ -510,35 +510,49 @@ export const getViolationWatchlist = async (
       employeeId: employees.id,
       employeeName: users.fullName,
       employeeEmail: users.email,
-      department: sql<string>`departments.name`,
+      department: departments.name,
       violationCount: count(employeeViolationHistory.id),
       status: employees.status,
       lastViolationDate: sql<Date>`MAX(${employeeViolationHistory.violationDate})`,
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(sql`departments`, sql`departments.id = employees.department_id`)
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(
       employeeViolationHistory,
       and(...violationJoinConditions)
     )
     .where(eq(employees.isDeleted, false))
-    .groupBy(employees.id, users.id, sql`departments.name`)
+    .groupBy(employees.id, users.id, departments.name)
     .having(sql`COUNT(${employeeViolationHistory.id}) >= ${minViolations}`);
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(watchlistQuery.as("watchlist"));
+  // Get total count using a separate count-only query
+  // We need to replicate the same logic but only count
+  const countBaseQuery = db
+    .select({
+      employeeId: employees.id,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(
+      employeeViolationHistory,
+      and(...violationJoinConditions)
+    )
+    .where(eq(employees.isDeleted, false))
+    .groupBy(employees.id, users.id, departments.name)
+    .having(sql`COUNT(${employeeViolationHistory.id}) >= ${minViolations}`);
 
-  const total = totalResult[0]?.count || 0;
+  // Count the distinct employees from the grouped results
+  const countResults = await countBaseQuery;
+  const total = countResults.length;
 
   // Get paginated results
   const orderColumn =
     sortBy === "employeeName"
       ? users.fullName
       : sortBy === "department"
-      ? sql`departments.name`
+      ? departments.name
       : count(employeeViolationHistory.id);
 
   const orderBy = sortOrder === "asc" ? asc(orderColumn) : desc(orderColumn);
@@ -612,8 +626,8 @@ export const getViolationCounts = async (filters: {
       groupByFields = [employees.id, users.fullName];
       break;
     case "department":
-      selectFields.department = sql<string>`departments.name`;
-      groupByFields = [sql`departments.name`];
+      selectFields.department = departments.name;
+      groupByFields = [departments.name];
       break;
     case "job":
       selectFields.jobId = employeeComplianceCases.jobId;
@@ -626,7 +640,7 @@ export const getViolationCounts = async (filters: {
     .from(employeeViolationHistory)
     .leftJoin(employees, eq(employeeViolationHistory.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(sql`departments`, sql`departments.id = employees.department_id`)
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(
       employeeComplianceCases,
       eq(employeeViolationHistory.complianceCaseId, employeeComplianceCases.id)
