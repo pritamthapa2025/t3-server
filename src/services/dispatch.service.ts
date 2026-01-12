@@ -4,6 +4,7 @@ import {
   dispatchAssignments,
   technicianAvailability,
 } from "../drizzle/schema/dispatch.schema.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
 import {
   eq,
   and,
@@ -422,6 +423,7 @@ export const getAssignmentsByTaskId = async (taskId: string) => {
 export const getAssignmentsByTechnicianId = async (
   technicianId: number,
   filters?: {
+    date?: string;
     startDate?: string;
     endDate?: string;
     status?: string;
@@ -430,17 +432,71 @@ export const getAssignmentsByTechnicianId = async (
   const conditions = [
     eq(dispatchAssignments.technicianId, technicianId),
     eq(dispatchAssignments.isDeleted, false),
+    eq(dispatchTasks.isDeleted, false),
   ];
 
   if (filters?.status) {
     conditions.push(eq(dispatchAssignments.status, filters.status as any));
   }
 
+  // Filter by specific date (takes priority over date range)
+  if (filters?.date) {
+    const dateObj = new Date(filters.date);
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(23, 59, 59, 999);
+    conditions.push(gte(dispatchTasks.startTime, startOfDay));
+    conditions.push(lte(dispatchTasks.startTime, endOfDay));
+  } else {
+    // Filter by date range using task startTime (only if specific date is not provided)
+    if (filters?.startDate) {
+      // Get assignments where task startTime is on or after startDate
+      const startDateObj = new Date(filters.startDate);
+      startDateObj.setHours(0, 0, 0, 0); // Start of day
+      conditions.push(gte(dispatchTasks.startTime, startDateObj));
+    }
+
+    if (filters?.endDate) {
+      // Get assignments where task startTime is on or before endDate
+      const endDateObj = new Date(filters.endDate);
+      endDateObj.setHours(23, 59, 59, 999); // End of day
+      conditions.push(lte(dispatchTasks.startTime, endDateObj));
+    }
+  }
+
+  // Join with tasks and jobs to get full job details
   const assignments = await db
-    .select()
+    .select({
+      // Assignment fields
+      id: dispatchAssignments.id,
+      taskId: dispatchAssignments.taskId,
+      status: dispatchAssignments.status,
+      isDeleted: dispatchAssignments.isDeleted,
+      createdAt: dispatchAssignments.createdAt,
+      updatedAt: dispatchAssignments.updatedAt,
+      // Task fields
+      taskTitle: dispatchTasks.title,
+      taskDescription: dispatchTasks.description,
+      taskType: dispatchTasks.taskType,
+      taskPriority: dispatchTasks.priority,
+      taskStatus: dispatchTasks.status,
+      startTime: dispatchTasks.startTime,
+      endTime: dispatchTasks.endTime,
+      // Job fields (for display format: "#2024-001 — HVAC System Installation")
+      jobId: dispatchTasks.jobId,
+      jobNumber: jobs.jobNumber,
+      jobName: jobs.name,
+      jobDescription: jobs.description,
+      jobStatus: jobs.status,
+      jobType: jobs.jobType,
+      serviceType: jobs.serviceType,
+    })
     .from(dispatchAssignments)
+    .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+    .leftJoin(jobs, eq(dispatchTasks.jobId, jobs.id))
     .where(and(...conditions))
-    .orderBy(asc(dispatchAssignments.createdAt));
+    .orderBy(asc(dispatchTasks.startTime));
 
   return assignments;
 };

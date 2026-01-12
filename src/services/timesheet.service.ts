@@ -1,7 +1,8 @@
-import { count, eq, and, or, ilike, sql, sum } from "drizzle-orm";
+import { count, eq, and, or, ilike, sql, sum, desc, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
-import { timesheets } from "../drizzle/schema/timesheet.schema.js";
+import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 export const getTimesheets = async (
@@ -580,6 +581,10 @@ export const getWeeklyTimesheetsByEmployee = async (
   const whereClause = and(...whereConditions);
   const employeeWhereClause = and(...employeeWhereConditions);
 
+  // Create aliases for approver and rejector users
+  const approverUser = alias(users, "approver_user");
+  const rejectorUser = alias(users, "rejector_user");
+
   // Get all timesheets for the week with employee and user details
   // Select timesheet fields explicitly to ensure clockIn/clockOut are retrieved correctly
   const result = await db
@@ -616,13 +621,48 @@ export const getWeeklyTimesheetsByEmployee = async (
         id: departments.id,
         name: departments.name,
       },
+      approver: {
+        id: approverUser.id,
+        fullName: approverUser.fullName,
+      },
+      rejector: {
+        id: rejectorUser.id,
+        fullName: rejectorUser.fullName,
+      },
     })
     .from(timesheets)
     .innerJoin(employees, eq(timesheets.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
+    .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
     .where(whereClause)
     .orderBy(users.fullName, timesheets.sheetDate);
+
+  // Get approval history for all timesheets to track rejections and resubmissions
+  const timesheetIds = result.map((row) => row.timesheet.id).filter((id) => id);
+  let approvalHistoryMap = new Map<number, any[]>();
+  
+  if (timesheetIds.length > 0) {
+    const approvalHistory = await db
+      .select({
+        timesheetId: timesheetApprovals.timesheetId,
+        action: timesheetApprovals.action,
+        createdAt: timesheetApprovals.createdAt,
+        remarks: timesheetApprovals.remarks,
+      })
+      .from(timesheetApprovals)
+      .where(inArray(timesheetApprovals.timesheetId, timesheetIds))
+      .orderBy(timesheetApprovals.timesheetId, desc(timesheetApprovals.createdAt));
+
+    // Group by timesheet ID
+    approvalHistory.forEach((record) => {
+      if (!approvalHistoryMap.has(record.timesheetId)) {
+        approvalHistoryMap.set(record.timesheetId, []);
+      }
+      approvalHistoryMap.get(record.timesheetId)!.push(record);
+    });
+  }
 
   // Get all employees (even those without timesheets this week) if no status filter
   // If status filter is applied, we only want employees with timesheets matching that status
@@ -779,18 +819,109 @@ export const getWeeklyTimesheetsByEmployee = async (
             dayData.notes = row.timesheet.notes;
           }
 
+          // Include approver information
           if (
             row.timesheet.approvedBy !== null &&
             row.timesheet.approvedBy !== undefined
           ) {
             dayData.approvedBy = row.timesheet.approvedBy;
+            if (row.approver?.fullName) {
+              dayData.approvedByName = row.approver.fullName;
+            }
           }
 
+          // Include rejector information and rejection reason
+          // Note: This will be enhanced below with approval history data
           if (
             row.timesheet.rejectedBy !== null &&
             row.timesheet.rejectedBy !== undefined
           ) {
             dayData.rejectedBy = row.timesheet.rejectedBy;
+            if (row.rejector?.fullName) {
+              dayData.rejectedByName = row.rejector.fullName;
+            }
+            // Include rejection reason from notes when status is rejected
+            if (row.timesheet.status === "rejected" && row.timesheet.notes) {
+              dayData.rejectionReason = row.timesheet.notes;
+            }
+          }
+
+          // Get rejection and resubmission history from approval records
+          const approvalHistory = approvalHistoryMap.get(row.timesheet.id) || [];
+          
+          // Find rejection records (sorted by most recent first)
+          const rejectionRecords = approvalHistory
+            .filter((record) => record.action === "rejected")
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          
+          const mostRecentRejection = rejectionRecords[0];
+
+          // Check if timesheet was resubmitted (status is not "rejected" but rejectedBy is not null)
+          const isResubmitted = 
+            row.timesheet.rejectedBy !== null && 
+            row.timesheet.rejectedBy !== undefined &&
+            row.timesheet.status !== "rejected";
+
+          if (row.timesheet.status === "rejected") {
+            // For rejected status, include rejectedAt
+            if (mostRecentRejection) {
+              dayData.rejectedAt = mostRecentRejection.createdAt.toISOString();
+            } else if (row.timesheet.updatedAt) {
+              // Fallback to updatedAt if no approval record exists
+              dayData.rejectedAt = row.timesheet.updatedAt.toISOString();
+            }
+          } else if (isResubmitted) {
+            // Timesheet was previously rejected but has been resubmitted
+            // Include previous rejection info
+            if (row.rejector?.fullName) {
+              dayData.rejectedByName = row.rejector.fullName;
+            }
+            if (row.timesheet.notes) {
+              dayData.rejectionReason = row.timesheet.notes;
+            }
+
+            // Find resubmission timestamp
+            // Look for records after the most recent rejection that indicate resubmission
+            if (mostRecentRejection) {
+              // Find the first record after rejection that's not a rejection
+              const resubmissionRecord = approvalHistory
+                .filter(
+                  (record) =>
+                    record.createdAt > mostRecentRejection.createdAt &&
+                    record.action !== "rejected"
+                )
+                .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+
+              if (resubmissionRecord) {
+                dayData.resubmittedAt = resubmissionRecord.createdAt.toISOString();
+              } else if (row.timesheet.updatedAt && row.timesheet.updatedAt > mostRecentRejection.createdAt) {
+                // Use updatedAt if it's after rejection and no explicit resubmission record
+                dayData.resubmittedAt = row.timesheet.updatedAt.toISOString();
+              }
+
+              // Calculate resubmission count
+              // Count how many times status changed from rejected to non-rejected
+              // We count status transitions: each time it goes from rejected to something else
+              const statusTransitions = approvalHistory
+                .filter(
+                  (record) =>
+                    record.createdAt > mostRecentRejection.createdAt &&
+                    record.action !== "rejected"
+                )
+                .length;
+
+              // At minimum, if it's resubmitted, count is at least 1
+              const resubmissionCount = Math.max(1, statusTransitions);
+              dayData.resubmissionCount = resubmissionCount;
+            } else {
+              // No explicit rejection record, but rejectedBy exists
+              // Use updatedAt as resubmission time
+              if (row.timesheet.updatedAt) {
+                dayData.resubmittedAt = row.timesheet.updatedAt.toISOString();
+              }
+              // Assume at least 1 resubmission
+              dayData.resubmissionCount = 1;
+            }
           }
         }
 

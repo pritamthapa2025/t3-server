@@ -440,7 +440,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
 ) => {
   try {
     const { technicianId } = req.params;
-    const { startDate, endDate, status } = req.query;
+    const { date, startDate, endDate, status } = req.query;
 
     if (!technicianId) {
       return res.status(400).json({
@@ -450,6 +450,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
     }
 
     const filters: any = {};
+    if (date) filters.date = date as string;
     if (startDate) filters.startDate = startDate as string;
     if (endDate) filters.endDate = endDate as string;
     if (status) filters.status = status as string;
