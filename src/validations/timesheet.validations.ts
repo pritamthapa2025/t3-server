@@ -370,16 +370,34 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
         },
         { message: "Week start date must be a Monday (start of the work week)" }
       ),
-    search: z
-      .union([z.string(), z.array(z.string())])
+    employeeId: z
+      .union([
+        z.string(),
+        z.array(z.string()),
+      ])
       .optional()
       .transform((val) => {
         if (!val) return undefined;
         if (Array.isArray(val)) {
-          return val.join(",");
+          return val.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
         }
-        return val;
-      }),
+        // Handle comma-separated string like "14,16" or array-like string "[14,16]"
+        const str = val.toString().trim();
+        // Remove brackets if present
+        const cleaned = str.replace(/^\[|\]$/g, '');
+        // Split by comma and parse
+        const ids = cleaned.split(',').map((id) => {
+          const trimmed = id.trim();
+          return parseInt(trimmed, 10);
+        }).filter((id) => !isNaN(id) && id > 0);
+        
+        return ids.length > 0 ? ids : undefined;
+      })
+      .pipe(
+        z
+          .array(z.number().int().positive("Employee ID must be a positive number"))
+          .optional()
+      ),
     departmentId: z
       .string()
       .optional()

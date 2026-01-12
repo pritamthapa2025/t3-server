@@ -549,7 +549,7 @@ export const createTimesheetWithClockData = async (data: {
 
 export const getWeeklyTimesheetsByEmployee = async (
   weekStartDate: string, // YYYY-MM-DD format
-  search?: string,
+  employeeIds?: number[],
   departmentId?: number,
   status?: string,
   page: number = 1,
@@ -573,35 +573,10 @@ export const getWeeklyTimesheetsByEmployee = async (
     sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`
   );
 
-  // Add search filter if provided (technician name or employee ID)
-  // Supports multiple search terms separated by commas
-  // Full name uses word boundary matching to avoid substring matches (e.g., "Rene" won't match "Serene")
-  if (search) {
-    const searchTerms = search
-      .split(",")
-      .map((term) => term.trim())
-      .filter((term) => term.length > 0);
-
-    if (searchTerms.length > 0) {
-      const searchConditions = searchTerms.flatMap((term) => {
-        // Escape special regex characters in the search term for PostgreSQL regex
-        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        // Create regex pattern with word boundaries for whole word matching
-        // PostgreSQL uses \y for word boundaries, ~* for case-insensitive match
-        // Escape single quotes for SQL string literal
-        const wordBoundaryPattern = `\\y${escapedTerm}\\y`.replace(/'/g, "''");
-        return [
-          // Employee ID: partial match (for codes like "T3-00015")
-          ilike(employees.employeeId, `%${term}%`),
-          // Full name: whole word match only (using regex word boundaries)
-          // Use raw SQL with full column reference
-          sql.raw(`"auth"."users"."full_name" ~* '${wordBoundaryPattern}'`),
-        ];
-      });
-
-      whereConditions.push(or(...searchConditions)!);
-      employeeWhereConditions.push(or(...searchConditions)!);
-    }
+  // Add employee ID filter if provided (array of employee IDs)
+  if (employeeIds && employeeIds.length > 0) {
+    whereConditions.push(inArray(employees.id, employeeIds));
+    employeeWhereConditions.push(inArray(employees.id, employeeIds));
   }
 
   // Add department filter if provided
@@ -1045,8 +1020,8 @@ export const getMyWeeklyTimesheets = async (
   weekStartDate: string,
   search?: string
 ) => {
-  // Get all weekly data
-  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, search);
+  // Get weekly data for this specific employee
+  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [employeeId]);
 
   // Filter to only include the current employee's data
   const myEmployeeData = weeklyData.employees.find(

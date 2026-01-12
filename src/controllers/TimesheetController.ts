@@ -138,12 +138,31 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
   res: Response
 ) => {
   try {
-    const { weekStartDate, search, departmentId, status, page, limit } =
+    const { weekStartDate, employeeId, departmentId, status, page, limit } =
       req.query;
+
+    // Handle employeeId - can be single value, array, or comma-separated string like "[14,16]" or "14,16"
+    let employeeIds: number[] | undefined;
+    if (employeeId) {
+      if (Array.isArray(employeeId)) {
+        employeeIds = employeeId.map((id) => parseInt(id as string, 10)).filter((id) => !isNaN(id));
+      } else {
+        const str = employeeId.toString().trim();
+        // Remove brackets if present
+        const cleaned = str.replace(/^\[|\]$/g, '');
+        // Split by comma and parse
+        const ids = cleaned.split(',').map((id) => {
+          const trimmed = id.trim();
+          return parseInt(trimmed, 10);
+        }).filter((id) => !isNaN(id) && id > 0);
+        
+        employeeIds = ids.length > 0 ? ids : undefined;
+      }
+    }
 
     const weeklyTimesheets = await getWeeklyTimesheetsByEmployee(
       weekStartDate as string,
-      search as string | undefined,
+      employeeIds,
       departmentId ? parseInt(departmentId as string, 10) : undefined,
       status as string | undefined,
       page ? parseInt(page as string, 10) : 1,
