@@ -180,19 +180,18 @@ export const getUtilizationChartData = async (
     departmentId?: number | undefined;
   }
 ) => {
-  const startDate = filters.startDate || new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const endDate = filters.endDate || new Date().toISOString().split('T')[0];
-
   let whereConditions = [
     eq(departmentCapacityMetrics.periodType, filters.periodType),
   ];
 
-  if (startDate) {
-    whereConditions.push(gte(departmentCapacityMetrics.metricDate, startDate));
+  // Only add date filters if explicitly provided
+  // If not provided, return all available data
+  if (filters.startDate) {
+    whereConditions.push(gte(departmentCapacityMetrics.metricDate, filters.startDate));
   }
 
-  if (endDate) {
-    whereConditions.push(lte(departmentCapacityMetrics.metricDate, endDate));
+  if (filters.endDate) {
+    whereConditions.push(lte(departmentCapacityMetrics.metricDate, filters.endDate));
   }
 
   if (filters.departmentId) {
