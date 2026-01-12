@@ -68,7 +68,44 @@ export const getTimesheetById = async (id: number) => {
     .select()
     .from(timesheets)
     .where(eq(timesheets.id, id));
-  return timesheet ? formatTimesheetResponse(timesheet) : null;
+  
+  if (!timesheet) return null;
+  
+  const formatted = formatTimesheetResponse(timesheet);
+  
+  // Get latest rejection reason from approval history (if rejected)
+  if (timesheet.status === "rejected") {
+    const [rejectionRecord] = await db
+      .select({
+        remarks: timesheetApprovals.remarks,
+      })
+      .from(timesheetApprovals)
+      .where(
+        and(
+          eq(timesheetApprovals.timesheetId, id),
+          eq(timesheetApprovals.action, "rejected")
+        )
+      )
+      .orderBy(desc(timesheetApprovals.createdAt))
+      .limit(1);
+    
+    if (rejectionRecord?.remarks) {
+      // Extract rejection reason (before "Manager Notes:" if present)
+      const remarks = rejectionRecord.remarks;
+      const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
+      const rejectionReason = managerNotesIndex > 0
+        ? remarks.substring(0, managerNotesIndex)
+        : remarks;
+      
+      return {
+        ...formatted,
+        rejectionReason: rejectionReason, // Latest rejection reason from manager
+        // notes field contains employee's notes (preserved)
+      };
+    }
+  }
+  
+  return formatted;
 };
 
 // Helper function to format timesheet response (clockIn/clockOut are already strings, just return as-is)
@@ -840,10 +877,6 @@ export const getWeeklyTimesheetsByEmployee = async (
             if (row.rejector?.fullName) {
               dayData.rejectedByName = row.rejector.fullName;
             }
-            // Include rejection reason from notes when status is rejected
-            if (row.timesheet.status === "rejected" && row.timesheet.notes) {
-              dayData.rejectionReason = row.timesheet.notes;
-            }
           }
 
           // Get rejection and resubmission history from approval records
@@ -855,6 +888,16 @@ export const getWeeklyTimesheetsByEmployee = async (
             .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
           
           const mostRecentRejection = rejectionRecords[0];
+          
+          // Include rejection reason from approval history remarks (not from notes)
+          // Extract rejection reason (before "Manager Notes:" if present)
+          if (row.timesheet.status === "rejected" && mostRecentRejection?.remarks) {
+            const remarks = mostRecentRejection.remarks;
+            const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
+            dayData.rejectionReason = managerNotesIndex > 0
+              ? remarks.substring(0, managerNotesIndex)
+              : remarks;
+          }
 
           // Check if timesheet was resubmitted (status is not "rejected" but rejectedBy is not null)
           const isResubmitted = 
@@ -876,8 +919,14 @@ export const getWeeklyTimesheetsByEmployee = async (
             if (row.rejector?.fullName) {
               dayData.rejectedByName = row.rejector.fullName;
             }
-            if (row.timesheet.notes) {
-              dayData.rejectionReason = row.timesheet.notes;
+            // Use rejection reason from approval history remarks (not from notes)
+            // Extract rejection reason (before "Manager Notes:" if present)
+            if (mostRecentRejection?.remarks) {
+              const remarks = mostRecentRejection.remarks;
+              const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
+              dayData.rejectionReason = managerNotesIndex > 0
+                ? remarks.substring(0, managerNotesIndex)
+                : remarks;
             }
 
             // Find resubmission timestamp
@@ -1191,17 +1240,48 @@ export const approveTimesheet = async (
   approvedBy: string,
   notes?: string
 ) => {
+  // Get existing timesheet to preserve employee notes
+  const [existingTimesheet] = await db
+    .select()
+    .from(timesheets)
+    .where(eq(timesheets.id, timesheetId));
+
+  if (!existingTimesheet) {
+    return null;
+  }
+
+  // Update timesheet: only update status and approvedBy (latest)
+  // Keep employee notes separate - don't overwrite them
   const [timesheet] = await db
     .update(timesheets)
     .set({
       status: "approved",
-      approvedBy: approvedBy,
+      approvedBy: approvedBy, // Store latest approvedBy
       rejectedBy: null, // Clear any previous rejection
-      notes: notes || undefined,
+      // Keep existing employee notes - don't overwrite
       updatedAt: new Date(),
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
+
+  // Create approval record for approval (stores full history)
+  if (timesheet && notes) {
+    await db.insert(timesheetApprovals).values({
+      timesheetId: timesheetId,
+      action: "approved",
+      performedBy: approvedBy,
+      remarks: notes, // Store manager notes in approval history if provided
+    });
+  } else if (timesheet) {
+    // Still create approval record even without notes for audit trail
+    await db.insert(timesheetApprovals).values({
+      timesheetId: timesheetId,
+      action: "approved",
+      performedBy: approvedBy,
+      remarks: null,
+    });
+  }
+
   return timesheet ? formatTimesheetResponse(timesheet) : null;
 };
 
@@ -1211,18 +1291,58 @@ export const rejectTimesheet = async (
   rejectionReason: string,
   notes?: string
 ) => {
+  // Get existing timesheet to preserve employee notes
+  const [existingTimesheet] = await db
+    .select()
+    .from(timesheets)
+    .where(eq(timesheets.id, timesheetId));
+
+  if (!existingTimesheet) {
+    return null;
+  }
+
+  // Update timesheet: only update status and rejectedBy (latest)
+  // Keep employee notes separate - don't overwrite them
   const [timesheet] = await db
     .update(timesheets)
     .set({
       status: "rejected",
-      rejectedBy: rejectedBy,
+      rejectedBy: rejectedBy, // Store latest rejectedBy
       approvedBy: null, // Clear any previous approval
-      notes: notes || rejectionReason, // Use rejection reason as notes if no additional notes provided
+      // Keep existing employee notes - don't overwrite
       updatedAt: new Date(),
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
-  return timesheet ? formatTimesheetResponse(timesheet) : null;
+
+  // Create approval record for rejection (stores full history)
+  if (timesheet) {
+    // Store rejection reason in approval history remarks
+    // If manager provided additional notes, combine with rejection reason
+    const remarks = notes
+      ? `${rejectionReason}\n\nManager Notes: ${notes}`
+      : rejectionReason;
+
+    await db.insert(timesheetApprovals).values({
+      timesheetId: timesheetId,
+      action: "rejected",
+      performedBy: rejectedBy,
+      remarks: remarks, // Store rejection reason (and manager notes if provided) in approval history
+    });
+  }
+
+  // Format response to include rejectionReason from approval history
+  if (timesheet) {
+    const formatted = formatTimesheetResponse(timesheet);
+    // Add rejectionReason to the response (from the approval record we just created)
+    return {
+      ...formatted,
+      rejectionReason: rejectionReason, // Latest rejection reason
+      // notes field contains employee's notes (preserved)
+    };
+  }
+
+  return null;
 };
 
 export const getTimesheetKPIs = async (weekStartDate: string) => {
