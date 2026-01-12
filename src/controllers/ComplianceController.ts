@@ -9,6 +9,7 @@ import {
   updateCaseStatus,
   getViolationWatchlist,
   getViolationCounts,
+  createEmployeeViolation,
 } from "../services/compliance.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -297,11 +298,12 @@ export const getViolationWatchlistHandler = async (
 
     const offset = (page - 1) * limit;
 
-    const watchlistFilters: any = {};
+    const watchlistFilters: any = {
+      // minViolations defaults to 3 if not provided (handled by validation)
+      minViolations: minViolations ? parseInt(minViolations as string) : 3,
+    };
     if (organizationId)
       watchlistFilters.organizationId = organizationId as string;
-    if (minViolations)
-      watchlistFilters.minViolations = parseInt(minViolations as string);
     if (sortBy) watchlistFilters.sortBy = sortBy as string;
     if (sortOrder) watchlistFilters.sortOrder = sortOrder as "asc" | "desc";
 
@@ -319,6 +321,53 @@ export const getViolationWatchlistHandler = async (
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+// Create Employee Violation Handler
+export const createEmployeeViolationHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    const userId = req.user?.id;
+    
+    if (!organizationId) {
+      return res.status(401).json({
+        success: false,
+        message: "Organization access required",
+      });
+    }
+
+    const violationData = {
+      ...req.body,
+      organizationId,
+      createdBy: userId,
+    };
+
+    const violation = await createEmployeeViolation(violationData);
+
+    if (!violation) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create employee violation",
+      });
+    }
+
+    logger.info(`Employee violation created successfully: ${violation.id}`);
+    return res.status(201).json({
+      success: true,
+      message: "Employee violation created successfully",
+      data: violation,
+    });
+  } catch (error) {
+    logger.logApiError("Error creating employee violation", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create employee violation",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };

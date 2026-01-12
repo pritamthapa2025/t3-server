@@ -63,6 +63,14 @@ export const createComplianceCaseSchema = z.object({
     impactLevel: z.enum(["low_risk", "medium_risk", "high_risk"]).optional(),
     correctiveAction: z.string().optional(),
     preventiveAction: z.string().optional(),
+    // Disciplinary Action fields
+    disciplinaryAction: z.string().max(100, "Disciplinary action is too long (maximum 100 characters)").optional(),
+    actionDate: z.string().optional().refine(
+      (val) => !val || !isNaN(Date.parse(val)),
+      { message: "Invalid action date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)" }
+    ),
+    actionNotes: z.string().optional(),
+    performanceImpact: z.number().min(-10, "Performance impact cannot be less than -10").max(0, "Performance impact cannot be greater than 0").optional(),
     attachments: z.array(z.string()).optional(),
     evidencePhotos: z.array(z.string()).optional(),
   }),
@@ -90,6 +98,14 @@ export const updateComplianceCaseSchema = z.object({
     impactLevel: z.enum(["low_risk", "medium_risk", "high_risk"]).optional(),
     correctiveAction: z.string().optional(),
     preventiveAction: z.string().optional(),
+    // Disciplinary Action fields
+    disciplinaryAction: z.string().max(100, "Disciplinary action is too long (maximum 100 characters)").optional(),
+    actionDate: z.string().optional().refine(
+      (val) => !val || !isNaN(Date.parse(val)),
+      { message: "Invalid action date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)" }
+    ),
+    actionNotes: z.string().optional(),
+    performanceImpact: z.number().min(-10, "Performance impact cannot be less than -10").max(0, "Performance impact cannot be greater than 0").optional(),
     attachments: z.array(z.string()).optional(),
     evidencePhotos: z.array(z.string()).optional(),
   }),
@@ -136,6 +152,38 @@ export const getViolationWatchlistQuerySchema = z.object({
       .pipe(z.number().int().positive()),
     sortBy: z.enum(["violationCount", "employeeName", "department"]).optional().default("violationCount"),
     sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
+  }),
+});
+
+// Create Employee Violation Schema
+export const createEmployeeViolationSchema = z.object({
+  body: z.object({
+    employeeId: z.number().int().positive("Employee ID is required and must be a positive number"),
+    complianceCaseId: z.string().uuid("Compliance case ID must be a valid UUID").optional(),
+    violationType: z.enum(["safety", "timesheet", "conduct", "training", "certification", "other"], {
+      message: "Violation type must be one of: safety, timesheet, conduct, training, certification, other"
+    }),
+    violationDate: z.string().refine(
+      (val) => !isNaN(Date.parse(val)),
+      { message: "Invalid violation date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)" }
+    ),
+    description: z.string().min(1, "Description is required"),
+    severity: z.enum(["low", "medium", "high", "critical"], {
+      message: "Severity must be one of: low, medium, high, critical"
+    }),
+    disciplinaryAction: z.string().max(100, "Disciplinary action is too long (maximum 100 characters)").optional(),
+    actionDate: z.string().optional().refine(
+      (val) => !val || !isNaN(Date.parse(val)),
+      { message: "Invalid action date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)" }
+    ),
+    actionNotes: z.string().optional(),
+    performanceImpact: z.number().min(-10, "Performance impact cannot be less than -10").max(0, "Performance impact cannot be greater than 0").optional(),
+    isResolved: z.boolean().optional().default(false),
+    resolutionDate: z.string().optional().refine(
+      (val) => !val || !isNaN(Date.parse(val)),
+      { message: "Invalid resolution date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)" }
+    ),
+    resolutionNotes: z.string().optional(),
   }),
 });
 

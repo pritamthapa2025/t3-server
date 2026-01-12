@@ -9,6 +9,7 @@ import {
   getViolationWatchlistHandler,
   getViolationCountsHandler,
   updateCaseStatusHandler,
+  createEmployeeViolationHandler,
 } from "../../controllers/ComplianceController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -22,6 +23,7 @@ import {
   getViolationWatchlistQuerySchema,
   getViolationCountsQuerySchema,
   updateCaseStatusSchema,
+  createEmployeeViolationSchema,
 } from "../../validations/compliance.validations.js";
 
 const router = Router();
@@ -60,6 +62,13 @@ router.get(
   "/watchlist",
   validate(getViolationWatchlistQuerySchema),
   getViolationWatchlistHandler
+);
+
+// Create Employee Violation
+router.post(
+  "/violations",
+  validate(createEmployeeViolationSchema),
+  createEmployeeViolationHandler
 );
 
 // Violation Counts/Analytics

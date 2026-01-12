@@ -36,9 +36,28 @@ export const getEmployeeByIdSchema = z.object({
 });
 
 // Create employee validation
+// Note: userId should NOT be provided when creating an employee
+// The system will automatically create a new user and use its ID for the employee
 export const createEmployeeSchema = z.object({
   body: z.object({
-    userId: uuidSchema,
+    // User fields (required - system creates new user when creating employee)
+    fullName: z.string().min(1, "Full name is required"),
+    email: z.string().email("Invalid email format"),
+    phone: z.string().optional(),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zipCode: z.string().optional(),
+    dateOfBirth: z
+      .union([z.string(), z.date()])
+      .transform((val) => (typeof val === "string" ? new Date(val) : val))
+      .refine((val) => !isNaN(val.getTime()), {
+        message: "Invalid date format",
+      })
+      .optional(),
+    emergencyContactName: z.string().optional(),
+    emergencyContactPhone: z.string().optional(),
+    // Employee fields
     employeeId: z
       .string()
       .max(50, "Employee ID must be less than 50 characters")
@@ -46,12 +65,21 @@ export const createEmployeeSchema = z.object({
     departmentId: z.number().int().positive().optional().nullable(),
     positionId: z.number().int().positive().optional().nullable(),
     reportsTo: uuidSchema.optional().nullable(),
+    roleId: z.number().int().positive().optional().nullable(),
     startDate: z
       .union([z.string(), z.date()])
       .transform((val) => (typeof val === "string" ? new Date(val) : val))
       .refine((val) => !isNaN(val.getTime()), {
         message: "Invalid date format",
-      }),
+      })
+      .optional(),
+    // Bank account fields
+    accountHolderName: z.string().optional(),
+    bankName: z.string().optional(),
+    accountNumber: z.string().optional(),
+    routingNumber: z.string().optional(),
+    accountType: z.string().optional(),
+    branchName: z.string().optional(),
   }),
 });
 

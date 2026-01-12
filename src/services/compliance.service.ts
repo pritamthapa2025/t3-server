@@ -231,6 +231,11 @@ export const getComplianceCases = async (
       impactLevel: employeeComplianceCases.impactLevel,
       correctiveAction: employeeComplianceCases.correctiveAction,
       preventiveAction: employeeComplianceCases.preventiveAction,
+      // Disciplinary Action fields
+      disciplinaryAction: employeeComplianceCases.disciplinaryAction,
+      actionDate: employeeComplianceCases.actionDate,
+      actionNotes: employeeComplianceCases.actionNotes,
+      performanceImpact: employeeComplianceCases.performanceImpact,
       attachments: employeeComplianceCases.attachments,
       evidencePhotos: employeeComplianceCases.evidencePhotos,
       createdAt: employeeComplianceCases.createdAt,
@@ -389,6 +394,11 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   if (data.impactLevel) insertData.impactLevel = data.impactLevel;
   if (data.correctiveAction) insertData.correctiveAction = data.correctiveAction;
   if (data.preventiveAction) insertData.preventiveAction = data.preventiveAction;
+  // Disciplinary Action fields
+  if (data.disciplinaryAction) insertData.disciplinaryAction = data.disciplinaryAction;
+  if (data.actionDate) insertData.actionDate = data.actionDate instanceof Date ? data.actionDate.toISOString().split('T')[0] : data.actionDate;
+  if (data.actionNotes) insertData.actionNotes = data.actionNotes;
+  if (data.performanceImpact !== undefined) insertData.performanceImpact = data.performanceImpact.toString();
   if (data.attachments) insertData.attachments = data.attachments;
   if (data.evidencePhotos) insertData.evidencePhotos = data.evidencePhotos;
 
@@ -405,13 +415,27 @@ export const updateComplianceCase = async (
   id: string,
   data: UpdateComplianceCaseData
 ) => {
+  const updateData: any = { ...data };
+  
+  // Handle date conversions
+  if (data.dueDate) {
+    updateData.dueDate = data.dueDate instanceof Date ? data.dueDate.toISOString().split('T')[0] : data.dueDate;
+  }
+  if (data.resolvedDate) {
+    updateData.resolvedDate = data.resolvedDate instanceof Date ? data.resolvedDate.toISOString().split('T')[0] : data.resolvedDate;
+  }
+  if (data.actionDate) {
+    updateData.actionDate = data.actionDate instanceof Date ? data.actionDate.toISOString().split('T')[0] : data.actionDate;
+  }
+  
+  // Handle performance impact conversion
+  if (data.performanceImpact !== undefined) {
+    updateData.performanceImpact = data.performanceImpact.toString();
+  }
+  
   const result = await db
     .update(employeeComplianceCases)
-    .set({
-      ...data,
-      dueDate: data.dueDate instanceof Date ? data.dueDate.toISOString().split('T')[0] : data.dueDate,
-      resolvedDate: data.resolvedDate instanceof Date ? data.resolvedDate.toISOString().split('T')[0] : data.resolvedDate,
-    })
+    .set(updateData)
     .where(
       and(
         eq(employeeComplianceCases.id, id),
@@ -473,7 +497,7 @@ export const updateCaseStatus = async (
   return result[0] || null;
 };
 
-// Get Violation Watchlist
+// Get Violation Watchlist - Now uses Compliance Cases instead of Violation History
 export const getViolationWatchlist = async (
   offset: number,
   limit: number,
@@ -495,39 +519,50 @@ export const getViolationWatchlist = async (
     sortOrder = "desc",
   } = filters;
 
-  // Build join conditions
-  const violationJoinConditions = [
-    eq(employeeViolationHistory.employeeId, employees.id),
-    eq(employeeViolationHistory.isDeleted, false),
+  // Build join conditions for compliance cases
+  // When organizationId is provided, include cases with matching orgId OR null (T3 internal)
+  // When organizationId is NOT provided, include ALL cases (no org filter)
+  const caseJoinConditions = [
+    eq(employeeComplianceCases.employeeId, employees.id),
+    eq(employeeComplianceCases.isDeleted, false),
   ];
+  
+  // Only filter by organizationId if explicitly provided
+  // If not provided, show all cases regardless of organizationId
   if (organizationId) {
-    violationJoinConditions.push(eq(employeeViolationHistory.organizationId, organizationId));
+    // Include cases with matching organizationId OR null organizationId (T3 internal cases)
+    caseJoinConditions.push(
+      or(
+        eq(employeeComplianceCases.organizationId, organizationId),
+        isNull(employeeComplianceCases.organizationId)
+      )!
+    );
   }
+  // If organizationId is not provided, don't add any org filter - show all cases
 
-  // Get employees with violation counts
+  // Get employees with compliance case counts (these are the violations)
   const watchlistQuery = db
     .select({
       employeeId: employees.id,
       employeeName: users.fullName,
       employeeEmail: users.email,
       department: departments.name,
-      violationCount: count(employeeViolationHistory.id),
+      violationCount: count(employeeComplianceCases.id),
       status: employees.status,
-      lastViolationDate: sql<Date>`MAX(${employeeViolationHistory.violationDate})`,
+      lastViolationDate: sql<Date>`MAX(${employeeComplianceCases.openedOn})`,
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(
-      employeeViolationHistory,
-      and(...violationJoinConditions)
+      employeeComplianceCases,
+      and(...caseJoinConditions)
     )
     .where(eq(employees.isDeleted, false))
     .groupBy(employees.id, users.id, departments.name)
-    .having(sql`COUNT(${employeeViolationHistory.id}) >= ${minViolations}`);
+    .having(sql`COUNT(${employeeComplianceCases.id}) >= ${minViolations}`);
 
   // Get total count using a separate count-only query
-  // We need to replicate the same logic but only count
   const countBaseQuery = db
     .select({
       employeeId: employees.id,
@@ -536,12 +571,12 @@ export const getViolationWatchlist = async (
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(
-      employeeViolationHistory,
-      and(...violationJoinConditions)
+      employeeComplianceCases,
+      and(...caseJoinConditions)
     )
     .where(eq(employees.isDeleted, false))
     .groupBy(employees.id, users.id, departments.name)
-    .having(sql`COUNT(${employeeViolationHistory.id}) >= ${minViolations}`);
+    .having(sql`COUNT(${employeeComplianceCases.id}) >= ${minViolations}`);
 
   // Count the distinct employees from the grouped results
   const countResults = await countBaseQuery;
@@ -553,7 +588,7 @@ export const getViolationWatchlist = async (
       ? users.fullName
       : sortBy === "department"
       ? departments.name
-      : count(employeeViolationHistory.id);
+      : count(employeeComplianceCases.id);
 
   const orderBy = sortOrder === "asc" ? asc(orderColumn) : desc(orderColumn);
 
@@ -659,4 +694,46 @@ export const getViolationCounts = async (filters: {
     department: r.department,
     jobId: r.jobId,
   })) as ViolationCounts[];
+};
+
+// Create Employee Violation History
+export const createEmployeeViolation = async (data: {
+  organizationId: string;
+  employeeId: number;
+  complianceCaseId?: string;
+  violationType: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
+  violationDate: string; // YYYY-MM-DD format
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  disciplinaryAction?: string;
+  actionDate?: string; // YYYY-MM-DD format
+  actionNotes?: string;
+  performanceImpact?: number; // -5.0 to -10.0
+  isResolved?: boolean;
+  resolutionDate?: string; // YYYY-MM-DD format
+  resolutionNotes?: string;
+  createdBy?: string;
+}) => {
+  const [violation] = await db
+    .insert(employeeViolationHistory)
+    .values({
+      organizationId: data.organizationId,
+      employeeId: data.employeeId,
+      complianceCaseId: data.complianceCaseId || null,
+      violationType: data.violationType,
+      violationDate: data.violationDate,
+      description: data.description,
+      severity: data.severity,
+      disciplinaryAction: data.disciplinaryAction || null,
+      actionDate: data.actionDate || null,
+      actionNotes: data.actionNotes || null,
+      performanceImpact: data.performanceImpact ? data.performanceImpact.toString() : null,
+      isResolved: data.isResolved || false,
+      resolutionDate: data.resolutionDate || null,
+      resolutionNotes: data.resolutionNotes || null,
+      createdBy: data.createdBy || null,
+    })
+    .returning();
+
+  return violation;
 };

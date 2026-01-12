@@ -70,6 +70,15 @@ export const employeeComplianceCases = org.table(
     correctiveAction: text("corrective_action"),
     preventiveAction: text("preventive_action"),
 
+    // Disciplinary Action (added to track actions taken)
+    disciplinaryAction: varchar("disciplinary_action", { length: 100 }), // "verbal_warning", "written_warning", "suspension", "termination"
+    actionDate: date("action_date"), // Date when disciplinary action was taken
+    actionNotes: text("action_notes"), // Notes about the disciplinary action
+    performanceImpact: numeric("performance_impact", {
+      precision: 5,
+      scale: 2,
+    }), // -5.0 to -10.0 points deducted from employee performance score
+
     // Attachments & Evidence
     attachments: jsonb("attachments"), // Array of file references
     evidencePhotos: jsonb("evidence_photos"), // Array of photo URLs

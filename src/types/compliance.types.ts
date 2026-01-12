@@ -20,6 +20,11 @@ export interface ComplianceCase {
   impactLevel?: "low_risk" | "medium_risk" | "high_risk";
   correctiveAction?: string;
   preventiveAction?: string;
+  // Disciplinary Action fields
+  disciplinaryAction?: string; // "verbal_warning", "written_warning", "suspension", "termination"
+  actionDate?: Date;
+  actionNotes?: string;
+  performanceImpact?: number; // -5.0 to -10.0 points
   attachments?: string[];
   evidencePhotos?: string[];
   isDeleted: boolean;
@@ -48,6 +53,11 @@ export interface CreateComplianceCaseData {
   impactLevel?: "low_risk" | "medium_risk" | "high_risk";
   correctiveAction?: string;
   preventiveAction?: string;
+  // Disciplinary Action fields
+  disciplinaryAction?: string; // "verbal_warning", "written_warning", "suspension", "termination"
+  actionDate?: Date;
+  actionNotes?: string;
+  performanceImpact?: number; // -5.0 to -10.0 points
   attachments?: string[];
   evidencePhotos?: string[];
 }
@@ -69,6 +79,11 @@ export interface UpdateComplianceCaseData {
   impactLevel?: "low_risk" | "medium_risk" | "high_risk";
   correctiveAction?: string;
   preventiveAction?: string;
+  // Disciplinary Action fields
+  disciplinaryAction?: string;
+  actionDate?: Date;
+  actionNotes?: string;
+  performanceImpact?: number;
   attachments?: string[];
   evidencePhotos?: string[];
 }

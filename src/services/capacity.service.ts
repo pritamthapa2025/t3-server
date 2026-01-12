@@ -199,6 +199,7 @@ export const getUtilizationChartData = async (
     whereConditions.push(eq(departmentCapacityMetrics.departmentId, filters.departmentId));
   }
 
+  // Query metrics directly - no need to join with departments for chart data
   const chartData = await db
     .select({
       period: departmentCapacityMetrics.metricDate,
@@ -209,7 +210,6 @@ export const getUtilizationChartData = async (
       actualHours: sum(departmentCapacityMetrics.totalActualHours),
     })
     .from(departmentCapacityMetrics)
-    .innerJoin(departments, eq(departmentCapacityMetrics.departmentId, departments.id))
     .where(and(...whereConditions))
     .groupBy(departmentCapacityMetrics.metricDate)
     .orderBy(departmentCapacityMetrics.metricDate);
