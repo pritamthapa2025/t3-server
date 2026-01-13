@@ -176,14 +176,11 @@ export const getEmployeeById = async (id: number) => {
       department: departments,
       // Position data
       position: positions,
-      // Organization data
-      organization: organizations,
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
-    // Remove organization join - employees are T3 internal staff
     .where(eq(employees.id, id))
     .limit(1);
 
@@ -476,9 +473,6 @@ export const getEmployeeById = async (id: number) => {
     // Manager information
     manager: managerData,
 
-    // Remove organization info - employees work for T3, not client organizations
-    // Client assignments will be tracked separately
-
     // Performance overview
     performanceOverview: {
       onTimeRate: onTimeRate,
@@ -533,7 +527,7 @@ export const generateEmployeeId = async (): Promise<string> => {
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    
+
     // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
     // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
     const numDigits = String(nextNumber).length;
@@ -541,7 +535,10 @@ export const generateEmployeeId = async (): Promise<string> => {
     return `T3-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
-    console.warn("Employee ID sequence not found, using fallback method:", error);
+    console.warn(
+      "Employee ID sequence not found, using fallback method:",
+      error
+    );
 
     const totalResult = await db
       .select({ count: count() })
@@ -549,7 +546,7 @@ export const generateEmployeeId = async (): Promise<string> => {
       .where(eq(employees.isDeleted, false));
     const total = totalResult[0]?.count ?? 0;
     const nextNumber = total + 1;
-    
+
     // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
     // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
     const numDigits = String(nextNumber).length;
