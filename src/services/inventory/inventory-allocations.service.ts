@@ -14,7 +14,6 @@ import { createTransaction } from "./inventory-transactions.service.js";
 // ============================
 
 export const getAllocations = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: {
@@ -24,23 +23,22 @@ export const getAllocations = async (
     status?: string;
   }
 ) => {
-  let whereCondition = and(
-    eq(inventoryAllocations.organizationId, organizationId),
-    eq(inventoryAllocations.isDeleted, false)
-  );
+  const conditions = [eq(inventoryAllocations.isDeleted, false)];
 
   if (filters?.itemId) {
-    whereCondition = and(whereCondition, eq(inventoryAllocations.itemId, filters.itemId));
+    conditions.push(eq(inventoryAllocations.itemId, filters.itemId));
   }
   if (filters?.jobId) {
-    whereCondition = and(whereCondition, eq(inventoryAllocations.jobId, filters.jobId));
+    conditions.push(eq(inventoryAllocations.jobId, filters.jobId));
   }
   if (filters?.bidId) {
-    whereCondition = and(whereCondition, eq(inventoryAllocations.bidId, filters.bidId));
+    conditions.push(eq(inventoryAllocations.bidId, filters.bidId));
   }
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(inventoryAllocations.status, filters.status as any));
+    conditions.push(eq(inventoryAllocations.status, filters.status as any));
   }
+
+  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
 
   const result = await db
     .select({
@@ -86,7 +84,7 @@ export const getAllocations = async (
   };
 };
 
-export const getAllocationById = async (id: string, organizationId: string) => {
+export const getAllocationById = async (id: string) => {
   const result = await db
     .select({
       allocation: inventoryAllocations,
@@ -100,7 +98,7 @@ export const getAllocationById = async (id: string, organizationId: string) => {
     .leftJoin(jobs, eq(inventoryAllocations.jobId, jobs.id))
     .leftJoin(bidsTable, eq(inventoryAllocations.bidId, bidsTable.id))
     .leftJoin(users, eq(inventoryAllocations.allocatedBy, users.id))
-    .where(and(eq(inventoryAllocations.id, id), eq(inventoryAllocations.organizationId, organizationId)))
+    .where(eq(inventoryAllocations.id, id))
     .limit(1);
 
   if (result.length === 0) return null;
@@ -114,7 +112,7 @@ export const getAllocationById = async (id: string, organizationId: string) => {
   };
 };
 
-export const createAllocation = async (data: any, organizationId: string, userId: string) => {
+export const createAllocation = async (data: any, userId: string) => {
   // 🔐 WRAP IN TRANSACTION to prevent over-allocation race condition
   return await db.transaction(async (tx) => {
     // 🔒 LOCK the item row with FOR UPDATE
@@ -138,7 +136,6 @@ export const createAllocation = async (data: any, organizationId: string, userId
     const [newAllocation] = await tx
       .insert(inventoryAllocations)
       .values({
-        organizationId,
         itemId: data.itemId,
         jobId: data.jobId,
         bidId: data.bidId,
@@ -171,8 +168,7 @@ export const createAllocation = async (data: any, organizationId: string, userId
 
 export const updateAllocation = async (
   id: string,
-  data: any,
-  organizationId: string
+  data: any
 ) => {
   const updateData: any = {};
 
@@ -186,7 +182,7 @@ export const updateAllocation = async (
   const [updatedAllocation] = await db
     .update(inventoryAllocations)
     .set(updateData)
-    .where(and(eq(inventoryAllocations.id, id), eq(inventoryAllocations.organizationId, organizationId)))
+    .where(eq(inventoryAllocations.id, id))
     .returning();
 
   if (!updatedAllocation) throw new Error("Allocation not found");
@@ -196,12 +192,11 @@ export const updateAllocation = async (
 
 export const issueAllocation = async (
   id: string,
-  organizationId: string,
   userId: string
 ) => {
   // 🔐 WRAP IN TRANSACTION
   return await db.transaction(async (tx) => {
-    const allocation = await getAllocationById(id, organizationId);
+    const allocation = await getAllocationById(id);
     if (!allocation) throw new Error("Allocation not found");
 
     if (allocation.status !== "allocated") {
@@ -219,7 +214,6 @@ export const issueAllocation = async (
         referenceNumber: id,
         notes: `Issued for ${allocation.jobId ? "job" : "bid"}`,
       },
-      organizationId,
       userId
     );
 
@@ -240,12 +234,11 @@ export const issueAllocation = async (
 export const returnAllocation = async (
   id: string,
   data: { quantityReturned: string; notes?: string },
-  organizationId: string,
   userId: string
 ) => {
   // 🔐 WRAP IN TRANSACTION
   return await db.transaction(async (tx) => {
-    const allocation = await getAllocationById(id, organizationId);
+    const allocation = await getAllocationById(id);
     if (!allocation) throw new Error("Allocation not found");
 
     if (allocation.status !== "issued" && allocation.status !== "partially_used") {
@@ -271,7 +264,6 @@ export const returnAllocation = async (
         referenceNumber: id,
         notes: data.notes || `Returned from ${allocation.jobId ? "job" : "bid"}`,
       },
-      organizationId,
       userId
     );
 
@@ -308,12 +300,11 @@ export const returnAllocation = async (
 };
 
 export const cancelAllocation = async (
-  id: string,
-  organizationId: string
+  id: string
 ) => {
   // 🔐 WRAP IN TRANSACTION
   return await db.transaction(async (tx) => {
-    const allocation = await getAllocationById(id, organizationId);
+    const allocation = await getAllocationById(id);
     if (!allocation) throw new Error("Allocation not found");
 
     // 🔒 LOCK the item row
@@ -351,11 +342,11 @@ export const cancelAllocation = async (
   });
 };
 
-export const getAllocationsByJob = async (jobId: string, organizationId: string) => {
-  return getAllocations(organizationId, 0, 1000, { jobId });
+export const getAllocationsByJob = async (jobId: string) => {
+  return getAllocations(0, 1000, { jobId });
 };
 
-export const getAllocationsByBid = async (bidId: string, organizationId: string) => {
-  return getAllocations(organizationId, 0, 1000, { bidId });
+export const getAllocationsByBid = async (bidId: string) => {
+  return getAllocations(0, 1000, { bidId });
 };
 

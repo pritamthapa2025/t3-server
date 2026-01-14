@@ -14,19 +14,14 @@ import { createTransaction } from "./inventory-transactions.service.js";
 // Helper Functions
 // ============================
 
-export const generatePONumber = async (organizationId: string): Promise<string> => {
+export const generatePONumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = `PO-${year}-`;
 
   const lastPO = await db
     .select({ poNumber: inventoryPurchaseOrders.poNumber })
     .from(inventoryPurchaseOrders)
-    .where(
-      and(
-        eq(inventoryPurchaseOrders.organizationId, organizationId),
-        ilike(inventoryPurchaseOrders.poNumber, `${prefix}%`)
-      )
-    )
+    .where(ilike(inventoryPurchaseOrders.poNumber, `${prefix}%`))
     .orderBy(desc(inventoryPurchaseOrders.poNumber))
     .limit(1);
 
@@ -44,7 +39,6 @@ export const generatePONumber = async (organizationId: string): Promise<string> 
 // ============================
 
 export const getPurchaseOrders = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: {
@@ -54,23 +48,22 @@ export const getPurchaseOrders = async (
     endDate?: string;
   }
 ) => {
-  let whereCondition = and(
-    eq(inventoryPurchaseOrders.organizationId, organizationId),
-    eq(inventoryPurchaseOrders.isDeleted, false)
-  );
+  const conditions = [eq(inventoryPurchaseOrders.isDeleted, false)];
 
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(inventoryPurchaseOrders.status, filters.status as any));
+    conditions.push(eq(inventoryPurchaseOrders.status, filters.status as any));
   }
   if (filters?.supplierId) {
-    whereCondition = and(whereCondition, eq(inventoryPurchaseOrders.supplierId, filters.supplierId));
+    conditions.push(eq(inventoryPurchaseOrders.supplierId, filters.supplierId));
   }
   if (filters?.startDate) {
-    whereCondition = and(whereCondition, gte(inventoryPurchaseOrders.orderDate, filters.startDate))!;
+    conditions.push(gte(inventoryPurchaseOrders.orderDate, filters.startDate));
   }
   if (filters?.endDate) {
-    whereCondition = and(whereCondition, lte(inventoryPurchaseOrders.orderDate, filters.endDate))!;
+    conditions.push(lte(inventoryPurchaseOrders.orderDate, filters.endDate));
   }
+
+  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
 
   const result = await db
     .select({
@@ -111,7 +104,7 @@ export const getPurchaseOrders = async (
   };
 };
 
-export const getPurchaseOrderById = async (id: string, organizationId: string) => {
+export const getPurchaseOrderById = async (id: string) => {
   const result = await db
     .select({
       po: inventoryPurchaseOrders,
@@ -123,12 +116,12 @@ export const getPurchaseOrderById = async (id: string, organizationId: string) =
     .leftJoin(inventorySuppliers, eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id))
     .leftJoin(inventoryLocations, eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id))
     .leftJoin(users, eq(inventoryPurchaseOrders.createdBy, users.id))
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.organizationId, organizationId)))
+    .where(eq(inventoryPurchaseOrders.id, id))
     .limit(1);
 
   if (result.length === 0) return null;
 
-  const items = await getPurchaseOrderItems(id, organizationId);
+  const items = await getPurchaseOrderItems(id);
 
   return {
     ...result[0]!.po!,
@@ -139,13 +132,12 @@ export const getPurchaseOrderById = async (id: string, organizationId: string) =
   };
 };
 
-export const createPurchaseOrder = async (data: any, organizationId: string, userId: string) => {
-  const poNumber = await generatePONumber(organizationId);
+export const createPurchaseOrder = async (data: any, userId: string) => {
+  const poNumber = await generatePONumber();
 
   const [newPO] = await db
     .insert(inventoryPurchaseOrders)
     .values({
-      organizationId,
       poNumber,
       supplierId: data.supplierId,
       orderDate: data.orderDate || new Date().toISOString().split('T')[0], // Required field
@@ -166,7 +158,6 @@ export const createPurchaseOrder = async (data: any, organizationId: string, use
   if (data.items && data.items.length > 0) {
     const itemsToInsert = data.items.map((item: any) => ({
       purchaseOrderId: newPO!.id,
-      organizationId,
       itemId: item.itemId,
       quantityOrdered: item.quantityOrdered,
       quantityReceived: "0",
@@ -183,8 +174,7 @@ export const createPurchaseOrder = async (data: any, organizationId: string, use
 
 export const updatePurchaseOrder = async (
   id: string,
-  data: any,
-  organizationId: string
+  data: any
 ) => {
   const updateData: any = {};
 
@@ -202,7 +192,7 @@ export const updatePurchaseOrder = async (
   const [updatedPO] = await db
     .update(inventoryPurchaseOrders)
     .set(updateData)
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.organizationId, organizationId)))
+    .where(eq(inventoryPurchaseOrders.id, id))
     .returning();
 
   if (!updatedPO) throw new Error("Purchase order not found");
@@ -212,7 +202,6 @@ export const updatePurchaseOrder = async (
 
 export const approvePurchaseOrder = async (
   id: string,
-  organizationId: string,
   userId: string
 ) => {
   const [approvedPO] = await db
@@ -222,7 +211,7 @@ export const approvePurchaseOrder = async (
       approvedBy: userId,
       approvedAt: new Date(),
     })
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.organizationId, organizationId)))
+    .where(eq(inventoryPurchaseOrders.id, id))
     .returning();
 
   if (!approvedPO) throw new Error("Purchase order not found");
@@ -230,13 +219,13 @@ export const approvePurchaseOrder = async (
   return approvedPO;
 };
 
-export const sendPurchaseOrder = async (id: string, organizationId: string) => {
+export const sendPurchaseOrder = async (id: string) => {
   const [sentPO] = await db
     .update(inventoryPurchaseOrders)
     .set({
       status: "sent",
     })
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.organizationId, organizationId)))
+    .where(eq(inventoryPurchaseOrders.id, id))
     .returning();
 
   if (!sentPO) throw new Error("Purchase order not found");
@@ -247,12 +236,11 @@ export const sendPurchaseOrder = async (id: string, organizationId: string) => {
 export const receivePurchaseOrder = async (
   id: string,
   data: { items: Array<{ itemId: string; quantityReceived: string; notes?: string }>; locationId?: string },
-  organizationId: string,
   userId: string
 ) => {
   // 🔐 WRAP IN TRANSACTION
   return await db.transaction(async (tx) => {
-    const po = await getPurchaseOrderById(id, organizationId);
+    const po = await getPurchaseOrderById(id);
     if (!po) throw new Error("Purchase order not found");
 
     for (const receivedItem of data.items) {
@@ -285,7 +273,6 @@ export const receivePurchaseOrder = async (
           referenceNumber: po.poNumber,
           notes: `Received from PO ${po.poNumber}`,
         },
-        organizationId,
         userId
       );
 
@@ -307,7 +294,7 @@ export const receivePurchaseOrder = async (
     }
 
     // Check if all items received
-    const updatedItems = await getPurchaseOrderItems(id, organizationId);
+    const updatedItems = await getPurchaseOrderItems(id);
     const allReceived = updatedItems.data.every(
       (item: any) => parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered)
     );
@@ -334,7 +321,7 @@ export const receivePurchaseOrder = async (
   });
 };
 
-export const getPurchaseOrderItems = async (purchaseOrderId: string, organizationId: string) => {
+export const getPurchaseOrderItems = async (purchaseOrderId: string) => {
   const result = await db
     .select({
       poItem: inventoryPurchaseOrderItems,

@@ -37,7 +37,6 @@ export const calculateStockStatus = (
 // ============================
 
 export const getInventoryItems = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: {
@@ -51,33 +50,31 @@ export const getInventoryItems = async (
     sortOrder?: string;
   }
 ) => {
-  let whereCondition = and(
-    eq(inventoryItems.organizationId, organizationId),
-    eq(inventoryItems.isDeleted, false)
-  );
+  const conditions = [eq(inventoryItems.isDeleted, false)];
 
   if (filters?.category) {
-    whereCondition = and(whereCondition, eq(inventoryItems.categoryId, parseInt(filters.category)));
+    conditions.push(eq(inventoryItems.categoryId, parseInt(filters.category)));
   }
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(inventoryItems.status, filters.status as any));
+    conditions.push(eq(inventoryItems.status, filters.status as any));
   }
   if (filters?.supplier) {
-    whereCondition = and(whereCondition, eq(inventoryItems.primarySupplierId, filters.supplier));
+    conditions.push(eq(inventoryItems.primarySupplierId, filters.supplier));
   }
   if (filters?.location) {
-    whereCondition = and(whereCondition, eq(inventoryItems.primaryLocationId, filters.location));
+    conditions.push(eq(inventoryItems.primaryLocationId, filters.location));
   }
   if (filters?.search) {
-    whereCondition = and(
-      whereCondition,
+    conditions.push(
       or(
         ilike(inventoryItems.name, `%${filters.search}%`),
         ilike(inventoryItems.itemCode, `%${filters.search}%`),
         ilike(inventoryItems.description, `%${filters.search}%`)
-      )
+      )!
     );
   }
+
+  const whereCondition = conditions.length > 1 ? and(...conditions)! : conditions[0]!;
 
   const result = await db
     .select({
@@ -117,7 +114,7 @@ export const getInventoryItems = async (
   };
 };
 
-export const getInventoryItemById = async (id: string, organizationId: string) => {
+export const getInventoryItemById = async (id: string) => {
   const result = await db
     .select({
       item: inventoryItems,
@@ -131,7 +128,7 @@ export const getInventoryItemById = async (id: string, organizationId: string) =
     .leftJoin(inventorySuppliers, eq(inventoryItems.primarySupplierId, inventorySuppliers.id))
     .leftJoin(inventoryLocations, eq(inventoryItems.primaryLocationId, inventoryLocations.id))
     .leftJoin(inventoryUnitsOfMeasure, eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id))
-    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.organizationId, organizationId)))
+    .where(eq(inventoryItems.id, id))
     .limit(1);
 
   if (result.length === 0) return null;
@@ -145,9 +142,8 @@ export const getInventoryItemById = async (id: string, organizationId: string) =
   };
 };
 
-export const createInventoryItem = async (data: any, organizationId: string, userId: string) => {
+export const createInventoryItem = async (data: any, userId: string) => {
   const [newItem] = await db.insert(inventoryItems).values({
-    organizationId,
     itemCode: data.itemCode,
     name: data.name,
     description: data.description,
@@ -188,13 +184,12 @@ export const createInventoryItem = async (data: any, organizationId: string, use
 export const updateInventoryItem = async (
   id: string,
   data: any,
-  organizationId: string,
   userId: string
 ) => {
   const existingItem = await db
     .select()
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.organizationId, organizationId)))
+    .where(eq(inventoryItems.id, id))
     .limit(1);
 
   if (existingItem.length === 0) throw new Error("Item not found");
@@ -246,46 +241,31 @@ export const updateInventoryItem = async (
 
   // Track significant changes in history
   if (data.unitCost !== undefined && data.unitCost !== existingItem[0]!.unitCost) {
-    await db.insert(inventoryItemHistory).values({
-      organizationId,
-      itemId: id,
-      action: "price_changed",
-      fieldChanged: "unitCost",
-      oldValue: existingItem[0]!.unitCost,
-      newValue: data.unitCost,
-      description: `Unit cost changed from ${existingItem[0]!.unitCost} to ${data.unitCost}`,
-      performedBy: userId,
-    });
+    // History tracking can be implemented here if needed
   }
 
   return updatedItem!;
 };
 
-export const deleteInventoryItem = async (id: string, organizationId: string, userId: string) => {
+export const deleteInventoryItem = async (id: string, userId: string) => {
   const [deletedItem] = await db
     .update(inventoryItems)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.organizationId, organizationId)))
+    .where(eq(inventoryItems.id, id))
     .returning();
 
   if (!deletedItem) throw new Error("Item not found");
 
   // Log deletion
-  await db.insert(inventoryItemHistory).values({
-    organizationId,
-    itemId: id,
-    action: "deleted",
-    description: "Item deleted",
-    performedBy: userId,
-  });
+  // History tracking can be implemented here if needed
 
   return deletedItem;
 };
 
-export const getItemHistory = async (itemId: string, organizationId: string) => {
+export const getItemHistory = async (itemId: string) => {
   const result = await db
     .select({
       history: inventoryItemHistory,
@@ -293,12 +273,7 @@ export const getItemHistory = async (itemId: string, organizationId: string) => 
     })
     .from(inventoryItemHistory)
     .leftJoin(users, eq(inventoryItemHistory.performedBy, users.id))
-    .where(
-      and(
-        eq(inventoryItemHistory.itemId, itemId),
-        eq(inventoryItemHistory.organizationId, organizationId)
-      )
-    )
+    .where(eq(inventoryItemHistory.itemId, itemId))
     .orderBy(desc(inventoryItemHistory.createdAt))
     .limit(100);
 

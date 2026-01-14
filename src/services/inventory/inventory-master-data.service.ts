@@ -12,24 +12,20 @@ import {
 // ============================
 
 export const getSuppliers = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: { search?: string; isActive?: boolean }
 ) => {
-  let whereCondition = and(
-    eq(inventorySuppliers.organizationId, organizationId),
-    eq(inventorySuppliers.isDeleted, false)
-  );
+  let whereCondition = eq(inventorySuppliers.isDeleted, false);
 
   if (filters?.search) {
     whereCondition = and(
       whereCondition,
       ilike(inventorySuppliers.name, `%${filters.search}%`)
-    );
+    )!;
   }
   if (filters?.isActive !== undefined) {
-    whereCondition = and(whereCondition, eq(inventorySuppliers.isActive, filters.isActive));
+    whereCondition = and(whereCondition, eq(inventorySuppliers.isActive, filters.isActive))!;
   }
 
   const result = await db
@@ -58,19 +54,18 @@ export const getSuppliers = async (
   };
 };
 
-export const getSupplierById = async (id: string, organizationId: string) => {
+export const getSupplierById = async (id: string) => {
   const [supplier] = await db
     .select()
     .from(inventorySuppliers)
-    .where(and(eq(inventorySuppliers.id, id), eq(inventorySuppliers.organizationId, organizationId)))
+    .where(eq(inventorySuppliers.id, id))
     .limit(1);
 
   return supplier || null;
 };
 
-export const createSupplier = async (data: any, organizationId: string) => {
+export const createSupplier = async (data: any) => {
   const [newSupplier] = await db.insert(inventorySuppliers).values({
-    organizationId,
     name: data.name,
     contactName: data.contactName,
     email: data.email,
@@ -91,11 +86,11 @@ export const createSupplier = async (data: any, organizationId: string) => {
   return newSupplier!;
 };
 
-export const updateSupplier = async (id: string, data: any, organizationId: string) => {
+export const updateSupplier = async (id: string, data: any) => {
   const [updatedSupplier] = await db
     .update(inventorySuppliers)
     .set(data)
-    .where(and(eq(inventorySuppliers.id, id), eq(inventorySuppliers.organizationId, organizationId)))
+    .where(eq(inventorySuppliers.id, id))
     .returning();
 
   if (!updatedSupplier) throw new Error("Supplier not found");
@@ -103,11 +98,11 @@ export const updateSupplier = async (id: string, data: any, organizationId: stri
   return updatedSupplier;
 };
 
-export const deleteSupplier = async (id: string, organizationId: string) => {
+export const deleteSupplier = async (id: string) => {
   const [deletedSupplier] = await db
     .update(inventorySuppliers)
     .set({ isDeleted: true })
-    .where(and(eq(inventorySuppliers.id, id), eq(inventorySuppliers.organizationId, organizationId)))
+    .where(eq(inventorySuppliers.id, id))
     .returning();
 
   if (!deletedSupplier) throw new Error("Supplier not found");
@@ -120,22 +115,20 @@ export const deleteSupplier = async (id: string, organizationId: string) => {
 // ============================
 
 export const getLocations = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: { search?: string; locationType?: string }
 ) => {
-  let whereCondition = and(
-    eq(inventoryLocations.organizationId, organizationId),
-    eq(inventoryLocations.isDeleted, false)
-  );
+  const conditions = [eq(inventoryLocations.isDeleted, false)];
 
   if (filters?.search) {
-    whereCondition = and(whereCondition, ilike(inventoryLocations.name, `%${filters.search}%`));
+    conditions.push(ilike(inventoryLocations.name, `%${filters.search}%`));
   }
   if (filters?.locationType) {
-    whereCondition = and(whereCondition, eq(inventoryLocations.locationType, filters.locationType as any));
+    conditions.push(eq(inventoryLocations.locationType, filters.locationType as any));
   }
+
+  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
 
   const result = await db
     .select()
@@ -163,19 +156,18 @@ export const getLocations = async (
   };
 };
 
-export const getLocationById = async (id: string, organizationId: string) => {
+export const getLocationById = async (id: string) => {
   const [location] = await db
     .select()
     .from(inventoryLocations)
-    .where(and(eq(inventoryLocations.id, id), eq(inventoryLocations.organizationId, organizationId)))
+    .where(eq(inventoryLocations.id, id))
     .limit(1);
 
   return location || null;
 };
 
-export const createLocation = async (data: any, organizationId: string) => {
+export const createLocation = async (data: any) => {
   const [newLocation] = await db.insert(inventoryLocations).values({
-    organizationId,
     name: data.name,
     locationType: data.locationType,
     streetAddress: data.address,
@@ -190,11 +182,11 @@ export const createLocation = async (data: any, organizationId: string) => {
   return newLocation;
 };
 
-export const updateLocation = async (id: string, data: any, organizationId: string) => {
+export const updateLocation = async (id: string, data: any) => {
   const [updatedLocation] = await db
     .update(inventoryLocations)
     .set(data)
-    .where(and(eq(inventoryLocations.id, id), eq(inventoryLocations.organizationId, organizationId)))
+    .where(eq(inventoryLocations.id, id))
     .returning();
 
   if (!updatedLocation) throw new Error("Location not found");
@@ -202,11 +194,11 @@ export const updateLocation = async (id: string, data: any, organizationId: stri
   return updatedLocation;
 };
 
-export const deleteLocation = async (id: string, organizationId: string) => {
+export const deleteLocation = async (id: string) => {
   const [deletedLocation] = await db
     .update(inventoryLocations)
     .set({ isDeleted: true })
-    .where(and(eq(inventoryLocations.id, id), eq(inventoryLocations.organizationId, organizationId)))
+    .where(eq(inventoryLocations.id, id))
     .returning();
 
   if (!deletedLocation) throw new Error("Location not found");

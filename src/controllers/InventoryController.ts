@@ -65,9 +65,6 @@ export const getInventoryItemsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters = {
@@ -82,7 +79,6 @@ export const getInventoryItemsHandler = async (req: Request, res: Response) => {
     };
 
     const result = await inventoryService.getInventoryItems(
-      organizationId,
       offset,
       limit,
       filters
@@ -115,13 +111,7 @@ export const getInventoryItemByIdHandler = async (
     const validId = validateParam(id, "Item ID", res);
     if (!validId) return;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const item = await inventoryService.getInventoryItemById(
-      validId,
-      organizationId
-    );
+    const item = await inventoryService.getInventoryItemById(validId);
 
     if (!item) {
       return res.status(404).json({
@@ -151,15 +141,11 @@ export const createInventoryItemHandler = async (
   res: Response
 ) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const newItem = await inventoryService.createInventoryItem(
       req.body,
-      organizationId,
       userId
     );
 
@@ -188,16 +174,12 @@ export const updateInventoryItemHandler = async (
     const validId = validateParam(id, "Item ID", res);
     if (!validId) return;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const updatedItem = await inventoryService.updateInventoryItem(
       validId,
       req.body,
-      organizationId,
       userId
     );
 
@@ -224,15 +206,11 @@ export const deleteInventoryItemHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const deletedItem = await inventoryService.deleteInventoryItem(
       id!,
-      organizationId,
       userId
     );
 
@@ -256,10 +234,7 @@ export const getItemHistoryHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const history = await inventoryService.getItemHistory(id!, organizationId);
+    const history = await inventoryService.getItemHistory(id!);
 
     logger.info(`Item history for item ${id} fetched successfully`);
     res.status(200).json({
@@ -283,10 +258,7 @@ export const getItemHistoryHandler = async (req: Request, res: Response) => {
 
 export const getDashboardHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const summary = await inventoryService.getDashboardSummary(organizationId);
+    const summary = await inventoryService.getDashboardSummary();
 
     logger.info("Inventory dashboard summary fetched successfully");
     res.status(200).json({
@@ -313,10 +285,7 @@ export const getStatsByCategoryHandler = async (
   res: Response
 ) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const stats = await inventoryService.getStatsByCategory(organizationId);
+    const stats = await inventoryService.getStatsByCategory();
 
     logger.info("Inventory statistics by category fetched successfully");
     res.status(200).json({
@@ -343,10 +312,7 @@ export const getStatsByLocationHandler = async (
   res: Response
 ) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const stats = await inventoryService.getStatsByLocation(organizationId);
+    const stats = await inventoryService.getStatsByLocation();
 
     logger.info("Inventory statistics by location fetched successfully");
     res.status(200).json({
@@ -370,10 +336,7 @@ export const getStatsByLocationHandler = async (
 
 export const getStatsByStatusHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const stats = await inventoryService.getStatsByStatus(organizationId);
+    const stats = await inventoryService.getStatsByStatus();
 
     logger.info("Inventory statistics by status fetched successfully");
     res.status(200).json({
@@ -404,9 +367,6 @@ export const getTransactionsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters = {
@@ -419,7 +379,6 @@ export const getTransactionsHandler = async (req: Request, res: Response) => {
     };
 
     const result = await inventoryService.getTransactions(
-      organizationId,
       offset,
       limit,
       filters
@@ -445,15 +404,11 @@ export const getTransactionsHandler = async (req: Request, res: Response) => {
 
 export const createTransactionHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const newTransaction = await inventoryService.createTransaction(
       req.body,
-      organizationId,
       userId
     );
 
@@ -482,13 +437,7 @@ export const getItemTransactionsHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const transactions = await inventoryService.getItemTransactions(
-      id!,
-      organizationId
-    );
+    const transactions = await inventoryService.getItemTransactions(id!);
 
     logger.info(`Transactions for item ${id} fetched successfully`);
     res.status(200).json({
@@ -515,9 +464,6 @@ export const getAllocationsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters = {
@@ -528,7 +474,6 @@ export const getAllocationsHandler = async (req: Request, res: Response) => {
     };
 
     const result = await inventoryService.getAllocations(
-      organizationId,
       offset,
       limit,
       filters
@@ -556,13 +501,7 @@ export const getAllocationByIdHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const allocation = await inventoryService.getAllocationById(
-      id!,
-      organizationId
-    );
+    const allocation = await inventoryService.getAllocationById(id!);
 
     if (!allocation) {
       return res.status(404).json({
@@ -589,15 +528,11 @@ export const getAllocationByIdHandler = async (req: Request, res: Response) => {
 
 export const createAllocationHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const newAllocation = await inventoryService.createAllocation(
       req.body,
-      organizationId,
       userId
     );
 
@@ -623,13 +558,9 @@ export const updateAllocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const updatedAllocation = await inventoryService.updateAllocation(
       id!,
-      req.body,
-      organizationId
+      req.body
     );
 
     logger.info(`Inventory allocation ${id} updated successfully`);
@@ -652,15 +583,11 @@ export const issueAllocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const updatedAllocation = await inventoryService.issueAllocation(
       id!,
-      organizationId,
       userId
     );
 
@@ -684,16 +611,12 @@ export const returnAllocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const updatedAllocation = await inventoryService.returnAllocation(
       id!,
       req.body,
-      organizationId,
       userId
     );
 
@@ -717,13 +640,7 @@ export const cancelAllocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const cancelledAllocation = await inventoryService.cancelAllocation(
-      id!,
-      organizationId
-    );
+    const cancelledAllocation = await inventoryService.cancelAllocation(id!);
 
     logger.info(`Inventory allocation ${id} cancelled successfully`);
     res.status(200).json({
@@ -748,13 +665,7 @@ export const getAllocationsByJobHandler = async (
   try {
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const allocations = await inventoryService.getAllocationsByJob(
-      jobId!,
-      organizationId
-    );
+    const allocations = await inventoryService.getAllocationsByJob(jobId!);
 
     logger.info(`Inventory allocations for job ${jobId} fetched successfully`);
     res.status(200).json({
@@ -784,13 +695,7 @@ export const getAllocationsByBidHandler = async (
   try {
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const allocations = await inventoryService.getAllocationsByBid(
-      bidId!,
-      organizationId
-    );
+    const allocations = await inventoryService.getAllocationsByBid(bidId!);
 
     logger.info(`Inventory allocations for bid ${bidId} fetched successfully`);
     res.status(200).json({
@@ -822,9 +727,6 @@ export const getPurchaseOrdersHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters = {
@@ -835,7 +737,6 @@ export const getPurchaseOrdersHandler = async (req: Request, res: Response) => {
     };
 
     const result = await inventoryService.getPurchaseOrders(
-      organizationId,
       offset,
       limit,
       filters
@@ -866,10 +767,7 @@ export const getPurchaseOrderByIdHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const po = await inventoryService.getPurchaseOrderById(id!, organizationId);
+    const po = await inventoryService.getPurchaseOrderById(id!);
 
     if (!po) {
       return res.status(404).json({
@@ -899,15 +797,11 @@ export const createPurchaseOrderHandler = async (
   res: Response
 ) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const newPO = await inventoryService.createPurchaseOrder(
       req.body,
-      organizationId,
       userId
     );
 
@@ -934,13 +828,9 @@ export const updatePurchaseOrderHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const updatedPO = await inventoryService.updatePurchaseOrder(
       id!,
-      req.body,
-      organizationId
+      req.body
     );
 
     logger.info(`Purchase order ${id} updated successfully`);
@@ -966,15 +856,11 @@ export const approvePurchaseOrderHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const approvedPO = await inventoryService.approvePurchaseOrder(
       id!,
-      organizationId,
       userId
     );
 
@@ -998,13 +884,7 @@ export const sendPurchaseOrderHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const sentPO = await inventoryService.sendPurchaseOrder(
-      id!,
-      organizationId
-    );
+    const sentPO = await inventoryService.sendPurchaseOrder(id!);
 
     logger.info(`Purchase order ${id} sent successfully`);
     res.status(200).json({
@@ -1029,16 +909,12 @@ export const receivePurchaseOrderHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const result = await inventoryService.receivePurchaseOrder(
       id!,
       req.body,
-      organizationId,
       userId
     );
 
@@ -1065,13 +941,7 @@ export const getPurchaseOrderItemsHandler = async (
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const items = await inventoryService.getPurchaseOrderItems(
-      id!,
-      organizationId
-    );
+    const items = await inventoryService.getPurchaseOrderItems(id!);
 
     logger.info(
       `Purchase order items for purchase order ${id} fetched successfully`
@@ -1100,9 +970,6 @@ export const getSuppliersHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters: { search?: string; isActive?: boolean } = {};
@@ -1118,7 +985,6 @@ export const getSuppliersHandler = async (req: Request, res: Response) => {
     }
 
     const result = await inventoryService.getSuppliers(
-      organizationId,
       offset,
       limit,
       filters
@@ -1146,13 +1012,7 @@ export const getSupplierByIdHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const supplier = await inventoryService.getSupplierById(
-      id!,
-      organizationId
-    );
+    const supplier = await inventoryService.getSupplierById(id!);
 
     if (!supplier) {
       return res.status(404).json({
@@ -1179,13 +1039,7 @@ export const getSupplierByIdHandler = async (req: Request, res: Response) => {
 
 export const createSupplierHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const newSupplier = await inventoryService.createSupplier(
-      req.body,
-      organizationId
-    );
+    const newSupplier = await inventoryService.createSupplier(req.body);
 
     logger.info(`Supplier ${newSupplier.id} created successfully`);
     res.status(201).json({
@@ -1207,13 +1061,9 @@ export const updateSupplierHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const updatedSupplier = await inventoryService.updateSupplier(
       id!,
-      req.body,
-      organizationId
+      req.body
     );
 
     logger.info(`Supplier ${id} updated successfully`);
@@ -1236,13 +1086,7 @@ export const deleteSupplierHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const deletedSupplier = await inventoryService.deleteSupplier(
-      id!,
-      organizationId
-    );
+    const deletedSupplier = await inventoryService.deleteSupplier(id!);
 
     logger.info(`Supplier ${id} deleted successfully`);
     res.status(200).json({
@@ -1269,23 +1113,14 @@ export const getLocationsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const offset = (page - 1) * limit;
 
     const filters = {
+      search: req.query.search as string,
       locationType: req.query.locationType as string,
-      isActive:
-        req.query.isActive === "true"
-          ? true
-          : req.query.isActive === "false"
-          ? false
-          : undefined,
     };
 
     const result = await inventoryService.getLocations(
-      organizationId,
       offset,
       limit,
       filters
@@ -1313,13 +1148,7 @@ export const getLocationByIdHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const location = await inventoryService.getLocationById(
-      id!,
-      organizationId
-    );
+    const location = await inventoryService.getLocationById(id!);
 
     if (!location) {
       return res.status(404).json({
@@ -1346,13 +1175,7 @@ export const getLocationByIdHandler = async (req: Request, res: Response) => {
 
 export const createLocationHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const newLocation = await inventoryService.createLocation(
-      req.body,
-      organizationId
-    );
+    const newLocation = await inventoryService.createLocation(req.body);
 
     logger.info(`Inventory location ${newLocation.id} created successfully`);
     res.status(201).json({
@@ -1374,13 +1197,9 @@ export const updateLocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const updatedLocation = await inventoryService.updateLocation(
       id!,
-      req.body,
-      organizationId
+      req.body
     );
 
     logger.info(`Inventory location ${id} updated successfully`);
@@ -1403,13 +1222,7 @@ export const deleteLocationHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const deletedLocation = await inventoryService.deleteLocation(
-      id!,
-      organizationId
-    );
+    const deletedLocation = await inventoryService.deleteLocation(id!);
 
     logger.info(`Inventory location ${id} deleted successfully`);
     res.status(200).json({
@@ -1573,10 +1386,7 @@ export const updateUnitHandler = async (req: Request, res: Response) => {
 
 export const getAlertsHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const alerts = await inventoryService.getAlerts(organizationId);
+    const alerts = await inventoryService.getAlerts();
 
     logger.info("Inventory alerts fetched successfully");
     res.status(200).json({
@@ -1599,10 +1409,7 @@ export const getUnresolvedAlertsHandler = async (
   res: Response
 ) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const alerts = await inventoryService.getUnresolvedAlerts(organizationId);
+    const alerts = await inventoryService.getUnresolvedAlerts();
 
     logger.info("Unresolved inventory alerts fetched successfully");
     res.status(200).json({
@@ -1628,15 +1435,11 @@ export const acknowledgeAlertHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const acknowledgedAlert = await inventoryService.acknowledgeAlert(
       id!,
-      organizationId,
       userId
     );
 
@@ -1660,16 +1463,12 @@ export const resolveAlertHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const resolvedAlert = await inventoryService.resolveAlert(
       id!,
       req.body.resolutionNotes,
-      organizationId,
       userId
     );
 
@@ -1691,10 +1490,7 @@ export const resolveAlertHandler = async (req: Request, res: Response) => {
 
 export const triggerAlertCheckHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const result = await inventoryService.triggerAlertCheck(organizationId);
+    const result = await inventoryService.triggerAlertCheck();
 
     logger.info("Inventory alert check triggered successfully");
     res.status(200).json({
@@ -1718,10 +1514,7 @@ export const triggerAlertCheckHandler = async (req: Request, res: Response) => {
 
 export const getCountsHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const counts = await inventoryService.getCounts(organizationId);
+    const counts = await inventoryService.getCounts();
 
     logger.info("Inventory counts fetched successfully");
     res.status(200).json({
@@ -1743,10 +1536,7 @@ export const getCountByIdHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const count = await inventoryService.getCountById(id!, organizationId);
+    const count = await inventoryService.getCountById(id!);
 
     if (!count) {
       return res.status(404).json({
@@ -1773,15 +1563,11 @@ export const getCountByIdHandler = async (req: Request, res: Response) => {
 
 export const createCountHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const newCount = await inventoryService.createCount(
       req.body,
-      organizationId,
       userId
     );
 
@@ -1805,10 +1591,7 @@ export const startCountHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const startedCount = await inventoryService.startCount(id!, organizationId);
+    const startedCount = await inventoryService.startCount(id!);
 
     logger.info(`Inventory count ${id} started successfully`);
     res.status(200).json({
@@ -1830,15 +1613,11 @@ export const completeCountHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const completedCount = await inventoryService.completeCount(
       id!,
-      organizationId,
       userId
     );
 
@@ -1862,10 +1641,7 @@ export const getCountItemsHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const items = await inventoryService.getCountItems(id!, organizationId);
+    const items = await inventoryService.getCountItems(id!);
 
     logger.info(`Count items for count ${id} fetched successfully`);
     res.status(200).json({
@@ -1888,14 +1664,10 @@ export const recordCountItemHandler = async (req: Request, res: Response) => {
     const { countId, itemId } = req.params;
     const { countedQuantity, notes } = req.body;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
     const recordedItem = await inventoryService.recordCountItem(
       countId!,
       itemId!,
-      { actualQuantity: countedQuantity, notes },
-      organizationId
+      { actualQuantity: countedQuantity, notes }
     );
 
     logger.info(

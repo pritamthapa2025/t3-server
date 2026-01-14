@@ -14,12 +14,12 @@ import { users } from "../../drizzle/schema/auth.schema.js";
 // Dashboard & Reports
 // ============================
 
-export const getDashboardSummary = async (organizationId: string) => {
+export const getDashboardSummary = async () => {
   // Get total items count
   const totalItems = await db
     .select({ count: count() })
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)));
+    .where(eq(inventoryItems.isDeleted, false));
 
   // Get items by status
   const lowStockItems = await db
@@ -27,7 +27,6 @@ export const getDashboardSummary = async (organizationId: string) => {
     .from(inventoryItems)
     .where(
       and(
-        eq(inventoryItems.organizationId, organizationId),
         eq(inventoryItems.status, "low_stock"),
         eq(inventoryItems.isDeleted, false)
       )
@@ -38,7 +37,6 @@ export const getDashboardSummary = async (organizationId: string) => {
     .from(inventoryItems)
     .where(
       and(
-        eq(inventoryItems.organizationId, organizationId),
         eq(inventoryItems.status, "out_of_stock"),
         eq(inventoryItems.isDeleted, false)
       )
@@ -50,18 +48,13 @@ export const getDashboardSummary = async (organizationId: string) => {
       value: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
     })
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)));
+    .where(eq(inventoryItems.isDeleted, false));
 
   // Get unresolved alerts
   const unresolvedAlerts = await db
     .select({ count: count() })
     .from(inventoryStockAlerts)
-    .where(
-      and(
-        eq(inventoryStockAlerts.organizationId, organizationId),
-        eq(inventoryStockAlerts.isResolved, false)
-      )
-    );
+    .where(eq(inventoryStockAlerts.isResolved, false));
 
   return {
     totalItems: totalItems[0]?.count ?? 0,
@@ -72,7 +65,7 @@ export const getDashboardSummary = async (organizationId: string) => {
   };
 };
 
-export const getStatsByCategory = async (organizationId: string) => {
+export const getStatsByCategory = async () => {
   const stats = await db
     .select({
       categoryId: inventoryItems.categoryId,
@@ -81,13 +74,13 @@ export const getStatsByCategory = async (organizationId: string) => {
     })
     .from(inventoryItems)
     .leftJoin(inventoryCategories, eq(inventoryItems.categoryId, inventoryCategories.id))
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)))
+    .where(eq(inventoryItems.isDeleted, false))
     .groupBy(inventoryItems.categoryId, inventoryCategories.name);
 
   return stats;
 };
 
-export const getStatsByLocation = async (organizationId: string) => {
+export const getStatsByLocation = async () => {
   const stats = await db
     .select({
       locationId: inventoryItems.primaryLocationId,
@@ -96,20 +89,20 @@ export const getStatsByLocation = async (organizationId: string) => {
     })
     .from(inventoryItems)
     .leftJoin(inventoryLocations, eq(inventoryItems.primaryLocationId, inventoryLocations.id))
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)))
+    .where(eq(inventoryItems.isDeleted, false))
     .groupBy(inventoryItems.primaryLocationId, inventoryLocations.name);
 
   return stats;
 };
 
-export const getStatsByStatus = async (organizationId: string) => {
+export const getStatsByStatus = async () => {
   const stats = await db
     .select({
       status: inventoryItems.status,
       count: count(inventoryItems.id),
     })
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)))
+    .where(eq(inventoryItems.isDeleted, false))
     .groupBy(inventoryItems.status);
 
   return stats;
@@ -119,7 +112,7 @@ export const getStatsByStatus = async (organizationId: string) => {
 // Stock Alerts
 // ============================
 
-export const getAlerts = async (organizationId: string) => {
+export const getAlerts = async () => {
   const result = await db
     .select({
       alert: inventoryStockAlerts,
@@ -127,13 +120,12 @@ export const getAlerts = async (organizationId: string) => {
     })
     .from(inventoryStockAlerts)
     .leftJoin(inventoryItems, eq(inventoryStockAlerts.itemId, inventoryItems.id))
-    .where(eq(inventoryStockAlerts.organizationId, organizationId))
     .orderBy(desc(inventoryStockAlerts.createdAt));
 
   return result.map((r) => ({ ...r.alert, item: r.item }));
 };
 
-export const getUnresolvedAlerts = async (organizationId: string) => {
+export const getUnresolvedAlerts = async () => {
   const result = await db
     .select({
       alert: inventoryStockAlerts,
@@ -141,18 +133,13 @@ export const getUnresolvedAlerts = async (organizationId: string) => {
     })
     .from(inventoryStockAlerts)
     .leftJoin(inventoryItems, eq(inventoryStockAlerts.itemId, inventoryItems.id))
-    .where(
-      and(
-        eq(inventoryStockAlerts.organizationId, organizationId),
-        eq(inventoryStockAlerts.isResolved, false)
-      )
-    )
+    .where(eq(inventoryStockAlerts.isResolved, false))
     .orderBy(desc(inventoryStockAlerts.createdAt));
 
   return result.map((r) => ({ ...r.alert, item: r.item }));
 };
 
-export const acknowledgeAlert = async (id: string, organizationId: string, userId: string) => {
+export const acknowledgeAlert = async (id: string, userId: string) => {
   const [acknowledgedAlert] = await db
     .update(inventoryStockAlerts)
     .set({
@@ -160,7 +147,7 @@ export const acknowledgeAlert = async (id: string, organizationId: string, userI
       acknowledgedBy: userId,
       acknowledgedAt: new Date(),
     })
-    .where(and(eq(inventoryStockAlerts.id, id), eq(inventoryStockAlerts.organizationId, organizationId)))
+    .where(eq(inventoryStockAlerts.id, id))
     .returning();
 
   if (!acknowledgedAlert) throw new Error("Alert not found");
@@ -171,7 +158,6 @@ export const acknowledgeAlert = async (id: string, organizationId: string, userI
 export const resolveAlert = async (
   id: string,
   data: { resolutionNotes?: string },
-  organizationId: string,
   userId: string
 ) => {
   const [resolvedAlert] = await db
@@ -182,7 +168,7 @@ export const resolveAlert = async (
       resolvedAt: new Date(),
       resolutionNotes: data.resolutionNotes,
     })
-    .where(and(eq(inventoryStockAlerts.id, id), eq(inventoryStockAlerts.organizationId, organizationId)))
+    .where(eq(inventoryStockAlerts.id, id))
     .returning();
 
   if (!resolvedAlert) throw new Error("Alert not found");
@@ -190,11 +176,11 @@ export const resolveAlert = async (
   return resolvedAlert;
 };
 
-export const triggerAlertCheck = async (organizationId: string) => {
+export const triggerAlertCheck = async () => {
   const itemsToCheck = await db
     .select()
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.organizationId, organizationId), eq(inventoryItems.isDeleted, false)));
+    .where(eq(inventoryItems.isDeleted, false));
 
   let alertsCreated = 0;
 
@@ -209,7 +195,6 @@ export const triggerAlertCheck = async (organizationId: string) => {
         .where(
           and(
             eq(inventoryStockAlerts.itemId, item.id),
-            eq(inventoryStockAlerts.organizationId, organizationId),
             eq(inventoryStockAlerts.isResolved, false)
           )
         )
@@ -217,7 +202,6 @@ export const triggerAlertCheck = async (organizationId: string) => {
 
       if (existingAlert.length === 0) {
       await db.insert(inventoryStockAlerts).values({
-        organizationId,
         itemId: item.id,
         alertType: qtyOnHand === 0 ? "out_of_stock" : "low_stock",
         severity: qtyOnHand === 0 ? "critical" : "warning", // Required field
@@ -241,19 +225,14 @@ export const triggerAlertCheck = async (organizationId: string) => {
 // Inventory Counts
 // ============================
 
-export const generateCountNumber = async (organizationId: string): Promise<string> => {
+export const generateCountNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = `CNT-${year}-`;
 
   const lastCount = await db
     .select({ countNumber: inventoryCounts.countNumber })
     .from(inventoryCounts)
-    .where(
-      and(
-        eq(inventoryCounts.organizationId, organizationId),
-        ilike(inventoryCounts.countNumber, `${prefix}%`)
-      )
-    )
+    .where(ilike(inventoryCounts.countNumber, `${prefix}%`))
     .orderBy(desc(inventoryCounts.countNumber))
     .limit(1);
 
@@ -266,7 +245,7 @@ export const generateCountNumber = async (organizationId: string): Promise<strin
   return `${prefix}${nextNumber}`;
 };
 
-export const getCounts = async (organizationId: string) => {
+export const getCounts = async () => {
   const result = await db
     .select({
       count: inventoryCounts,
@@ -274,7 +253,6 @@ export const getCounts = async (organizationId: string) => {
     })
     .from(inventoryCounts)
     .leftJoin(inventoryLocations, eq(inventoryCounts.locationId, inventoryLocations.id))
-    .where(eq(inventoryCounts.organizationId, organizationId))
     .orderBy(desc(inventoryCounts.countDate));
 
   return result.map((r) => ({
@@ -283,7 +261,7 @@ export const getCounts = async (organizationId: string) => {
   }));
 };
 
-export const getCountById = async (id: string, organizationId: string) => {
+export const getCountById = async (id: string) => {
   const result = await db
     .select({
       count: inventoryCounts,
@@ -291,12 +269,12 @@ export const getCountById = async (id: string, organizationId: string) => {
     })
     .from(inventoryCounts)
     .leftJoin(inventoryLocations, eq(inventoryCounts.locationId, inventoryLocations.id))
-    .where(and(eq(inventoryCounts.id, id), eq(inventoryCounts.organizationId, organizationId)))
+    .where(eq(inventoryCounts.id, id))
     .limit(1);
 
   if (result.length === 0) return null;
 
-  const items = await getCountItems(id, organizationId);
+  const items = await getCountItems(id);
 
   return {
     ...result[0]!.count!,
@@ -305,11 +283,10 @@ export const getCountById = async (id: string, organizationId: string) => {
   };
 };
 
-export const createCount = async (data: any, organizationId: string, userId: string) => {
-  const countNumber = await generateCountNumber(organizationId);
+export const createCount = async (data: any, userId: string) => {
+  const countNumber = await generateCountNumber();
 
   const [newCount] = await db.insert(inventoryCounts).values({
-    organizationId,
     countNumber,
     countType: data.countType || "cycle", // Required field
     locationId: data.locationId,
@@ -321,14 +298,14 @@ export const createCount = async (data: any, organizationId: string, userId: str
   return newCount!;
 };
 
-export const startCount = async (id: string, organizationId: string) => {
+export const startCount = async (id: string) => {
   const [startedCount] = await db
     .update(inventoryCounts)
     .set({
       status: "in_progress",
       startedAt: new Date(),
     })
-    .where(and(eq(inventoryCounts.id, id), eq(inventoryCounts.organizationId, organizationId)))
+    .where(eq(inventoryCounts.id, id))
     .returning();
 
   if (!startedCount) throw new Error("Count not found");
@@ -339,14 +316,12 @@ export const startCount = async (id: string, organizationId: string) => {
     .from(inventoryItems)
     .where(
       and(
-        eq(inventoryItems.organizationId, organizationId),
         startedCount.locationId ? eq(inventoryItems.primaryLocationId, startedCount.locationId) : undefined,
         eq(inventoryItems.isDeleted, false)
       )
     );
 
   const countItems = items.map((item) => ({
-    organizationId,
     countId: id,
     itemId: item.id,
     systemQuantity: item.quantityOnHand,
@@ -362,14 +337,14 @@ export const startCount = async (id: string, organizationId: string) => {
   return startedCount;
 };
 
-export const completeCount = async (id: string, organizationId: string, userId: string) => {
+export const completeCount = async (id: string, userId: string) => {
   const [completedCount] = await db
     .update(inventoryCounts)
     .set({
       status: "completed",
       completedAt: new Date(),
     })
-    .where(and(eq(inventoryCounts.id, id), eq(inventoryCounts.organizationId, organizationId)))
+    .where(eq(inventoryCounts.id, id))
     .returning();
 
   if (!completedCount) throw new Error("Count not found");
@@ -377,7 +352,7 @@ export const completeCount = async (id: string, organizationId: string, userId: 
   return completedCount;
 };
 
-export const getCountItems = async (countId: string, organizationId: string) => {
+export const getCountItems = async (countId: string) => {
   const result = await db
     .select({
       countItem: inventoryCountItems,
@@ -399,8 +374,7 @@ export const getCountItems = async (countId: string, organizationId: string) => 
 export const recordCountItem = async (
   countId: string,
   itemId: string,
-  data: { actualQuantity: string; notes?: string },
-  organizationId: string
+  data: { actualQuantity: string; notes?: string }
 ) => {
   const countItem = await db
     .select()

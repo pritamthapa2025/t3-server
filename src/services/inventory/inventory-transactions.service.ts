@@ -18,19 +18,14 @@ import { calculateStockStatus } from "./inventory-items.service.js";
 /**
  * Generate unique transaction number
  */
-export const generateTransactionNumber = async (organizationId: string): Promise<string> => {
+export const generateTransactionNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = `TXN-${year}-`;
 
   const lastTransaction = await db
     .select({ transactionNumber: inventoryTransactions.transactionNumber })
     .from(inventoryTransactions)
-    .where(
-      and(
-        eq(inventoryTransactions.organizationId, organizationId),
-        ilike(inventoryTransactions.transactionNumber, `${prefix}%`)
-      )
-    )
+    .where(ilike(inventoryTransactions.transactionNumber, `${prefix}%`))
     .orderBy(desc(inventoryTransactions.transactionNumber))
     .limit(1);
 
@@ -107,7 +102,7 @@ export const updateItemQuantitiesAfterTransaction = async (
 
   // Check if alert needed
   if (newStatus === "low_stock" || newStatus === "out_of_stock") {
-    await checkAndCreateAlert(itemId, currentItem.organizationId);
+    await checkAndCreateAlert(itemId);
   }
 
   return { newQuantityOnHand, newStatus };
@@ -116,7 +111,7 @@ export const updateItemQuantitiesAfterTransaction = async (
 /**
  * Check and create stock alert if needed
  */
-export const checkAndCreateAlert = async (itemId: string, organizationId: string) => {
+export const checkAndCreateAlert = async (itemId: string) => {
   const item = await db
     .select()
     .from(inventoryItems)
@@ -137,7 +132,6 @@ export const checkAndCreateAlert = async (itemId: string, organizationId: string
       .where(
         and(
           eq(inventoryStockAlerts.itemId, itemId),
-          eq(inventoryStockAlerts.organizationId, organizationId),
           eq(inventoryStockAlerts.isResolved, false)
         )
       )
@@ -145,7 +139,6 @@ export const checkAndCreateAlert = async (itemId: string, organizationId: string
 
     if (existingAlert.length === 0) {
       await db.insert(inventoryStockAlerts).values({
-        organizationId,
         itemId,
         alertType: qtyOnHand === 0 ? "out_of_stock" : "low_stock",
         severity: qtyOnHand === 0 ? "critical" : "warning", // Required field
@@ -166,7 +159,6 @@ export const checkAndCreateAlert = async (itemId: string, organizationId: string
 // ============================
 
 export const getTransactions = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: {
@@ -178,25 +170,37 @@ export const getTransactions = async (
     bidId?: string;
   }
 ) => {
-  let whereCondition: any = eq(inventoryTransactions.organizationId, organizationId);
+  let whereCondition: any = undefined;
 
   if (filters?.itemId) {
-    whereCondition = and(whereCondition, eq(inventoryTransactions.itemId, filters.itemId))!;
+    whereCondition = whereCondition 
+      ? and(whereCondition, eq(inventoryTransactions.itemId, filters.itemId))!
+      : eq(inventoryTransactions.itemId, filters.itemId);
   }
   if (filters?.transactionType) {
-    whereCondition = and(whereCondition, eq(inventoryTransactions.transactionType, filters.transactionType as any))!;
+    whereCondition = whereCondition
+      ? and(whereCondition, eq(inventoryTransactions.transactionType, filters.transactionType as any))!
+      : eq(inventoryTransactions.transactionType, filters.transactionType as any);
   }
   if (filters?.startDate) {
-    whereCondition = and(whereCondition, gte(inventoryTransactions.transactionDate, new Date(filters.startDate)))!;
+    whereCondition = whereCondition
+      ? and(whereCondition, gte(inventoryTransactions.transactionDate, new Date(filters.startDate)))!
+      : gte(inventoryTransactions.transactionDate, new Date(filters.startDate));
   }
   if (filters?.endDate) {
-    whereCondition = and(whereCondition, lte(inventoryTransactions.transactionDate, new Date(filters.endDate)))!;
+    whereCondition = whereCondition
+      ? and(whereCondition, lte(inventoryTransactions.transactionDate, new Date(filters.endDate)))!
+      : lte(inventoryTransactions.transactionDate, new Date(filters.endDate));
   }
   if (filters?.jobId) {
-    whereCondition = and(whereCondition, eq(inventoryTransactions.jobId, filters.jobId))!;
+    whereCondition = whereCondition
+      ? and(whereCondition, eq(inventoryTransactions.jobId, filters.jobId))!
+      : eq(inventoryTransactions.jobId, filters.jobId);
   }
   if (filters?.bidId) {
-    whereCondition = and(whereCondition, eq(inventoryTransactions.bidId, filters.bidId))!;
+    whereCondition = whereCondition
+      ? and(whereCondition, eq(inventoryTransactions.bidId, filters.bidId))!
+      : eq(inventoryTransactions.bidId, filters.bidId);
   }
 
   const result = await db
@@ -244,12 +248,12 @@ export const getTransactions = async (
   };
 };
 
-export const createTransaction = async (data: any, organizationId: string, userId: string) => {
+export const createTransaction = async (data: any, userId: string) => {
   // 🔐 WRAP EVERYTHING IN A DATABASE TRANSACTION
   // This ensures atomicity: either ALL operations succeed or ALL fail
   // Also enables row-level locking to prevent race conditions
   return await db.transaction(async (tx) => {
-    const transactionNumber = await generateTransactionNumber(organizationId);
+    const transactionNumber = await generateTransactionNumber();
 
     // 🔒 Get item with FOR UPDATE lock to prevent concurrent modifications
     const item = await tx
@@ -271,7 +275,6 @@ export const createTransaction = async (data: any, organizationId: string, userI
     const [newTransaction] = await tx
       .insert(inventoryTransactions)
       .values({
-        organizationId,
         transactionNumber,
         itemId: data.itemId,
         locationId: data.locationId,
@@ -311,7 +314,7 @@ export const createTransaction = async (data: any, organizationId: string, userI
   }); // ← Transaction commits here, releasing all locks
 };
 
-export const getItemTransactions = async (itemId: string, organizationId: string) => {
+export const getItemTransactions = async (itemId: string) => {
   const result = await db
     .select({
       transaction: inventoryTransactions,
@@ -323,12 +326,7 @@ export const getItemTransactions = async (itemId: string, organizationId: string
     .leftJoin(users, eq(inventoryTransactions.performedBy, users.id))
     .leftJoin(jobs, eq(inventoryTransactions.jobId, jobs.id))
     .leftJoin(bidsTable, eq(inventoryTransactions.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(inventoryTransactions.itemId, itemId),
-        eq(inventoryTransactions.organizationId, organizationId)
-      )
-    )
+    .where(eq(inventoryTransactions.itemId, itemId))
     .orderBy(desc(inventoryTransactions.transactionDate))
     .limit(50);
 
