@@ -60,3 +60,4 @@ export const trainingStatusEnum = pgEnum("training_status_enum", [
 
 
 
+

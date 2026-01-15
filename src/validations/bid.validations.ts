@@ -214,6 +214,158 @@ export const createBidSchema = z.object({
       .max(20, "Marked value is too long (maximum 20 characters)")
       .optional(),
     convertToJob: z.boolean().optional(),
+
+    // Nested objects for related data
+    financialBreakdown: z
+      .object({
+        materialsEquipment: z.string().optional(),
+        labor: z.string().optional(),
+        travel: z.string().optional(),
+        operatingExpenses: z.string().optional(),
+        totalCost: z.string().optional(),
+      })
+      .optional(),
+
+    operatingExpenses: z
+      .object({
+        enabled: z.boolean().optional(),
+        grossRevenuePreviousYear: z.string().optional(),
+        currentBidAmount: z.string().optional(),
+        operatingCostPreviousYear: z.string().optional(),
+        inflationAdjustedOperatingCost: z.string().optional(),
+        inflationRate: z.string().optional(),
+        utilizationPercentage: z.string().optional(),
+        calculatedOperatingCost: z.string().optional(),
+        applyMarkup: z.boolean().optional(),
+        markupPercentage: z.string().optional(),
+        operatingPrice: z.string().optional(),
+      })
+      .optional(),
+
+    materials: z
+      .array(
+        z.object({
+          description: z.string(),
+          quantity: z.string(),
+          unitCost: z.string(),
+          markup: z.string().optional(),
+          totalCost: z.string(),
+        })
+      )
+      .optional(),
+
+    laborAndTravel: z
+      .object({
+        labor: z.array(
+          z.object({
+            employeeId: z.number().int().positive(),
+            quantity: z.number().int().positive(),
+            days: z.number().int().positive(),
+            hoursPerDay: z.string(),
+            totalHours: z.string(),
+            costRate: z.string(),
+            billableRate: z.string(),
+            totalCost: z.string(),
+            totalPrice: z.string(),
+          })
+        ),
+        travel: z.array(
+          z.object({
+            vehicleName: z.string().optional(),
+            roundTripMiles: z.string(),
+            mileageRate: z.string(),
+            vehicleDayRate: z.string(),
+            days: z.number().int().positive(),
+            mileageCost: z.string(),
+            vehicleCost: z.string(),
+            markup: z.string().optional(),
+            totalCost: z.string(),
+            totalPrice: z.string(),
+          })
+        ),
+      })
+      .optional(),
+
+    // Plan Spec specific data
+    planSpecData: z
+      .object({
+        plansReceivedDate: z.string().optional(),
+        planRevision: z.string().max(100).optional(),
+        planReviewNotes: z.string().optional(),
+        specificationsReceivedDate: z.string().optional(),
+        specificationRevision: z.string().max(100).optional(),
+        specificationReviewNotes: z.string().optional(),
+        complianceRequirements: z.string().optional(),
+        codeComplianceStatus: z
+          .enum(["pending", "compliant", "non_compliant", "under_review"])
+          .optional(),
+        addendaReceived: z.boolean().optional(),
+        addendaCount: z.number().int().min(0).optional(),
+        addendaNotes: z.string().optional(),
+        specifications: z.string().optional(),
+        designRequirements: z.string().optional(),
+      })
+      .optional(),
+
+    // Survey specific data
+    surveyData: z
+      .object({
+        buildingNumber: z.string().optional(),
+        siteLocation: z.string().optional(),
+        workType: z.string().optional(),
+        hasExistingUnit: z.boolean().optional(),
+        unitTag: z.string().optional(),
+        unitLocation: z.string().optional(),
+        make: z.string().optional(),
+        model: z.string().optional(),
+        serial: z.string().optional(),
+        systemType: z.string().optional(),
+        powerStatus: z.string().optional(),
+        voltagePhase: z.string().optional(),
+        overallCondition: z.string().optional(),
+        siteAccessNotes: z.string().optional(),
+        additionalNotes: z.string().optional(),
+        siteConditions: z.string().optional(),
+        clientRequirements: z.string().optional(),
+        termsAndConditions: z.string().optional(),
+        dateOfSurvey: z.string().optional(),
+        timeOfSurvey: z.string().optional(),
+      })
+      .optional(),
+
+    // Design Build specific data
+    designBuildData: z
+      .object({
+        // Design Phase Information
+        designPhase: z
+          .enum([
+            "conceptual",
+            "schematic",
+            "design_development",
+            "construction_documents",
+            "bidding",
+            "construction_admin",
+          ])
+          .optional(),
+        designStartDate: z.string().optional(),
+        designCompletionDate: z.string().optional(),
+        // Design Team
+        designTeamMembers: z.string().optional(), // JSON array of employee IDs
+        // Design Scope & Requirements
+        conceptDescription: z.string().optional(),
+        designRequirements: z.string().optional(),
+        designDeliverables: z.string().optional(),
+        // Client Approval
+        clientApprovalRequired: z.boolean().optional(),
+        // Design Costs
+        designFeeBasis: z
+          .enum(["fixed", "hourly", "percentage", "lump_sum"])
+          .optional(),
+        designFees: z.string().optional(),
+        // Legacy/Construction
+        buildSpecifications: z.string().optional(),
+      })
+      .optional(),
   }),
 });
 

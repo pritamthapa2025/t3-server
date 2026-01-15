@@ -41,7 +41,7 @@ export const bidsTable: any = org.table(
     bidNumber: varchar("bid_number", { length: 100 }).notNull(),
 
     // Basic Information
-    title: varchar("title", { length: 255 }).notNull(),
+    title: varchar("title", { length: 255 }),
     jobType: bidJobTypeEnum("job_type").notNull(),
     status: bidStatusEnum("status").notNull().default("draft"),
     priority: bidPriorityEnum("priority").notNull().default("medium"),
@@ -52,7 +52,7 @@ export const bidsTable: any = org.table(
       .references(() => organizations.id),
 
     // Project Details
-    projectName: varchar("project_name", { length: 255 }),
+    projectName: varchar("project_name", { length: 255 }).notNull(),
     siteAddress: text("site_address"),
     buildingSuiteNumber: varchar("building_suite_number", { length: 100 }),
     acrossValuations: varchar("across_valuations", { length: 255 }),
@@ -345,6 +345,24 @@ export const bidPlanSpecData = org.table(
       .references(() => bidsTable.id)
       .unique(),
 
+    // Plans Information
+    plansReceivedDate: date("plans_received_date"),
+    planRevision: varchar("plan_revision", { length: 100 }),
+    planReviewNotes: text("plan_review_notes"),
+
+    // Specifications Information
+    specificationsReceivedDate: date("specifications_received_date"),
+    specificationRevision: varchar("specification_revision", { length: 100 }),
+    specificationReviewNotes: text("specification_review_notes"),
+
+    // Compliance & Addenda
+    complianceRequirements: text("compliance_requirements"),
+    codeComplianceStatus: varchar("code_compliance_status", { length: 50 }), // pending, compliant, non_compliant, under_review
+    addendaReceived: boolean("addenda_received").default(false),
+    addendaCount: integer("addenda_count").default(0),
+    addendaNotes: text("addenda_notes"),
+
+    // Legacy fields (kept for backward compatibility)
     specifications: text("specifications"),
     designRequirements: text("design_requirements"),
 
@@ -352,7 +370,7 @@ export const bidPlanSpecData = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => []
+  (table) => [index("idx_bid_plan_spec_bid_id").on(table.bidId)]
 );
 
 /**
@@ -404,14 +422,36 @@ export const bidDesignBuildData = org.table(
       .references(() => bidsTable.id)
       .unique(),
 
+    // Design Phase Information
+    designPhase: varchar("design_phase", { length: 50 }), // conceptual, schematic, design_development, construction_documents, bidding, construction_admin
+    designStartDate: date("design_start_date"),
+    designCompletionDate: date("design_completion_date"),
+
+    // Design Team (stored as JSON array of employee IDs)
+    designTeamMembers: text("design_team_members"), // JSON array of employee IDs
+
+    // Design Scope & Requirements
+    conceptDescription: text("concept_description"),
     designRequirements: text("design_requirements"),
+    designDeliverables: text("design_deliverables"),
+
+    // Client Approval
+    clientApprovalRequired: boolean("client_approval_required").default(false),
+
+    // Design Costs
+    designFeeBasis: varchar("design_fee_basis", { length: 50 }), // fixed, hourly, percentage, lump_sum
+    designFees: numeric("design_fees", { precision: 15, scale: 2 }).default(
+      "0"
+    ),
+
+    // Legacy/Construction fields
     buildSpecifications: text("build_specifications"),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => []
+  (table) => [index("idx_bid_design_build_bid_id").on(table.bidId)]
 );
 
 /**

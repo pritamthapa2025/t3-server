@@ -211,6 +211,13 @@
       "when": 1768520000000,
       "tag": "0029_add_feature_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1768491144742,
+      "tag": "0030_high_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

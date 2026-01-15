@@ -874,18 +874,49 @@ export const getBidPlanSpecData = async (
 export const updateBidPlanSpecData = async (
   bidId: string,
   organizationId: string,
-  data: {
-    specifications?: string;
-    designRequirements?: string;
-  }
+  data: Partial<{
+    // Plans Information
+    plansReceivedDate: string;
+    planRevision: string;
+    planReviewNotes: string;
+    // Specifications Information
+    specificationsReceivedDate: string;
+    specificationRevision: string;
+    specificationReviewNotes: string;
+    // Compliance & Addenda
+    complianceRequirements: string;
+    codeComplianceStatus: string;
+    addendaReceived: boolean;
+    addendaCount: number;
+    addendaNotes: string;
+    // Legacy fields
+    specifications: string;
+    designRequirements: string;
+  }>
 ) => {
   const existing = await getBidPlanSpecData(bidId, organizationId);
+
+  // Helper to convert date string to date format
+  const toDateOrUndefined = (dateStr?: string): string | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    try {
+      return new Date(dateStr).toISOString().split("T")[0];
+    } catch {
+      return undefined;
+    }
+  };
+
+  const processedData = {
+    ...data,
+    plansReceivedDate: toDateOrUndefined(data.plansReceivedDate),
+    specificationsReceivedDate: toDateOrUndefined(data.specificationsReceivedDate),
+  };
 
   if (existing) {
     const [planSpecData] = await db
       .update(bidPlanSpecData)
       .set({
-        ...data,
+        ...processedData,
         updatedAt: new Date(),
       })
       .where(eq(bidPlanSpecData.id, existing.id))
@@ -896,7 +927,7 @@ export const updateBidPlanSpecData = async (
       .insert(bidPlanSpecData)
       .values({
         bidId,
-        ...data,
+        ...processedData,
       })
       .returning();
     return planSpecData;
@@ -922,18 +953,49 @@ export const getBidDesignBuildData = async (
 export const updateBidDesignBuildData = async (
   bidId: string,
   organizationId: string,
-  data: {
-    designRequirements?: string;
-    buildSpecifications?: string;
-  }
+  data: Partial<{
+    // Design Phase Information
+    designPhase: string;
+    designStartDate: string;
+    designCompletionDate: string;
+    // Design Team
+    designTeamMembers: string; // JSON array of employee IDs
+    // Design Scope & Requirements
+    conceptDescription: string;
+    designRequirements: string;
+    designDeliverables: string;
+    // Client Approval
+    clientApprovalRequired: boolean;
+    // Design Costs
+    designFeeBasis: string;
+    designFees: string;
+    // Legacy/Construction
+    buildSpecifications: string;
+  }>
 ) => {
   const existing = await getBidDesignBuildData(bidId, organizationId);
+
+  // Helper to convert date string to date format
+  const toDateOrUndefined = (dateStr?: string): string | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    try {
+      return new Date(dateStr).toISOString().split("T")[0];
+    } catch {
+      return undefined;
+    }
+  };
+
+  const processedData = {
+    ...data,
+    designStartDate: toDateOrUndefined(data.designStartDate),
+    designCompletionDate: toDateOrUndefined(data.designCompletionDate),
+  };
 
   if (existing) {
     const [designBuildData] = await db
       .update(bidDesignBuildData)
       .set({
-        ...data,
+        ...processedData,
         updatedAt: new Date(),
       })
       .where(eq(bidDesignBuildData.id, existing.id))
@@ -944,7 +1006,7 @@ export const updateBidDesignBuildData = async (
       .insert(bidDesignBuildData)
       .values({
         bidId,
-        ...data,
+        ...processedData,
       })
       .returning();
     return designBuildData;
