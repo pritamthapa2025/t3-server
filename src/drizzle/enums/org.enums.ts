@@ -169,9 +169,12 @@ export const bidPriorityEnum = pgEnum("bid_priority_enum", [
  * Types of work for bids
  */
 export const bidJobTypeEnum = pgEnum("bid_job_type_enum", [
-  "survey",
+  "general",
   "plan_spec",
   "design_build",
+  "service",
+  "preventative_maintenance",
+  "survey",
 ]);
 
 /**

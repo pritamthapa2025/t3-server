@@ -8,7 +8,7 @@ import {
   cashFlowScenarios,
   revenueForecast,
   financialReports,
-} from "../drizzle/schema/org.schema.js";
+} from "../drizzle/schema/client.schema.js";
 import { jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 
 // Financial Summary Services

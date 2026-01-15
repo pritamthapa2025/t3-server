@@ -23,7 +23,8 @@ import {
   payrollAuditLog,
   employeeCompensation,
 } from "../drizzle/schema/payroll.schema.js";
-import { employees, organizations } from "../drizzle/schema/org.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 

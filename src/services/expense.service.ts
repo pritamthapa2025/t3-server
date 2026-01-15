@@ -31,7 +31,6 @@ import {
 import {
   employees,
   departments,
-  organizations,
 } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";

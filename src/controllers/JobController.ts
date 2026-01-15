@@ -189,7 +189,25 @@ export const createJobHandler = async (req: Request, res: Response) => {
     if (!organizationId) return;
 
     const createdBy = req.user!.id;
-    const { jobNumber } = req.body;
+    const { jobNumber, bidId } = req.body;
+
+    // Validate bidId is provided
+    if (!bidId) {
+      return res.status(400).json({
+        success: false,
+        message: "bidId is required",
+      });
+    }
+
+    // Verify bid belongs to the organization
+    const { getBidById } = await import("../services/bid.service.js");
+    const bid = await getBidById(bidId, organizationId);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found or does not belong to this organization",
+      });
+    }
 
     // Pre-validate unique fields before attempting to create
     const uniqueFieldChecks = [];
@@ -212,9 +230,13 @@ export const createJobHandler = async (req: Request, res: Response) => {
 
     const jobData = {
       ...req.body,
-      organizationId,
+      bidId, // Ensure bidId is included
       createdBy,
     };
+
+    // Remove organizationId and propertyId from jobData as they're no longer needed
+    delete jobData.organizationId;
+    delete jobData.propertyId;
 
     const job = await createJob(jobData);
 

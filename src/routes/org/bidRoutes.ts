@@ -19,6 +19,7 @@ import {
   createBidTravelHandler,
   updateBidTravelHandler,
   deleteBidTravelHandler,
+  createBulkLaborAndTravelHandler,
   getBidSurveyDataHandler,
   updateBidSurveyDataHandler,
   getBidPlanSpecDataHandler,
@@ -57,6 +58,7 @@ import {
   createBidTravelSchema,
   updateBidTravelSchema,
   deleteBidTravelSchema,
+  createBulkLaborAndTravelSchema,
   updateBidSurveyDataSchema,
   updateBidPlanSpecDataSchema,
   updateBidDesignBuildDataSchema,
@@ -126,6 +128,14 @@ router
   .route("/bids/:bidId/labor")
   .get(validate(getBidLaborSchema), getBidLaborHandler)
   .post(validate(createBidLaborSchema), createBidLaborHandler);
+
+// Bulk Labor & Travel Route
+router
+  .route("/bids/:bidId/labor-travel/bulk")
+  .post(
+    validate(createBulkLaborAndTravelSchema),
+    createBulkLaborAndTravelHandler
+  );
 
 router
   .route("/bids/:bidId/labor/:laborId")

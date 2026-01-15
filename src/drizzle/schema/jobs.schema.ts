@@ -14,11 +14,16 @@ import {
 
 // Import related tables
 import { users } from "./auth.schema.js";
-import { employees, organizations } from "./org.schema.js";
+import { organizations } from "./client.schema.js";
+import { employees } from "./org.schema.js";
 import { bidsTable } from "./bids.schema.js";
 
 // Import enums from centralized location
-import { jobStatusEnum, jobPriorityEnum, timelineStatusEnum } from "../enums/org.enums.js";
+import {
+  jobStatusEnum,
+  jobPriorityEnum,
+  timelineStatusEnum,
+} from "../enums/org.enums.js";
 
 const org = pgSchema("org");
 
@@ -33,11 +38,9 @@ export const jobs: any = org.table(
     jobNumber: varchar("job_number", { length: 100 }).notNull(),
 
     // Relationships
-    organizationId: uuid("organization_id")
+    bidId: uuid("bid_id")
       .notNull()
-      .references(() => organizations.id, ),
-    propertyId: uuid("property_id"), // Will reference properties from org schema
-    bidId: uuid("bid_id").references(() => bidsTable.id, ), // Reference to bid if job was converted from bid
+      .references(() => bidsTable.id), // Reference to bid - organization and property can be derived from bid
 
     // Basic Info
     name: varchar("name", { length: 255 }).notNull(),
@@ -83,12 +86,7 @@ export const jobs: any = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    unique("unique_job_number_per_org").on(
-      table.organizationId,
-      table.jobNumber
-    ),
-    index("idx_jobs_org").on(table.organizationId),
-    index("idx_jobs_property").on(table.propertyId),
+    unique("unique_job_number_per_bid").on(table.bidId, table.jobNumber),
     index("idx_jobs_bid").on(table.bidId),
     index("idx_jobs_status").on(table.status),
     index("idx_jobs_priority").on(table.priority),
@@ -109,10 +107,10 @@ export const jobTeamMembers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
+      .references(() => jobs.id),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, ),
+      .references(() => employees.id),
 
     role: varchar("role", { length: 100 }), // Lead, Assistant, Specialist
     assignedDate: date("assigned_date").defaultNow(),
@@ -140,11 +138,11 @@ export const jobFinancialSummary = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
+      .references(() => jobs.id),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
-    
+      .references(() => organizations.id),
+
     contractValue: numeric("contract_value", {
       precision: 15,
       scale: 2,
@@ -167,7 +165,7 @@ export const jobFinancialSummary = org.table(
     }),
     profitability: numeric("profitability", { precision: 5, scale: 2 }),
     profitMargin: numeric("profit_margin", { precision: 5, scale: 2 }),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -189,12 +187,12 @@ export const jobFinancialBreakdown = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, )
+      .references(() => jobs.id)
       .unique(),
-    
+
     materialsEquipment: numeric("materials_equipment", {
       precision: 15,
       scale: 2,
@@ -214,7 +212,7 @@ export const jobFinancialBreakdown = org.table(
     totalCost: numeric("total_cost", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -235,11 +233,11 @@ export const jobMaterials = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     description: text("description").notNull(),
     quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull(),
     unitCost: numeric("unit_cost", { precision: 15, scale: 2 }).notNull(),
@@ -247,10 +245,10 @@ export const jobMaterials = org.table(
       .notNull()
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
-    
+
     // Track if this is actual expense or budgeted
     isActual: boolean("is_actual").default(false), // true = actual expense, false = budgeted
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -272,12 +270,12 @@ export const jobLabor = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
-    employeeId: integer("employee_id").references(() => employees.id, ),
+      .references(() => jobs.id),
+
+    employeeId: integer("employee_id").references(() => employees.id),
     role: varchar("role", { length: 100 }).notNull(),
     quantity: integer("quantity").notNull(),
     days: integer("days").notNull(),
@@ -290,10 +288,10 @@ export const jobLabor = org.table(
     }).notNull(),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
-    
+
     // Track if this is actual expense or budgeted
     isActual: boolean("is_actual").default(false), // true = actual expense, false = budgeted
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -316,12 +314,12 @@ export const jobTravel = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
-    employeeId: integer("employee_id").references(() => employees.id, ),
+      .references(() => jobs.id),
+
+    employeeId: integer("employee_id").references(() => employees.id),
     employeeName: varchar("employee_name", { length: 255 }),
     vehicleId: uuid("vehicle_id"), // Will reference fleet/vehicles table when available
     vehicleName: varchar("vehicle_name", { length: 255 }),
@@ -342,10 +340,10 @@ export const jobTravel = org.table(
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
-    
+
     // Track if this is actual expense or budgeted
     isActual: boolean("is_actual").default(false), // true = actual expense, false = budgeted
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -368,12 +366,12 @@ export const jobOperatingExpenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, )
+      .references(() => jobs.id)
       .unique(),
-    
+
     enabled: boolean("enabled").default(false),
     grossRevenuePreviousYear: numeric("gross_revenue_previous_year", {
       precision: 15,
@@ -412,7 +410,7 @@ export const jobOperatingExpenses = org.table(
       precision: 15,
       scale: 2,
     }).default("0"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -433,18 +431,18 @@ export const jobTimeline = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     event: varchar("event", { length: 255 }).notNull(),
     eventDate: timestamp("event_date").notNull(),
     status: timelineStatusEnum("status").notNull().default("pending"),
     description: text("description"),
     sortOrder: integer("sort_order").default(0),
-    createdBy: uuid("created_by").references(() => users.id, ),
-    
+    createdBy: uuid("created_by").references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -467,11 +465,11 @@ export const jobDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileType: varchar("file_type", { length: 50 }),
@@ -479,8 +477,8 @@ export const jobDocuments = org.table(
     documentType: varchar("document_type", { length: 50 }), // invoice, photo, report, permit, etc.
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -503,17 +501,17 @@ export const jobNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     note: text("note").notNull(),
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, ),
+      .references(() => users.id),
     isInternal: boolean("is_internal").default(true),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -536,19 +534,19 @@ export const jobHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     action: varchar("action", { length: 100 }).notNull(), // status_changed, cost_updated, assigned, etc.
     oldValue: text("old_value"),
     newValue: text("new_value"),
     description: text("description"),
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -570,28 +568,28 @@ export const jobTasks = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     taskName: varchar("task_name", { length: 255 }).notNull(),
     description: text("description"),
     status: varchar("status", { length: 50 }).notNull().default("pending"), // pending, in_progress, completed, cancelled
     priority: varchar("priority", { length: 50 }).default("medium"), // low, medium, high, urgent
-    
-    assignedTo: uuid("assigned_to").references(() => users.id, ),
+
+    assignedTo: uuid("assigned_to").references(() => users.id),
     dueDate: date("due_date"),
     completedDate: date("completed_date"),
-    
+
     estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),
     actualHours: numeric("actual_hours", { precision: 8, scale: 2 }),
-    
+
     sortOrder: integer("sort_order").default(0),
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -615,27 +613,27 @@ export const jobExpenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id, ),
-    
+      .references(() => jobs.id),
+
     expenseType: varchar("expense_type", { length: 100 }).notNull(), // equipment_rental, permit, subcontractor, etc.
     description: text("description").notNull(),
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
     expenseDate: date("expense_date").notNull(),
-    
+
     vendorName: varchar("vendor_name", { length: 255 }),
     invoiceNumber: varchar("invoice_number", { length: 100 }),
     receiptPath: varchar("receipt_path", { length: 500 }),
-    
-    approvedBy: uuid("approved_by").references(() => users.id, ),
+
+    approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at"),
-    
+
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),

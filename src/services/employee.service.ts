@@ -6,7 +6,6 @@ import {
   positions,
   userBankAccounts,
   employeeReviews,
-  organizations,
 } from "../drizzle/schema/org.schema.js";
 import {
   timesheets,
@@ -208,6 +207,45 @@ export const getEmployeeById = async (id: number) => {
       .limit(1);
 
     managerData = managerResult[0] || null;
+  }
+
+  // Get user's role
+  let roleId: number | undefined = undefined;
+  let portalRole: string | undefined = undefined;
+  if (user?.id) {
+    const [roleResult] = await db
+      .select({
+        roleId: roles.id,
+        roleName: roles.name,
+      })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, user.id))
+      .limit(1);
+
+    if (roleResult) {
+      roleId = roleResult.roleId;
+      // Determine portal role based on role name
+      const roleNameLower = roleResult.roleName.toLowerCase();
+      if (
+        roleNameLower.includes("director") ||
+        roleNameLower.includes("admin")
+      ) {
+        portalRole = "Administrator";
+      } else if (
+        roleNameLower.includes("manager") ||
+        roleNameLower.includes("supervisor")
+      ) {
+        portalRole = "Manager";
+      } else if (
+        roleNameLower.includes("technician") ||
+        roleNameLower.includes("engineer")
+      ) {
+        portalRole = "Technician";
+      } else {
+        portalRole = "Office Staff";
+      }
+    }
   }
 
   // Get bank account information
@@ -451,6 +489,10 @@ export const getEmployeeById = async (id: number) => {
           location: "N/A", // Mock location - add location fields to user schema if needed
         }
       : null,
+
+    // Role information
+    roleId: roleId,
+    portalRole: portalRole,
 
     // Department information
     department: department

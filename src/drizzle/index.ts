@@ -1,5 +1,6 @@
 export * from "./schema/auth.schema.js";
 export * from "./schema/org.schema.js";
+export * from "./schema/client.schema.js";
 export * from "./schema/timesheet.schema.js";
 export * from "./schema/jobs.schema.js";
 export * from "./schema/bids.schema.js";

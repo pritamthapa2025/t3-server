@@ -3,7 +3,7 @@ import { db } from "../config/db.js";
 import {
   userOrganizations,
   organizations,
-} from "../drizzle/schema/org.schema.js";
+} from "../drizzle/schema/client.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // Get user's organization memberships
@@ -283,6 +283,7 @@ export const getClientUsers = async (organizationId: string) => {
     )
     .orderBy(desc(userOrganizations.isPrimary), users.fullName);
 };
+
 
 
 

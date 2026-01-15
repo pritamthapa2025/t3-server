@@ -25,7 +25,7 @@ import {
   userOrganizations,
   clientTypes,
   industryClassifications,
-} from "../drizzle/schema/org.schema.js";
+} from "../drizzle/schema/client.schema.js";
 import { jobs, jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";

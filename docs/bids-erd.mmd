@@ -1,0 +1,314 @@
+erDiagram
+    org_bids {
+        uuid id PK
+        varchar bid_number UK
+        varchar title
+        enum job_type
+        enum status
+        enum priority
+        uuid organization_id FK
+        varchar project_name
+        text site_address
+        varchar building_suite_number
+        text scope_of_work
+        text description
+        date start_date
+        date end_date
+        date planned_start_date
+        date estimated_completion
+        timestamp created_date
+        timestamp expires_date
+        numeric bid_amount
+        integer estimated_duration
+        numeric profit_margin
+        text payment_terms
+        text warranty_details
+        uuid primary_teammate FK
+        uuid supervisor_manager FK
+        uuid technician_id FK
+        uuid created_by FK
+        uuid assigned_to FK
+        uuid job_id FK
+        boolean convert_to_job
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_financial_breakdown {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK,UK
+        numeric materials_equipment
+        numeric labor
+        numeric travel
+        numeric operating_expenses
+        numeric total_cost
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_materials {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        text description
+        numeric quantity
+        numeric unit_cost
+        numeric markup
+        numeric total_cost
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_labor {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar role
+        integer quantity
+        integer days
+        numeric hours_per_day
+        numeric total_hours
+        numeric cost_rate
+        numeric billable_rate
+        numeric total_cost
+        numeric total_price
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_travel {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar employee_name
+        varchar vehicle_name
+        numeric round_trip_miles
+        numeric mileage_rate
+        numeric vehicle_day_rate
+        integer days
+        numeric mileage_cost
+        numeric vehicle_cost
+        numeric markup
+        numeric total_cost
+        numeric total_price
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_operating_expenses {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK,UK
+        boolean enabled
+        numeric gross_revenue_previous_year
+        numeric current_bid_amount
+        numeric operating_cost_previous_year
+        numeric inflation_adjusted_operating_cost
+        numeric inflation_rate
+        numeric utilization_percentage
+        numeric calculated_operating_cost
+        boolean apply_markup
+        numeric markup_percentage
+        numeric operating_price
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_survey_data {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK,UK
+        varchar building_number
+        text site_location
+        varchar work_type
+        boolean has_existing_unit
+        varchar unit_tag
+        varchar unit_location
+        varchar make
+        varchar model
+        varchar serial
+        varchar system_type
+        varchar power_status
+        varchar voltage_phase
+        varchar overall_condition
+        text site_access_notes
+        text site_conditions
+        text client_requirements
+        uuid technician_id FK
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_plan_spec_data {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK,UK
+        text specifications
+        text design_requirements
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_design_build_data {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK,UK
+        text design_requirements
+        text build_specifications
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_timeline {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar event
+        timestamp event_date
+        enum status
+        text description
+        integer sort_order
+        uuid created_by FK
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_documents {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar file_name
+        varchar file_path
+        varchar file_type
+        integer file_size
+        varchar document_type
+        uuid uploaded_by FK
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_plan_spec_files {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar file_type
+        varchar file_name
+        varchar file_path
+        integer file_size
+        uuid uploaded_by FK
+        boolean is_deleted
+        timestamp created_at
+    }
+    
+    org_bid_design_build_files {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar file_name
+        varchar file_path
+        integer file_size
+        uuid uploaded_by FK
+        boolean is_deleted
+        timestamp created_at
+    }
+    
+    org_bid_notes {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        text note
+        uuid created_by FK
+        boolean is_internal
+        boolean is_deleted
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    org_bid_history {
+        uuid id PK
+        uuid organization_id FK
+        uuid bid_id FK
+        varchar action
+        text old_value
+        text new_value
+        text description
+        uuid performed_by FK
+        timestamp created_at
+    }
+    
+    %% External References (shown for context)
+    auth_users {
+        uuid id PK
+    }
+    
+    org_organizations {
+        uuid id PK
+    }
+    
+    org_jobs {
+        uuid id PK
+    }
+    
+    %% Relationships - One-to-One (bid has exactly one)
+    org_bids ||--|| org_bid_financial_breakdown : "has financial breakdown"
+    org_bids ||--o| org_bid_operating_expenses : "has operating expenses"
+    org_bids ||--o| org_bid_survey_data : "has survey data"
+    org_bids ||--o| org_bid_plan_spec_data : "has plan spec data"
+    org_bids ||--o| org_bid_design_build_data : "has design build data"
+    
+    %% Relationships - One-to-Many (bid has many)
+    org_bids ||--o{ org_bid_materials : "has materials"
+    org_bids ||--o{ org_bid_labor : "has labor entries"
+    org_bids ||--o{ org_bid_travel : "has travel expenses"
+    org_bids ||--o{ org_bid_timeline : "has timeline events"
+    org_bids ||--o{ org_bid_documents : "has documents"
+    org_bids ||--o{ org_bid_plan_spec_files : "has plan spec files"
+    org_bids ||--o{ org_bid_design_build_files : "has design build files"
+    org_bids ||--o{ org_bid_notes : "has notes"
+    org_bids ||--o{ org_bid_history : "has history"
+    
+    %% External Relationships
+    org_organizations ||--o{ org_bids : "receives bids"
+    org_organizations ||--o{ org_bid_financial_breakdown : "owns"
+    org_organizations ||--o{ org_bid_materials : "owns"
+    org_organizations ||--o{ org_bid_labor : "owns"
+    org_organizations ||--o{ org_bid_travel : "owns"
+    org_organizations ||--o{ org_bid_operating_expenses : "owns"
+    org_organizations ||--o{ org_bid_survey_data : "owns"
+    org_organizations ||--o{ org_bid_plan_spec_data : "owns"
+    org_organizations ||--o{ org_bid_design_build_data : "owns"
+    org_organizations ||--o{ org_bid_timeline : "owns"
+    org_organizations ||--o{ org_bid_documents : "owns"
+    org_organizations ||--o{ org_bid_plan_spec_files : "owns"
+    org_organizations ||--o{ org_bid_design_build_files : "owns"
+    org_organizations ||--o{ org_bid_notes : "owns"
+    org_organizations ||--o{ org_bid_history : "owns"
+    
+    auth_users ||--o{ org_bids : "creates"
+    auth_users ||--o{ org_bids : "assigned to"
+    auth_users ||--o{ org_bids : "primary teammate"
+    auth_users ||--o{ org_bids : "supervisor"
+    auth_users ||--o{ org_bids : "technician"
+    auth_users ||--o{ org_bid_survey_data : "technician"
+    auth_users ||--o{ org_bid_timeline : "creates"
+    auth_users ||--o{ org_bid_documents : "uploads"
+    auth_users ||--o{ org_bid_plan_spec_files : "uploads"
+    auth_users ||--o{ org_bid_design_build_files : "uploads"
+    auth_users ||--o{ org_bid_notes : "writes"
+    auth_users ||--o{ org_bid_history : "performs"
+    
+    org_jobs ||--o| org_bids : "converted from"
+
+

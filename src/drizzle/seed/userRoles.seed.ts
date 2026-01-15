@@ -27,7 +27,8 @@ export const seedUserRoles = async () => {
     // Insert admin role for the admin user
     await db
       .insert(userRoles)
-      .values([{ userId: adminUser[0].id, roleId: executiveRole[0].id }]);
+      .values([{ userId: adminUser[0].id, roleId: executiveRole[0].id }])
+      .onConflictDoNothing();
     console.log("User roles seeded successfully!");
   } catch (error) {
     console.error("Error seeding user roles: ", error);

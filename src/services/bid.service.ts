@@ -17,6 +17,7 @@ import {
   bidNotes,
   bidHistory,
 } from "../drizzle/schema/bids.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 // ============================
 // Main Bid Operations
@@ -69,10 +70,8 @@ export const getBids = async (
       or(
         ilike(bidsTable.title, `%${filters.search}%`),
         ilike(bidsTable.bidNumber, `%${filters.search}%`),
-        ilike(bidsTable.clientName, `%${filters.search}%`),
         ilike(bidsTable.projectName, `%${filters.search}%`),
-        ilike(bidsTable.siteAddress, `%${filters.search}%`),
-        ilike(bidsTable.city, `%${filters.search}%`)
+        ilike(bidsTable.siteAddress, `%${filters.search}%`)
       )!
     );
   }
@@ -120,16 +119,21 @@ export const getBidById = async (id: string, organizationId: string) => {
 export const createBid = async (data: {
   organizationId: string;
   title: string;
-  jobType: "survey" | "plan_spec" | "design_build";
+  jobType:
+    | "general"
+    | "survey"
+    | "plan_spec"
+    | "design_build"
+    | "service"
+    | "preventative_maintenance";
   status?: string;
   priority?: string;
-  clientName?: string;
-  clientEmail?: string;
-  clientPhone?: string;
-  city?: string;
   projectName?: string;
   siteAddress?: string;
+  buildingSuiteNumber?: string;
+  acrossValuations?: string;
   scopeOfWork?: string;
+  specialRequirements?: string;
   description?: string;
   startDate?: string;
   endDate?: string;
@@ -138,10 +142,87 @@ export const createBid = async (data: {
   expiresDate?: string;
   removalDate?: string;
   bidAmount?: string;
+  estimatedDuration?: number;
+  profitMargin?: string;
+  expiresIn?: number;
+  paymentTerms?: string;
+  warrantyPeriod?: string;
+  warrantyPeriodLabor?: string;
+  warrantyDetails?: string;
+  specialTerms?: string;
+  exclusions?: string;
+  proposalBasis?: string;
+  referenceDate?: string;
+  templateSelection?: string;
+  supervisorManager?: number;
+  primaryTechnicianId?: number;
+  assignedTo?: string;
+  qtyNumber?: string;
+  marked?: string;
+  convertToJob?: boolean;
   createdBy: string;
 }) => {
   // Generate bid number atomically (no race conditions)
   const bidNumber = await generateBidNumber(data.organizationId);
+
+  // Validate employee IDs exist if provided
+  if (data.supervisorManager) {
+    const [supervisor] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.id, data.supervisorManager),
+          eq(employees.isDeleted, false)
+        )
+      )
+      .limit(1);
+
+    if (!supervisor) {
+      throw new Error(
+        `Supervisor manager with ID ${data.supervisorManager} does not exist`
+      );
+    }
+  }
+
+  if (data.primaryTechnicianId) {
+    const [technician] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.id, data.primaryTechnicianId),
+          eq(employees.isDeleted, false)
+        )
+      )
+      .limit(1);
+
+    if (!technician) {
+      throw new Error(
+        `Primary technician with ID ${data.primaryTechnicianId} does not exist`
+      );
+    }
+  }
+
+  // Helper function to convert date string to date or undefined
+  const toDateOrUndefined = (dateStr?: string): string | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    try {
+      return new Date(dateStr).toISOString().split("T")[0];
+    } catch {
+      return undefined;
+    }
+  };
+
+  // Helper function to convert date string to timestamp or undefined
+  const toTimestampOrUndefined = (dateStr?: string): Date | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    try {
+      return new Date(dateStr);
+    } catch {
+      return undefined;
+    }
+  };
 
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
@@ -154,31 +235,38 @@ export const createBid = async (data: {
       createdBy: data.createdBy,
       status: (data.status as any) || "draft",
       priority: (data.priority as any) || "medium",
-      clientName: data.clientName,
-      clientEmail: data.clientEmail,
-      clientPhone: data.clientPhone,
-      city: data.city,
-      projectName: data.projectName,
-      siteAddress: data.siteAddress,
-      scopeOfWork: data.scopeOfWork,
-      description: data.description,
-      startDate: data.startDate
-        ? new Date(data.startDate).toISOString().split("T")[0]
-        : null,
-      endDate: data.endDate
-        ? new Date(data.endDate).toISOString().split("T")[0]
-        : null,
-      plannedStartDate: data.plannedStartDate
-        ? new Date(data.plannedStartDate).toISOString().split("T")[0]
-        : null,
-      estimatedCompletion: data.estimatedCompletion
-        ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
-        : null,
-      expiresDate: data.expiresDate ? new Date(data.expiresDate) : null,
-      removalDate: data.removalDate
-        ? new Date(data.removalDate).toISOString().split("T")[0]
-        : null,
+      projectName: data.projectName || undefined,
+      siteAddress: data.siteAddress || undefined,
+      buildingSuiteNumber: data.buildingSuiteNumber || undefined,
+      acrossValuations: data.acrossValuations || undefined,
+      scopeOfWork: data.scopeOfWork || undefined,
+      specialRequirements: data.specialRequirements || undefined,
+      description: data.description || undefined,
+      startDate: toDateOrUndefined(data.startDate),
+      endDate: toDateOrUndefined(data.endDate),
+      plannedStartDate: toDateOrUndefined(data.plannedStartDate),
+      estimatedCompletion: toDateOrUndefined(data.estimatedCompletion),
+      expiresDate: toDateOrUndefined(data.expiresDate),
+      removalDate: toDateOrUndefined(data.removalDate),
       bidAmount: data.bidAmount || "0",
+      estimatedDuration: data.estimatedDuration ?? undefined,
+      profitMargin: data.profitMargin || undefined,
+      expiresIn: data.expiresIn ?? undefined,
+      paymentTerms: data.paymentTerms || undefined,
+      warrantyPeriod: data.warrantyPeriod || undefined,
+      warrantyPeriodLabor: data.warrantyPeriodLabor || undefined,
+      warrantyDetails: data.warrantyDetails || undefined,
+      specialTerms: data.specialTerms || undefined,
+      exclusions: data.exclusions || undefined,
+      proposalBasis: data.proposalBasis || undefined,
+      referenceDate: data.referenceDate || undefined,
+      templateSelection: data.templateSelection || undefined,
+      supervisorManager: data.supervisorManager ?? undefined,
+      primaryTechnicianId: data.primaryTechnicianId ?? undefined,
+      assignedTo: data.assignedTo || undefined,
+      qtyNumber: data.qtyNumber || undefined,
+      marked: data.marked || undefined,
+      convertToJob: data.convertToJob ?? undefined,
     })
     .returning();
 
@@ -199,10 +287,6 @@ export const updateBid = async (
     title: string;
     status: string;
     priority: string;
-    clientName: string;
-    clientEmail: string;
-    clientPhone: string;
-    city: string;
     projectName: string;
     siteAddress: string;
     scopeOfWork: string;
@@ -214,6 +298,8 @@ export const updateBid = async (
     expiresDate: string;
     removalDate: string;
     bidAmount: string;
+    supervisorManager: number;
+    primaryTechnicianId: number;
     assignedTo: string;
   }>
 ) => {
@@ -223,10 +309,6 @@ export const updateBid = async (
       title: data.title,
       status: data.status as any,
       priority: data.priority as any,
-      clientName: data.clientName,
-      clientEmail: data.clientEmail,
-      clientPhone: data.clientPhone,
-      city: data.city,
       projectName: data.projectName,
       siteAddress: data.siteAddress,
       scopeOfWork: data.scopeOfWork,
@@ -243,11 +325,15 @@ export const updateBid = async (
       estimatedCompletion: data.estimatedCompletion
         ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
         : undefined,
-      expiresDate: data.expiresDate ? new Date(data.expiresDate) : undefined,
+      expiresDate: data.expiresDate
+        ? new Date(data.expiresDate).toISOString().split("T")[0]
+        : undefined,
       removalDate: data.removalDate
         ? new Date(data.removalDate).toISOString().split("T")[0]
         : undefined,
       bidAmount: data.bidAmount,
+      supervisorManager: data.supervisorManager ?? undefined,
+      primaryTechnicianId: data.primaryTechnicianId ?? undefined,
       assignedTo: data.assignedTo,
       updatedAt: new Date(),
     })
@@ -296,7 +382,6 @@ export const getBidFinancialBreakdown = async (
     .where(
       and(
         eq(bidFinancialBreakdown.bidId, bidId),
-        eq(bidFinancialBreakdown.organizationId, organizationId),
         eq(bidFinancialBreakdown.isDeleted, false)
       )
     );
@@ -332,11 +417,84 @@ export const updateBidFinancialBreakdown = async (
       .insert(bidFinancialBreakdown)
       .values({
         bidId,
-        organizationId,
         ...data,
       })
       .returning();
     return breakdown;
+  }
+};
+
+// ============================
+// Operating Expenses Operations
+// ============================
+
+export const getBidOperatingExpenses = async (
+  bidId: string,
+  organizationId: string
+) => {
+  // Verify bid belongs to organization
+  const bid = await getBidById(bidId, organizationId);
+  if (!bid) {
+    return null;
+  }
+
+  const [operatingExpenses] = await db
+    .select()
+    .from(bidOperatingExpenses)
+    .where(
+      and(
+        eq(bidOperatingExpenses.bidId, bidId),
+        eq(bidOperatingExpenses.isDeleted, false)
+      )
+    );
+  return operatingExpenses || null;
+};
+
+export const updateBidOperatingExpenses = async (
+  bidId: string,
+  organizationId: string,
+  data: Partial<{
+    enabled: boolean;
+    grossRevenuePreviousYear: string;
+    currentBidAmount: string;
+    operatingCostPreviousYear: string;
+    inflationAdjustedOperatingCost: string;
+    inflationRate: string;
+    utilizationPercentage: string;
+    calculatedOperatingCost: string;
+    applyMarkup: boolean;
+    markupPercentage: string;
+    operatingPrice: string;
+  }>
+) => {
+  // Verify bid belongs to organization
+  const bid = await getBidById(bidId, organizationId);
+  if (!bid) {
+    return null;
+  }
+
+  // Check if operating expenses exists
+  const existing = await getBidOperatingExpenses(bidId, organizationId);
+
+  if (existing) {
+    const [operatingExpenses] = await db
+      .update(bidOperatingExpenses)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(bidOperatingExpenses.id, existing.id))
+      .returning();
+    return operatingExpenses;
+  } else {
+    const [operatingExpenses] = await db
+      .insert(bidOperatingExpenses)
+      .values({
+        bidId,
+        ...data,
+      })
+      .returning();
+    return operatingExpenses;
   }
 };
 
@@ -352,18 +510,13 @@ export const getBidMaterials = async (
     .select()
     .from(bidMaterials)
     .where(
-      and(
-        eq(bidMaterials.bidId, bidId),
-        eq(bidMaterials.organizationId, organizationId),
-        eq(bidMaterials.isDeleted, false)
-      )
+      and(eq(bidMaterials.bidId, bidId), eq(bidMaterials.isDeleted, false))
     );
   return materials;
 };
 
 export const createBidMaterial = async (data: {
   bidId: string;
-  organizationId: string;
   description: string;
   quantity: string;
   unitCost: string;
@@ -391,13 +544,7 @@ export const updateBidMaterial = async (
       ...data,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidMaterials.id, id),
-        eq(bidMaterials.organizationId, organizationId),
-        eq(bidMaterials.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidMaterials.id, id), eq(bidMaterials.isDeleted, false)))
     .returning();
   return material;
 };
@@ -409,13 +556,7 @@ export const deleteBidMaterial = async (id: string, organizationId: string) => {
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidMaterials.id, id),
-        eq(bidMaterials.organizationId, organizationId),
-        eq(bidMaterials.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidMaterials.id, id), eq(bidMaterials.isDeleted, false)))
     .returning();
   return material;
 };
@@ -424,24 +565,25 @@ export const deleteBidMaterial = async (id: string, organizationId: string) => {
 // Labor Operations
 // ============================
 
-export const getBidLabor = async (bidId: string, organizationId: string) => {
+export const getBidLabor = async (bidId: string) => {
   const labor = await db
     .select()
     .from(bidLabor)
-    .where(
-      and(
-        eq(bidLabor.bidId, bidId),
-        eq(bidLabor.organizationId, organizationId),
-        eq(bidLabor.isDeleted, false)
-      )
-    );
+    .where(and(eq(bidLabor.bidId, bidId), eq(bidLabor.isDeleted, false)));
   return labor;
+};
+
+export const getBidLaborById = async (laborId: string) => {
+  const [labor] = await db
+    .select()
+    .from(bidLabor)
+    .where(and(eq(bidLabor.id, laborId), eq(bidLabor.isDeleted, false)));
+  return labor || null;
 };
 
 export const createBidLabor = async (data: {
   bidId: string;
-  organizationId: string;
-  role: string;
+  employeeId: number;
   quantity: number;
   days: number;
   hoursPerDay: string;
@@ -457,9 +599,8 @@ export const createBidLabor = async (data: {
 
 export const updateBidLabor = async (
   id: string,
-  organizationId: string,
   data: Partial<{
-    role: string;
+    employeeId: number;
     quantity: number;
     days: number;
     hoursPerDay: string;
@@ -476,31 +617,19 @@ export const updateBidLabor = async (
       ...data,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidLabor.id, id),
-        eq(bidLabor.organizationId, organizationId),
-        eq(bidLabor.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidLabor.id, id), eq(bidLabor.isDeleted, false)))
     .returning();
   return labor;
 };
 
-export const deleteBidLabor = async (id: string, organizationId: string) => {
+export const deleteBidLabor = async (id: string) => {
   const [labor] = await db
     .update(bidLabor)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidLabor.id, id),
-        eq(bidLabor.organizationId, organizationId),
-        eq(bidLabor.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidLabor.id, id), eq(bidLabor.isDeleted, false)))
     .returning();
   return labor;
 };
@@ -509,23 +638,18 @@ export const deleteBidLabor = async (id: string, organizationId: string) => {
 // Travel Operations
 // ============================
 
-export const getBidTravel = async (bidId: string, organizationId: string) => {
+export const getBidTravel = async (bidLaborId: string) => {
   const travel = await db
     .select()
     .from(bidTravel)
     .where(
-      and(
-        eq(bidTravel.bidId, bidId),
-        eq(bidTravel.organizationId, organizationId),
-        eq(bidTravel.isDeleted, false)
-      )
+      and(eq(bidTravel.bidLaborId, bidLaborId), eq(bidTravel.isDeleted, false))
     );
   return travel;
 };
 
 export const createBidTravel = async (data: {
-  bidId: string;
-  organizationId: string;
+  bidLaborId: string;
   employeeName?: string;
   vehicleName?: string;
   roundTripMiles: string;
@@ -542,11 +666,93 @@ export const createBidTravel = async (data: {
   return travel;
 };
 
+// ============================
+// Bulk Labor & Travel Operations
+// ============================
+
+export const createBulkLaborAndTravel = async (
+  bidId: string,
+  laborEntries: Array<{
+    employeeId: number;
+    quantity: number;
+    days: number;
+    hoursPerDay: string;
+    totalHours: string;
+    costRate: string;
+    billableRate: string;
+    totalCost: string;
+    totalPrice: string;
+  }>,
+  travelEntries: Array<{
+    employeeName?: string;
+    vehicleName?: string;
+    roundTripMiles: string;
+    mileageRate: string;
+    vehicleDayRate: string;
+    days: number;
+    mileageCost: string;
+    vehicleCost: string;
+    markup: string;
+    totalCost: string;
+    totalPrice: string;
+  }>
+) => {
+  // Validate arrays have same length
+  if (laborEntries.length !== travelEntries.length) {
+    throw new Error(
+      "Number of labor entries must equal number of travel entries"
+    );
+  }
+
+  const createdLabor: any[] = [];
+  const createdTravel: any[] = [];
+
+  // Create all labor entries first
+  for (const laborData of laborEntries) {
+    const [labor] = await db
+      .insert(bidLabor)
+      .values({
+        ...laborData,
+        bidId,
+      })
+      .returning();
+    createdLabor.push(labor);
+  }
+
+  // Create travel entries using corresponding labor IDs
+  for (let i = 0; i < travelEntries.length; i++) {
+    const travelData = travelEntries[i]!; // Safe because we check length
+    const laborEntry = createdLabor[i]!; // Safe because arrays have same length
+
+    const [travel] = await db
+      .insert(bidTravel)
+      .values({
+        bidLaborId: laborEntry.id,
+        vehicleName: travelData.vehicleName,
+        roundTripMiles: travelData.roundTripMiles,
+        mileageRate: travelData.mileageRate,
+        vehicleDayRate: travelData.vehicleDayRate,
+        days: travelData.days,
+        mileageCost: travelData.mileageCost,
+        vehicleCost: travelData.vehicleCost,
+        markup: travelData.markup || "0",
+        totalCost: travelData.totalCost,
+        totalPrice: travelData.totalPrice,
+      })
+      .returning();
+    createdTravel.push(travel);
+  }
+
+  return {
+    labor: createdLabor,
+    travel: createdTravel,
+  };
+};
+
 export const updateBidTravel = async (
   id: string,
-  organizationId: string,
   data: Partial<{
-    employeeName: string;
+    bidLaborId: string;
     vehicleName: string;
     roundTripMiles: string;
     mileageRate: string;
@@ -565,31 +771,19 @@ export const updateBidTravel = async (
       ...data,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidTravel.id, id),
-        eq(bidTravel.organizationId, organizationId),
-        eq(bidTravel.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidTravel.id, id), eq(bidTravel.isDeleted, false)))
     .returning();
   return travel;
 };
 
-export const deleteBidTravel = async (id: string, organizationId: string) => {
+export const deleteBidTravel = async (id: string) => {
   const [travel] = await db
     .update(bidTravel)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidTravel.id, id),
-        eq(bidTravel.organizationId, organizationId),
-        eq(bidTravel.isDeleted, false)
-      )
-    )
+    .where(and(eq(bidTravel.id, id), eq(bidTravel.isDeleted, false)))
     .returning();
   return travel;
 };
@@ -606,11 +800,7 @@ export const getBidSurveyData = async (
     .select()
     .from(bidSurveyData)
     .where(
-      and(
-        eq(bidSurveyData.bidId, bidId),
-        eq(bidSurveyData.organizationId, organizationId),
-        eq(bidSurveyData.isDeleted, false)
-      )
+      and(eq(bidSurveyData.bidId, bidId), eq(bidSurveyData.isDeleted, false))
     );
   return surveyData || null;
 };
@@ -633,9 +823,12 @@ export const updateBidSurveyData = async (
     voltagePhase: string;
     overallCondition: string;
     siteAccessNotes: string;
+    additionalNotes: string;
     siteConditions: string;
     clientRequirements: string;
-    technicianId: string;
+    termsAndConditions: string;
+    dateOfSurvey: string;
+    timeOfSurvey: string;
   }>
 ) => {
   const existing = await getBidSurveyData(bidId, organizationId);
@@ -655,7 +848,6 @@ export const updateBidSurveyData = async (
       .insert(bidSurveyData)
       .values({
         bidId,
-        organizationId,
         ...data,
       })
       .returning();
@@ -673,7 +865,6 @@ export const getBidPlanSpecData = async (
     .where(
       and(
         eq(bidPlanSpecData.bidId, bidId),
-        eq(bidPlanSpecData.organizationId, organizationId),
         eq(bidPlanSpecData.isDeleted, false)
       )
     );
@@ -705,7 +896,6 @@ export const updateBidPlanSpecData = async (
       .insert(bidPlanSpecData)
       .values({
         bidId,
-        organizationId,
         ...data,
       })
       .returning();
@@ -723,7 +913,6 @@ export const getBidDesignBuildData = async (
     .where(
       and(
         eq(bidDesignBuildData.bidId, bidId),
-        eq(bidDesignBuildData.organizationId, organizationId),
         eq(bidDesignBuildData.isDeleted, false)
       )
     );
@@ -755,7 +944,6 @@ export const updateBidDesignBuildData = async (
       .insert(bidDesignBuildData)
       .values({
         bidId,
-        organizationId,
         ...data,
       })
       .returning();
@@ -975,7 +1163,9 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
   try {
     // Use atomic database function to get next counter value
     const result = await db.execute<{ next_value: string }>(
-      sql.raw(`SELECT org.get_next_counter('${organizationId}'::uuid, 'bid_number') as next_value`)
+      sql.raw(
+        `SELECT org.get_next_counter('${organizationId}'::uuid, 'bid_number') as next_value`
+      )
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
@@ -983,7 +1173,7 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
   } catch (error) {
     // Fallback to old method if function doesn't exist yet
     console.warn("Counter function not found, using fallback method:", error);
-    
+
     const maxResult = await db
       .select({
         maxBidNumber: max(bidsTable.bidNumber),
@@ -1009,12 +1199,17 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
 const createRelatedRecords = async (
   bidId: string,
   organizationId: string,
-  jobType: "survey" | "plan_spec" | "design_build"
+  jobType:
+    | "general"
+    | "survey"
+    | "plan_spec"
+    | "design_build"
+    | "service"
+    | "preventative_maintenance"
 ) => {
   // Create financial breakdown
   await db.insert(bidFinancialBreakdown).values({
     bidId,
-    organizationId,
     materialsEquipment: "0",
     labor: "0",
     travel: "0",
@@ -1025,28 +1220,31 @@ const createRelatedRecords = async (
   // Create operating expenses
   await db.insert(bidOperatingExpenses).values({
     bidId,
-    organizationId,
   });
 
-  // Create job-type specific data
+  // Create job-type specific data (only for types that have specific data tables)
   switch (jobType) {
     case "survey":
       await db.insert(bidSurveyData).values({
         bidId,
-        organizationId,
       });
       break;
     case "plan_spec":
       await db.insert(bidPlanSpecData).values({
         bidId,
-        organizationId,
       });
       break;
     case "design_build":
       await db.insert(bidDesignBuildData).values({
         bidId,
-        organizationId,
       });
+      break;
+    // "general", "service", and "preventative_maintenance" don't have specific data tables
+    // They only use the main bid table and related financial/operating expense tables
+    case "general":
+    case "service":
+    case "preventative_maintenance":
+      // No specific data tables for these types
       break;
   }
 };
@@ -1063,7 +1261,6 @@ export const getBidWithAllData = async (id: string, organizationId: string) => {
     financialBreakdown,
     materials,
     labor,
-    travel,
     surveyData,
     planSpecData,
     designBuildData,
@@ -1073,8 +1270,7 @@ export const getBidWithAllData = async (id: string, organizationId: string) => {
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
-    getBidLabor(id, organizationId),
-    getBidTravel(id, organizationId),
+    getBidLabor(id),
     getBidSurveyData(id, organizationId),
     getBidPlanSpecData(id, organizationId),
     getBidDesignBuildData(id, organizationId),
@@ -1082,6 +1278,11 @@ export const getBidWithAllData = async (id: string, organizationId: string) => {
     getBidNotes(id, organizationId),
     getBidHistory(id, organizationId),
   ]);
+
+  // Get travel for each labor entry
+  const travelPromises = labor.map((laborEntry) => getBidTravel(laborEntry.id));
+  const travelArrays = await Promise.all(travelPromises);
+  const travel = travelArrays.flat();
 
   return {
     bid,

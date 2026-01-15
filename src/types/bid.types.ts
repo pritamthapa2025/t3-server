@@ -33,21 +33,10 @@ export interface Bid {
   priority: BidPriority;
   organizationId: string;
   
-  // Client Information
-  clientName?: string;
-  clientEmail?: string;
-  clientPhone?: string;
-  city?: string;
-  superClient?: string;
-  superPrimaryContact?: string;
-  primaryContact?: string;
-  industryClassification?: string;
-  
   // Project Details
   projectName?: string;
   siteAddress?: string;
   buildingSuiteNumber?: string;
-  property?: string;
   acrossValuations?: string;
   scopeOfWork?: string;
   specialRequirements?: string;
@@ -80,9 +69,8 @@ export interface Bid {
   templateSelection?: string;
   
   // Team Assignment
-  primaryTeammate?: string;
-  supervisorManager?: string;
-  technicianId?: string;
+  supervisorManager?: number;
+  primaryTechnicianId?: number;
   createdBy: string;
   assignedTo?: string;
   
@@ -90,7 +78,6 @@ export interface Bid {
   qtyNumber?: string;
   marked?: string;
   convertToJob?: boolean;
-  jobId?: string;
   isDeleted?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -162,7 +149,6 @@ export interface BidTravel {
   id: string;
   bidId: string;
   organizationId: string;
-  employeeName?: string;
   vehicleName?: string;
   roundTripMiles: string;
   mileageRate: string;
@@ -202,7 +188,6 @@ export interface BidSurveyData {
   siteAccessNotes?: string;
   siteConditions?: string;
   clientRequirements?: string;
-  technicianId?: string;
   isDeleted?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -354,6 +339,7 @@ export type UpdateTimelineEventData = Partial<Omit<BidTimelineEvent, 'id' | 'bid
 
 export type CreateNoteData = Omit<BidNote, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateNoteData = Partial<Omit<BidNote, 'id' | 'bidId' | 'organizationId' | 'createdBy' | 'createdAt' | 'updatedAt'>>;
+
 
 
 

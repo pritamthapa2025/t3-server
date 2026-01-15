@@ -17,7 +17,7 @@ import {
 
 // Import related tables
 import { users } from "./auth.schema.js";
-import { organizations } from "./org.schema.js";
+import { organizations } from "./client.schema.js";
 import { jobs } from "./jobs.schema.js";
 import { bidsTable } from "./bids.schema.js";
 

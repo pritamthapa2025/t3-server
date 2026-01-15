@@ -15,8 +15,8 @@ import {
 
 // Import existing tables and users from auth schema
 import { users } from "./auth.schema.js";
+import { organizations } from "./client.schema.js";
 import {
-  organizations,
   employees,
   userBankAccounts,
 } from "./org.schema.js";

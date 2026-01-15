@@ -16,6 +16,7 @@ import {
   jobTasks,
   jobExpenses,
 } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 
 // ============================
 // Main Job Operations
@@ -35,7 +36,7 @@ export const getJobs = async (
   }
 ) => {
   let whereCondition = and(
-    eq(jobs.organizationId, organizationId),
+    eq(bidsTable.organizationId, organizationId),
     eq(jobs.isDeleted, false)
   );
 
@@ -82,8 +83,11 @@ export const getJobs = async (
   }
 
   const result = await db
-    .select()
+    .select({
+      jobs: jobs,
+    })
     .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
@@ -92,12 +96,13 @@ export const getJobs = async (
   const totalCount = await db
     .select({ count: count() })
     .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(whereCondition);
 
   const total = totalCount[0]?.count ?? 0;
 
   return {
-    data: result || [],
+    data: result.map((r) => r.jobs) || [],
     total: total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -108,28 +113,29 @@ export const getJobs = async (
 };
 
 export const getJobById = async (id: string, organizationId: string) => {
-  const [job] = await db
-    .select()
+  const [result] = await db
+    .select({
+      jobs: jobs,
+    })
     .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
         eq(jobs.id, id),
-        eq(jobs.organizationId, organizationId),
+        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     );
-  return job || null;
+  return result?.jobs || null;
 };
 
 export const createJob = async (data: {
-  organizationId: string;
   name: string;
   status?: string;
   priority?: string;
   jobType?: string;
   serviceType?: string;
-  propertyId?: string;
-  bidId?: string;
+  bidId: string; // Now required
   description?: string;
   scheduledStartDate?: string;
   scheduledEndDate?: string;
@@ -142,8 +148,19 @@ export const createJob = async (data: {
   leadTechnician?: string;
   createdBy: string;
 }) => {
+  // Get organizationId from bid
+  const [bid] = await db
+    .select({ organizationId: bidsTable.organizationId })
+    .from(bidsTable)
+    .where(eq(bidsTable.id, data.bidId))
+    .limit(1);
+
+  if (!bid) {
+    throw new Error("Bid not found");
+  }
+
   // Generate job number atomically
-  const jobNumber = await generateJobNumber(data.organizationId);
+  const jobNumber = await generateJobNumber(bid.organizationId);
 
   // Insert job
   const result = await db
@@ -151,13 +168,11 @@ export const createJob = async (data: {
     .values({
       jobNumber,
       name: data.name,
-      organizationId: data.organizationId,
       createdBy: data.createdBy,
       status: (data.status as any) || "planned",
       priority: (data.priority as any) || "medium",
       jobType: data.jobType,
       serviceType: data.serviceType,
-      propertyId: data.propertyId,
       bidId: data.bidId,
       description: data.description,
       scheduledStartDate: data.scheduledStartDate
@@ -180,7 +195,7 @@ export const createJob = async (data: {
 
   // Create related records
   if (job) {
-    await createRelatedRecords(job.id, data.organizationId);
+    await createRelatedRecords(job.id, bid.organizationId);
   }
 
   return job;
@@ -195,7 +210,6 @@ export const updateJob = async (
     priority: string;
     jobType: string;
     serviceType: string;
-    propertyId: string;
     description: string;
     scheduledStartDate: string;
     scheduledEndDate: string;
@@ -213,6 +227,24 @@ export const updateJob = async (
     completionPercentage: string;
   }>
 ) => {
+  // First verify the job belongs to the organization via bid
+  const [jobCheck] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, id),
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!jobCheck) {
+    return null;
+  }
+
   const [job] = await db
     .update(jobs)
     .set({
@@ -221,7 +253,6 @@ export const updateJob = async (
       priority: data.priority as any,
       jobType: data.jobType,
       serviceType: data.serviceType,
-      propertyId: data.propertyId,
       description: data.description,
       scheduledStartDate: data.scheduledStartDate
         ? new Date(data.scheduledStartDate).toISOString().split("T")[0]
@@ -247,32 +278,38 @@ export const updateJob = async (
       completionPercentage: data.completionPercentage,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(jobs.id, id),
-        eq(jobs.organizationId, organizationId),
-        eq(jobs.isDeleted, false)
-      )
-    )
+    .where(eq(jobs.id, id))
     .returning();
 
   return job || null;
 };
 
 export const deleteJob = async (id: string, organizationId: string) => {
+  // First verify the job belongs to the organization via bid
+  const [jobCheck] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, id),
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!jobCheck) {
+    return null;
+  }
+
   const [job] = await db
     .update(jobs)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(jobs.id, id),
-        eq(jobs.organizationId, organizationId),
-        eq(jobs.isDeleted, false)
-      )
-    )
+    .where(eq(jobs.id, id))
     .returning();
 
   return job || null;
@@ -1326,7 +1363,8 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
         maxJobNumber: max(jobs.jobNumber),
       })
       .from(jobs)
-      .where(eq(jobs.organizationId, organizationId));
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
 
     const maxJobNumber = maxResult[0]?.maxJobNumber;
     let nextNumber = 1;

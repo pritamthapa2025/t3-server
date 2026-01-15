@@ -7,14 +7,17 @@ export const seedUsers = async () => {
   try {
     const hashedPassword = await hashPassword("password");
 
-    await db.insert(users).values([
-      {
-        fullName: "Admin",
-        email: "tools@quixta.in",
-        passwordHash: hashedPassword,
-        isActive: true,
-      },
-    ]);
+    await db
+      .insert(users)
+      .values([
+        {
+          fullName: "Admin",
+          email: "tools@quixta.in",
+          passwordHash: hashedPassword,
+          isActive: true,
+        },
+      ])
+      .onConflictDoNothing();
     console.log("Users seeded successfully!");
   } catch (error) {
     console.error("Error seeding users: ", error);

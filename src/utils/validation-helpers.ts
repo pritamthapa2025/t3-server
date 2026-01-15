@@ -1,7 +1,8 @@
 import { eq, and, or, ne, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users, roles } from "../drizzle/schema/auth.schema.js";
-import { employees, organizations, departments, positions } from "../drizzle/schema/org.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
+import { employees, departments, positions } from "../drizzle/schema/org.schema.js";
 
 /**
  * Check if a user with the given email already exists
@@ -267,7 +268,7 @@ export const checkClientTypeNameExists = async (
   name: string,
   excludeClientTypeId?: number
 ): Promise<boolean> => {
-  const { clientTypes } = await import("../drizzle/schema/org.schema.js");
+  const { clientTypes } = await import("../drizzle/schema/client.schema.js");
   
   const conditions = [
     sql`LOWER(${clientTypes.name}) = LOWER(${name})`, // Case-insensitive comparison
@@ -294,7 +295,7 @@ export const checkIndustryClassificationNameExists = async (
   name: string,
   excludeIndustryId?: number
 ): Promise<boolean> => {
-  const { industryClassifications } = await import("../drizzle/schema/org.schema.js");
+  const { industryClassifications } = await import("../drizzle/schema/client.schema.js");
   
   const conditions = [
     sql`LOWER(${industryClassifications.name}) = LOWER(${name})`, // Case-insensitive comparison
@@ -321,7 +322,7 @@ export const checkIndustryClassificationCodeExists = async (
   code: string,
   excludeIndustryId?: number
 ): Promise<boolean> => {
-  const { industryClassifications } = await import("../drizzle/schema/org.schema.js");
+  const { industryClassifications } = await import("../drizzle/schema/client.schema.js");
   
   const conditions = [
     eq(industryClassifications.code, code),

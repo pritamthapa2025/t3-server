@@ -81,8 +81,7 @@ export const createJobSchema = z.object({
     priority: jobPriorityEnum.optional().default("medium"),
     jobType: z.string().max(100).optional(),
     serviceType: z.string().max(100).optional(),
-    propertyId: uuidSchema.optional(),
-    bidId: uuidSchema.optional(),
+    bidId: uuidSchema, // Now required - organization and property can be derived from bid
     description: z.string().optional(),
     scheduledStartDate: z.string().date("Invalid date format").optional(),
     scheduledEndDate: z.string().date("Invalid date format").optional(),
@@ -106,7 +105,6 @@ export const updateJobSchema = z.object({
     priority: jobPriorityEnum.optional(),
     jobType: z.string().max(100).optional(),
     serviceType: z.string().max(100).optional(),
-    propertyId: uuidSchema.optional(),
     description: z.string().optional(),
     scheduledStartDate: z.string().date().optional(),
     scheduledEndDate: z.string().date().optional(),

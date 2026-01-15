@@ -9,21 +9,23 @@ import {
   integer,
   numeric,
   date,
+  time,
   unique,
   index,
 } from "drizzle-orm/pg-core";
 
 // Import related tables
 import { users } from "./auth.schema.js";
-import { organizations } from "./org.schema.js";
+import { organizations } from "./client.schema.js";
 import { jobs } from "./jobs.schema.js";
+import { employees } from "./org.schema.js";
 
 // Import enums from centralized location
-import { 
-  bidStatusEnum, 
-  bidPriorityEnum, 
-  bidJobTypeEnum, 
-  timelineStatusEnum 
+import {
+  bidStatusEnum,
+  bidPriorityEnum,
+  bidJobTypeEnum,
+  timelineStatusEnum,
 } from "../enums/org.enums.js";
 
 const org = pgSchema("org");
@@ -37,49 +39,36 @@ export const bidsTable: any = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     bidNumber: varchar("bid_number", { length: 100 }).notNull(),
-    
+
     // Basic Information
     title: varchar("title", { length: 255 }).notNull(),
     jobType: bidJobTypeEnum("job_type").notNull(),
     status: bidStatusEnum("status").notNull().default("draft"),
     priority: bidPriorityEnum("priority").notNull().default("medium"),
-    
-    // Client / Org
+
+    // Client
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
-    clientName: varchar("client_name", { length: 255 }),
-    clientEmail: varchar("client_email", { length: 150 }),
-    clientPhone: varchar("client_phone", { length: 20 }),
-    city: varchar("city", { length: 100 }),
-    superClient: varchar("super_client", { length: 255 }),
-    superPrimaryContact: varchar("super_primary_contact", {
-      length: 255,
-    }),
-    primaryContact: varchar("primary_contact", { length: 255 }),
-    industryClassification: varchar("industry_classification", {
-      length: 100,
-    }),
-    
+      .references(() => organizations.id),
+
     // Project Details
     projectName: varchar("project_name", { length: 255 }),
     siteAddress: text("site_address"),
     buildingSuiteNumber: varchar("building_suite_number", { length: 100 }),
-    property: varchar("property", { length: 255 }),
     acrossValuations: varchar("across_valuations", { length: 255 }),
     scopeOfWork: text("scope_of_work"),
     specialRequirements: text("special_requirements"),
     description: text("description"),
-    
+
     // Dates
     startDate: date("start_date"),
     endDate: date("end_date"),
     plannedStartDate: date("planned_start_date"),
     estimatedCompletion: date("estimated_completion"),
     createdDate: timestamp("created_date").defaultNow(),
-    expiresDate: timestamp("expires_date"),
+    expiresDate: date("expires_date"),
     removalDate: date("removal_date"),
-    
+
     // Financial
     bidAmount: numeric("bid_amount", {
       precision: 15,
@@ -90,7 +79,7 @@ export const bidsTable: any = org.table(
     estimatedDuration: integer("estimated_duration"), // days
     profitMargin: numeric("profit_margin", { precision: 5, scale: 2 }), // %
     expiresIn: integer("expires_in"), // days
-    
+
     // Terms & Conditions
     paymentTerms: text("payment_terms"),
     warrantyPeriod: varchar("warranty_period", { length: 50 }),
@@ -101,26 +90,24 @@ export const bidsTable: any = org.table(
     proposalBasis: text("proposal_basis"),
     referenceDate: varchar("reference_date", { length: 50 }),
     templateSelection: varchar("template_selection", { length: 100 }),
-    
+
     // Team Assignment
-    primaryTeammate: uuid("primary_teammate").references(() => users.id, {
-    }),
-    supervisorManager: uuid("supervisor_manager").references(() => users.id, {
-    }),
-    technicianId: uuid("technician_id").references(() => users.id, {
-    }),
-    
+    supervisorManager: integer("supervisor_manager").references(
+      () => employees.id
+    ),
+    primaryTechnicianId: integer("technician_id").references(
+      () => employees.id
+    ),
+
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, ),
-    assignedTo: uuid("assigned_to").references(() => users.id, {
-    }),
+      .references(() => users.id),
+    assignedTo: uuid("assigned_to").references(() => users.id, {}),
     qtyNumber: varchar("qty_number", { length: 50 }),
     marked: varchar("marked", { length: 20 }), // "won" | "lost"
     convertToJob: boolean("convert_to_job").default(false),
-    jobId: uuid("job_id").references(() => jobs.id, ),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -152,14 +139,11 @@ export const bidFinancialBreakdown = org.table(
   "bid_financial_breakdown",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, )
+      .references(() => bidsTable.id)
       .unique(),
-    
+
     materialsEquipment: numeric("materials_equipment", {
       precision: 15,
       scale: 2,
@@ -179,15 +163,12 @@ export const bidFinancialBreakdown = org.table(
     totalCost: numeric("total_cost", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_financial_org").on(table.organizationId),
-    index("idx_bid_financial_bid_id").on(table.bidId),
-  ]
+  (table) => []
 );
 
 /**
@@ -198,13 +179,10 @@ export const bidMaterials = org.table(
   "bid_materials",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     description: text("description").notNull(),
     quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull(),
     unitCost: numeric("unit_cost", { precision: 15, scale: 2 }).notNull(),
@@ -212,15 +190,12 @@ export const bidMaterials = org.table(
       .notNull()
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_materials_org").on(table.organizationId),
-    index("idx_bid_materials_bid_id").on(table.bidId),
-  ]
+  (table) => [index("idx_bid_materials_bid_id").on(table.bidId)]
 );
 
 /**
@@ -231,14 +206,13 @@ export const bidLabor = org.table(
   "bid_labor",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
-    role: varchar("role", { length: 100 }).notNull(),
+      .references(() => bidsTable.id),
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employees.id),
+
     quantity: integer("quantity").notNull(),
     days: integer("days").notNull(),
     hoursPerDay: numeric("hours_per_day", { precision: 5, scale: 2 }).notNull(),
@@ -250,14 +224,14 @@ export const bidLabor = org.table(
     }).notNull(),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_bid_labor_org").on(table.organizationId),
     index("idx_bid_labor_bid_id").on(table.bidId),
+    index("idx_bid_labor_employee_id").on(table.employeeId),
   ]
 );
 
@@ -269,14 +243,10 @@ export const bidTravel = org.table(
   "bid_travel",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
+    bidLaborId: uuid("bid_labor_id")
       .notNull()
-      .references(() => organizations.id, ),
-    bidId: uuid("bid_id")
-      .notNull()
-      .references(() => bidsTable.id, ),
-    
-    employeeName: varchar("employee_name", { length: 255 }),
+      .references(() => bidLabor.id),
+
     vehicleName: varchar("vehicle_name", { length: 255 }),
     roundTripMiles: numeric("round_trip_miles", {
       precision: 10,
@@ -295,15 +265,12 @@ export const bidTravel = org.table(
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_travel_org").on(table.organizationId),
-    index("idx_bid_travel_bid_id").on(table.bidId),
-  ]
+  (table) => [index("idx_bid_travel_labor_id").on(table.bidLaborId)]
 );
 
 /**
@@ -314,14 +281,11 @@ export const bidOperatingExpenses = org.table(
   "bid_operating_expenses",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, )
+      .references(() => bidsTable.id)
       .unique(),
-    
+
     enabled: boolean("enabled").default(false),
     grossRevenuePreviousYear: numeric("gross_revenue_previous_year", {
       precision: 15,
@@ -360,61 +324,12 @@ export const bidOperatingExpenses = org.table(
       precision: 15,
       scale: 2,
     }).default("0"),
-    
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_bid_operating_org").on(table.organizationId),
-    index("idx_bid_operating_bid_id").on(table.bidId),
-  ]
-);
 
-/**
- * Bid Survey Data Table
- * One-to-one survey data for survey-type bids
- */
-export const bidSurveyData = org.table(
-  "bid_survey_data",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
-    bidId: uuid("bid_id")
-      .notNull()
-      .references(() => bidsTable.id, )
-      .unique(),
-    
-    buildingNumber: varchar("building_number", { length: 100 }),
-    siteLocation: text("site_location"),
-    workType: varchar("work_type", { length: 50 }), // new-installation, existing-unit-assessment, site-condition-check
-    hasExistingUnit: boolean("has_existing_unit").default(false),
-    unitTag: varchar("unit_tag", { length: 100 }),
-    unitLocation: varchar("unit_location", { length: 255 }),
-    make: varchar("make", { length: 100 }),
-    model: varchar("model", { length: 100 }),
-    serial: varchar("serial", { length: 100 }),
-    systemType: varchar("system_type", { length: 100 }),
-    powerStatus: varchar("power_status", { length: 50 }),
-    voltagePhase: varchar("voltage_phase", { length: 50 }),
-    overallCondition: varchar("overall_condition", { length: 100 }),
-    siteAccessNotes: text("site_access_notes"),
-    siteConditions: text("site_conditions"),
-    clientRequirements: text("client_requirements"),
-    technicianId: uuid("technician_id").references(() => users.id, {
-    }),
-    
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_survey_org").on(table.organizationId),
-    index("idx_bid_survey_bid_id").on(table.bidId),
-    index("idx_bid_survey_technician").on(table.technicianId),
-  ]
+  (table) => [index("idx_bid_operating_bid_id").on(table.bidId)]
 );
 
 /**
@@ -425,26 +340,56 @@ export const bidPlanSpecData = org.table(
   "bid_plan_spec_data",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, )
+      .references(() => bidsTable.id)
       .unique(),
-    
+
     specifications: text("specifications"),
     designRequirements: text("design_requirements"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_plan_spec_org").on(table.organizationId),
-    index("idx_bid_plan_spec_bid_id").on(table.bidId),
-  ]
+  (table) => []
 );
+
+/**
+ * Bid Survey Data Table
+ * One-to-one survey data for survey-type bids
+ */
+export const bidSurveyData = org.table("bid_survey_data", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  bidId: uuid("bid_id")
+    .notNull()
+    .references(() => bidsTable.id)
+    .unique(),
+
+  buildingNumber: varchar("building_number", { length: 100 }),
+  siteLocation: text("site_location"),
+  workType: varchar("work_type", { length: 50 }), // new-installation, existing-unit-assessment, site-condition-check
+  hasExistingUnit: boolean("has_existing_unit").default(false),
+  unitTag: varchar("unit_tag", { length: 100 }),
+  unitLocation: varchar("unit_location", { length: 255 }),
+  make: varchar("make", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  serial: varchar("serial", { length: 100 }),
+  systemType: varchar("system_type", { length: 100 }),
+  powerStatus: varchar("power_status", { length: 50 }),
+  voltagePhase: varchar("voltage_phase", { length: 50 }),
+  overallCondition: varchar("overall_condition", { length: 100 }),
+  siteAccessNotes: text("site_access_notes"),
+  additionalNotes: text("additional_notes"), //optional
+  siteConditions: text("site_conditions"),
+  clientRequirements: text("client_requirements"),
+  termsAndConditions: text("terms_and_conditions"), //optional
+  dateOfSurvey: date("date_of_survey"),
+  timeOfSurvey: time("time_of_survey"),
+  isDeleted: boolean("is_deleted").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 /**
  * Bid Design Build Data Table
@@ -454,25 +399,19 @@ export const bidDesignBuildData = org.table(
   "bid_design_build_data",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, )
+      .references(() => bidsTable.id)
       .unique(),
-    
+
     designRequirements: text("design_requirements"),
     buildSpecifications: text("build_specifications"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_design_build_org").on(table.organizationId),
-    index("idx_bid_design_build_bid_id").on(table.bidId),
-  ]
+  (table) => []
 );
 
 /**
@@ -485,19 +424,18 @@ export const bidTimeline = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     event: varchar("event", { length: 255 }).notNull(),
     eventDate: timestamp("event_date").notNull(),
     status: timelineStatusEnum("status").notNull().default("pending"),
     description: text("description"),
     sortOrder: integer("sort_order").default(0),
-    createdBy: uuid("created_by").references(() => users.id, {
-    }),
-    
+    createdBy: uuid("created_by").references(() => users.id, {}),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -520,11 +458,11 @@ export const bidDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileType: varchar("file_type", { length: 50 }),
@@ -532,8 +470,8 @@ export const bidDocuments = org.table(
     documentType: varchar("document_type", { length: 50 }), // proposal, contract, spec, plan, etc.
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -556,19 +494,19 @@ export const bidPlanSpecFiles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     fileType: varchar("file_type", { length: 20 }).notNull(), // "plan" | "spec"
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileSize: integer("file_size"),
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -589,18 +527,18 @@ export const bidDesignBuildFiles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileSize: integer("file_size"),
     uploadedBy: uuid("uploaded_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -620,17 +558,17 @@ export const bidNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     note: text("note").notNull(),
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id, ),
+      .references(() => users.id),
     isInternal: boolean("is_internal").default(true),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -653,19 +591,19 @@ export const bidHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, ),
+      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id, ),
-    
+      .references(() => bidsTable.id),
+
     action: varchar("action", { length: 100 }).notNull(), // status_changed, amount_updated, assigned, etc.
     oldValue: text("old_value"),
     newValue: text("new_value"),
     description: text("description"),
     performedBy: uuid("performed_by")
       .notNull()
-      .references(() => users.id, ),
-    
+      .references(() => users.id),
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [

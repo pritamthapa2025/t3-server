@@ -17,7 +17,6 @@ import {
 } from "../drizzle/schema/expenses.schema.js";
 import {
   employees,
-  organizations,
 } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
@@ -482,6 +481,7 @@ export const getMileageSummary = async (
     byMonth: monthlyBreakdown,
   };
 };
+
 
 
 

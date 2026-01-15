@@ -17,8 +17,9 @@ import {
   propertyDocuments,
   propertyServiceHistory,
   organizations,
-} from "../drizzle/schema/org.schema.js";
+} from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // Get properties with pagination and filtering
@@ -52,10 +53,11 @@ export const getProperties = async (
       filters.status === "under_service" ||
       filters.status === "Under Service"
     ) {
-      // Get property IDs that have active jobs
-      const propertiesWithActiveJobs = await db
-        .selectDistinct({ propertyId: jobs.propertyId })
+      // Get organization IDs that have active jobs (jobs are now linked through bid → organization)
+      const organizationsWithActiveJobs = await db
+        .selectDistinct({ organizationId: bidsTable.organizationId })
         .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
         .where(
           and(
             eq(jobs.isDeleted, false),
@@ -68,9 +70,24 @@ export const getProperties = async (
           )
         );
 
-      const propertyIdsWithActiveJobs = propertiesWithActiveJobs
-        .map((j) => j.propertyId)
+      const organizationIdsWithActiveJobs = organizationsWithActiveJobs
+        .map((j) => j.organizationId)
         .filter((id) => id !== null) as string[];
+      
+      // Get property IDs for these organizations
+      const propertiesWithActiveJobs = organizationIdsWithActiveJobs.length > 0
+        ? await db
+            .select({ id: properties.id })
+            .from(properties)
+            .where(
+              and(
+                inArray(properties.organizationId, organizationIdsWithActiveJobs),
+                eq(properties.isDeleted, false)
+              )
+            )
+        : [];
+      
+      const propertyIdsWithActiveJobs = propertiesWithActiveJobs.map((p) => p.id);
 
       // Properties with status "under_construction" OR properties with active jobs
       if (propertyIdsWithActiveJobs.length > 0) {
@@ -222,9 +239,10 @@ export const getProperties = async (
   );
 
   // Enrich each property with job counts and last service date
+  // Note: Jobs are now linked to organizations, so we use organizationId for mapping
   const enrichedProperties = propertiesResult.map((property) => {
-    const totalJobs = totalJobsMap.get(property.id) || 0;
-    const activeJobs = activeJobsMap.get(property.id) || 0;
+    const totalJobs = property.organizationId ? totalJobsMap.get(property.organizationId) || 0 : 0;
+    const activeJobs = property.organizationId ? activeJobsMap.get(property.organizationId) || 0 : 0;
     const lastService = lastServiceMap.get(property.id) || null;
 
     // Determine display status - if has active jobs, show "Under Service"
@@ -294,18 +312,26 @@ export const getPropertyById = async (id: string) => {
   const property = baseData.property;
   const organization = baseData.organization;
 
-  // Get job counts
+  // Get job counts - jobs are now linked through bid → organization
+  // Since property belongs to organization, we count jobs for the organization
   const [totalJobsResult, activeJobsResult] = await Promise.all([
     db
       .select({ count: count() })
       .from(jobs)
-      .where(and(eq(jobs.propertyId, id), eq(jobs.isDeleted, false))),
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(
+          eq(bidsTable.organizationId, property.organizationId),
+          eq(jobs.isDeleted, false)
+        )
+      ),
     db
       .select({ count: count() })
       .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
       .where(
         and(
-          eq(jobs.propertyId, id),
+          eq(bidsTable.organizationId, property.organizationId),
           eq(jobs.isDeleted, false),
           inArray(jobs.status, [
             "planned",
@@ -365,7 +391,7 @@ export const getPropertyById = async (id: string) => {
     .orderBy(propertyEquipment.equipmentType, propertyEquipment.location);
 
   // Get job history - combine jobs and service history
-  // First, get all jobs for this property
+  // Jobs are now linked through bid → organization, so we get jobs for the property's organization
   const jobsList = await db
     .select({
       id: jobs.id,
@@ -384,8 +410,14 @@ export const getPropertyById = async (id: string) => {
       leadTechnicianName: users.fullName,
     })
     .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .leftJoin(users, eq(jobs.leadTechnician, users.id))
-    .where(and(eq(jobs.propertyId, id), eq(jobs.isDeleted, false)))
+    .where(
+      and(
+        eq(bidsTable.organizationId, property.organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    )
     .orderBy(
       desc(jobs.actualEndDate),
       desc(jobs.scheduledStartDate),
