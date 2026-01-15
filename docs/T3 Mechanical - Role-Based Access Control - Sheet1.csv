@@ -1,0 +1,718 @@
+T3 Mechanical - Role-Based Access Control (RBAC) Matrix,,,,
+,,,,
+,,,,
+Scope Document Role,System Role,Code Reference,,
+User,Technician,"Field technicians, basic employees",,
+Administrative,Manager,"Operational managers, supervisors",,
+Officer,Executive,"Company executives, owners",,
+,,,,
+1. CORE PLATFORM FEATURES,,,,
+1.1 Dashboard Access,,,,
+Feature,Technician,Manager,Executive,Notes
+View Dashboard,✅ View (Different layout),✅ View,✅ View,All roles access dashboard
+Recent Updates,Limited (assigned),✅ Full,✅ Full,Technicians see only assigned jobs
+New Bids,❌ None,✅ View,✅ View,Cannot create/edit
+Recent Jobs,✅ Assigned Only,✅ All,✅ All,Limited to assigned
+Completed Jobs,✅ Own,✅ All,✅ All,
+Jobs Needing Invoicing,❌ None,✅ View,✅ View,
+Outstanding Payments,❌ None,👁️ Limited,✅ Full,Managers see reports only
+Days Overdue,❌ None,✅ View,✅ View,
+Revenue Chart,❌ None,👁️ View,✅ Full,"Manager sees trends, no details"
+Active Jobs Chart,❌ None,✅ View,✅ View,
+Performance Overview,❌ None,👁️ Team,✅ Full,"Managers see team, not individual salaries"
+Priority Jobs Table,✅ Assigned,✅ All,✅ All,
+Today's Dispatch,✅ Own,✅ All,✅ All,
+,,,,
+UI Elements Visible:,,,,
+,,,,
+"Technician: My Tasks card, My Jobs card, My Timesheets link, Dispatch card",,,,
+"Manager: All cards + Team Performance, Job Pipeline, Invoice Queue",,,,
+"Executive: All cards + Financial Summary, Profit/Loss, Cash Flow",,,,
+,,,,
+1.2 User Management System,,,,
+Feature,Technician,Manager,Executive,Notes
+View Employees,❌ None,✅ All,✅ All,Technicians see team members only
+View Own Profile,✅ Full,✅ Full,✅ Full,
+Edit Own Profile,✅ Basic Info,✅ Basic Info,✅ Full,Cannot edit employment details
+View Other Profiles,❌ None,✅ Nessesory info,✅ Full,Managers cannot view bank info and payouts
+Edit Other Profiles,❌ None,✅ Basic,✅ Full,Managers cannot edit pay/employee status
+Personal Information,,,,
+Update Contact Info,✅,✅,✅ Full,
+Update Emergency Contact,✅,✅,✅ Full,
+Update Bank Details,❌ None,❌ None,✅ Full,Manager cannot view/edit
+View Pay Rate,✅ Own,✅ Own,✅ All,Managers cannot see salaries
+Employment Management,,,,
+Add/Remove Users,❌ None,✅ (Add Tech or Manager),✅ Full (Add + Remove),Executive only
+Assign Roles,❌ None,❌ None,✅ Full,Executive only
+Update Employment Status,❌ None,❌ None,✅ Full,Active/Terminated
+Update Pay Rate,❌ None,❌ None,✅ Full,Executive only
+Activity Logs,,,,
+View Own Activity,✅ View,✅ View,✅ View,
+View Others Activity,❌ None,✅ Department,✅ All,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Edit My Profile"", ""Upload Document"", ""Update Contact"", ""View My Activity""",,,,
+"Manager: + ""View Team"", ""View Team Activity"", ""Add User (Technician or Manager)""",,,,
+"Executive: + ""Add User (All 3 roles)"",""Edit Employment"", ""Update Pay"", ""Assign Roles"", ""Terminate User""",,,,
+,,,,
+1.3 Performance & Compliance Module,,,,
+Feature,Technician,Manager,Executive,Notes
+Performance Reviews,,,,
+View Own Reviews,✅ View,✅ View,✅ View,
+Conduct Reviews,❌ None,✅ Own Department,✅ All,
+Rate Performance,❌ None,✅ Own Department,✅ All,
+Incident Reports,,,,
+View Incident Reports,✅ Own,✅ All,✅ All,
+Create Incident Reports,✅ Yes,✅ Yes,✅ Yes,Anyone can report
+Edit Incident Reports,❌ None,❌ None,✅ All,
+Apply Violation Strike,❌ None,❌ None,✅ Yes,
+Audit Trails,,,,
+View Audit Logs,❌ None,Limited,✅ Full,Manager sees compliance only
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""View My Reviews"", ""Report Incident"", ""View My Goals""",,,,
+"Manager: + ""Create Review"", ""View Team Reports"", ""Upload Document"", ""Set Goals"", ""Review Incident""",,,,
+"Executive: + ""Delete Report"", ""View All Audits"", ""Edit Any Review""",,,,
+,,,,
+1.4 Timesheet Management System,,,,
+Feature,Technician,Manager,Executive,Notes
+Timesheet Entry,,,,
+View Own Timesheets,✅ View,✅ View,✅ View,
+Create Timesheet Entry,✅ Yes,✅ Yes,✅ Yes (Optional),
+Edit Own Timesheets,✅ Pending,✅ Yes,✅ All,Before approval
+Delete Own Timesheets,✅ Yes,✅ Yes,✅ All,
+View Others Timesheets,❌ None,✅ Team,✅ All,
+Edit Others Timesheets,❌ None,❌ None,✅ All,Executive can correct
+Time Tracking,,,,
+Add Job Notes,✅ Required,✅ Required,✅ Yes (Optional),Feeds job log
+Track Standard Time,✅ Yes,✅ Yes,✅ Yes,
+Track Overtime,✅ Yes,✅ Yes,✅ Yes,Auto-calculated
+Track Double Overtime,✅ Yes,✅ Yes,✅ Yes,Auto-calculated
+Timesheet Approval,,,,
+Submit for Approval,✅ Yes,✅ Yes,✅ Yes,
+Approve Timesheets,❌ None,✅ Own Department,✅ All,
+Reject Timesheets,❌ None,✅ Own Department,✅ All,With notes
+Violations & Compliance,,,,
+View Own Violations,✅ View,✅ View,✅ View,Missed entries
+View Team Violations,❌ None,✅ Own Department,✅ All,
+Clear Violations,❌ None,✅ With Note,✅ Yes,
+Cost Tracking,,,,
+View Labor Costs,❌ None,👁️ Job Total,✅ Full,"Manager sees job cost, not rates"
+View Billable Amounts,❌ None,✅ Yes,✅ Yes,
+Reporting,,,,
+View Weekly Summary,✅ Own,✅ Team,✅ All,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""New Entry"", ""Add Photo"", ""Submit Week"", ""View My Hours"", ""Add Note""",,,,
+"Manager: + ""Approve"", ""Reject"", ""View Team Hours"", ""Export Payroll"", ""View Violations"", ""Weekly Report""",,,,
+"Executive: + ""Edit Any Entry"", ""View All Timesheets"", ""Clear Violation"", ""Cost Analysis""",,,,
+,,,,
+2. BID GENERATION & MANAGEMENT,,,,
+2.1 Multi-Type Bid Generation,,,,
+Feature,Technician,Manager,Executive,Notes
+Bid Creation,,,,
+View Bids,✅ Assigned,✅ All,✅ All,Limited to job-related
+Create General Bid,❌ None,✅ Yes,✅ Yes,
+Create Plan Spec Bid,❌ None,✅ Yes,✅ Yes,
+Create Design Build Bid,❌ None,✅ Yes,✅ Yes,
+Create Service Bid,❌ None,✅ Yes,✅ Yes,
+Create PM Bid,❌ None,✅ Yes,✅ Yes,
+Create Survey Bid,❌ None,✅ Yes,✅ Yes,
+Bid Editing,,,,
+Edit Bid (Draft),❌ None,✅ Own,✅ All,
+Edit Bid (Pending),❌ None,❌ None,✅ Yes,After sent
+Delete Bid,❌ None,✅ Draft,✅ All,
+Bid Templates,,,,
+Use Templates,❌ None,✅ Yes,✅ Yes,
+Create Templates,❌ None,✅ Yes,✅ Yes,
+Edit Templates,❌ None,✅ Yes,✅ Yes,
+Delete Templates,❌ None,❌ None,✅ Yes,Executive only
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""View Bid"" (read-only)",,,,
+"Manager: + ""Create Bid"", ""Edit"", ""New Version"", ""Save as Template"", ""Delete Draft"", ""Use Template""",,,,
+"Executive: + ""Delete Any"", ""Edit Pending"", ""Approve"", ""Override""",,,,
+,,,,
+2.2 Client & Project Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Client Management,,,,
+View Clients,✅ Basic Info,✅ Yes,✅ All,Manager can view non-revenue data
+View Client Details,✅ Basic Info,✅ Yes,✅ Full,Manager can view non-revenue data
+Create Client,❌ None,✅ Yes,✅ Yes,
+Edit Client,❌ None,✅ Yes,✅ Yes,
+Delete Client,❌ None,❌ None,✅ Yes,Executive only
+Client Information,,,,
+View Contact Info,✅ Job-Related,✅ All,✅ All,
+Add Contacts,❌ None,✅ Yes,✅ Yes,Multiple contacts
+Edit Contacts,❌ None,✅ Yes,✅ Yes,
+View Client Industry,✅ Yes,✅ Yes,✅ Yes,
+Client History,,,,
+View Job History,👁️ Assigned,✅ Full,✅ Full,
+View Bid History,❌ None,✅ View,✅ Full,
+Financial Information,,,,
+View Client Total Spend,❌ None,👁️ View,✅ Full,Manager sees totals
+View Total Invoiced,❌ None,✅ View,✅ Full,
+View Total Payments,❌ None,✅ View,✅ Full,
+View Payment History,❌ None,✅ View,✅ Full,
+Set Billing Settings,❌ None,❌ None,✅ Yes,
+Set Priority Status,❌ None,✅ Yes,✅ Yes,
+Client Media & Documents,,,,
+View Documents,✅ Job-Related,✅ All,✅ All,
+Upload Documents,✅ Job-Related,✅ Yes,✅ Yes,
+Upload Media,✅ Job-Related,✅ Yes,✅ Yes,
+Project Information,,,,
+Add Project Scope,❌ None,✅ Yes,✅ Yes,In bid
+Add Site Address,❌ None,✅ Yes,✅ Yes,With autocomplete
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: View client name, contact phone, job site address (read-only)",,,,
+"Manager: + ""Add Client"", ""Edit Client"", ""Add Contact"", ""Upload Document"", ""Set Priority"", ""Add Project""",,,,
+"Executive: + ""Delete Client"", ""View Financial Details"", ""Edit Billing""",,,,
+,,,,
+2.3 Advanced Cost Calculation Engine,,,,
+Feature,Technician,Manager,Executive,Notes
+Calculator Tool,,,,
+Access Calculator,❌ None,✅ Yes,✅ Yes,In bid creation
+View Cost Breakdown,❌ None,✅ Yes,✅ Yes,
+Materials & Equipment,,,,
+Add Line Items,❌ None,✅ Yes,✅ Yes,
+Edit Line Items,❌ None,✅ Yes,✅ Yes,
+Delete Line Items,❌ None,✅ Yes,✅ Yes,
+Use Line Item Presets,❌ None,✅ Yes,✅ Yes,
+Create Presets,❌ None,✅ Yes,✅ Yes,
+Set Markup %,❌ None,✅ Yes,✅ Yes,
+Hide Pricing (Bundle),❌ None,✅ Yes,✅ Yes,
+Labor Calculation,,,,
+Add Labor by Title,❌ None,✅ Yes,✅ Yes,
+Set Quantity,❌ None,✅ Yes,✅ Yes,
+Set Days/Hours,❌ None,✅ Yes,✅ Yes,
+View Cost Rate,❌ None,👁️ See,✅ Full,"Manager sees, cannot edit"
+Edit Cost Rate,❌ None,❌ None,✅ Yes,Executive only
+Set Billable Rate,❌ None,✅ Yes,✅ Yes,
+View Total Labor Cost,❌ None,✅ Yes,✅ Yes,
+Ordered Materials Tracking,,,,
+Add Ordered Items,❌ None,✅ Yes,✅ Yes,
+Set Vendor,❌ None,✅ Yes,✅ Yes,
+Set Bill Due Date,❌ None,✅ Yes,✅ Yes,
+Mark as Paid,❌ None,✅ Yes,✅ Yes,
+Mark as Received,✅ Confirm,✅ Yes,✅ Yes,Technician can confirm receipt
+Track Payment Status,❌ None,✅ View,✅ Full,
+Cash Flow Management,,,,
+View Bill Due Dates,❌ None,✅ View,✅ Full,
+View Material Arrival,❌ None,✅ View,✅ Full,
+View Cash Flow Timeline,❌ None,✅ View,✅ Full,
+Operating Expenses,,,,
+View Operating Cost,❌ None,✅ View,✅ Full,
+Calculate Travel Costs,❌ None,✅ Yes,✅ Yes,Auto via API
+Set Mileage Rate,❌ None,❌ None,✅ Yes,Executive only
+Vendor Management,,,,
+View Vendors,✅ Job-Related,✅ All,✅ All,
+Add Vendor,❌ None,✅ Yes,✅ Yes,
+Track Performance,❌ None,✅ View,✅ Full,
+View Payment History,❌ None,✅ View,✅ Full,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Confirm Receipt"" (for assigned jobs)",,,,
+"Manager: ""Open Calculator"", ""Add Line Item"", ""Add Labor"", ""Use Preset"", ""Add Vendor"", ""Mark Paid"", ""View Cash Flow""",,,,
+"Executive: + ""Edit Cost Rate"", ""Set Mileage"", ""Edit Markup"", ""Override Costs""",,,,
+,,,,
+2.4 Bid Output & Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Bid Summary,,,,
+View Live Cost Summary,❌ None,❌ None,✅ Yes,Total cost/price/profit
+View Profit Margin,❌ None,✅ Yes,✅ Yes,
+View Gross Profit,❌ None,✅ Yes,✅ Yes,
+View Snapshot Breakdown,❌ None,✅ Yes,✅ Yes,Materials/equipment/labor
+Bid Finalization,,,,
+Preview Bid,❌ None,✅ Yes,✅ Yes,
+Save Bid to Client,❌ None,✅ Yes,✅ Yes,
+Save Bid to Job,❌ None,✅ Yes,✅ Yes,
+Export to PDF,❌ None,✅ Yes,✅ Yes,Professional template
+Bid Approval,,,,
+Submit for Approval,❌ None,✅ Yes,✅ Auto,"Manager submits, Executive auto"
+Approve Bid,❌ None,❌ None,✅ Yes,Executive only
+Reject Bid,❌ None,❌ None,✅ Yes,With notes
+Request Changes,❌ None,❌ None,✅ Yes,
+Mark Bid as Won/Lost,❌ None,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+Technician: None (no bid access),,,,
+"Manager: ""Preview"", ""Save to Client"", ""Export PDF"", ""Submit for Approval""",,,,
+"Executive: + ""Approve"", ""Reject"", ""Sign"", ""Override Approval""",,,,
+,,,,
+3. JOB MANAGEMENT,,,,
+3.1 Job Dashboard & Status Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Job Viewing,,,,
+View Jobs,✅ Assigned,✅ All,✅ All,
+View Job Overview,✅ Assigned,✅ All,✅ All,
+Filter Jobs by Status,✅ Assigned,✅ All,✅ All,
+Search Jobs,✅ Assigned,✅ All,✅ All,
+Sort Jobs,✅ Assigned,✅ All,✅ All,
+Job Status,,,,
+"View ""New"" Jobs",❌ None,✅ View,✅ View,
+"View ""Pending"" Jobs",❌ None,✅ View,✅ View,
+"View ""Declined"" Jobs",❌ None,✅ View,✅ View,
+"View ""Active"" Jobs",✅ Assigned,✅ All,✅ All,
+"View ""Completed"" Jobs",✅ Assigned,✅ All,✅ All,
+"View ""Invoiced"" Jobs",❌ None,✅ View,✅ View,
+"View ""Paid"" Jobs",❌ None,✅ View,✅ View,
+"View ""Cancelled"" Jobs",❌ None,✅ View,✅ View,
+Status Changes,,,,
+"Change to ""Pending""",❌ None,✅ Yes,✅ Yes,Send to client
+"Change to ""Active""",❌ None,✅ Yes,✅ Yes,Bid accepted
+"Change to ""Completed""",✅ Request,✅ Yes,✅ Yes,100% job progress
+"Change to ""Invoiced""",❌ None,✅ Yes,✅ Yes,100% billing
+"Change to ""Paid""",❌ None,✅ Yes,✅ Yes,100% payment
+"Change to ""Cancelled""",❌ None,✅ Yes,✅ Yes,
+Progress Tracking,,,,
+View % Job Completed,✅ Yes,✅ Yes,✅ Yes,
+Update % Job Completed,✅ Assigned,✅ Yes,✅ Yes,Field update
+View % Billed,❌ None,✅ View,✅ View,
+Update % Billed,❌ None,✅ Yes,✅ Yes,
+View % Paid,❌ None,✅ View,✅ View,
+Update % Paid,❌ None,✅ Yes,✅ Yes,
+Job Pipeline,,,,
+View Pipeline,❌ None,✅ View,✅ View,Visual workflow
+View Pipeline Analytics,❌ None,✅ View,✅ Full,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""My Jobs"", Filter (Assigned), ""Update Progress"", ""View Details"", ""Mark Complete""",,,,
+"Manager: + ""All Jobs"", All Status Filters, ""Change Status"", ""Send to Client"", ""Mark Invoiced"", Pipeline View",,,,
+"Executive: + ""Override Status"", ""Cancel Job"", View Financial Details",,,,
+,,,,
+3.2 Detailed Job Profile System,,,,
+Feature,Technician,Manager,Executive,Notes
+Job Overview,,,,
+View Job Overview,✅ Assigned,✅ All,✅ All,
+View Site Address,✅ Yes,✅ Yes,✅ Yes,
+View Primary Contact,✅ Yes,✅ Yes,✅ Yes,
+View Associated Bids,❌ None,✅ View,✅ View,
+Financial Overview,,,,
+View Budget,❌ None,✅ View,✅ Full,Manager sees total only
+View Actual Costs,❌ None,✅ View,✅ Full,Real-time
+View Budget vs Actual,❌ None,✅ View,✅ Full,Variance tracking
+View Labor Breakdown,❌ None,👁️ Total,✅ Full,"Manager sees total, not rates"
+View Expense Breakdown,❌ None,✅ View,✅ Full,
+View Profit/Loss,❌ None,✅ View,✅ Full,
+Invoice Management,,,,
+View Invoices,❌ None,✅ View,✅ Full,
+Create Invoice,❌ None,✅ Yes,✅ Yes,
+Edit Invoice,❌ None,✅ Draft,✅ All,
+Send Invoice,❌ None,✅ Yes,✅ Yes,
+Record Payment,❌ None,✅ Yes,✅ Yes,
+Partial Payment,❌ None,✅ Yes,✅ Yes,
+Payment Plan,❌ None,✅ Yes,✅ Yes,
+Media Management,,,,
+View Job Photos,✅ Yes,✅ Yes,✅ Yes,
+Upload Photos,✅ Assigned,✅ Yes,✅ Yes,From field
+Upload Videos,✅ Assigned,✅ Yes,✅ Yes,From field
+Upload Documents,✅ Assigned,✅ Yes,✅ Yes,
+Delete Media,❌ None,✅ Own,✅ All,
+Organize Media,❌ None,✅ Yes,✅ Yes,"Tags, folders"
+Job Log,,,,
+View Job Log,✅ Yes,✅ Yes,✅ Yes,Chronological activity
+Add Log Entry,✅ Auto,✅ Yes,✅ Yes,Auto from timesheets
+View Timesheet Notes,✅ Own,✅ All,✅ All,Feed into log
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""View Overview"", ""Upload Photo"", ""Upload Video"", ""View Log"", ""Add Note""",,,,
+"Manager: + ""View Budget"", ""Create Invoice"", ""Send Invoice"", ""Add Change Order"", ""View Correspondence"", ""Upload Document"", ""Record Payment""",,,,
+"Executive: + ""Approve Change Order"", ""View Profit/Loss"", ""Edit Any"", ""Delete Change Order"", ""Override Budget""",,,,
+,,,,
+3.3 Expense & Resource Tracking,,,,
+Feature,Technician,Manager,Executive,Notes
+Expense Recording,,,,
+View Job Expenses,👁️ Assigned,✅ All,✅ All,
+Add Expense,✅ With Receipt,✅ Yes,✅ Yes,
+Edit Expense,✅ Pending,✅ Pending,✅ All,Before approval
+Delete Expense,❌ None,✅ Pending,✅ All,
+Expense Details,,,,
+Set Category,✅ Yes,✅ Yes,✅ Yes,"Materials, equipment, etc."
+Set Date,✅ Yes,✅ Yes,✅ Yes,
+Set Amount,✅ Yes,✅ Yes,✅ Yes,
+Set Payment Method,✅ Yes,✅ Yes,✅ Yes,
+Add Description,✅ Required,✅ Yes,✅ Yes,
+Select Vendor,✅ Yes,✅ Yes,✅ Yes,
+Upload Receipt,✅ Required,✅ Yes,✅ Yes,Photo from phone
+Add Notes,✅ Yes,✅ Yes,✅ Yes,
+Expense Approval,,,,
+Submit for Approval,✅ Yes,✅ Yes,✅ Auto,
+Approve Expenses,❌ None,✅ Team,✅ All,
+Reject Expenses,❌ None,✅ Team,✅ All,With notes
+Expense Reporting,,,,
+View Total Expenses,❌ None,✅ Job,✅ All,
+View Category Breakdown,❌ None,✅ Yes,✅ Yes,
+View Real-Time Updates,❌ None,✅ Yes,✅ Yes,
+Export Expense Report,❌ None,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Add Expense"", ""Upload Receipt"", ""Submit"", ""View My Expenses""",,,,
+"Manager: + ""Approve"", ""Reject"", ""View All Expenses"", ""Category Breakdown"", ""Export Report""",,,,
+"Executive: + ""Edit Any"", ""Delete Any"", ""Override"", ""View All Financial""",,,,
+,,,,
+4. SPECIALIZED HVAC WORKFLOWS,,,,
+4.1 Service Job Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Service Call Checklist,,,,
+View Service Checklist,✅ Assigned,✅ All,✅ All,
+Complete Checklist Items,✅ Assigned,✅ Yes,✅ Yes,
+Clean Work Area,✅ Check,✅ Check,✅ Yes,Required
+Check System Functionality,✅ Check,✅ Check,✅ Yes,Required
+Check Thermostat,✅ Check,✅ Check,✅ Yes,Required
+Communicate with Client,✅ Check,✅ Check,✅ Yes,Required
+Unit Types,,,,
+Service HVAC Units,✅ Assigned,✅ Yes,✅ Yes,
+Service VAC Units,✅ Assigned,✅ Yes,✅ Yes,
+Service Documentation,,,,
+Create Service Report,✅ Assigned,✅ Yes,✅ Yes,
+Upload Photos,✅ Yes,✅ Yes,✅ Yes,Before/after
+Upload Videos,✅ Yes,✅ Yes,✅ Yes,
+Record Findings,✅ Required,✅ Yes,✅ Yes,
+Record Actions Taken,✅ Required,✅ Yes,✅ Yes,
+Service Reporting,,,,
+Generate Service Report,✅ Auto,✅ Yes,✅ Yes,Auto on completion
+View Service History,✅ Assigned,✅ All,✅ All,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""View Checklist"", ""Check Item"", ""Upload Photo"", ""Add Finding"",",,,,
+"Manager: + ""Assign Service"", ""View All Service History"", ""Override Checklist""",,,,
+"Executive: + ""View Service Analytics"", ""Edit Any Report""",,,,
+,,,,
+4.2 Preventative Maintenance (PM) System,,,,
+Feature,Technician,Manager,Executive,Notes
+PM Job Management,,,,
+View PM Jobs,✅ Assigned,✅ All,✅ All,
+View PM Schedule,✅ Assigned,✅ All,✅ All,Quarterly visits
+View PM Report History,👁️ Own,✅ All,✅ All,Searchable archive
+PM Inspection Checklist,,,,
+Access PM Checklist,✅ Assigned,✅ All,✅ All,
+Record Timestamp,✅ Auto,✅ Auto,✅ Auto,
+Record Inspector,✅ Auto,✅ Auto,✅ Auto,
+Enter Building Number,✅ Required,✅ Yes,✅ Yes,
+Upload Unit Photo,✅ Required,✅ Yes,✅ Yes,Overall unit
+Enter Unit Tag,✅ Required,✅ Yes,✅ Yes,
+Enter Suite Served,✅ Required,✅ Yes,✅ Yes,
+Check Unit Condition,✅ Checklist,✅ Yes,✅ Yes,Multiple checks
+Record Temperature Readings,✅ Required,✅ Yes,✅ Yes,
+Record Filter Info,✅ Required,✅ Yes,✅ Yes,Condition/size
+Exhaust Fan Inspection,,,,
+Access Fan Checklist,✅ Assigned,✅ Yes,✅ Yes,
+Record Fan Condition,✅ Yes,✅ Yes,✅ Yes,
+Track Issues,✅ Yes,✅ Yes,✅ Yes,
+PM Report Generation,,,,
+Auto-Generate PDF Report,✅ Auto,✅ Auto,✅ Auto,After last unit
+View Generated Reports,✅ Own,✅ All,✅ All,
+Download PDF,✅ Own,✅ All,✅ All,
+Email Report to Client,❌ None,✅ Yes,✅ Yes,
+PM Scheduling,,,,
+View PM Calendar,✅ Assigned,✅ All,✅ All,
+Schedule PM Visit,❌ None,✅ Yes,✅ Yes,Recurring
+Reschedule PM,❌ Request,✅ Yes,✅ Yes,
+PM Reminders,,,,
+Receive PM Reminders,✅ Assigned,✅ All,✅ All,Upcoming inspections
+Send Client Notifications,❌ None,✅ Auto,✅ Auto,
+View Reminder History,✅ Yes,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Start PM Inspection"", ""Upload Unit Photo"", ""Enter Data"", ""Next Unit"", ""Complete PM"", ""View My PM History""",,,,
+"Manager: + ""Schedule PM"", ""View All PM Reports"", ""Send Report"", ""Reschedule"", ""View PM Calendar""",,,,
+"Executive: + ""PM Analytics"", ""Edit Schedule"", ""Override""",,,,
+,,,,
+4.3 Survey Job Workflows,,,,
+Feature,Technician,Manager,Executive,Notes
+Survey Management,,,,
+View Survey Jobs,✅ Assigned,✅ All,✅ All,
+Access Survey Checklist,✅ Assigned,✅ Yes,✅ Yes,
+Survey Data Collection,,,,
+Record Timestamp,✅ Auto,✅ Auto,✅ Auto,
+Enter Unit Tag,✅ Yes,✅ Yes,✅ Yes,
+Enter Make,✅ Yes,✅ Yes,✅ Yes,
+Enter Model,✅ Yes,✅ Yes,✅ Yes,
+Enter Serial Number,✅ Yes,✅ Yes,✅ Yes,
+Upload Unit Photos,✅ Required,✅ Yes,✅ Yes,Multiple angles
+Check Power Status,✅ Yes,✅ Yes,✅ Yes,
+Check Filter Condition,✅ Yes,✅ Yes,✅ Yes,
+Check Filter Size,✅ Yes,✅ Yes,✅ Yes,
+Check Blower Motor Info,✅ Yes,✅ Yes,✅ Yes,
+Check Cooling Functionality,✅ Yes,✅ Yes,✅ Yes,
+Check Heating Functionality,✅ Yes,✅ Yes,✅ Yes,
+Check Condensate Line,✅ Yes,✅ Yes,✅ Yes,
+Add Detailed Notes,✅ Yes,✅ Yes,✅ Yes,
+Upload Pros/Cons Photos,✅ Yes,✅ Yes,✅ Yes,
+Exhaust Fan Survey,,,,
+Perform Roof Inspection,✅ Assigned,✅ Yes,✅ Yes,
+Survey Exhaust Fans,✅ Yes,✅ Yes,✅ Yes,
+Record Fan Data,✅ Yes,✅ Yes,✅ Yes,
+Unit Types,,,,
+Survey HVAC Units,✅ Assigned,✅ Yes,✅ Yes,
+Survey VAC Units,✅ Assigned,✅ Yes,✅ Yes,
+Travel Cost Calculation,,,,
+Auto-Calculate Travel,✅ View,✅ View,✅ Yes,Via travel API
+View Mileage,✅ View,✅ View,✅ Yes,
+View Travel Cost,❌ None,✅ View,✅ Yes,
+Survey Report Generation,,,,
+Generate Survey Report,✅ Auto,✅ Yes,✅ Yes,Professional format
+View Report,✅ Own,✅ All,✅ All,
+Download Report,✅ Own,✅ All,✅ All,
+Email to Client,❌ None,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Start Survey"", ""Add Unit"", ""Upload Photo"", ""Enter Data"", ""Next Unit"", ""Complete Survey"", ""View Report""",,,,
+"Manager: + ""Assign Survey"", ""View All Surveys"", ""Send Report"", ""View Travel Costs""",,,,
+"Executive: + ""Survey Analytics"", ""Edit Mileage Rate"", ""Override Data""",,,,
+,,,,
+5. FLEET MANAGEMENT,,,,
+5.1 Fleet Management System,,,,
+Feature,Technician,Manager,Executive,Notes
+Vehicle Inventory,,,,
+View Fleet,✅ Assigned,✅ All,✅ All,
+View Vehicle Details,✅ Assigned,✅ All,✅ All,
+Add Vehicle,❌ None,❌ None,✅ Yes,Executive only
+Edit Vehicle Info,❌ None,👁️ Limited,✅ Full,Manager edits mileage
+Delete Vehicle,❌ None,❌ None,✅ Yes,
+Vehicle Information,,,,
+View Year/Make/Model,✅ Assigned,✅ All,✅ All,
+View License Plate,✅ Assigned,✅ All,✅ All,
+View VIN,✅ Assigned,✅ All,✅ All,
+View Purchase Date,❌ None,✅ View,✅ Full,
+View Purchase Cost,❌ None,❌ None,✅ Full,Executive only
+View Monthly Payment,❌ None,❌ None,✅ Full,
+View Loan Balance,❌ None,❌ None,✅ Full,
+View Maintenance Costs,❌ None,✅ Total,✅ Full,Manager sees totals
+Vehicle Assignment,,,,
+View Assignment,✅ Own,✅ All,✅ All,
+Assign Vehicle,❌ None,✅ Yes,✅ Yes,
+Reassign Vehicle,❌ None,✅ Yes,✅ Yes,
+Unassign Vehicle,❌ None,✅ Yes,✅ Yes,
+Maintenance Records,,,,
+View Maintenance History,✅ Assigned,✅ All,✅ All,
+Submit Maintenance Record,✅ Assigned,✅ Yes,✅ Yes,Requires approval
+Approve Maintenance,❌ None,✅ Yes,✅ Yes,
+Create Maintenance Log,❌ None,✅ Yes,✅ Yes,
+Edit Maintenance Log,❌ None,✅ Pending,✅ All,
+Add Mileage,✅ Required,✅ Yes,✅ Yes,
+Add Service Description,✅ Required,✅ Yes,✅ Yes,
+Add Service Cost,✅ Yes,✅ Yes,✅ Yes,
+Safety Inspections,,,,
+View Inspection Schedule,✅ Assigned,✅ All,✅ All,Monthly
+Perform Safety Inspection,✅ Assigned,✅ Yes,✅ Yes,
+View Inspection Checklist,✅ Yes,✅ Yes,✅ Yes,
+Check License Plate,✅ Required,✅ Yes,✅ Yes,
+Record Mileage,✅ Required,✅ Yes,✅ Yes,
+Check Lights,✅ Pass/Fail,✅ Yes,✅ Yes,
+Check Fluids,✅ Pass/Fail,✅ Yes,✅ Yes,
+Check Brakes,✅ Pass/Fail,✅ Yes,✅ Yes,
+Check Tires,✅ Pass/Fail,✅ Yes,✅ Yes,
+Submit Inspection,✅ Yes,✅ Yes,✅ Yes,
+View Inspection Results,✅ Own,✅ All,✅ All,
+Inspection Compliance,,,,
+Receive Inspection Reminders,✅ Assigned,✅ All,✅ All,Automated
+View Overdue Inspections,✅ Own,✅ All,✅ All,
+Escalation Notifications,❌ Receive,✅ Receive,✅ Receive,For non-compliance
+Vehicle Documents,,,,
+View Documents,✅ Assigned,✅ All,✅ All,"Registration, insurance"
+Upload Documents,✅ Submit,✅ Yes,✅ Yes,Requires approval
+Edit Documents,❌ None,✅ Yes,✅ Yes,
+Vehicle Media,,,,
+View Photos,✅ Assigned,✅ All,✅ All,
+Upload Photos,✅ Assigned,✅ Yes,✅ Yes,"Damage, etc."
+Upload Videos,✅ Assigned,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""My Vehicle"", ""Safety Inspection"", ""Report Issue"", ""Upload Photo"", ""Submit Maintenance"", ""View History""",,,,
+"Manager: + ""All Fleet"", ""Assign Vehicle"", ""Approve Maintenance"", ""View All Inspections"", ""Overdue Report"", ""Reassign""",,,,
+"Executive: + ""Add Vehicle"", ""Delete Vehicle"", ""View Costs"", ""Edit All"", ""Fleet Analytics""",,,,
+,,,,
+6. TASK MANAGEMENT & DISPATCH,,,,
+6.1 Task Management System,,,,
+Feature,Technician,Manager,Executive,Notes
+Task Viewing,,,,
+View All Tasks,❌ None,✅ All,✅ All,
+View Tasks Assigned to Me,✅ Yes,✅ Yes,✅ Yes,
+View Tasks Assigned by Me,❌ None,✅ Yes,✅ Yes,
+View Past Tasks,✅ Own,✅ All,✅ All,
+View Completed Tasks,✅ Own,✅ All,✅ All,
+Task Management,,,,
+Create Manual Task,❌ None,✅ Yes,✅ Yes,
+Create Automated Task,❌ System,✅ System,✅ System,System-generated
+Assign Task,❌ None,✅ Yes,✅ Yes,
+Edit Task,❌ None,✅ Pending,✅ All,
+Delete Task,❌ None,✅ Own,✅ All,
+Set Priority,❌ None,✅ Yes,✅ Yes,High/medium/low
+Set Due Date,❌ None,✅ Yes,✅ Yes,
+Add Task Notes,✅ Response,✅ Yes,✅ Yes,
+Task Status,,,,
+Mark as In Progress,✅ Assigned,✅ Yes,✅ Yes,
+Mark as Complete,✅ Assigned,✅ Yes,✅ Yes,
+Mark as Blocked,✅ With Note,✅ Yes,✅ Yes,
+Reopen Task,❌ None,✅ Yes,✅ Yes,
+Task Filtering,,,,
+Filter by Status,✅ Own,✅ All,✅ All,
+Filter by Priority,✅ Own,✅ All,✅ All,
+Filter by Assignee,❌ None,✅ Yes,✅ Yes,
+Filter by Date,✅ Own,✅ All,✅ All,
+Overdue Tasks,,,,
+View Overdue Tasks,✅ Own,✅ All,✅ All,Highlighted
+Receive Overdue Alerts,✅ Yes,✅ Yes,✅ Yes,
+Escalate Overdue,❌ Receive,✅ Trigger,✅ Manage,Auto-escalation
+Task Search,,,,
+Search Own Tasks,✅ Yes,✅ Yes,✅ Yes,
+Search All Tasks,❌ None,✅ Yes,✅ Yes,Robust search
+Task Analytics,,,,
+View Own Performance,✅ View,✅ View,✅ View,Completion rate
+View Team Performance,❌ None,✅ View,✅ Full,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""My Tasks"", ""Mark Complete"", ""Add Note"", ""View Overdue"", Filter (Own)",,,,
+"Manager: + ""Create Task"", ""Assign"", ""Set Priority"", ""View All"", ""Team Performance"", ""Search All"", Filter (All)",,,,
+"Executive: + ""Delete Any"", ""Reassign"", ""Override"", ""Full Analytics""",,,,
+,,,,
+6.2 Dispatch System,,,,
+Feature,Technician,Manager,Executive,Notes
+Daily Dispatch,,,,
+View Daily Dispatch,✅ Own,✅ All,✅ All,
+View Future Dispatch,✅ Own,✅ All,✅ All,
+Create Dispatch,❌ None,✅ Yes,✅ Yes,
+Edit Dispatch,❌ None,✅ Pending,✅ All,Before 6 PM
+Delete Dispatch,❌ None,✅ Pending,✅ All,
+Dispatch Assignment,,,,
+Select Active Job,❌ None,✅ Yes,✅ Yes,
+Assign Users/Technicians,❌ None,✅ Yes,✅ Yes,Multiple per job
+Set Arrival Time,❌ None,✅ Yes,✅ Yes,
+Add Detailed Notes,❌ None,✅ Yes,✅ Yes,
+Conflict Prevention,,,,
+View Employee Schedule,❌ Own,✅ All,✅ All,
+Conflict Detection,❌ N/A,✅ Auto,✅ Auto,Algorithm-based
+Override Conflicts,❌ None,❌ None,✅ Yes,Executive only
+Dispatch Delivery,,,,
+Queue for 6 PM Delivery,❌ N/A,✅ Auto,✅ Auto,Next day
+Immediate Delivery,❌ N/A,✅ After Hours,✅ Any Time,Emergency
+Dispatch Confirmation,,,,
+Receive Dispatch,✅ Auto,✅ Auto,✅ Auto,
+Confirm Dispatch,✅ Required,✅ Yes,✅ Yes,
+Decline Dispatch,✅ With Reason,✅ Yes,✅ Yes,
+View Confirmation Status,❌ None,✅ All,✅ All,
+Calendar Integration,,,,
+View Calendar,✅ Own,✅ All,✅ All,
+Sync Google Calendar,✅ Own,✅ Team,✅ All,
+Track Employee Location,❌ None,✅ View,✅ View,Via calendar
+View Employee Schedule,✅ Own,✅ All,✅ All,
+Dispatch Notifications,,,,
+Receive Assignment,✅ Yes,✅ Yes,✅ Yes,Push notification
+Receive Changes,✅ Yes,✅ Yes,✅ Yes,
+Receive Cancellations,✅ Yes,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""Today's Dispatch"", ""Confirm"", ""Decline"", ""View Calendar"", ""View Details""",,,,
+"Manager: + ""Create Dispatch"", ""Select Job"", ""Assign Technicians"", ""Set Time"", ""Add Notes"", ""View All Schedules"", ""Queue Delivery""",,,,
+"Executive: + ""Override Conflict"", ""Immediate Send"", ""Reassign"", ""View All Confirmations""",,,,
+,,,,
+7. INVENTORY & MATERIALS,,,,
+7.1 Material & Inventory Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Inventory Viewing,,,,
+View Central Inventory,✅ View,✅ Full,✅ Full,
+View Item Details,✅ View,✅ Full,✅ Full,
+Search Inventory,✅ Yes,✅ Yes,✅ Yes,
+Filter by Category,✅ Yes,✅ Yes,✅ Yes,
+Inventory Management,,,,
+Add New Item,❌ None,✅ Yes,✅ Yes,
+Edit Item,❌ None,✅ Yes,✅ Yes,
+Delete Item,❌ None,❌ None,✅ Yes,Executive only
+Item Information,,,,
+View Name,✅ Yes,✅ Yes,✅ Yes,
+View Description,✅ Yes,✅ Yes,✅ Yes,
+View Quantity on Hand,✅ Yes,✅ Yes,✅ Yes,
+View Cost,❌ None,✅ View,✅ Full,
+Edit Cost,❌ None,✅ Yes,✅ Yes,
+View Supplier Info,✅ View,✅ Full,✅ Full,
+Set Reorder Point,❌ None,✅ Yes,✅ Yes,
+Item Selection for Bids,,,,
+Select Items for Quotes,❌ None,✅ Yes,✅ Yes,
+Auto-Fill Description,❌ N/A,✅ Auto,✅ Auto,
+Auto-Fill Cost,❌ N/A,✅ Auto,✅ Auto,
+Auto-Fill Markup %,❌ N/A,✅ Auto,✅ Auto,
+On-Order Tracking,,,,
+View On-Order Items,✅ Job,✅ All,✅ All,
+View Originating Job,✅ Assigned,✅ All,✅ All,
+View Vendor Name,✅ Yes,✅ Yes,✅ Yes,
+View Cost,❌ None,✅ View,✅ Full,
+View Bill Due Date,❌ None,✅ View,✅ Full,
+View Estimated Receive Date,✅ Yes,✅ Yes,✅ Yes,
+Mark as Received,✅ Confirm,✅ Yes,✅ Yes,Updates inventory
+Inventory Updates,,,,
+Auto-Update Quantity,✅ N/A,✅ Auto,✅ Auto,When marked received
+Manual Quantity Adjustment,❌ None,✅ Yes,✅ Yes,With note
+Reorder Management,,,,
+View Reorder Alerts,❌ None,✅ View,✅ View,
+Set Reorder Point,❌ None,✅ Yes,✅ Yes,
+Create Purchase Order,❌ None,✅ Yes,✅ Yes,
+Automated Purchasing,❌ N/A,✅ Optional,✅ Manage,Workflow setup
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+"Technician: ""View Inventory"", Search, ""Confirm Receipt"", ""View On-Order (My Jobs)""",,,,
+"Manager: + ""Add Item"", ""Edit Item"", ""Set Reorder Point"", ""Create PO"", ""Adjust Quantity"", ""View All On-Order"", ""Reorder Alerts""",,,,
+"Executive: + ""Delete Item"", ""Override"", ""View Costs"", ""Setup Auto-Purchase""",,,,
+,,,,
+8. Invoicing & Payment Management,,,,
+Feature,Technician,Manager,Executive,Notes
+Invoice Generation,,,,
+View Invoices,❌ None,✅ All,✅ All,
+Create Invoice,❌ None,✅ Yes,✅ Yes,
+Edit Invoice,❌ None,✅ Draft,✅ All,
+Delete Invoice,❌ None,✅ Draft,✅ All,
+Send Invoice,❌ None,✅ Yes,✅ Yes,From job profile
+Payment Recording,,,,
+Record Payment,❌ None,✅ Yes,✅ Yes,
+Record Partial Payment,❌ None,✅ Yes,✅ Yes,
+Set Payment Method,❌ None,✅ Yes,✅ Yes,Multiple methods
+View Payment History,❌ None,✅ View,✅ Full,
+Payment Plans,,,,
+Create Payment Plan,❌ None,✅ Yes,✅ Yes,
+Edit Payment Plan,❌ None,✅ Yes,✅ Yes,
+Track Payment Plan,❌ None,✅ View,✅ View,
+Task Assignment,,,,
+Assign Invoice Reminder Tasks,❌ None,✅ Yes,✅ Yes,To admin staff
+View Invoice Tasks,❌ Assigned,✅ All,✅ All,
+Complete Invoice Task,✅ Assigned,✅ Yes,✅ Yes,
+Aging Reports,,,,
+Generate Aging Report,❌ None,✅ Yes,✅ Yes,Outstanding invoices
+View Days Overdue,❌ None,✅ View,✅ View,
+Filter by Age,❌ None,✅ Yes,✅ Yes,30/60/90+ days
+Export Aging Report,❌ None,✅ Yes,✅ Yes,
+,,,,
+UI Elements/Buttons:,,,,
+,,,,
+Technician: None,,,,
+"Manager: ""Create Invoice"", ""Send Invoice"", ""Record Payment"", ""Aging Report"", ""Assign Reminder"", ""Export""",,,,
+"Executive: + ""Edit Any"", ""Delete Any"", ""Full Reconciliation""",,,,
+,,,,
+9. DOCUMENT MANAGEMENT,,,,
+Feature,Technician,Manager,Executive,Notes
+Document Access,,,,
+View Documents,✅ Job-Related,✅ All,✅ All,
+Search Documents,✅ Limited,✅ Full,✅ Full,
+Filter Documents,✅ Limited,✅ Yes,✅ Yes,
+Document Operations,,,,
+Upload Documents,✅ Job-Related,✅ Yes,✅ Yes,
+Download Documents,✅ Authorized,✅ Yes,✅ Yes,
+Edit Documents,❌ None,✅ Own,✅ All,
+Delete Documents,❌ None,✅ Own,✅ All,

@@ -204,6 +204,13 @@
       "when": 1768391709151,
       "tag": "0028_omniscient_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1768520000000,
+      "tag": "0029_add_feature_permissions",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@
     "start:dev": "tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "tsx src/drizzle/seed/index.ts",
+    "seed:features": "tsx src/drizzle/seed/featurePermissions.seed.ts",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx node_modules/drizzle-kit/bin.cjs migrate",
     "db:verify": "tsx scripts/verify-migration.ts",

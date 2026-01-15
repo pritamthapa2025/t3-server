@@ -40,6 +40,12 @@ import {
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
+  authorizeModule,
+  authorizeFeature,
+  authorizeAnyFeature,
+  loadModulePermissions,
+} from "../../middleware/featureAuthorize.js";
+import {
   getBidsQuerySchema,
   getBidByIdSchema,
   createBidSchema,
@@ -78,6 +84,8 @@ import { generalTransformer } from "../../middleware/response-transformer.js";
 const router = Router();
 
 router.use(authenticate);
+router.use(authorizeModule("bids"));
+router.use(loadModulePermissions("bids"));
 
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
@@ -86,14 +94,34 @@ router.use(generalTransformer);
 
 router
   .route("/bids")
-  .get(validate(getBidsQuerySchema), getBidsHandler)
-  .post(validate(createBidSchema), createBidHandler);
+  .get(
+    authorizeFeature("bids", "view"),
+    validate(getBidsQuerySchema),
+    getBidsHandler
+  )
+  .post(
+    authorizeFeature("bids", "create"),
+    validate(createBidSchema),
+    createBidHandler
+  );
 
 router
   .route("/bids/:id")
-  .get(validate(getBidByIdSchema), getBidByIdHandler)
-  .put(validate(updateBidSchema), updateBidHandler)
-  .delete(validate(deleteBidSchema), deleteBidHandler);
+  .get(
+    authorizeFeature("bids", "view"),
+    validate(getBidByIdSchema),
+    getBidByIdHandler
+  )
+  .put(
+    authorizeAnyFeature("bids", ["edit_own", "edit_pending"]),
+    validate(updateBidSchema),
+    updateBidHandler
+  )
+  .delete(
+    authorizeFeature("bids", "delete"),
+    validate(deleteBidSchema),
+    deleteBidHandler
+  );
 
 // Get bid with all related data
 router
