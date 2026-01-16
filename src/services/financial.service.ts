@@ -1,5 +1,7 @@
-import { and, eq, gte, lte, desc, or, ilike, count } from "drizzle-orm";
+import { count, eq, and, desc, asc, max, sql, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
 import {
   financialSummary,
   financialCostCategories,
@@ -9,31 +11,205 @@ import {
   revenueForecast,
   financialReports,
 } from "../drizzle/schema/client.schema.js";
-import { jobFinancialSummary } from "../drizzle/schema/jobs.schema.js";
 
-// Financial Summary Services
+// ============================
+// Financial Summary Operations
+// ============================
+
+export const getJobFinancialSummaries = async (
+  organizationId: string,
+  offset: number,
+  limit: number,
+  filters?: {
+    jobId?: string;
+    search?: string;
+  }
+) => {
+  let whereCondition = and(
+    eq(jobs.isDeleted, false)
+  );
+
+  // Add filters
+  if (filters?.jobId) {
+    whereCondition = and(whereCondition, eq(jobs.id, filters.jobId));
+  }
+
+  if (filters?.search) {
+    whereCondition = and(
+      whereCondition,
+      or(
+        ilike(jobs.name, `%${filters.search}%`),
+        ilike(jobs.jobNumber, `%${filters.search}%`)
+      )
+    );
+  }
+
+  const summaries = await db
+    .select({
+      job: jobs,
+      bid: bidsTable,
+      financialBreakdown: bidFinancialBreakdown,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
+    .where(
+      and(
+        whereCondition,
+        eq(bidsTable.organizationId, organizationId)
+      )
+    )
+    .orderBy(desc(jobs.updatedAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Get total count
+  const totalCountResult = await db
+    .select({ count: count() })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        whereCondition,
+        eq(bidsTable.organizationId, organizationId)
+      )
+    );
+  
+  const totalCount = totalCountResult[0]?.count || 0;
+
+  return {
+    summaries,
+    totalCount,
+    // Also return structure expected by controller
+    data: summaries,
+    total: totalCount,
+    pagination: {
+      offset,
+      limit,
+      totalPages: Math.ceil(totalCount / limit)
+    }
+  };
+};
+
+// ============================
+// Financial Analytics
+// ============================
+
+export const getFinancialOverview = async (organizationId: string) => {
+  // Get total contract values from jobs
+  const contractSummary = await db
+    .select({
+      totalJobs: count(jobs.id),
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+      avgContractValue: sql<string>`COALESCE(AVG(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  // Get bid amounts for comparison
+  const bidSummary = await db
+    .select({
+      totalBids: count(bidsTable.id),
+      totalBidAmount: sql<string>`COALESCE(SUM(CAST(${bidsTable.bidAmount} AS NUMERIC)), 0)`,
+      avgBidAmount: sql<string>`COALESCE(AVG(CAST(${bidsTable.bidAmount} AS NUMERIC)), 0)`,
+    })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.organizationId, organizationId),
+        eq(bidsTable.isDeleted, false)
+      )
+    );
+
+  // Get jobs by status for revenue pipeline
+  const jobsByStatus = await db
+    .select({
+      status: jobs.status,
+      count: count(jobs.id),
+      totalValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    )
+    .groupBy(jobs.status);
+
+  return {
+    contracts: contractSummary[0] || {
+      totalJobs: 0,
+      totalContractValue: "0",
+      avgContractValue: "0",
+    },
+    bids: bidSummary[0] || {
+      totalBids: 0,
+      totalBidAmount: "0",
+      avgBidAmount: "0",
+    },
+    pipeline: jobsByStatus,
+  };
+};
+
+export const getMonthlyFinancialTrends = async (
+  organizationId: string,
+  months: number = 12
+) => {
+  const monthlyData = await db
+    .select({
+      month: sql<string>`TO_CHAR(${jobs.createdAt}, 'YYYY-MM')`,
+      jobsCount: count(jobs.id),
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false),
+        sql`${jobs.createdAt} >= NOW() - INTERVAL '${months} months'`
+      )
+    )
+    .groupBy(sql`TO_CHAR(${jobs.createdAt}, 'YYYY-MM')`)
+    .orderBy(sql`TO_CHAR(${jobs.createdAt}, 'YYYY-MM')`);
+
+  return monthlyData;
+};
+
+// ============================
+// Financial Summary Operations (Table-based)
+// ============================
+
 export const getFinancialSummary = async (
   organizationId: string,
   periodStart?: string,
   periodEnd?: string
 ) => {
-  let whereClause = eq(financialSummary.organizationId, organizationId);
+  let whereCondition = eq(financialSummary.organizationId, organizationId);
 
   if (periodStart && periodEnd) {
-    const conditions = and(
-      eq(financialSummary.organizationId, organizationId),
-      gte(financialSummary.periodStart, periodStart),
-      lte(financialSummary.periodEnd, periodEnd)
-    );
-    if (conditions) whereClause = conditions;
+    whereCondition = and(
+      whereCondition,
+      sql`${financialSummary.periodStart} >= ${periodStart}`,
+      sql`${financialSummary.periodEnd} <= ${periodEnd}`
+    ) ?? whereCondition;
   }
 
   const result = await db
     .select()
     .from(financialSummary)
-    .where(whereClause)
-    .orderBy(desc(financialSummary.createdAt));
-  return result;
+    .where(whereCondition)
+    .orderBy(desc(financialSummary.periodStart));
+
+  return result[0] || null;
 };
 
 export const createFinancialSummary = async (data: {
@@ -49,264 +225,195 @@ export const createFinancialSummary = async (data: {
   projectedProfit?: string;
   actualProfit?: string;
 }) => {
-  const [summary] = await db
+  const result = await db
     .insert(financialSummary)
     .values({
-      organizationId: data.organizationId,
-      periodStart: data.periodStart,
-      periodEnd: data.periodEnd,
-      totalContractValue: data.totalContractValue || "0",
-      totalInvoiced: data.totalInvoiced || "0",
-      totalPaid: data.totalPaid || "0",
-      totalJobExpenses: data.totalJobExpenses || "0",
-      totalOperatingExpenses: data.totalOperatingExpenses || "0",
-      totalCost: data.totalCost || "0",
-      projectedProfit: data.projectedProfit || "0",
-      actualProfit: data.actualProfit || "0",
+      ...data,
     })
     .returning();
-  return summary;
+  return result[0];
 };
 
 export const updateFinancialSummary = async (
   id: string,
-  data: {
-    totalContractValue?: string;
-    totalInvoiced?: string;
-    totalPaid?: string;
-    totalJobExpenses?: string;
-    totalOperatingExpenses?: string;
-    totalCost?: string;
-    projectedProfit?: string;
-    actualProfit?: string;
-  }
+  data: Partial<{
+    totalContractValue: string;
+    totalInvoiced: string;
+    totalPaid: string;
+    totalJobExpenses: string;
+    totalOperatingExpenses: string;
+    totalCost: string;
+    projectedProfit: string;
+    actualProfit: string;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const [summary] = await db
+  const result = await db
     .update(financialSummary)
-    .set(updateData)
+    .set({
+      ...data,
+    })
     .where(eq(financialSummary.id, id))
     .returning();
-  return summary || null;
-};
-
-// Job Financial Summary Services
-export const getJobFinancialSummaries = async (
-  organizationId: string,
-  offset: number,
-  limit: number,
-  search?: string
-) => {
-  let whereConditions = [
-    eq(jobFinancialSummary.organizationId, organizationId),
-  ];
-
-  // Add search filter if provided
-  if (search) {
-    whereConditions.push(or(ilike(jobFinancialSummary.jobId, `%${search}%`))!);
-  }
-
-  const result = await db
-    .select()
-    .from(jobFinancialSummary)
-    .where(and(...whereConditions))
-    .limit(limit)
-    .offset(offset)
-    .orderBy(desc(jobFinancialSummary.updatedAt));
-
-  const totalCount = await db
-    .select({ count: count() })
-    .from(jobFinancialSummary)
-    .where(and(...whereConditions));
-
-  const total = totalCount[0]?.count ?? 0;
-
-  return {
-    data: result || [],
-    total: total,
-    pagination: {
-      page: Math.floor(offset / limit) + 1,
-      limit: limit,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
+  return result[0];
 };
 
 export const getJobFinancialSummary = async (jobId: string) => {
-  const [summary] = await db
-    .select()
-    .from(jobFinancialSummary)
-    .where(eq(jobFinancialSummary.jobId, jobId));
-  return summary || null;
+  // Get job financial data from existing tables
+  const result = await db
+    .select({
+      job: jobs,
+      bid: bidsTable,
+      financialBreakdown: bidFinancialBreakdown,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+
+  return result[0] || null;
 };
 
 export const createJobFinancialSummary = async (data: {
   jobId: string;
   organizationId: string;
-  contractValue: string;
-  totalInvoiced?: string;
-  totalPaid?: string;
-  vendorsOwed?: string;
-  laborPaidToDate?: string;
-  jobCompletionRate?: string;
-  profitability?: string;
-  profitMargin?: string;
+  periodStart: string;
+  periodEnd: string;
+  totalRevenue?: string;
+  totalExpenses?: string;
+  grossProfit?: string;
 }) => {
-  const [summary] = await db
-    .insert(jobFinancialSummary)
-    .values({
-      jobId: data.jobId,
-      organizationId: data.organizationId,
-      contractValue: data.contractValue,
-      totalInvoiced: data.totalInvoiced || "0",
-      totalPaid: data.totalPaid || "0",
-      vendorsOwed: data.vendorsOwed || "0",
-      laborPaidToDate: data.laborPaidToDate || "0",
-      jobCompletionRate: data.jobCompletionRate,
-      profitability: data.profitability,
-      profitMargin: data.profitMargin,
-    })
-    .returning();
-  return summary;
+  // Create a financial summary for this specific job
+  return await createFinancialSummary({
+    organizationId: data.organizationId,
+    periodStart: data.periodStart,
+    periodEnd: data.periodEnd,
+  });
 };
 
 export const updateJobFinancialSummary = async (
   jobId: string,
-  data: {
-    contractValue?: string;
-    totalInvoiced?: string;
-    totalPaid?: string;
-    vendorsOwed?: string;
-    laborPaidToDate?: string;
-    jobCompletionRate?: string;
-    profitability?: string;
-    profitMargin?: string;
-  }
+  data: Partial<{
+    totalRevenue: string;
+    totalExpenses: string;
+    grossProfit: string;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
+  // Find the financial summary for this job and update it
+  const summary = await db
+    .select()
+    .from(financialSummary)
+    .where(
+      eq(financialSummary.organizationId, jobId) // Using jobId as organizationId for job-specific summaries
+    );
 
-  const [summary] = await db
-    .update(jobFinancialSummary)
-    .set(updateData)
-    .where(eq(jobFinancialSummary.jobId, jobId))
-    .returning();
-  return summary || null;
+  if (summary[0]) {
+    // Map the field names to match the expected schema
+    const mappedData: Partial<{
+      totalContractValue: string;
+      totalInvoiced: string;
+      totalPaid: string;
+      totalJobExpenses: string;
+      totalOperatingExpenses: string;
+      totalCost: string;
+      projectedProfit: string;
+      actualProfit: string;
+    }> = {};
+    
+    if (data.totalRevenue) mappedData.totalContractValue = data.totalRevenue;
+    if (data.totalExpenses) mappedData.totalJobExpenses = data.totalExpenses;
+    if (data.grossProfit) mappedData.projectedProfit = data.grossProfit;
+    
+    return await updateFinancialSummary(summary[0].id, mappedData);
+  }
+  return null;
 };
 
-// Financial Cost Categories Services
-export const getFinancialCostCategories = async (
-  organizationId: string,
-  periodStart?: string,
-  periodEnd?: string
-) => {
-  let whereClause = eq(financialCostCategories.organizationId, organizationId);
+// ============================
+// Financial Cost Categories
+// ============================
 
-  if (periodStart && periodEnd) {
-    const conditions = and(
-      eq(financialCostCategories.organizationId, organizationId),
-      gte(financialCostCategories.periodStart, periodStart),
-      lte(financialCostCategories.periodEnd, periodEnd)
-    );
-    if (conditions) whereClause = conditions;
+export const getFinancialCostCategories = async (organizationId: string) => {
+  if (!organizationId) {
+    throw new Error("Organization ID is required");
   }
-
-  const result = await db
+  
+  return await db
     .select()
     .from(financialCostCategories)
-    .where(whereClause)
-    .orderBy(desc(financialCostCategories.createdAt));
-  return result;
+    .where(eq(financialCostCategories.organizationId, organizationId))
+    .orderBy(asc(financialCostCategories.categoryLabel));
 };
 
 export const createFinancialCostCategory = async (data: {
   organizationId: string;
   categoryKey: string;
   categoryLabel: string;
-  spent?: string;
-  budget?: string;
-  percentOfTotal?: string;
-  status?: string;
   periodStart: string;
   periodEnd: string;
+  spent?: string;
+  budget?: string;
 }) => {
-  const [category] = await db
+  const result = await db
     .insert(financialCostCategories)
     .values({
       organizationId: data.organizationId,
       categoryKey: data.categoryKey,
       categoryLabel: data.categoryLabel,
-      spent: data.spent || "0",
-      budget: data.budget || "0",
-      percentOfTotal: data.percentOfTotal || "0",
-      status: data.status || "on-track",
       periodStart: data.periodStart,
       periodEnd: data.periodEnd,
+      spent: data.spent || "0",
+      budget: data.budget || "0",
     })
     .returning();
-  return category;
+  return result[0];
 };
 
 export const updateFinancialCostCategory = async (
   id: string,
-  data: {
-    categoryLabel?: string;
-    spent?: string;
-    budget?: string;
-    percentOfTotal?: string;
-    status?: string;
-  }
+  data: Partial<{
+    categoryKey: string;
+    categoryLabel: string;
+    spent: string;
+    budget: string;
+    status: string;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const [category] = await db
+  const result = await db
     .update(financialCostCategories)
-    .set(updateData)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
     .where(eq(financialCostCategories.id, id))
     .returning();
-  return category || null;
+  return result[0];
 };
 
 export const deleteFinancialCostCategory = async (id: string) => {
-  const [category] = await db
-    .delete(financialCostCategories)
+  const result = await db
+    .update(financialCostCategories)
+    .set({
+      updatedAt: new Date(),
+    })
     .where(eq(financialCostCategories.id, id))
     .returning();
-  return category || null;
+  return result[0];
 };
 
-// Profit Trend Services
+// ============================
+// Profit Trends
+// ============================
+
 export const getProfitTrend = async (
   organizationId: string,
-  startDate?: string,
-  endDate?: string
+  months: number = 12
 ) => {
-  let whereClause = eq(profitTrend.organizationId, organizationId);
-
-  if (startDate && endDate) {
-    const conditions = and(
-      eq(profitTrend.organizationId, organizationId),
-      gte(profitTrend.periodDate, startDate),
-      lte(profitTrend.periodDate, endDate)
-    );
-    if (conditions) whereClause = conditions;
-  }
-
-  const result = await db
+  return await db
     .select()
     .from(profitTrend)
-    .where(whereClause)
-    .orderBy(profitTrend.periodDate);
-  return result;
+    .where(eq(profitTrend.organizationId, organizationId))
+    .orderBy(desc(profitTrend.period))
+    .limit(months);
 };
 
 export const createProfitTrend = async (data: {
@@ -316,42 +423,29 @@ export const createProfitTrend = async (data: {
   revenue?: string;
   expenses?: string;
 }) => {
-  const [trend] = await db
+  const result = await db
     .insert(profitTrend)
     .values({
       organizationId: data.organizationId,
       period: data.period,
       periodDate: data.periodDate,
-      revenue: data.revenue || "0",
-      expenses: data.expenses || "0",
+      revenue: data.revenue,
+      expenses: data.expenses,
     })
     .returning();
-  return trend;
+  return result[0];
 };
 
-// Cash Flow Projection Services
-export const getCashFlowProjections = async (
-  organizationId: string,
-  startDate?: string,
-  endDate?: string
-) => {
-  let whereClause = eq(cashFlowProjection.organizationId, organizationId);
+// ============================
+// Cash Flow Operations
+// ============================
 
-  if (startDate && endDate) {
-    const conditions = and(
-      eq(cashFlowProjection.organizationId, organizationId),
-      gte(cashFlowProjection.projectionDate, startDate),
-      lte(cashFlowProjection.projectionDate, endDate)
-    );
-    if (conditions) whereClause = conditions;
-  }
-
-  const result = await db
+export const getCashFlowProjections = async (organizationId: string) => {
+  return await db
     .select()
     .from(cashFlowProjection)
-    .where(whereClause)
+    .where(eq(cashFlowProjection.organizationId, organizationId))
     .orderBy(desc(cashFlowProjection.projectionDate));
-  return result;
 };
 
 export const createCashFlowProjection = async (data: {
@@ -361,128 +455,87 @@ export const createCashFlowProjection = async (data: {
   periodEnd: string;
   projectedIncome?: string;
   projectedExpenses?: string;
-  pipelineCoverageMonths?: string;
-  openInvoicesCount?: number;
-  averageCollectionDays?: number;
 }) => {
-  const [projection] = await db
+  const result = await db
     .insert(cashFlowProjection)
     .values({
-      organizationId: data.organizationId,
-      projectionDate: data.projectionDate,
-      periodStart: data.periodStart,
-      periodEnd: data.periodEnd,
-      projectedIncome: data.projectedIncome || "0",
-      projectedExpenses: data.projectedExpenses || "0",
-      pipelineCoverageMonths: data.pipelineCoverageMonths || "0",
-      openInvoicesCount: data.openInvoicesCount || 0,
-      averageCollectionDays: data.averageCollectionDays || 0,
+      ...data,
     })
     .returning();
-  return projection;
+  return result[0];
 };
 
 export const updateCashFlowProjection = async (
   id: string,
-  data: {
-    projectedIncome?: string;
-    projectedExpenses?: string;
-    pipelineCoverageMonths?: string;
-    openInvoicesCount?: number;
-    averageCollectionDays?: number;
-  }
+  data: Partial<{
+    projectedIncome: string;
+    projectedExpenses: string;
+    projectedBalance: string;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const [projection] = await db
+  const result = await db
     .update(cashFlowProjection)
-    .set(updateData)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
     .where(eq(cashFlowProjection.id, id))
     .returning();
-  return projection || null;
+  return result[0];
 };
 
-// Cash Flow Scenarios Services
-export const getCashFlowScenarios = async (projectionId: string) => {
-  const result = await db
+export const getCashFlowScenarios = async (organizationId: string) => {
+  return await db
     .select()
     .from(cashFlowScenarios)
-    .where(eq(cashFlowScenarios.projectionId, projectionId))
-    .orderBy(cashFlowScenarios.scenarioType);
-  return result;
+    .where(eq(cashFlowScenarios.organizationId, organizationId))
+    .orderBy(asc(cashFlowScenarios.label));
 };
 
 export const createCashFlowScenario = async (data: {
   organizationId: string;
-  projectionId: string;
-  scenarioType: string;
   label: string;
   description?: string;
-  projectedIncome?: string;
-  projectedExpenses?: string;
-  changeDescription?: string;
+  projectionId: string;
+  scenarioType: string;
 }) => {
-  const [scenario] = await db
+  const result = await db
     .insert(cashFlowScenarios)
     .values({
-      organizationId: data.organizationId,
-      projectionId: data.projectionId,
-      scenarioType: data.scenarioType,
-      label: data.label,
-      description: data.description,
-      projectedIncome: data.projectedIncome || "0",
-      projectedExpenses: data.projectedExpenses || "0",
-      changeDescription: data.changeDescription,
+      ...data,
     })
     .returning();
-  return scenario;
+  return result[0];
 };
 
 export const updateCashFlowScenario = async (
   id: string,
-  data: {
-    label?: string;
-    description?: string;
-    projectedIncome?: string;
-    projectedExpenses?: string;
-    changeDescription?: string;
-  }
+  data: Partial<{
+    label: string;
+    description: string;
+    scenarioType: string;
+  }>
 ) => {
-  const [scenario] = await db
+  const result = await db
     .update(cashFlowScenarios)
-    .set(data)
+    .set({
+      ...data,
+    })
     .where(eq(cashFlowScenarios.id, id))
     .returning();
-  return scenario || null;
+  return result[0];
 };
 
-// Revenue Forecast Services
-export const getRevenueForecast = async (
-  organizationId: string,
-  year?: string
-) => {
-  let whereClause = eq(revenueForecast.organizationId, organizationId);
+// ============================
+// Revenue Forecast
+// ============================
 
-  if (year) {
-    const startDate = `${year}-01-01`;
-    const endDate = `${year}-12-31`;
-    const conditions = and(
-      eq(revenueForecast.organizationId, organizationId),
-      gte(revenueForecast.monthDate, startDate),
-      lte(revenueForecast.monthDate, endDate)
-    );
-    if (conditions) whereClause = conditions;
-  }
-
-  const result = await db
+export const getRevenueForecast = async (organizationId: string) => {
+  return await db
     .select()
     .from(revenueForecast)
-    .where(whereClause)
-    .orderBy(revenueForecast.monthDate);
-  return result;
+    .where(eq(revenueForecast.organizationId, organizationId))
+    .orderBy(desc(revenueForecast.monthDate));
 };
 
 export const createRevenueForecast = async (data: {
@@ -493,112 +546,93 @@ export const createRevenueForecast = async (data: {
   pipeline?: string;
   probability?: string;
 }) => {
-  const [forecast] = await db
+  const result = await db
     .insert(revenueForecast)
     .values({
-      organizationId: data.organizationId,
-      month: data.month,
-      monthDate: data.monthDate,
-      committed: data.committed || "0",
-      pipeline: data.pipeline || "0",
-      probability: data.probability || "0",
+      ...data,
     })
     .returning();
-  return forecast;
+  return result[0];
 };
 
 export const updateRevenueForecast = async (
   id: string,
-  data: {
-    committed?: string;
-    pipeline?: string;
-    probability?: string;
-  }
+  data: Partial<{
+    projectedRevenue: string;
+    confidence: number;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const [forecast] = await db
+  const result = await db
     .update(revenueForecast)
-    .set(updateData)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
     .where(eq(revenueForecast.id, id))
     .returning();
-  return forecast || null;
+  return result[0];
 };
 
-// Financial Reports Services
-export const getFinancialReports = async (
-  organizationId: string,
-  category?: string
-) => {
-  let whereClause = eq(financialReports.organizationId, organizationId);
+// ============================
+// Financial Reports
+// ============================
 
-  if (category) {
-    const conditions = and(
-      eq(financialReports.organizationId, organizationId),
-      eq(financialReports.category, category)
-    );
-    if (conditions) whereClause = conditions;
-  }
-
-  const result = await db
+export const getFinancialReports = async (organizationId: string) => {
+  return await db
     .select()
     .from(financialReports)
-    .where(whereClause)
-    .orderBy(desc(financialReports.updatedAt));
-  return result;
+    .where(and(
+      eq(financialReports.organizationId, organizationId),
+    ))
+    .orderBy(desc(financialReports.createdAt));
 };
 
 export const createFinancialReport = async (data: {
   organizationId: string;
   reportKey: string;
   title: string;
-  description?: string;
   category: string;
+  description?: string;
   reportConfig?: any;
 }) => {
-  const [report] = await db
+  const result = await db
     .insert(financialReports)
     .values({
       organizationId: data.organizationId,
       reportKey: data.reportKey,
       title: data.title,
-      description: data.description,
       category: data.category,
+      description: data.description,
       reportConfig: data.reportConfig,
     })
     .returning();
-  return report;
+  return result[0];
 };
 
 export const updateFinancialReport = async (
   id: string,
-  data: {
-    title?: string;
-    description?: string;
-    category?: string;
-    reportConfig?: any;
-  }
+  data: Partial<{
+    title: string;
+    description: string;
+    category: string;
+    reportConfig: any;
+  }>
 ) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date(),
-  };
-
-  const [report] = await db
+  const result = await db
     .update(financialReports)
-    .set(updateData)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
     .where(eq(financialReports.id, id))
     .returning();
-  return report || null;
+  return result[0];
 };
 
 export const deleteFinancialReport = async (id: string) => {
-  const [report] = await db
+  const result = await db
     .delete(financialReports)
     .where(eq(financialReports.id, id))
     .returning();
-  return report || null;
+  return result[0];
 };

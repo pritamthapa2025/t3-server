@@ -104,11 +104,16 @@ export const getJobFinancialSummariesHandler = async (
     const search = req.query.search as string | undefined;
     const offset = (page - 1) * limit;
 
+    const filters: { search?: string } = {};
+    if (search) {
+      filters.search = search;
+    }
+    
     const summaries = await getJobFinancialSummaries(
       organizationId,
       offset,
       limit,
-      search
+      Object.keys(filters).length > 0 ? filters : undefined
     );
 
     logger.info("Job financial summaries fetched successfully");
@@ -200,14 +205,8 @@ export const getFinancialCostCategoriesHandler = async (
 ) => {
   try {
     const organizationId = req.query.organizationId as string;
-    const periodStart = req.query.periodStart as string;
-    const periodEnd = req.query.periodEnd as string;
 
-    const categories = await getFinancialCostCategories(
-      organizationId,
-      periodStart,
-      periodEnd
-    );
+    const categories = await getFinancialCostCategories(organizationId);
 
     logger.info("Financial cost categories fetched successfully");
     return res.status(200).json({ data: categories });
@@ -294,7 +293,7 @@ export const getProfitTrendHandler = async (req: Request, res: Response) => {
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    const trends = await getProfitTrend(organizationId, startDate, endDate);
+    const trends = await getProfitTrend(organizationId);
 
     logger.info("Profit trends fetched successfully");
     return res.status(200).json({ data: trends });
@@ -325,11 +324,7 @@ export const getCashFlowProjectionsHandler = async (
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    const projections = await getCashFlowProjections(
-      organizationId,
-      startDate,
-      endDate
-    );
+    const projections = await getCashFlowProjections(organizationId);
 
     logger.info("Cash flow projections fetched successfully");
     return res.status(200).json({ data: projections });
@@ -450,7 +445,7 @@ export const getRevenueForecastHandler = async (
     const organizationId = req.query.organizationId as string;
     const year = req.query.year as string;
 
-    const forecast = await getRevenueForecast(organizationId, year);
+    const forecast = await getRevenueForecast(organizationId);
 
     logger.info("Revenue forecast fetched successfully");
     return res.status(200).json({ data: forecast });
@@ -508,7 +503,7 @@ export const getFinancialReportsHandler = async (
     const organizationId = req.query.organizationId as string;
     const category = req.query.category as string;
 
-    const reports = await getFinancialReports(organizationId, category);
+    const reports = await getFinancialReports(organizationId);
 
     logger.info("Financial reports fetched successfully");
     return res.status(200).json({ data: reports });

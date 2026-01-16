@@ -57,8 +57,7 @@ import {
   removeJobTeamMember,
   getJobFinancialSummary,
   updateJobFinancialSummary,
-  getJobFinancialBreakdown,
-  updateJobFinancialBreakdown,
+  getJobPlannedFinancialBreakdown,
   getJobMaterials,
   createJobMaterial,
   updateJobMaterial,
@@ -71,8 +70,7 @@ import {
   createJobTravel,
   updateJobTravel,
   deleteJobTravel,
-  getJobOperatingExpenses,
-  updateJobOperatingExpenses,
+  getJobPlannedOperatingExpenses,
   getJobTimeline,
   createJobTimelineEvent,
   updateJobTimelineEvent,
@@ -252,9 +250,8 @@ export const createJobHandler = async (req: Request, res: Response) => {
       jobId: job.id,
       organizationId: organizationId,
       action: "job_created",
-      newValue: "Created new job",
       description: `Job "${job.name}" was created`,
-      performedBy: createdBy,
+      createdBy: createdBy,
     });
 
     logger.info("Job created successfully");
@@ -346,10 +343,8 @@ export const updateJobHandler = async (req: Request, res: Response) => {
           jobId: id!,
           organizationId: organizationId,
           action: `field_updated_${key}`,
-          oldValue: String(oldValue || ""),
-          newValue: String(value || ""),
           description: `Field "${key}" was updated`,
-          performedBy: performedBy,
+          createdBy: performedBy,
         });
       }
     }
@@ -412,7 +407,7 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
       organizationId: organizationId,
       action: "job_deleted",
       description: `Job "${deletedJob.name}" was deleted`,
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job deleted successfully");
@@ -492,9 +487,8 @@ export const addJobTeamMemberHandler = async (
       jobId: jobId!,
       organizationId,
       action: "team_member_added",
-      newValue: `Employee ID: ${member.employeeId}`,
       description: "Team member was added",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job team member added successfully");
@@ -525,7 +519,7 @@ export const removeJobTeamMemberHandler = async (
 
     const performedBy = req.user!.id;
 
-    const member = await removeJobTeamMember(jobId!, parseInt(employeeId!));
+    const member = await removeJobTeamMember(jobId!, parseInt(employeeId!), organizationId);
 
     if (!member) {
       return res.status(404).json({
@@ -540,7 +534,7 @@ export const removeJobTeamMemberHandler = async (
       organizationId,
       action: "team_member_removed",
       description: "Team member was removed",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job team member removed successfully");
@@ -620,7 +614,7 @@ export const updateJobFinancialSummaryHandler = async (
       organizationId,
       action: "financial_summary_updated",
       description: "Financial summary was updated",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job financial summary updated successfully");
@@ -653,12 +647,14 @@ export const getJobFinancialBreakdownHandler = async (
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
-    const breakdown = await getJobFinancialBreakdown(jobId!, organizationId);
+    // Get planned financial breakdown from the associated bid
+    const breakdown = await getJobPlannedFinancialBreakdown(jobId!, organizationId);
 
-    logger.info("Job financial breakdown fetched successfully");
+    logger.info("Job planned financial breakdown fetched successfully");
     return res.status(200).json({
       success: true,
       data: breakdown,
+      message: "Planned financial breakdown retrieved from bid",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -674,41 +670,11 @@ export const updateJobFinancialBreakdownHandler = async (
   res: Response
 ) => {
   try {
-    if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
-
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const performedBy = req.user!.id;
-
-    const breakdown = await updateJobFinancialBreakdown(
-      jobId!,
-      organizationId,
-      req.body
-    );
-
-    if (!breakdown) {
-      return res.status(404).json({
-        success: false,
-        message: "Financial breakdown not found",
-      });
-    }
-
-    // Create history entry
-    await createJobHistoryEntry({
-      jobId: jobId!,
-      organizationId,
-      action: "financial_breakdown_updated",
-      description: "Financial breakdown was updated",
-      performedBy: performedBy,
-    });
-
-    logger.info("Job financial breakdown updated successfully");
-    return res.status(200).json({
-      success: true,
-      data: breakdown,
-      message: "Financial breakdown updated successfully",
+    // Financial breakdown updates should be done on the associated bid
+    // This endpoint is deprecated - use bid financial breakdown endpoints instead
+    return res.status(400).json({
+      success: false,
+      message: "Financial breakdown updates should be done on the associated bid. Use PUT /bids/:bidId/financial-breakdown instead.",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -777,9 +743,8 @@ export const createJobMaterialHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "material_added",
-      newValue: material.description || "Material",
-      description: `Material "${material.description}" was added`,
-      performedBy: performedBy,
+      description: `Material "${material.materialName}" was added`,
+      createdBy: performedBy,
     });
 
     logger.info("Job material created successfully");
@@ -809,6 +774,7 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
 
     const material = await updateJobMaterial(
       materialId!,
+      jobId!,
       organizationId,
       req.body
     );
@@ -825,8 +791,8 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "material_updated",
-      description: `Material "${material.description}" was updated`,
-      performedBy: performedBy,
+      description: `Material "${material.materialName || "Unknown"}" was updated`,
+      createdBy: performedBy,
     });
 
     logger.info("Job material updated successfully");
@@ -854,7 +820,7 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const material = await deleteJobMaterial(materialId!, organizationId);
+    const material = await deleteJobMaterial(materialId!, jobId!, organizationId);
 
     if (!material) {
       return res.status(404).json({
@@ -868,8 +834,8 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "material_deleted",
-      description: `Material "${material.description}" was deleted`,
-      performedBy: performedBy,
+      description: `Material deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job material deleted successfully");
@@ -942,9 +908,8 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "labor_added",
-      newValue: labor.role || "Unknown",
-      description: `Labor role "${labor.role}" was added`,
-      performedBy: performedBy,
+      description: `Labor entry was added`,
+      createdBy: performedBy,
     });
 
     logger.info("Job labor created successfully");
@@ -972,7 +937,7 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const labor = await updateJobLabor(laborId!, organizationId, req.body);
+    const labor = await updateJobLabor(laborId!, jobId!, organizationId, req.body);
 
     if (!labor) {
       return res.status(404).json({
@@ -986,8 +951,8 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "labor_updated",
-      description: `Labor role "${labor?.role || "Unknown"}" was updated`,
-      performedBy: performedBy,
+      description: `Labor entry was updated`,
+      createdBy: performedBy,
     });
 
     logger.info("Job labor updated successfully");
@@ -1015,7 +980,7 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const labor = await deleteJobLabor(laborId!, organizationId);
+    const labor = await deleteJobLabor(laborId!, jobId!, organizationId);
 
     if (!labor) {
       return res.status(404).json({
@@ -1029,8 +994,8 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "labor_deleted",
-      description: `Labor role "${labor?.role || "Unknown"}" was deleted`,
-      performedBy: performedBy,
+      description: `Labor entry was deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job labor deleted successfully");
@@ -1103,9 +1068,8 @@ export const createJobTravelHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "travel_added",
-      newValue: travel.employeeName || travel.vehicleName || "Travel entry",
       description: "Travel entry was added",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job travel created successfully");
@@ -1133,7 +1097,7 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const travel = await updateJobTravel(travelId!, organizationId, req.body);
+    const travel = await updateJobTravel(travelId!, jobId!, organizationId, req.body);
 
     if (!travel) {
       return res.status(404).json({
@@ -1148,7 +1112,7 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
       organizationId,
       action: "travel_updated",
       description: "Travel entry was updated",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job travel updated successfully");
@@ -1176,7 +1140,7 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const travel = await deleteJobTravel(travelId!, organizationId);
+    const travel = await deleteJobTravel(travelId!, jobId!, organizationId);
 
     if (!travel) {
       return res.status(404).json({
@@ -1191,7 +1155,7 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
       organizationId,
       action: "travel_deleted",
       description: "Travel entry was deleted",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job travel deleted successfully");
@@ -1222,12 +1186,14 @@ export const getJobOperatingExpensesHandler = async (
     const organizationId = validateOrganizationAccess(req, res);
     if (!organizationId) return;
 
-    const expenses = await getJobOperatingExpenses(jobId!, organizationId);
+    // Get planned operating expenses from the associated bid
+    const expenses = await getJobPlannedOperatingExpenses(jobId!, organizationId);
 
-    logger.info("Job operating expenses fetched successfully");
+    logger.info("Job planned operating expenses fetched successfully");
     return res.status(200).json({
       success: true,
       data: expenses,
+      message: "Planned operating expenses retrieved from bid",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1243,40 +1209,11 @@ export const updateJobOperatingExpensesHandler = async (
   res: Response
 ) => {
   try {
-    if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const performedBy = req.user!.id;
-
-    const expenses = await updateJobOperatingExpenses(
-      jobId!,
-      organizationId,
-      req.body
-    );
-
-    if (!expenses) {
-      return res.status(404).json({
-        success: false,
-        message: "Operating expenses not found",
-      });
-    }
-
-    // Create history entry
-    await createJobHistoryEntry({
-      jobId: jobId!,
-      organizationId,
-      action: "operating_expenses_updated",
-      description: "Operating expenses was updated",
-      performedBy: performedBy,
-    });
-
-    logger.info("Job operating expenses updated successfully");
-    return res.status(200).json({
-      success: true,
-      data: expenses,
-      message: "Operating expenses updated successfully",
+    // Operating expenses updates should be done on the associated bid
+    // This endpoint is deprecated - use bid operating expenses endpoints instead
+    return res.status(400).json({
+      success: false,
+      message: "Operating expenses updates should be done on the associated bid. Use PUT /bids/:bidId/operating-expenses instead.",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1347,9 +1284,8 @@ export const createJobTimelineEventHandler = async (
       jobId: jobId!,
       organizationId,
       action: "timeline_event_added",
-      newValue: event.event || "Unknown",
-      description: `Timeline event "${event.event}" was added`,
-      performedBy: performedBy,
+      description: `Timeline event "${event.eventName}" was added`,
+      createdBy: performedBy,
     });
 
     logger.info("Job timeline event created successfully");
@@ -1382,6 +1318,7 @@ export const updateJobTimelineEventHandler = async (
 
     const event = await updateJobTimelineEvent(
       eventId!,
+      jobId!,
       organizationId,
       req.body
     );
@@ -1398,8 +1335,8 @@ export const updateJobTimelineEventHandler = async (
       jobId: jobId!,
       organizationId,
       action: "timeline_event_updated",
-      description: `Timeline event "${event?.event || "Unknown"}" was updated`,
-      performedBy: performedBy,
+      description: `Timeline event "${event?.eventName || "Unknown"}" was updated`,
+      createdBy: performedBy,
     });
 
     logger.info("Job timeline event updated successfully");
@@ -1430,7 +1367,7 @@ export const deleteJobTimelineEventHandler = async (
 
     const performedBy = req.user!.id;
 
-    const event = await deleteJobTimelineEvent(eventId!, organizationId);
+    const event = await deleteJobTimelineEvent(eventId!, jobId!, organizationId);
 
     if (!event) {
       return res.status(404).json({
@@ -1444,8 +1381,8 @@ export const deleteJobTimelineEventHandler = async (
       jobId: jobId!,
       organizationId,
       action: "timeline_event_deleted",
-      description: `Timeline event "${event?.event || "Unknown"}" was deleted`,
-      performedBy: performedBy,
+      description: `Timeline event was deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job timeline event deleted successfully");
@@ -1520,7 +1457,7 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
       organizationId,
       action: "note_added",
       description: "Note was added to job",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job note created successfully");
@@ -1548,7 +1485,7 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const note = await updateJobNote(noteId!, organizationId, req.body);
+    const note = await updateJobNote(noteId!, jobId!, organizationId, req.body);
 
     if (!note) {
       return res.status(404).json({
@@ -1563,7 +1500,7 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
       organizationId,
       action: "note_updated",
       description: "Note was updated",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job note updated successfully");
@@ -1591,7 +1528,7 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const note = await deleteJobNote(noteId!, organizationId);
+    const note = await deleteJobNote(noteId!, jobId!, organizationId);
 
     if (!note) {
       return res.status(404).json({
@@ -1606,7 +1543,7 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
       organizationId,
       action: "note_deleted",
       description: "Note was deleted",
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job note deleted successfully");
@@ -1707,9 +1644,8 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "task_added",
-      newValue: task.taskName || "Task",
       description: `Task "${task.taskName}" was added`,
-      performedBy: performedBy,
+      createdBy: performedBy,
     });
 
     logger.info("Job task created successfully");
@@ -1737,7 +1673,7 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const task = await updateJobTask(taskId!, organizationId, req.body);
+    const task = await updateJobTask(taskId!, jobId!, organizationId, req.body);
 
     if (!task) {
       return res.status(404).json({
@@ -1751,8 +1687,8 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "task_updated",
-      description: `Task "${task?.taskName || "Unknown"}" was updated`,
-      performedBy: performedBy,
+      description: `Task updated`,
+      createdBy: performedBy,
     });
 
     logger.info("Job task updated successfully");
@@ -1780,7 +1716,7 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const task = await deleteJobTask(taskId!, organizationId);
+    const task = await deleteJobTask(taskId!, jobId!, organizationId);
 
     if (!task) {
       return res.status(404).json({
@@ -1794,8 +1730,8 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "task_deleted",
-      description: `Task "${task?.taskName || "Unknown"}" was deleted`,
-      performedBy: performedBy,
+      description: `Task deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job task deleted successfully");
@@ -1869,9 +1805,8 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "expense_added",
-      newValue: expense.description || "Expense",
-      description: `Expense "${expense.description}" was added`,
-      performedBy: performedBy,
+      description: `Expense was added`,
+      createdBy: performedBy,
     });
 
     logger.info("Job expense created successfully");
@@ -1899,7 +1834,7 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const expense = await updateJobExpense(expenseId!, organizationId, req.body);
+    const expense = await updateJobExpense(expenseId!, jobId!, organizationId, req.body);
 
     if (!expense) {
       return res.status(404).json({
@@ -1913,8 +1848,8 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "expense_updated",
-      description: `Expense "${expense?.description || "Unknown"}" was updated`,
-      performedBy: performedBy,
+      description: `Expense was updated`,
+      createdBy: performedBy,
     });
 
     logger.info("Job expense updated successfully");
@@ -1942,7 +1877,7 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const expense = await deleteJobExpense(expenseId!, organizationId);
+    const expense = await deleteJobExpense(expenseId!, jobId!, organizationId);
 
     if (!expense) {
       return res.status(404).json({
@@ -1956,8 +1891,8 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "expense_deleted",
-      description: `Expense "${expense?.description || "Unknown"}" was deleted`,
-      performedBy: performedBy,
+      description: `Expense deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job expense deleted successfully");
@@ -2031,9 +1966,8 @@ export const createJobDocumentHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "document_added",
-      newValue: document.fileName || "Document",
-      description: `Document "${document.fileName}" was added`,
-      performedBy: performedBy,
+      description: `Document was added`,
+      createdBy: performedBy,
     });
 
     logger.info("Job document created successfully");
@@ -2061,7 +1995,7 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
-    const document = await deleteJobDocument(documentId!, organizationId);
+    const document = await deleteJobDocument(documentId!, jobId!, organizationId);
 
     if (!document) {
       return res.status(404).json({
@@ -2075,8 +2009,8 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId,
       action: "document_deleted",
-      description: `Document "${document?.fileName || "Unknown"}" was deleted`,
-      performedBy: performedBy,
+      description: `Document deleted`,
+      createdBy: performedBy,
     });
 
     logger.info("Job document deleted successfully");

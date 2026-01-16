@@ -791,8 +791,8 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
       bidId: bidId!,
       organizationId,
       action: "labor_added",
-      newValue: `Employee ID: ${labor.employeeId}`,
-      description: `Labor entry for employee ${labor.employeeId} was added`,
+      newValue: `Position ID: ${labor.positionId}`,
+      description: `Labor entry for position ID ${labor.positionId} was added`,
       performedBy: performedBy,
     });
 
@@ -835,7 +835,7 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
       bidId: bidId!,
       organizationId,
       action: "labor_updated",
-      description: `Labor entry for employee ${labor?.employeeId || "Unknown"} was updated`,
+      description: `Labor entry for position ID ${labor?.positionId || "Unknown"} was updated`,
       performedBy: performedBy,
     });
 
@@ -878,7 +878,7 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
       bidId: bidId!,
       organizationId,
       action: "labor_deleted",
-      description: `Labor entry for employee ${labor?.employeeId || "Unknown"} was deleted`,
+      description: `Labor entry for position ID ${labor?.positionId || "Unknown"} was deleted`,
       performedBy: performedBy,
     });
 
@@ -960,7 +960,7 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
       bidId: bidId,
       organizationId,
       action: "travel_added",
-      newValue: travel.vehicleName || "Travel entry",
+      newValue: `Travel: ${travel.roundTripMiles} miles`,
       description: "Travel entry was added",
       performedBy: performedBy,
     });

@@ -225,7 +225,7 @@ export const createJobMaterialSchema = z.object({
     unitCost: numericStringSchema,
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema,
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - job materials now only track actual materials used
   }),
 });
 
@@ -240,7 +240,7 @@ export const updateJobMaterialSchema = z.object({
     unitCost: numericStringSchema.optional(),
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - these tables now only track actual data
   }),
 });
 
@@ -266,9 +266,7 @@ export const createJobLaborSchema = z.object({
     jobId: uuidSchema,
   }),
   body: z.object({
-    employeeId: z.number().int().positive().optional(),
-    role: z.string().min(1, "Role is required").max(100),
-    quantity: z.number().int().positive("Quantity must be a positive number"),
+    positionId: z.number().int().positive("Position ID is required"),
     days: z.number().int().positive("Days must be a positive number"),
     hoursPerDay: numericStringSchema,
     totalHours: numericStringSchema,
@@ -276,7 +274,7 @@ export const createJobLaborSchema = z.object({
     billableRate: numericStringSchema,
     totalCost: numericStringSchema,
     totalPrice: numericStringSchema,
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - these tables now only track actual data
   }),
 });
 
@@ -286,9 +284,7 @@ export const updateJobLaborSchema = z.object({
     laborId: uuidSchema,
   }),
   body: z.object({
-    employeeId: z.number().int().positive().optional(),
-    role: z.string().max(100).optional(),
-    quantity: z.number().int().positive().optional(),
+    positionId: z.number().int().positive().optional(),
     days: z.number().int().positive().optional(),
     hoursPerDay: numericStringSchema.optional(),
     totalHours: numericStringSchema.optional(),
@@ -296,7 +292,7 @@ export const updateJobLaborSchema = z.object({
     billableRate: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
     totalPrice: numericStringSchema.optional(),
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - these tables now only track actual data
   }),
 });
 
@@ -335,7 +331,7 @@ export const createJobTravelSchema = z.object({
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema,
     totalPrice: numericStringSchema,
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - job travel now only tracks actual travel expenses
   }),
 });
 
@@ -346,9 +342,6 @@ export const updateJobTravelSchema = z.object({
   }),
   body: z.object({
     employeeId: z.number().int().positive().optional(),
-    employeeName: z.string().max(255).optional(),
-    vehicleId: uuidSchema.optional(),
-    vehicleName: z.string().max(255).optional(),
     roundTripMiles: numericStringSchema.optional(),
     mileageRate: numericStringSchema.optional(),
     vehicleDayRate: numericStringSchema.optional(),
@@ -358,7 +351,8 @@ export const updateJobTravelSchema = z.object({
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
     totalPrice: numericStringSchema.optional(),
-    isActual: z.boolean().optional(),
+    // Note: isActual removed - these tables now only track actual data
+    // Note: employeeName, vehicleId, vehicleName removed - derived from employeeId
   }),
 });
 

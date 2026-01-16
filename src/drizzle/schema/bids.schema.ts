@@ -18,7 +18,7 @@ import {
 import { users } from "./auth.schema.js";
 import { organizations } from "./client.schema.js";
 import { jobs } from "./jobs.schema.js";
-import { employees } from "./org.schema.js";
+import { employees, positions } from "./org.schema.js";
 
 // Import enums from centralized location
 import {
@@ -209,11 +209,9 @@ export const bidLabor = org.table(
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
-    employeeId: integer("employee_id")
+    positionId: integer("position_id")
       .notNull()
-      .references(() => employees.id),
-
-    quantity: integer("quantity").notNull(),
+      .references(() => positions.id),
     days: integer("days").notNull(),
     hoursPerDay: numeric("hours_per_day", { precision: 5, scale: 2 }).notNull(),
     totalHours: numeric("total_hours", { precision: 8, scale: 2 }).notNull(),
@@ -231,7 +229,7 @@ export const bidLabor = org.table(
   },
   (table) => [
     index("idx_bid_labor_bid_id").on(table.bidId),
-    index("idx_bid_labor_employee_id").on(table.employeeId),
+    index("idx_bid_labor_position_id").on(table.positionId),
   ]
 );
 
@@ -247,7 +245,7 @@ export const bidTravel = org.table(
       .notNull()
       .references(() => bidLabor.id),
 
-    vehicleName: varchar("vehicle_name", { length: 255 }),
+    // Note: vehicleName removed - can be derived from bidLabor → positionId → employee → assigned vehicle
     roundTripMiles: numeric("round_trip_miles", {
       precision: 10,
       scale: 2,

@@ -585,14 +585,10 @@ export const createBidLaborSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    employeeId: z
+    positionId: z
       .number()
-      .int("Employee ID must be a whole number")
-      .positive("Employee ID must be a positive number"),
-    quantity: z
-      .number()
-      .int("Quantity must be a whole number")
-      .positive("Quantity must be a positive number"),
+      .int("Position ID must be a whole number")
+      .positive("Position ID must be a positive number"),
     days: z
       .number()
       .int("Days must be a whole number")
@@ -612,15 +608,10 @@ export const updateBidLaborSchema = z.object({
     laborId: uuidSchema,
   }),
   body: z.object({
-    employeeId: z
+    positionId: z
       .number()
-      .int("Employee ID must be a whole number")
-      .positive("Employee ID must be a positive number")
-      .optional(),
-    quantity: z
-      .number()
-      .int("Quantity must be a whole number")
-      .positive("Quantity must be a positive number")
+      .int("Position ID must be a whole number")
+      .positive("Position ID must be a positive number")
       .optional(),
     days: z
       .number()
@@ -658,10 +649,7 @@ export const createBidTravelSchema = z.object({
     laborId: uuidSchema,
   }),
   body: z.object({
-    vehicleName: z
-      .string()
-      .max(255, "Vehicle name is too long (maximum 255 characters)")
-      .optional(),
+    // Note: vehicleName removed - derived from bidLabor → positionId → employee → assigned vehicle
     roundTripMiles: numericStringSchema,
     mileageRate: numericStringSchema,
     vehicleDayRate: numericStringSchema,

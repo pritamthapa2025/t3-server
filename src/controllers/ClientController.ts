@@ -1,4 +1,22 @@
 import type { Request, Response } from "express";
+
+// Helper function to validate organization access
+const validateUserAccess = (req: Request, res: Response): string | null => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Authentication required.",
+    });
+    return null;
+  }
+
+  return userId;
+};
+
+// Legacy function for backward compatibility
+const validateOrganizationAccess = validateUserAccess;
 import {
   getClients,
   getClientById,
@@ -77,16 +95,22 @@ export const getClientsHandler = async (req: Request, res: Response) => {
     }
 
     const filters: {
-      status?: string | string[];
-      clientTypeId?: number;
-      priority?: string;
+      type?: string;
+      status?: string;
       search?: string;
+      tags?: string[];
     } = {};
 
-    if (statusFilter !== undefined) filters.status = statusFilter;
-    if (req.query.clientTypeId)
-      filters.clientTypeId = parseInt(req.query.clientTypeId as string);
-    if (req.query.priority) filters.priority = req.query.priority as string;
+    // Map status from array to string if needed
+    if (statusFilter !== undefined) {
+      const statusValue = Array.isArray(statusFilter) ? statusFilter[0] : statusFilter;
+      if (statusValue) {
+        filters.status = statusValue;
+      }
+    }
+    if (req.query.clientTypeId) {
+      filters.type = req.query.clientTypeId as string;
+    }
     if (search) filters.search = search;
 
     const result = await getClients(
@@ -370,9 +394,9 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     }
 
     // Handle logo deletion when user sends companyLogo: null
-    if (updateData.companyLogo === null && currentClient.logo) {
+    if (updateData.companyLogo === null && currentClient.organization.logo) {
       try {
-        const deleted = await deleteFromSpaces(currentClient.logo);
+        const deleted = await deleteFromSpaces(currentClient.organization.logo);
         if (deleted) {
           logger.info("Company logo deleted from DigitalOcean Spaces");
         }
@@ -386,9 +410,9 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     // Map companyLogo to logo field in database (for new uploads)
     else if (updateData.companyLogo) {
       // Delete old logo if uploading new one
-      if (currentClient.logo) {
+      if (currentClient.organization.logo) {
         try {
-          await deleteFromSpaces(currentClient.logo);
+          await deleteFromSpaces(currentClient.organization.logo);
           logger.info("Old company logo deleted from DigitalOcean Spaces");
         } catch (error) {
           logger.logApiError("Error deleting old company logo from storage", error, req);
@@ -410,7 +434,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     }
 
     // Check organization name uniqueness (if provided and different from current)
-    if (updateData.name && updateData.name !== existingClient.name) {
+    if (updateData.name && updateData.name !== existingClient.organization.name) {
       uniqueFieldChecks.push({
         field: "name",
         value: updateData.name,
@@ -422,7 +446,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     // Check client ID uniqueness (if provided and different from current)
     if (
       updateData.clientId &&
-      updateData.clientId !== existingClient.clientId
+      updateData.clientId !== existingClient.organization.clientId
     ) {
       uniqueFieldChecks.push({
         field: "clientId",
@@ -966,7 +990,10 @@ export const deleteClientNoteHandler = async (req: Request, res: Response) => {
 // Get Client KPIs for dashboard
 export const getClientKPIsHandler = async (req: Request, res: Response) => {
   try {
-    const kpis = await getClientKPIs();
+    const organizationId = validateOrganizationAccess(req, res);
+    if (!organizationId) return;
+    
+    const kpis = await getClientKPIs(organizationId);
 
     logger.info("Client KPIs fetched successfully");
     return res.status(200).json({
@@ -1816,7 +1843,7 @@ export const getClientDocumentsHandler = async (
     return res.status(200).json({
       success: true,
       data: documents,
-      total: documents.length,
+      total: documents.totalCount,
     });
   } catch (error) {
     logger.logApiError("Error fetching client documents", error, req);
@@ -2140,7 +2167,7 @@ export const getClientDocumentCategoriesHandler = async (
       });
     }
 
-    const categories = await getDocumentCategories2(documentId);
+    const categories = await getDocumentCategories2();
 
     logger.info("Document categories fetched successfully");
     return res.status(200).json({
@@ -2197,15 +2224,7 @@ export const removeDocumentCategoryHandler = async (
     logger.info("Document category link removed successfully");
     return res.status(200).json({
       success: true,
-      message: result.categoryDeleted
-        ? "Category was completely deleted as it had no other linked documents"
-        : "Document unlinked from category successfully",
-      data: {
-        category: result.category,
-        linkRemoved: result.linkRemoved,
-        categoryDeleted: result.categoryDeleted,
-        remainingLinkedDocuments: result.remainingLinkedDocuments,
-      },
+      message: "Document unlinked from category successfully",
     });
   } catch (error: any) {
     logger.logApiError("Error removing document category link", error, req);

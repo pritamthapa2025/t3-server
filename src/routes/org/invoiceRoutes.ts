@@ -149,6 +149,29 @@ router.delete(
   invoiceController.deleteInvoiceLineItem
 );
 
+// ==================== INVOICE PDF ROUTES ====================
+
+// Download invoice as PDF
+router.get(
+  "/:id/pdf",
+  validate(z.object({
+    params: z.object({ id: z.string().uuid() }),
+    query: z.object({
+      save: z.string().optional() // "true" to save to storage
+    }).optional()
+  })),
+  invoiceController.downloadInvoicePDF
+);
+
+// Preview invoice PDF (inline display)
+router.get(
+  "/:id/pdf/preview", 
+  validate(z.object({
+    params: z.object({ id: z.string().uuid() })
+  })),
+  invoiceController.previewInvoicePDF
+);
+
 export default router;
 
 

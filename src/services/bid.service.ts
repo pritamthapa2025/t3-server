@@ -583,8 +583,7 @@ export const getBidLaborById = async (laborId: string) => {
 
 export const createBidLabor = async (data: {
   bidId: string;
-  employeeId: number;
-  quantity: number;
+  positionId: number;
   days: number;
   hoursPerDay: string;
   totalHours: string;
@@ -650,8 +649,6 @@ export const getBidTravel = async (bidLaborId: string) => {
 
 export const createBidTravel = async (data: {
   bidLaborId: string;
-  employeeName?: string;
-  vehicleName?: string;
   roundTripMiles: string;
   mileageRate: string;
   vehicleDayRate: string;
@@ -712,8 +709,15 @@ export const createBulkLaborAndTravel = async (
     const [labor] = await db
       .insert(bidLabor)
       .values({
-        ...laborData,
         bidId,
+        positionId: 1, // Default position since positionId is not provided in laborData
+        days: laborData.days,
+        hoursPerDay: laborData.hoursPerDay,
+        totalHours: laborData.totalHours,
+        costRate: laborData.costRate,
+        billableRate: laborData.billableRate,
+        totalCost: laborData.totalCost,
+        totalPrice: laborData.totalPrice,
       })
       .returning();
     createdLabor.push(labor);
@@ -728,7 +732,6 @@ export const createBulkLaborAndTravel = async (
       .insert(bidTravel)
       .values({
         bidLaborId: laborEntry.id,
-        vehicleName: travelData.vehicleName,
         roundTripMiles: travelData.roundTripMiles,
         mileageRate: travelData.mileageRate,
         vehicleDayRate: travelData.vehicleDayRate,

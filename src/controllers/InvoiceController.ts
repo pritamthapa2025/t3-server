@@ -1,6 +1,12 @@
 import type { Request, Response } from "express";
 import * as invoicingService from "../services/invoicing.service.js";
 import { logger } from "../utils/logger.js";
+import { 
+  generateAndSaveInvoicePDF, 
+  prepareInvoiceDataForPDF, 
+  generateInvoicePDF 
+} from "../services/pdf.service.js";
+import { getOrganizationById } from "../services/client.service.js";
 
 /**
  * Get invoices with pagination and filtering
@@ -546,6 +552,167 @@ export const getInvoiceSummary = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch invoice summary",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Download invoice as PDF
+ * GET /invoices/:id/pdf
+ */
+export const downloadInvoicePDF = async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(401).json({
+        success: false,
+        message: "Organization access required",
+      });
+    }
+
+    const { id } = req.params;
+    const { save } = req.query; // Optional: save to storage
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID is required",
+      });
+    }
+
+    // Get invoice with all related data
+    const invoice = await invoicingService.getInvoiceById(id, organizationId, {
+      includeLineItems: true,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    // Get organization data for company info
+    const organization = await getOrganizationById(organizationId);
+    if (!organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Organization data not found",
+      });
+    }
+
+    // Prepare data for PDF generation
+    const pdfData = prepareInvoiceDataForPDF(
+      invoice,
+      organization,
+      invoice.client || {},
+      invoice.lineItems || []
+    );
+
+    // Generate PDF
+    if (save === 'true') {
+      // Save to storage and return URL
+      const result = await generateAndSaveInvoicePDF(pdfData, organizationId);
+      
+      logger.info(`Invoice PDF generated and saved: ${id}`);
+      res.json({
+        success: true,
+        message: "PDF generated successfully",
+        data: {
+          downloadUrl: result.fileUrl,
+          filePath: result.filePath,
+        },
+      });
+    } else {
+      // Stream PDF directly to client
+      const pdfBuffer = await generateInvoicePDF(pdfData);
+      
+      // Set headers for PDF download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.invoiceNumber}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      
+      logger.info(`Invoice PDF downloaded: ${id}`);
+      res.send(pdfBuffer);
+    }
+  } catch (error: any) {
+    logger.logApiError("Error generating invoice PDF", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate PDF",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Preview invoice as PDF (inline display)
+ * GET /invoices/:id/pdf/preview
+ */
+export const previewInvoicePDF = async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      return res.status(401).json({
+        success: false,
+        message: "Organization access required",
+      });
+    }
+
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID is required",
+      });
+    }
+
+    // Get invoice with all related data
+    const invoice = await invoicingService.getInvoiceById(id, organizationId, {
+      includeLineItems: true,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    // Get organization data
+    const organization = await getOrganizationById(organizationId);
+    if (!organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Organization data not found",
+      });
+    }
+
+    // Prepare data for PDF generation
+    const pdfData = prepareInvoiceDataForPDF(
+      invoice,
+      organization,
+      invoice.client || {},
+      invoice.lineItems || []
+    );
+
+    // Generate PDF
+    const pdfBuffer = await generateInvoicePDF(pdfData);
+    
+    // Set headers for inline PDF display
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="invoice-${invoice.invoiceNumber}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    logger.info(`Invoice PDF previewed: ${id}`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    logger.logApiError("Error previewing invoice PDF", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to preview PDF",
       error: error.message,
     });
   }
