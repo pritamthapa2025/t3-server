@@ -760,3 +760,4 @@ export const deleteSchema = z.object({
     id: uuidSchema,
   }),
 });
+
