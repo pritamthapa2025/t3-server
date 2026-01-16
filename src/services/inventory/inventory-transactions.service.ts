@@ -89,15 +89,23 @@ export const updateItemQuantitiesAfterTransaction = async (
     currentItem.quantityOnOrder
   );
 
+  // Prepare update data
+  const updateData: any = {
+    quantityOnHand: newQuantityOnHand.toString(),
+    quantityAvailable: quantityAvailable.toString(),
+    status: newStatus,
+    updatedAt: new Date(),
+  };
+
+  // Auto-update lastRestockedDate for receipt transactions
+  if (transactionType === "receipt") {
+    updateData.lastRestockedDate = new Date();
+  }
+
   // Update item (within the locked transaction)
   await tx
     .update(inventoryItems)
-    .set({
-      quantityOnHand: newQuantityOnHand.toString(),
-      quantityAvailable: quantityAvailable.toString(),
-      status: newStatus,
-      updatedAt: new Date(),
-    })
+    .set(updateData)
     .where(eq(inventoryItems.id, itemId));
 
   // Check if alert needed

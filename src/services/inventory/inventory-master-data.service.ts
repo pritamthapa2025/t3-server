@@ -1,4 +1,4 @@
-import { count, eq, and, ilike, isNull } from "drizzle-orm";
+import { count, eq, and, ilike, isNull, desc, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventorySuppliers,
@@ -25,7 +25,10 @@ export const getSuppliers = async (
     )!;
   }
   if (filters?.isActive !== undefined) {
-    whereCondition = and(whereCondition, eq(inventorySuppliers.isActive, filters.isActive))!;
+    whereCondition = and(
+      whereCondition,
+      eq(inventorySuppliers.isActive, filters.isActive)
+    )!;
   }
 
   const result = await db
@@ -64,24 +67,93 @@ export const getSupplierById = async (id: string) => {
   return supplier || null;
 };
 
+// Generate next supplier code in SUP-00001 format using PostgreSQL sequence
+// Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
+// This is THREAD-SAFE and prevents race conditions
+const generateSupplierCode = async (): Promise<string> => {
+  try {
+    // Use PostgreSQL sequence for atomic ID generation
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.supplier_code_seq')::text as nextval`)
+    );
+
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+
+    // Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
+    if (nextNumber <= 99999) {
+      return `SUP-${nextNumber.toString().padStart(5, "0")}`;
+    } else {
+      return `SUP-${nextNumber}`;
+    }
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    // (This handles cases where migration hasn't run yet)
+    console.warn(
+      "Supplier code sequence not found, using fallback method:",
+      error
+    );
+
+    const result = await db
+      .select({ supplierCode: inventorySuppliers.supplierCode })
+      .from(inventorySuppliers)
+      .where(
+        and(
+          eq(inventorySuppliers.isDeleted, false),
+          sql`${inventorySuppliers.supplierCode} ~ '^SUP-\\d+$'`
+        )
+      )
+      .orderBy(desc(inventorySuppliers.supplierCode))
+      .limit(1);
+
+    let nextNumber = 1;
+    if (result.length && result[0]?.supplierCode) {
+      const lastSupplierCode = result[0].supplierCode;
+      const match = lastSupplierCode.match(/^SUP-(\d+)$/);
+      if (match) {
+        nextNumber = parseInt(match[1]!) + 1;
+      }
+    }
+
+    // Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
+    if (nextNumber <= 99999) {
+      return `SUP-${nextNumber.toString().padStart(5, "0")}`;
+    } else {
+      return `SUP-${nextNumber}`;
+    }
+  }
+};
+
 export const createSupplier = async (data: any) => {
-  const [newSupplier] = await db.insert(inventorySuppliers).values({
-    name: data.name,
-    contactName: data.contactName,
-    email: data.email,
-    phone: data.phone,
-    streetAddress: data.address,
-    city: data.city,
-    state: data.state,
-    zipCode: data.zipCode,
-    country: data.country,
-    website: data.website,
-    taxId: data.taxId,
-    paymentTerms: data.paymentTerms,
-    notes: data.notes,
-    isActive: data.isActive !== undefined ? data.isActive : true,
-    isDeleted: false,
-  }).returning();
+  // Auto-generate supplier code
+  const supplierCode = await generateSupplierCode();
+
+  const [newSupplier] = await db
+    .insert(inventorySuppliers)
+    .values({
+      supplierCode: supplierCode,
+      name: data.name,
+      legalName: data.legalName,
+      contactName: data.contactName,
+      email: data.email,
+      phone: data.phone,
+      website: data.website,
+      streetAddress: data.streetAddress,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zipCode,
+      country: data.country || "USA",
+      taxId: data.taxId,
+      accountNumber: data.accountNumber,
+      paymentTerms: data.paymentTerms,
+      creditLimit: data.creditLimit,
+      rating: data.rating,
+      leadTimeDays: data.leadTimeDays,
+      isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
+      notes: data.notes,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      isDeleted: false,
+    })
+    .returning();
 
   return newSupplier!;
 };
@@ -114,6 +186,61 @@ export const deleteSupplier = async (id: string) => {
 // Locations
 // ============================
 
+// Generate next location code in LOC-00001 format using PostgreSQL sequence
+// Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
+// This is THREAD-SAFE and prevents race conditions
+const generateLocationCode = async (): Promise<string> => {
+  try {
+    // Use PostgreSQL sequence for atomic ID generation
+    const result = await db.execute<{ nextval: string }>(
+      sql.raw(`SELECT nextval('org.location_code_seq')::text as nextval`)
+    );
+
+    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
+
+    // Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
+    if (nextNumber <= 99999) {
+      return `LOC-${nextNumber.toString().padStart(5, "0")}`;
+    } else {
+      return `LOC-${nextNumber}`;
+    }
+  } catch (error) {
+    // Fallback to old method if sequence doesn't exist yet
+    console.warn(
+      "Location code sequence not found, using fallback method:",
+      error
+    );
+
+    const result = await db
+      .select({ locationCode: inventoryLocations.locationCode })
+      .from(inventoryLocations)
+      .where(
+        and(
+          eq(inventoryLocations.isDeleted, false),
+          sql`${inventoryLocations.locationCode} ~ '^LOC-\\d+$'`
+        )
+      )
+      .orderBy(desc(inventoryLocations.locationCode))
+      .limit(1);
+
+    let nextNumber = 1;
+    if (result.length && result[0]?.locationCode) {
+      const lastLocationCode = result[0].locationCode;
+      const match = lastLocationCode.match(/^LOC-(\d+)$/);
+      if (match) {
+        nextNumber = parseInt(match[1]!) + 1;
+      }
+    }
+
+    // Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
+    if (nextNumber <= 99999) {
+      return `LOC-${nextNumber.toString().padStart(5, "0")}`;
+    } else {
+      return `LOC-${nextNumber}`;
+    }
+  }
+};
+
 export const getLocations = async (
   offset: number,
   limit: number,
@@ -125,10 +252,13 @@ export const getLocations = async (
     conditions.push(ilike(inventoryLocations.name, `%${filters.search}%`));
   }
   if (filters?.locationType) {
-    conditions.push(eq(inventoryLocations.locationType, filters.locationType as any));
+    conditions.push(
+      eq(inventoryLocations.locationType, filters.locationType as any)
+    );
   }
 
-  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
+  const whereCondition =
+    conditions.length > 1 ? and(...conditions) : conditions[0];
 
   const result = await db
     .select()
@@ -167,25 +297,63 @@ export const getLocationById = async (id: string) => {
 };
 
 export const createLocation = async (data: any) => {
-  const [newLocation] = await db.insert(inventoryLocations).values({
-    name: data.name,
-    locationType: data.locationType,
-    streetAddress: data.address,
-    city: data.city,
-    state: data.state,
-    zipCode: data.zipCode,
-    country: data.country,
-    notes: data.notes,
-    isDeleted: false,
-  }).returning() as any;
+  // Auto-generate location code if not provided
+  const locationCode = data.locationCode || (await generateLocationCode());
+
+  const [newLocation] = (await db
+    .insert(inventoryLocations)
+    .values({
+      locationCode: locationCode,
+      name: data.name,
+      locationType: data.locationType,
+      parentLocationId: data.parentLocationId,
+      streetAddress: data.streetAddress,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zipCode,
+      capacity: data.capacity,
+      capacityUnit: data.capacityUnit,
+      managerId: data.managerId,
+      accessInstructions: data.accessInstructions,
+      notes: data.notes,
+      isDeleted: false,
+    })
+    .returning()) as any;
 
   return newLocation;
 };
 
 export const updateLocation = async (id: string, data: any) => {
+  // Prepare update data with explicit field mapping
+  const updateData: any = {
+    updatedAt: new Date(),
+  };
+
+  // Only update provided fields
+  if (data.locationCode !== undefined)
+    updateData.locationCode = data.locationCode;
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.locationType !== undefined)
+    updateData.locationType = data.locationType;
+  if (data.parentLocationId !== undefined)
+    updateData.parentLocationId = data.parentLocationId;
+  if (data.streetAddress !== undefined)
+    updateData.streetAddress = data.streetAddress;
+  if (data.city !== undefined) updateData.city = data.city;
+  if (data.state !== undefined) updateData.state = data.state;
+  if (data.zipCode !== undefined) updateData.zipCode = data.zipCode;
+  if (data.capacity !== undefined) updateData.capacity = data.capacity;
+  if (data.capacityUnit !== undefined)
+    updateData.capacityUnit = data.capacityUnit;
+  if (data.managerId !== undefined) updateData.managerId = data.managerId;
+  if (data.accessInstructions !== undefined)
+    updateData.accessInstructions = data.accessInstructions;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
   const [updatedLocation] = await db
     .update(inventoryLocations)
-    .set(data)
+    .set(updateData)
     .where(eq(inventoryLocations.id, id))
     .returning();
 
@@ -211,15 +379,21 @@ export const deleteLocation = async (id: string) => {
 // ============================
 
 export const getCategories = async () => {
-  return await db.select().from(inventoryCategories).orderBy(inventoryCategories.name);
+  return await db
+    .select()
+    .from(inventoryCategories)
+    .orderBy(inventoryCategories.name);
 };
 
 export const createCategory = async (data: any) => {
-  const [newCategory] = await db.insert(inventoryCategories).values({
-    name: data.name,
-    description: data.description,
-    code: data.code,
-  }).returning();
+  const [newCategory] = await db
+    .insert(inventoryCategories)
+    .values({
+      name: data.name,
+      description: data.description,
+      code: data.code,
+    })
+    .returning();
 
   return newCategory!;
 };
@@ -236,20 +410,39 @@ export const updateCategory = async (id: number, data: any) => {
   return updatedCategory;
 };
 
+export const deleteCategory = async (id: number) => {
+  // Soft delete by setting isActive to false
+  const [deletedCategory] = await db
+    .update(inventoryCategories)
+    .set({ isActive: false })
+    .where(eq(inventoryCategories.id, id))
+    .returning();
+
+  if (!deletedCategory) throw new Error("Category not found");
+
+  return deletedCategory;
+};
+
 // ============================
 // Units of Measure
 // ============================
 
 export const getUnits = async () => {
-  return await db.select().from(inventoryUnitsOfMeasure).orderBy(inventoryUnitsOfMeasure.name);
+  return await db
+    .select()
+    .from(inventoryUnitsOfMeasure)
+    .orderBy(inventoryUnitsOfMeasure.name);
 };
 
 export const createUnit = async (data: any) => {
-  const [newUnit] = await db.insert(inventoryUnitsOfMeasure).values({
-    name: data.name,
-    abbreviation: data.abbreviation,
-    unitType: data.unitType,
-  }).returning();
+  const [newUnit] = await db
+    .insert(inventoryUnitsOfMeasure)
+    .values({
+      name: data.name,
+      abbreviation: data.abbreviation,
+      unitType: data.unitType,
+    })
+    .returning();
 
   return newUnit;
 };
@@ -266,3 +459,15 @@ export const updateUnit = async (id: number, data: any) => {
   return updatedUnit;
 };
 
+export const deleteUnit = async (id: number) => {
+  // Soft delete by setting isActive to false
+  const [deletedUnit] = await db
+    .update(inventoryUnitsOfMeasure)
+    .set({ isActive: false })
+    .where(eq(inventoryUnitsOfMeasure.id, id))
+    .returning();
+
+  if (!deletedUnit) throw new Error("Unit not found");
+
+  return deletedUnit;
+};

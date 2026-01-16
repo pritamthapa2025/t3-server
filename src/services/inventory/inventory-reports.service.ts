@@ -338,11 +338,31 @@ export const startCount = async (id: string) => {
 };
 
 export const completeCount = async (id: string, userId: string) => {
+  // Get all items that were counted in this count
+  const countItems = await db
+    .select({ itemId: inventoryCountItems.itemId })
+    .from(inventoryCountItems)
+    .where(eq(inventoryCountItems.countId, id));
+
+  const currentDate = new Date();
+
+  // Update lastCountedDate for all counted items
+  if (countItems.length > 0) {
+    const itemIds = countItems.map(item => item.itemId);
+    await db
+      .update(inventoryItems)
+      .set({
+        lastCountedDate: currentDate.toISOString().split('T')[0],
+        updatedAt: currentDate,
+      })
+      .where(sql`${inventoryItems.id} = ANY(${itemIds})`);
+  }
+
   const [completedCount] = await db
     .update(inventoryCounts)
     .set({
       status: "completed",
-      completedAt: new Date(),
+      completedAt: currentDate,
     })
     .where(eq(inventoryCounts.id, id))
     .returning();

@@ -218,6 +218,20 @@
       "when": 1768491144742,
       "tag": "0030_high_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1768541677373,
+      "tag": "0031_add_supplier_code_sequence",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1768545648781,
+      "tag": "0032_groovy_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

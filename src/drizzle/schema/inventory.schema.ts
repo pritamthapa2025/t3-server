@@ -750,6 +750,52 @@ export const inventoryItemHistory = org.table(
 );
 
 /**
+ * Inventory Price History Table
+ * Track price changes over time for cost analysis
+ */
+export const inventoryPriceHistory = org.table(
+  "inventory_price_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => inventoryItems.id),
+
+    // Price Information
+    priceType: varchar("price_type", { length: 50 }).notNull(), // unit_cost, purchase_price, selling_price
+    oldPrice: numeric("old_price", { precision: 15, scale: 2 }),
+    newPrice: numeric("new_price", { precision: 15, scale: 2 }).notNull(),
+    
+    // Context
+    supplierId: uuid("supplier_id").references(() => inventorySuppliers.id),
+    purchaseOrderId: uuid("purchase_order_id").references(() => inventoryPurchaseOrders.id),
+    reason: varchar("reason", { length: 100 }), // supplier_change, market_adjustment, purchase_order, etc.
+    
+    // Metadata
+    effectiveDate: date("effective_date").notNull(),
+    notes: text("notes"),
+    
+    performedBy: uuid("performed_by")
+      .notNull()
+      .references(() => users.id),
+
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_inventory_price_history_item").on(table.itemId),
+    index("idx_inventory_price_history_type").on(table.priceType),
+    index("idx_inventory_price_history_date").on(table.effectiveDate),
+    index("idx_inventory_price_history_supplier").on(table.supplierId),
+    // Composite index for item price timeline
+    index("idx_inventory_price_history_item_date").on(
+      table.itemId,
+      table.effectiveDate
+    ),
+  ]
+);
+
+/**
  * Inventory Counts/Physical Inventory Table
  * Track physical inventory counts/cycle counts
  */

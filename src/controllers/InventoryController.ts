@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { logger } from "../utils/logger.js";
 import * as inventoryService from "../services/inventory/index.js";
+import { uploadToSpaces } from "../services/storage.service.js";
 
 // ============================
 // Helper Functions
@@ -140,12 +141,67 @@ export const createInventoryItemHandler = async (
   req: Request,
   res: Response
 ) => {
+  let uploadedFileUrl: string | null = null;
   try {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    // Parse item data - either from JSON body or from form-data field
+    let itemData: any;
+    if (req.headers["content-type"]?.includes("application/json")) {
+      // JSON request - data is in req.body
+      itemData = req.body;
+    } else {
+      // Multipart form-data - parse JSON from 'data' field
+      if (req.body.data) {
+        try {
+          itemData =
+            typeof req.body.data === "string"
+              ? JSON.parse(req.body.data)
+              : req.body.data;
+        } catch (parseError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid JSON in 'data' field",
+          });
+        }
+      } else {
+        // Fallback: use req.body directly
+        itemData = req.body;
+      }
+    }
+
+    // Handle file upload if provided
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "inventory-items"
+        );
+        uploadedFileUrl = uploadResult.url;
+        
+        // Add image URL to images array
+        if (!itemData.images) {
+          itemData.images = [];
+        }
+        if (Array.isArray(itemData.images)) {
+          itemData.images.push(uploadResult.url);
+        } else {
+          itemData.images = [uploadResult.url];
+        }
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload image. Please try again.",
+        });
+      }
+    }
+
     const newItem = await inventoryService.createInventoryItem(
-      req.body,
+      itemData,
       userId
     );
 
@@ -209,10 +265,7 @@ export const deleteInventoryItemHandler = async (
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const deletedItem = await inventoryService.deleteInventoryItem(
-      id!,
-      userId
-    );
+    const deletedItem = await inventoryService.deleteInventoryItem(id!, userId);
 
     logger.info(`Inventory item ${id} deleted successfully`);
     res.status(200).json({
@@ -800,10 +853,7 @@ export const createPurchaseOrderHandler = async (
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const newPO = await inventoryService.createPurchaseOrder(
-      req.body,
-      userId
-    );
+    const newPO = await inventoryService.createPurchaseOrder(req.body, userId);
 
     logger.info(`Purchase order ${newPO.id} created successfully`);
     res.status(201).json({
@@ -828,10 +878,7 @@ export const updatePurchaseOrderHandler = async (
   try {
     const { id } = req.params;
 
-    const updatedPO = await inventoryService.updatePurchaseOrder(
-      id!,
-      req.body
-    );
+    const updatedPO = await inventoryService.updatePurchaseOrder(id!, req.body);
 
     logger.info(`Purchase order ${id} updated successfully`);
     res.status(200).json({
@@ -859,10 +906,7 @@ export const approvePurchaseOrderHandler = async (
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const approvedPO = await inventoryService.approvePurchaseOrder(
-      id!,
-      userId
-    );
+    const approvedPO = await inventoryService.approvePurchaseOrder(id!, userId);
 
     logger.info(`Purchase order ${id} approved successfully`);
     res.status(200).json({
@@ -902,6 +946,83 @@ export const sendPurchaseOrderHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const cancelPurchaseOrderHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const cancelledPO = await inventoryService.cancelPurchaseOrder(id!, reason);
+
+    logger.info(`Purchase order ${id} cancelled successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Purchase order cancelled successfully",
+      data: cancelledPO,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error cancelling purchase order", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel purchase order",
+      error: error.message,
+    });
+  }
+};
+
+export const closePurchaseOrderHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const closedPO = await inventoryService.closePurchaseOrder(id!, userId);
+
+    logger.info(`Purchase order ${id} closed successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Purchase order closed successfully",
+      data: closedPO,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error closing purchase order", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to close purchase order",
+      error: error.message,
+    });
+  }
+};
+
+export const receivePartialPurchaseOrderHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const result = await inventoryService.receivePartialPurchaseOrder(
+      id!,
+      req.body,
+      userId
+    );
+
+    logger.info(`Purchase order ${id} partially received successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Items received successfully",
+      data: result,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error receiving purchase order items", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to receive items",
+      error: error.message,
+    });
+  }
+};
+
 export const receivePurchaseOrderHandler = async (
   req: Request,
   res: Response
@@ -929,6 +1050,76 @@ export const receivePurchaseOrderHandler = async (
     res.status(500).json({
       success: false,
       message: "Failed to receive items",
+      error: error.message,
+    });
+  }
+};
+
+// ============================
+// PO Line Item Handlers
+// ============================
+
+export const addPurchaseOrderItemHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // PO ID
+
+    const newItem = await inventoryService.addPurchaseOrderItem(id!, req.body);
+
+    logger.info(`Item added to purchase order ${id} successfully`);
+    res.status(201).json({
+      success: true,
+      message: "Item added to purchase order successfully",
+      data: newItem,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error adding item to purchase order", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add item to purchase order",
+      error: error.message,
+    });
+  }
+};
+
+export const updatePurchaseOrderItemHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // PO Item ID
+
+    const updatedItem = await inventoryService.updatePurchaseOrderItem(id!, req.body);
+
+    logger.info(`Purchase order item ${id} updated successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Purchase order item updated successfully",
+      data: updatedItem,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating purchase order item", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update purchase order item",
+      error: error.message,
+    });
+  }
+};
+
+export const deletePurchaseOrderItemHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // PO Item ID
+
+    const deletedItem = await inventoryService.deletePurchaseOrderItem(id!);
+
+    logger.info(`Purchase order item ${id} deleted successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Purchase order item deleted successfully",
+      data: deletedItem,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting purchase order item", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete purchase order item",
       error: error.message,
     });
   }
@@ -984,11 +1175,7 @@ export const getSuppliersHandler = async (req: Request, res: Response) => {
       filters.isActive = false;
     }
 
-    const result = await inventoryService.getSuppliers(
-      offset,
-      limit,
-      filters
-    );
+    const result = await inventoryService.getSuppliers(offset, limit, filters);
 
     logger.info("Suppliers fetched successfully");
     res.status(200).json({
@@ -1120,11 +1307,7 @@ export const getLocationsHandler = async (req: Request, res: Response) => {
       locationType: req.query.locationType as string,
     };
 
-    const result = await inventoryService.getLocations(
-      offset,
-      limit,
-      filters
-    );
+    const result = await inventoryService.getLocations(offset, limit, filters);
 
     logger.info("Inventory locations fetched successfully");
     res.status(200).json({
@@ -1309,6 +1492,38 @@ export const updateCategoryHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const deleteCategoryHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const deletedCategory = await inventoryService.deleteCategory(
+      parseInt(id!)
+    );
+
+    logger.info(`Inventory category ${id} deleted successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Category deleted successfully",
+      data: deletedCategory,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting inventory category", error, req);
+    if (error.message === "Category not found") {
+      res.status(404).json({
+        success: false,
+        message: "Category not found",
+        error: error.message,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete category",
+        error: error.message,
+      });
+    }
+  }
+};
+
 // ============================
 // Units of Measure Controllers
 // ============================
@@ -1377,6 +1592,36 @@ export const updateUnitHandler = async (req: Request, res: Response) => {
       message: "Failed to update unit",
       error: error.message,
     });
+  }
+};
+
+export const deleteUnitHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const deletedUnit = await inventoryService.deleteUnit(parseInt(id!));
+
+    logger.info(`Inventory unit ${id} deleted successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Unit deleted successfully",
+      data: deletedUnit,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting inventory unit", error, req);
+    if (error.message === "Unit not found") {
+      res.status(404).json({
+        success: false,
+        message: "Unit not found",
+        error: error.message,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete unit",
+        error: error.message,
+      });
+    }
   }
 };
 
@@ -1566,10 +1811,7 @@ export const createCountHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const newCount = await inventoryService.createCount(
-      req.body,
-      userId
-    );
+    const newCount = await inventoryService.createCount(req.body, userId);
 
     logger.info(`Inventory count ${newCount.id} created successfully`);
     res.status(201).json({
@@ -1616,10 +1858,7 @@ export const completeCountHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const completedCount = await inventoryService.completeCount(
-      id!,
-      userId
-    );
+    const completedCount = await inventoryService.completeCount(id!, userId);
 
     logger.info(`Inventory count ${id} completed successfully`);
     res.status(200).json({

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getInventoryItemsHandler,
   getInventoryItemByIdHandler,
@@ -28,6 +29,12 @@ import {
   updatePurchaseOrderHandler,
   approvePurchaseOrderHandler,
   sendPurchaseOrderHandler,
+  cancelPurchaseOrderHandler,
+  closePurchaseOrderHandler,
+  receivePartialPurchaseOrderHandler,
+  addPurchaseOrderItemHandler,
+  updatePurchaseOrderItemHandler,
+  deletePurchaseOrderItemHandler,
   receivePurchaseOrderHandler,
   getPurchaseOrderItemsHandler,
   getSuppliersHandler,
@@ -43,9 +50,11 @@ import {
   getCategoriesHandler,
   createCategoryHandler,
   updateCategoryHandler,
+  deleteCategoryHandler,
   getUnitsHandler,
   createUnitHandler,
   updateUnitHandler,
+  deleteUnitHandler,
   getAlertsHandler,
   getUnresolvedAlertsHandler,
   acknowledgeAlertHandler,
@@ -77,6 +86,13 @@ import {
   getPurchaseOrdersQuerySchema,
   getPurchaseOrderByIdSchema,
   createPurchaseOrderSchema,
+  sendPurchaseOrderSchema,
+  cancelPurchaseOrderSchema,
+  closePurchaseOrderSchema,
+  receivePartialPurchaseOrderSchema,
+  addPurchaseOrderItemSchema,
+  updatePurchaseOrderItemSchema,
+  deletePurchaseOrderItemSchema,
   updatePurchaseOrderSchema,
   approvePurchaseOrderSchema,
   receivePurchaseOrderSchema,
@@ -88,6 +104,8 @@ import {
   updateLocationSchema,
   createCategorySchema,
   updateCategorySchema,
+  deleteCategorySchema,
+  deleteUnitSchema,
   acknowledgeAlertSchema,
   resolveAlertSchema,
   createCountSchema,
@@ -99,6 +117,45 @@ import {
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
+
+// Configure multer for memory storage (for item image upload)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+}).single("image"); // Handle the image field
+
+// Multer error handler middleware
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum size is 5MB.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next();
+};
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -124,6 +181,20 @@ router.get(
 
 router.post(
   "/items",
+  (req, res, next) => {
+    // Apply multer only if Content-Type is multipart/form-data
+    if (req.headers["content-type"]?.includes("multipart/form-data")) {
+      upload(req, res, (err) => {
+        if (err) {
+          return handleMulterError(err, req, res, next);
+        }
+        next();
+      });
+    } else {
+      // Skip multer for JSON requests
+      next();
+    }
+  },
   validate(createInventoryItemSchema),
   createInventoryItemHandler
 );
@@ -308,14 +379,51 @@ router.put(
 
 router.put(
   "/purchase-orders/:id/send",
-  validate(uuidParamSchema),
+  validate(sendPurchaseOrderSchema),
   sendPurchaseOrderHandler
+);
+
+router.put(
+  "/purchase-orders/:id/cancel",
+  validate(cancelPurchaseOrderSchema),
+  cancelPurchaseOrderHandler
+);
+
+router.put(
+  "/purchase-orders/:id/close",
+  validate(closePurchaseOrderSchema),
+  closePurchaseOrderHandler
 );
 
 router.post(
   "/purchase-orders/:id/receive",
   validate(receivePurchaseOrderSchema),
   receivePurchaseOrderHandler
+);
+
+router.post(
+  "/purchase-orders/:id/receive-partial",
+  validate(receivePartialPurchaseOrderSchema),
+  receivePartialPurchaseOrderHandler
+);
+
+// PO Line Item Routes
+router.post(
+  "/purchase-orders/:id/items",
+  validate(addPurchaseOrderItemSchema),
+  addPurchaseOrderItemHandler
+);
+
+router.put(
+  "/purchase-order-items/:id",
+  validate(updatePurchaseOrderItemSchema),
+  updatePurchaseOrderItemHandler
+);
+
+router.delete(
+  "/purchase-order-items/:id",
+  validate(deletePurchaseOrderItemSchema),
+  deletePurchaseOrderItemHandler
 );
 
 router.get(
@@ -334,11 +442,7 @@ router.get(
   getSuppliersHandler
 );
 
-router.get(
-  "/suppliers/:id",
-  validate(uuidParamSchema),
-  getSupplierByIdHandler
-);
+router.get("/suppliers/:id", validate(uuidParamSchema), getSupplierByIdHandler);
 
 router.post(
   "/suppliers",
@@ -352,11 +456,7 @@ router.put(
   updateSupplierHandler
 );
 
-router.delete(
-  "/suppliers/:id",
-  validate(deleteSchema),
-  deleteSupplierHandler
-);
+router.delete("/suppliers/:id", validate(deleteSchema), deleteSupplierHandler);
 
 // ============================
 // Location Routes
@@ -368,11 +468,7 @@ router.get(
   getLocationsHandler
 );
 
-router.get(
-  "/locations/:id",
-  validate(uuidParamSchema),
-  getLocationByIdHandler
-);
+router.get("/locations/:id", validate(uuidParamSchema), getLocationByIdHandler);
 
 router.post(
   "/locations",
@@ -386,11 +482,7 @@ router.put(
   updateLocationHandler
 );
 
-router.delete(
-  "/locations/:id",
-  validate(deleteSchema),
-  deleteLocationHandler
-);
+router.delete("/locations/:id", validate(deleteSchema), deleteLocationHandler);
 
 // ============================
 // Category Routes
@@ -410,6 +502,12 @@ router.put(
   updateCategoryHandler
 );
 
+router.delete(
+  "/categories/:id",
+  validate(deleteCategorySchema),
+  deleteCategoryHandler
+);
+
 // ============================
 // Units of Measure Routes
 // ============================
@@ -417,6 +515,8 @@ router.put(
 router.get("/units", getUnitsHandler);
 router.post("/units", createUnitHandler);
 router.put("/units/:id", updateUnitHandler);
+
+router.delete("/units/:id", validate(deleteUnitSchema), deleteUnitHandler);
 
 // ============================
 // Stock Alert Routes
@@ -445,26 +545,14 @@ router.post("/alerts/trigger-check", triggerAlertCheckHandler);
 
 router.get("/counts", getCountsHandler);
 
-router.get(
-  "/counts/:id",
-  validate(uuidParamSchema),
-  getCountByIdHandler
-);
+router.get("/counts/:id", validate(uuidParamSchema), getCountByIdHandler);
 
-router.post(
-  "/counts",
-  validate(createCountSchema),
-  createCountHandler
-);
+router.post("/counts", validate(createCountSchema), createCountHandler);
 
 // Note: updateCountHandler not implemented yet
 // router.put("/counts/:id", validate(updateCountSchema), updateCountHandler);
 
-router.post(
-  "/counts/:id/start",
-  validate(uuidParamSchema),
-  startCountHandler
-);
+router.post("/counts/:id/start", validate(uuidParamSchema), startCountHandler);
 
 router.post(
   "/counts/:id/complete",
@@ -485,11 +573,3 @@ router.put(
 );
 
 export default router;
-
-
-
-
-
-
-
-

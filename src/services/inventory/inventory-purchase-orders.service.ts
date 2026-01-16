@@ -220,6 +220,19 @@ export const approvePurchaseOrder = async (
 };
 
 export const sendPurchaseOrder = async (id: string) => {
+  // Validate PO can be sent (must be approved)
+  const po = await db
+    .select()
+    .from(inventoryPurchaseOrders)
+    .where(eq(inventoryPurchaseOrders.id, id))
+    .limit(1);
+
+  if (po.length === 0) throw new Error("Purchase order not found");
+  
+  if (po[0]!.status !== "approved") {
+    throw new Error("Purchase order must be approved before sending");
+  }
+
   const [sentPO] = await db
     .update(inventoryPurchaseOrders)
     .set({
@@ -231,6 +244,61 @@ export const sendPurchaseOrder = async (id: string) => {
   if (!sentPO) throw new Error("Purchase order not found");
 
   return sentPO;
+};
+
+export const cancelPurchaseOrder = async (id: string, reason?: string) => {
+  // Validate PO can be cancelled (not received or closed)
+  const po = await db
+    .select()
+    .from(inventoryPurchaseOrders)
+    .where(eq(inventoryPurchaseOrders.id, id))
+    .limit(1);
+
+  if (po.length === 0) throw new Error("Purchase order not found");
+  
+  if (po[0]!.status === "received" || po[0]!.status === "closed") {
+    throw new Error("Cannot cancel received or closed purchase orders");
+  }
+
+  const [cancelledPO] = await db
+    .update(inventoryPurchaseOrders)
+    .set({
+      status: "cancelled",
+      notes: reason ? `${po[0]!.notes || ''}\n\nCancellation reason: ${reason}`.trim() : po[0]!.notes,
+    })
+    .where(eq(inventoryPurchaseOrders.id, id))
+    .returning();
+
+  if (!cancelledPO) throw new Error("Purchase order not found");
+
+  return cancelledPO;
+};
+
+export const closePurchaseOrder = async (id: string, userId: string) => {
+  // Validate PO can be closed (must be received)
+  const po = await db
+    .select()
+    .from(inventoryPurchaseOrders)
+    .where(eq(inventoryPurchaseOrders.id, id))
+    .limit(1);
+
+  if (po.length === 0) throw new Error("Purchase order not found");
+  
+  if (po[0]!.status !== "received") {
+    throw new Error("Purchase order must be fully received before closing");
+  }
+
+  const [closedPO] = await db
+    .update(inventoryPurchaseOrders)
+    .set({
+      status: "closed",
+    })
+    .where(eq(inventoryPurchaseOrders.id, id))
+    .returning();
+
+  if (!closedPO) throw new Error("Purchase order not found");
+
+  return closedPO;
 };
 
 export const receivePurchaseOrder = async (
@@ -338,5 +406,262 @@ export const getPurchaseOrderItems = async (purchaseOrderId: string) => {
       item: r.item,
     })),
   };
+};
+
+// ============================
+// PO Line Item Management
+// ============================
+
+export const addPurchaseOrderItem = async (
+  purchaseOrderId: string,
+  data: {
+    itemId: string;
+    quantityOrdered: string;
+    unitCost: string;
+    expectedDeliveryDate?: string;
+    notes?: string;
+  }
+) => {
+  // Validate PO exists and is editable
+  const po = await db
+    .select()
+    .from(inventoryPurchaseOrders)
+    .where(eq(inventoryPurchaseOrders.id, purchaseOrderId))
+    .limit(1);
+
+  if (po.length === 0) throw new Error("Purchase order not found");
+  
+  if (po[0]!.status !== "draft" && po[0]!.status !== "pending_approval") {
+    throw new Error("Cannot modify purchase order items after approval");
+  }
+
+  const lineTotal = (parseFloat(data.quantityOrdered) * parseFloat(data.unitCost)).toString();
+
+  const [newItem] = await db
+    .insert(inventoryPurchaseOrderItems)
+    .values({
+      purchaseOrderId,
+      itemId: data.itemId,
+      quantityOrdered: data.quantityOrdered,
+      quantityReceived: "0",
+      unitCost: data.unitCost,
+      lineTotal,
+      expectedDeliveryDate: data.expectedDeliveryDate || null,
+      notes: data.notes,
+    })
+    .returning();
+
+  return newItem!;
+};
+
+export const updatePurchaseOrderItem = async (
+  id: string,
+  data: {
+    quantityOrdered?: string;
+    unitCost?: string;
+    expectedDeliveryDate?: string;
+    notes?: string;
+  }
+) => {
+  // Get the PO item to check if PO is editable
+  const poItem = await db
+    .select({
+      poItem: inventoryPurchaseOrderItems,
+      po: inventoryPurchaseOrders,
+    })
+    .from(inventoryPurchaseOrderItems)
+    .leftJoin(inventoryPurchaseOrders, eq(inventoryPurchaseOrderItems.purchaseOrderId, inventoryPurchaseOrders.id))
+    .where(eq(inventoryPurchaseOrderItems.id, id))
+    .limit(1);
+
+  if (poItem.length === 0) throw new Error("Purchase order item not found");
+  
+  if (poItem[0]!.po!.status !== "draft" && poItem[0]!.po!.status !== "pending_approval") {
+    throw new Error("Cannot modify purchase order items after approval");
+  }
+
+  const updateData: any = {};
+
+  if (data.quantityOrdered !== undefined) updateData.quantityOrdered = data.quantityOrdered;
+  if (data.unitCost !== undefined) updateData.unitCost = data.unitCost;
+  if (data.expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = data.expectedDeliveryDate;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
+  // Recalculate line total if quantity or unit cost changed
+  if (data.quantityOrdered !== undefined || data.unitCost !== undefined) {
+    const qty = data.quantityOrdered || poItem[0]!.poItem!.quantityOrdered;
+    const cost = data.unitCost || poItem[0]!.poItem!.unitCost;
+    updateData.lineTotal = (parseFloat(qty) * parseFloat(cost)).toString();
+  }
+
+  const [updatedItem] = await db
+    .update(inventoryPurchaseOrderItems)
+    .set(updateData)
+    .where(eq(inventoryPurchaseOrderItems.id, id))
+    .returning();
+
+  if (!updatedItem) throw new Error("Purchase order item not found");
+
+  return updatedItem;
+};
+
+export const deletePurchaseOrderItem = async (id: string) => {
+  // Get the PO item to check if PO is editable
+  const poItem = await db
+    .select({
+      poItem: inventoryPurchaseOrderItems,
+      po: inventoryPurchaseOrders,
+    })
+    .from(inventoryPurchaseOrderItems)
+    .leftJoin(inventoryPurchaseOrders, eq(inventoryPurchaseOrderItems.purchaseOrderId, inventoryPurchaseOrders.id))
+    .where(eq(inventoryPurchaseOrderItems.id, id))
+    .limit(1);
+
+  if (poItem.length === 0) throw new Error("Purchase order item not found");
+  
+  if (poItem[0]!.po!.status !== "draft" && poItem[0]!.po!.status !== "pending_approval") {
+    throw new Error("Cannot modify purchase order items after approval");
+  }
+
+  const [deletedItem] = await db
+    .delete(inventoryPurchaseOrderItems)
+    .where(eq(inventoryPurchaseOrderItems.id, id))
+    .returning();
+
+  if (!deletedItem) throw new Error("Purchase order item not found");
+
+  return deletedItem;
+};
+
+// ============================
+// Partial Receiving Workflow
+// ============================
+
+export const receivePartialPurchaseOrder = async (
+  id: string,
+  data: { 
+    items: Array<{ 
+      itemId: string; 
+      quantityReceived: string; 
+      actualDeliveryDate?: string;
+      notes?: string 
+    }>; 
+    locationId?: string;
+    trackingNumber?: string;
+    supplierInvoiceNumber?: string;
+  },
+  userId: string
+) => {
+  // 🔐 WRAP IN TRANSACTION for atomic partial receiving
+  return await db.transaction(async (tx) => {
+    const po = await getPurchaseOrderById(id);
+    if (!po) throw new Error("Purchase order not found");
+
+    if (po.status !== "sent" && po.status !== "partially_received") {
+      throw new Error("Purchase order must be sent before receiving items");
+    }
+
+    let hasNewReceipts = false;
+
+    for (const receivedItem of data.items) {
+      const poItem = po.items?.find((i: any) => i.itemId === receivedItem.itemId);
+      if (!poItem) continue;
+
+      const qtyReceived = parseFloat(receivedItem.quantityReceived);
+      if (qtyReceived <= 0) continue;
+
+      const previouslyReceived = parseFloat(poItem.quantityReceived);
+      const qtyOrdered = parseFloat(poItem.quantityOrdered);
+      const newTotalReceived = previouslyReceived + qtyReceived;
+
+      // Validate not over-receiving
+      if (newTotalReceived > qtyOrdered) {
+        throw new Error(`Cannot receive more than ordered quantity for item ${poItem.item?.name}. Ordered: ${qtyOrdered}, Already received: ${previouslyReceived}, Attempting: ${qtyReceived}`);
+      }
+
+      // Update PO line item with individual delivery date
+      await tx
+        .update(inventoryPurchaseOrderItems)
+        .set({
+          quantityReceived: newTotalReceived.toString(),
+          actualDeliveryDate: receivedItem.actualDeliveryDate || new Date().toISOString().split('T')[0],
+          notes: receivedItem.notes || poItem.notes,
+        })
+        .where(eq(inventoryPurchaseOrderItems.id, poItem.id));
+
+      // Create receipt transaction
+      await createTransaction(
+        {
+          itemId: receivedItem.itemId,
+          locationId: data.locationId || po.shipToLocationId,
+          transactionType: "receipt",
+          quantity: receivedItem.quantityReceived,
+          unitCost: poItem.unitCost,
+          purchaseOrderId: id,
+          referenceNumber: po.poNumber,
+          notes: `Partial receipt from PO ${po.poNumber}${receivedItem.notes ? ` - ${receivedItem.notes}` : ''}`,
+        },
+        userId
+      );
+
+      // 🔒 LOCK and update item quantityOnOrder
+      const item = await tx
+        .select()
+        .from(inventoryItems)
+        .where(eq(inventoryItems.id, receivedItem.itemId))
+        .for('update')
+        .limit(1);
+
+      if (item.length > 0) {
+        const newQtyOnOrder = Math.max(0, parseFloat(item[0]!.quantityOnOrder) - qtyReceived);
+        await tx
+          .update(inventoryItems)
+          .set({ quantityOnOrder: newQtyOnOrder.toString() })
+          .where(eq(inventoryItems.id, receivedItem.itemId));
+      }
+
+      hasNewReceipts = true;
+    }
+
+    if (!hasNewReceipts) {
+      throw new Error("No valid items to receive");
+    }
+
+    // Check completion status
+    const updatedItems = await getPurchaseOrderItems(id);
+    const allReceived = updatedItems.data.every(
+      (item: any) => parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered)
+    );
+
+    const someReceived = updatedItems.data.some((item: any) => parseFloat(item.quantityReceived) > 0);
+
+    let newStatus: any = po.status;
+    let actualDeliveryDate = null;
+
+    if (allReceived) {
+      newStatus = "received";
+      actualDeliveryDate = new Date().toISOString().split('T')[0];
+    } else if (someReceived) {
+      newStatus = "partially_received";
+    }
+
+    // Update PO status and tracking info
+    const updateData: any = { status: newStatus };
+    if (actualDeliveryDate) updateData.actualDeliveryDate = actualDeliveryDate;
+    if (data.trackingNumber) updateData.trackingNumber = data.trackingNumber;
+    if (data.supplierInvoiceNumber) updateData.supplierInvoiceNumber = data.supplierInvoiceNumber;
+
+    await tx
+      .update(inventoryPurchaseOrders)
+      .set(updateData)
+      .where(eq(inventoryPurchaseOrders.id, id));
+
+    return { 
+      success: true, 
+      status: newStatus, 
+      fullyReceived: allReceived,
+      itemsProcessed: data.items.length
+    };
+  });
 };
 

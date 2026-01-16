@@ -74,7 +74,8 @@ export const getInventoryItems = async (
     );
   }
 
-  const whereCondition = conditions.length > 1 ? and(...conditions)! : conditions[0]!;
+  const whereCondition =
+    conditions.length > 1 ? and(...conditions)! : conditions[0]!;
 
   const result = await db
     .select({
@@ -85,16 +86,35 @@ export const getInventoryItems = async (
       unit: inventoryUnitsOfMeasure,
     })
     .from(inventoryItems)
-    .leftJoin(inventoryCategories, eq(inventoryItems.categoryId, inventoryCategories.id))
-    .leftJoin(inventorySuppliers, eq(inventoryItems.primarySupplierId, inventorySuppliers.id))
-    .leftJoin(inventoryLocations, eq(inventoryItems.primaryLocationId, inventoryLocations.id))
-    .leftJoin(inventoryUnitsOfMeasure, eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id))
+    .leftJoin(
+      inventoryCategories,
+      eq(inventoryItems.categoryId, inventoryCategories.id)
+    )
+    .leftJoin(
+      inventorySuppliers,
+      eq(inventoryItems.primarySupplierId, inventorySuppliers.id)
+    )
+    .leftJoin(
+      inventoryLocations,
+      eq(inventoryItems.primaryLocationId, inventoryLocations.id)
+    )
+    .leftJoin(
+      inventoryUnitsOfMeasure,
+      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id)
+    )
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
-    .orderBy(filters?.sortOrder === "desc" ? desc(inventoryItems.name) : asc(inventoryItems.name));
+    .orderBy(
+      filters?.sortOrder === "desc"
+        ? desc(inventoryItems.name)
+        : asc(inventoryItems.name)
+    );
 
-  const totalCount = await db.select({ count: count() }).from(inventoryItems).where(whereCondition);
+  const totalCount = await db
+    .select({ count: count() })
+    .from(inventoryItems)
+    .where(whereCondition);
   const total = totalCount[0]?.count ?? 0;
 
   return {
@@ -124,10 +144,22 @@ export const getInventoryItemById = async (id: string) => {
       unit: inventoryUnitsOfMeasure,
     })
     .from(inventoryItems)
-    .leftJoin(inventoryCategories, eq(inventoryItems.categoryId, inventoryCategories.id))
-    .leftJoin(inventorySuppliers, eq(inventoryItems.primarySupplierId, inventorySuppliers.id))
-    .leftJoin(inventoryLocations, eq(inventoryItems.primaryLocationId, inventoryLocations.id))
-    .leftJoin(inventoryUnitsOfMeasure, eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id))
+    .leftJoin(
+      inventoryCategories,
+      eq(inventoryItems.categoryId, inventoryCategories.id)
+    )
+    .leftJoin(
+      inventorySuppliers,
+      eq(inventoryItems.primarySupplierId, inventorySuppliers.id)
+    )
+    .leftJoin(
+      inventoryLocations,
+      eq(inventoryItems.primaryLocationId, inventoryLocations.id)
+    )
+    .leftJoin(
+      inventoryUnitsOfMeasure,
+      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id)
+    )
     .where(eq(inventoryItems.id, id))
     .limit(1);
 
@@ -143,40 +175,47 @@ export const getInventoryItemById = async (id: string) => {
 };
 
 export const createInventoryItem = async (data: any, userId: string) => {
-  const [newItem] = await db.insert(inventoryItems).values({
-    itemCode: data.itemCode,
-    name: data.name,
-    description: data.description,
-    categoryId: data.categoryId,
-    primarySupplierId: data.primarySupplierId,
-    unitOfMeasureId: data.unitOfMeasureId,
-    unitCost: data.unitCost || "0",
-    sellingPrice: data.sellingPrice,
-    quantityOnHand: "0",
-    quantityAllocated: "0",
-    quantityAvailable: "0",
-    quantityOnOrder: "0",
-    reorderLevel: data.reorderLevel || "0",
-    reorderQuantity: data.reorderQuantity || "0",
-    maxStockLevel: data.maxStockLevel,
-    primaryLocationId: data.primaryLocationId,
-    manufacturer: data.manufacturer,
-    modelNumber: data.modelNumber,
-    partNumber: data.partNumber,
-    barcode: data.barcode,
-    weight: data.weight,
-    weightUnit: data.weightUnit,
-    dimensions: data.dimensions,
-    specifications: data.specifications,
-    tags: data.tags,
-    images: data.images,
-    trackBySerialNumber: data.trackBySerialNumber || false,
-    trackByBatch: data.trackByBatch || false,
-    isActive: data.isActive !== undefined ? data.isActive : true,
-    status: "out_of_stock",
-    notes: data.notes,
-    isDeleted: false,
-  }).returning();
+  const [newItem] = await db
+    .insert(inventoryItems)
+    .values({
+      itemCode: data.itemCode,
+      name: data.name,
+      description: data.description,
+      categoryId: data.categoryId,
+      primarySupplierId: data.primarySupplierId,
+      unitOfMeasureId: data.unitOfMeasureId,
+      unitCost: data.unitCost || "0",
+      sellingPrice: data.sellingPrice,
+      quantityOnHand: data.quantityOnHand || "0",
+      quantityAllocated: "0",
+      quantityAvailable: data.quantityOnHand || "0",
+      quantityOnOrder: "0",
+      reorderLevel: data.reorderLevel || "0",
+      reorderQuantity: data.reorderQuantity || "0",
+      maxStockLevel: data.maxStockLevel,
+      primaryLocationId: data.primaryLocationId,
+      manufacturer: data.manufacturer,
+      modelNumber: data.modelNumber,
+      partNumber: data.partNumber,
+      barcode: data.barcode,
+      weight: data.weight,
+      weightUnit: data.weightUnit,
+      dimensions: data.dimensions,
+      specifications: data.specifications,
+      tags: data.tags,
+      images: data.images,
+      trackBySerialNumber: data.trackBySerialNumber || false,
+      trackByBatch: data.trackByBatch || false,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      status: calculateStockStatus(
+        data.quantityOnHand || "0",
+        data.reorderLevel || "0",
+        "0"
+      ),
+      notes: data.notes,
+      isDeleted: false,
+    })
+    .returning();
 
   return newItem!;
 };
@@ -203,26 +242,37 @@ export const updateInventoryItem = async (
   if (data.name !== undefined) updateData.name = data.name;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
-  if (data.primarySupplierId !== undefined) updateData.primarySupplierId = data.primarySupplierId;
-  if (data.unitOfMeasureId !== undefined) updateData.unitOfMeasureId = data.unitOfMeasureId;
+  if (data.primarySupplierId !== undefined)
+    updateData.primarySupplierId = data.primarySupplierId;
+  if (data.unitOfMeasureId !== undefined)
+    updateData.unitOfMeasureId = data.unitOfMeasureId;
   if (data.unitCost !== undefined) updateData.unitCost = data.unitCost;
-  if (data.sellingPrice !== undefined) updateData.sellingPrice = data.sellingPrice;
-  if (data.reorderLevel !== undefined) updateData.reorderLevel = data.reorderLevel;
-  if (data.reorderQuantity !== undefined) updateData.reorderQuantity = data.reorderQuantity;
-  if (data.maxStockLevel !== undefined) updateData.maxStockLevel = data.maxStockLevel;
-  if (data.primaryLocationId !== undefined) updateData.primaryLocationId = data.primaryLocationId;
-  if (data.manufacturer !== undefined) updateData.manufacturer = data.manufacturer;
+  if (data.sellingPrice !== undefined)
+    updateData.sellingPrice = data.sellingPrice;
+  if (data.reorderLevel !== undefined)
+    updateData.reorderLevel = data.reorderLevel;
+  if (data.reorderQuantity !== undefined)
+    updateData.reorderQuantity = data.reorderQuantity;
+  if (data.maxStockLevel !== undefined)
+    updateData.maxStockLevel = data.maxStockLevel;
+  if (data.primaryLocationId !== undefined)
+    updateData.primaryLocationId = data.primaryLocationId;
+  if (data.manufacturer !== undefined)
+    updateData.manufacturer = data.manufacturer;
   if (data.modelNumber !== undefined) updateData.modelNumber = data.modelNumber;
   if (data.partNumber !== undefined) updateData.partNumber = data.partNumber;
   if (data.barcode !== undefined) updateData.barcode = data.barcode;
   if (data.weight !== undefined) updateData.weight = data.weight;
   if (data.weightUnit !== undefined) updateData.weightUnit = data.weightUnit;
   if (data.dimensions !== undefined) updateData.dimensions = data.dimensions;
-  if (data.specifications !== undefined) updateData.specifications = data.specifications;
+  if (data.specifications !== undefined)
+    updateData.specifications = data.specifications;
   if (data.tags !== undefined) updateData.tags = data.tags;
   if (data.images !== undefined) updateData.images = data.images;
-  if (data.trackBySerialNumber !== undefined) updateData.trackBySerialNumber = data.trackBySerialNumber;
-  if (data.trackByBatch !== undefined) updateData.trackByBatch = data.trackByBatch;
+  if (data.trackBySerialNumber !== undefined)
+    updateData.trackBySerialNumber = data.trackBySerialNumber;
+  if (data.trackByBatch !== undefined)
+    updateData.trackByBatch = data.trackByBatch;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.notes !== undefined) updateData.notes = data.notes;
 
@@ -230,7 +280,11 @@ export const updateInventoryItem = async (
   if (data.reorderLevel !== undefined) {
     const qtyOnHand = existingItem[0]!.quantityOnHand;
     const qtyOnOrder = existingItem[0]!.quantityOnOrder;
-    updateData.status = calculateStockStatus(qtyOnHand, data.reorderLevel, qtyOnOrder);
+    updateData.status = calculateStockStatus(
+      qtyOnHand,
+      data.reorderLevel,
+      qtyOnOrder
+    );
   }
 
   const [updatedItem] = await db
@@ -240,7 +294,10 @@ export const updateInventoryItem = async (
     .returning();
 
   // Track significant changes in history
-  if (data.unitCost !== undefined && data.unitCost !== existingItem[0]!.unitCost) {
+  if (
+    data.unitCost !== undefined &&
+    data.unitCost !== existingItem[0]!.unitCost
+  ) {
     // History tracking can be implemented here if needed
   }
 
@@ -282,4 +339,3 @@ export const getItemHistory = async (itemId: string) => {
     performedByUser: r.user,
   }));
 };
-

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
+const uuidSchema = z
+  .string()
+  .uuid({ message: "Invalid ID format - must be a valid UUID" });
 const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
   message: "Must be a valid number (e.g., 100 or 99.99)",
 });
@@ -47,10 +49,20 @@ const purchaseOrderStatusEnum = z.enum([
   "closed",
 ]);
 
-const alertTypeEnum = z.enum(["low_stock", "out_of_stock", "overstock", "expiring"]);
+const alertTypeEnum = z.enum([
+  "low_stock",
+  "out_of_stock",
+  "overstock",
+  "expiring",
+]);
 const alertSeverityEnum = z.enum(["info", "warning", "critical"]);
 const countTypeEnum = z.enum(["full", "cycle", "spot"]);
-const countStatusEnum = z.enum(["planned", "in_progress", "completed", "cancelled"]);
+const countStatusEnum = z.enum([
+  "planned",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
 
 // ============================
 // Inventory Items Validations
@@ -74,7 +86,9 @@ export const getInventoryItemsQuerySchema = z.object({
     location: uuidSchema.optional(),
     allocationStatus: z.enum(["allocated", "available"]).optional(),
     search: z.string().optional(),
-    sortBy: z.enum(["name", "itemCode", "quantity", "value", "createdAt"]).optional(),
+    sortBy: z
+      .enum(["name", "itemCode", "quantity", "value", "createdAt"])
+      .optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
 });
@@ -239,16 +253,18 @@ export const getAllocationsQuerySchema = z.object({
 });
 
 export const createAllocationSchema = z.object({
-  body: z.object({
-    itemId: uuidSchema,
-    jobId: uuidSchema.optional(),
-    bidId: uuidSchema.optional(),
-    quantityAllocated: numericStringSchema,
-    expectedUseDate: z.string().optional(),
-    notes: z.string().optional(),
-  }).refine((data) => data.jobId || data.bidId, {
-    message: "Either a job ID or bid ID must be provided for the allocation",
-  }),
+  body: z
+    .object({
+      itemId: uuidSchema,
+      jobId: uuidSchema.optional(),
+      bidId: uuidSchema.optional(),
+      quantityAllocated: numericStringSchema,
+      expectedUseDate: z.string().optional(),
+      notes: z.string().optional(),
+    })
+    .refine((data) => data.jobId || data.bidId, {
+      message: "Either a job ID or bid ID must be provided for the allocation",
+    }),
 });
 
 export const updateAllocationSchema = z.object({
@@ -319,15 +335,17 @@ export const createPurchaseOrderSchema = z.object({
     shippingAddress: z.string().optional(),
     paymentTerms: z.string().max(100).optional(),
     notes: z.string().optional(),
-    items: z.array(
-      z.object({
-        itemId: uuidSchema,
-        quantityOrdered: numericStringSchema,
-        unitCost: numericStringSchema,
-        expectedDeliveryDate: z.string().optional(),
-        notes: z.string().optional(),
-      })
-    ).min(1, "At least one item must be included in the purchase order"),
+    items: z
+      .array(
+        z.object({
+          itemId: uuidSchema,
+          quantityOrdered: numericStringSchema,
+          unitCost: numericStringSchema,
+          expectedDeliveryDate: z.string().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .min(1, "At least one item must be included in the purchase order"),
   }),
 });
 
@@ -358,14 +376,16 @@ export const receivePurchaseOrderSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    items: z.array(
-      z.object({
-        itemId: uuidSchema,
-        quantityReceived: numericStringSchema,
-        actualDeliveryDate: z.string().optional(),
-        notes: z.string().optional(),
-      })
-    ).min(1, "At least one item must be included in the receipt"),
+    items: z
+      .array(
+        z.object({
+          itemId: uuidSchema,
+          quantityReceived: numericStringSchema,
+          actualDeliveryDate: z.string().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .min(1, "At least one item must be included in the receipt"),
     locationId: uuidSchema.optional(),
   }),
 });
@@ -386,8 +406,14 @@ export const getSuppliersQuerySchema = z.object({
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
-    isActive: z.string().optional().transform((val) => val === "true"),
-    isPreferred: z.string().optional().transform((val) => val === "true"),
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => val === "true"),
+    isPreferred: z
+      .string()
+      .optional()
+      .transform((val) => val === "true"),
     search: z.string().optional(),
   }),
 });
@@ -407,7 +433,9 @@ export const createSupplierSchema = z.object({
     contactName: z.string().max(150).optional(),
     email: z
       .string()
-      .email("Please provide a valid email address (e.g., supplier@example.com)")
+      .email(
+        "Please provide a valid email address (e.g., supplier@example.com)"
+      )
       .max(150, "Email address is too long (maximum 150 characters)")
       .trim()
       .optional(),
@@ -440,7 +468,9 @@ export const updateSupplierSchema = z.object({
     contactName: z.string().max(150).optional(),
     email: z
       .string()
-      .email("Please provide a valid email address (e.g., supplier@example.com)")
+      .email(
+        "Please provide a valid email address (e.g., supplier@example.com)"
+      )
       .max(150, "Email address is too long (maximum 150 characters)")
       .trim()
       .optional(),
@@ -480,7 +510,10 @@ export const getLocationsQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     locationType: z.string().optional(),
-    isActive: z.string().optional().transform((val) => val === "true"),
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => val === "true"),
   }),
 });
 
@@ -565,6 +598,22 @@ export const updateCategorySchema = z.object({
   }),
 });
 
+export const deleteCategorySchema = z.object({
+  params: z.object({
+    id: z.number().int().positive(),
+  }),
+});
+
+// ============================
+// Unit of Measure Validations
+// ============================
+
+export const deleteUnitSchema = z.object({
+  params: z.object({
+    id: z.number().int().positive(),
+  }),
+});
+
 // ============================
 // Alert Validations
 // ============================
@@ -619,6 +668,84 @@ export const recordCountItemSchema = z.object({
 });
 
 // ============================
+// Purchase Order Workflow Validations
+// ============================
+
+export const sendPurchaseOrderSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+});
+
+export const cancelPurchaseOrderSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+  body: z.object({
+    reason: z.string().optional(),
+  }),
+});
+
+export const closePurchaseOrderSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+});
+
+export const receivePartialPurchaseOrderSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+  body: z.object({
+    items: z
+      .array(
+        z.object({
+          itemId: uuidSchema,
+          quantityReceived: numericStringSchema,
+          actualDeliveryDate: z.string().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .min(1, "At least one item must be received"),
+    locationId: uuidSchema.optional(),
+    trackingNumber: z.string().optional(),
+    supplierInvoiceNumber: z.string().optional(),
+  }),
+});
+
+// PO Line Item Validations
+export const addPurchaseOrderItemSchema = z.object({
+  params: z.object({
+    id: uuidSchema, // PO ID
+  }),
+  body: z.object({
+    itemId: uuidSchema,
+    quantityOrdered: numericStringSchema,
+    unitCost: numericStringSchema,
+    expectedDeliveryDate: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+export const updatePurchaseOrderItemSchema = z.object({
+  params: z.object({
+    id: uuidSchema, // PO Item ID
+  }),
+  body: z.object({
+    quantityOrdered: numericStringSchema.optional(),
+    unitCost: numericStringSchema.optional(),
+    expectedDeliveryDate: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+export const deletePurchaseOrderItemSchema = z.object({
+  params: z.object({
+    id: uuidSchema, // PO Item ID
+  }),
+});
+
+// ============================
 // Common Validations
 // ============================
 
@@ -633,11 +760,3 @@ export const deleteSchema = z.object({
     id: uuidSchema,
   }),
 });
-
-
-
-
-
-
-
-
