@@ -498,12 +498,9 @@ export const getPropertyById = async (id: string) => {
       scheduledStartDate: jobs.scheduledStartDate,
       scheduledEndDate: jobs.scheduledEndDate,
       completionNotes: jobs.completionNotes,
-      leadTechnician: jobs.leadTechnician,
-      leadTechnicianName: users.fullName,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(users, eq(jobs.leadTechnician, users.id))
     .where(
       and(
         eq(bidsTable.organizationId, property.organizationId),
@@ -573,7 +570,7 @@ export const getPropertyById = async (id: string) => {
       jobNumber: job.jobNumber,
       name: job.name,
       date: jobDate,
-      technician: job.leadTechnicianName || null,
+      technician: null, // Lead technician removed - use team members endpoint to get assigned team
       duration: duration ? `${duration} hours` : null,
       workPerformed:
         job.description ||

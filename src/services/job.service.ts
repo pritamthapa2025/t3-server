@@ -31,7 +31,6 @@ export const getJobs = async (
   filters?: {
     status?: string;
     priority?: string;
-    assignedTo?: string;
     search?: string;
   }
 ) => {
@@ -45,18 +44,10 @@ export const getJobs = async (
   }
 
   if (filters?.priority) {
-    whereCondition = and(whereCondition, eq(jobs.priority, filters.priority as any));
+    whereCondition = and(whereCondition, eq(bidsTable.priority, filters.priority as any));
   }
 
-  if (filters?.assignedTo) {
-    whereCondition = and(
-      whereCondition,
-      or(
-        eq(jobs.projectManager, filters.assignedTo),
-        eq(jobs.leadTechnician, filters.assignedTo)
-      )
-    );
-  }
+  // Note: assignedTo filter removed - use team members endpoint to filter by assigned employees
 
   if (filters?.search) {
     whereCondition = and(
@@ -101,7 +92,11 @@ export const getJobs = async (
   
   const totalCount = totalCountResult[0]?.count || 0;
 
-  const jobsList = jobsData.map(item => item.job);
+  // Map jobs and add bid priority to each job
+  const jobsList = jobsData.map(item => ({
+    ...item.job,
+    priority: item.bid.priority, // Use bid priority instead of job priority
+  }));
   return {
     jobs: jobsList,
     totalCount,
@@ -131,7 +126,12 @@ export const getJobById = async (id: string, organizationId: string) => {
         eq(jobs.isDeleted, false)
       )
     );
-  return result?.jobs || null;
+  if (!result) return null;
+  // Return job with bid priority instead of job priority
+  return {
+    ...result.jobs,
+    priority: result.bid.priority,
+  };
 };
 
 export const createJob = async (data: {
@@ -142,15 +142,17 @@ export const createJob = async (data: {
   serviceType?: string;
   bidId: string; // Now required
   description?: string;
-  scheduledStartDate?: string;
-  scheduledEndDate?: string;
+  scheduledStartDate: string; // Required
+  scheduledEndDate: string; // Required
   siteAddress?: string;
   siteContactName?: string;
   siteContactPhone?: string;
   accessInstructions?: string;
   contractValue?: string;
-  projectManager?: string;
-  leadTechnician?: string;
+  assignedTeamMembers?: Array<{
+    employeeId: number;
+    positionId?: number;
+  }>;
   createdBy: string;
 }) => {
   // Get organizationId from bid
@@ -164,10 +166,16 @@ export const createJob = async (data: {
     throw new Error("Bid not found");
   }
 
+  // Update bid priority if provided
+  if (data.priority) {
+    const { updateBid } = await import("./bid.service.js");
+    await updateBid(data.bidId, bid.organizationId, { priority: data.priority });
+  }
+
   // Generate job number atomically
   const jobNumber = await generateJobNumber(bid.organizationId);
 
-  // Insert job
+  // Insert job (without priority field)
   const result = await db
     .insert(jobs)
     .values({
@@ -175,29 +183,47 @@ export const createJob = async (data: {
       name: data.name,
       createdBy: data.createdBy,
       status: (data.status as any) || "planned",
-      priority: (data.priority as any) || "medium",
       jobType: data.jobType,
       serviceType: data.serviceType,
       bidId: data.bidId,
       description: data.description,
-      scheduledStartDate: data.scheduledStartDate
-        ? new Date(data.scheduledStartDate).toISOString().split("T")[0]
-        : null,
-      scheduledEndDate: data.scheduledEndDate
-        ? new Date(data.scheduledEndDate).toISOString().split("T")[0]
-        : null,
+      scheduledStartDate: new Date(data.scheduledStartDate).toISOString().split("T")[0],
+      scheduledEndDate: new Date(data.scheduledEndDate).toISOString().split("T")[0],
       siteAddress: data.siteAddress,
       siteContactName: data.siteContactName,
       siteContactPhone: data.siteContactPhone,
       accessInstructions: data.accessInstructions,
       contractValue: data.contractValue,
-      projectManager: data.projectManager,
-      leadTechnician: data.leadTechnician,
     })
     .returning();
 
   const job = (result as any[])[0];
-  return job;
+  
+  // Add team members if provided
+  if (data.assignedTeamMembers && data.assignedTeamMembers.length > 0) {
+    await Promise.all(
+      data.assignedTeamMembers.map((member) =>
+        addJobTeamMember({
+          jobId: job.id,
+          employeeId: member.employeeId,
+          ...(member.positionId !== undefined && { positionId: member.positionId }),
+        })
+      )
+    );
+  }
+  
+  // Get updated bid to include priority in response
+  const [updatedBid] = await db
+    .select()
+    .from(bidsTable)
+    .where(eq(bidsTable.id, data.bidId))
+    .limit(1);
+  
+  // Return job with bid priority
+  return {
+    ...job,
+    priority: updatedBid?.priority,
+  };
 };
 
 export const updateJob = async (
@@ -220,27 +246,55 @@ export const updateJob = async (
     accessInstructions: string;
     contractValue: string;
     actualCost: string;
-    projectManager: string;
-    leadTechnician: string;
     completionNotes: string;
     completionPercentage: string;
   }>
 ) => {
+  // Get job to find bidId
+  const [jobData] = await db
+    .select({
+      job: jobs,
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, id),
+        eq(bidsTable.organizationId, organizationId),
+        eq(jobs.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update bid priority if provided
+  if (data.priority !== undefined) {
+    const { updateBid } = await import("./bid.service.js");
+    await updateBid(jobData.bidId, organizationId, { priority: data.priority });
+  }
+
+  // Remove priority from data as it's not a job field anymore
+  const { priority: _priority, ...jobUpdateData } = data;
+
   const [job] = await db
     .update(jobs)
     .set({
-      ...data,
-      scheduledStartDate: data.scheduledStartDate
-        ? new Date(data.scheduledStartDate).toISOString().split("T")[0]
+      ...jobUpdateData,
+      scheduledStartDate: jobUpdateData.scheduledStartDate
+        ? new Date(jobUpdateData.scheduledStartDate).toISOString().split("T")[0]
         : undefined,
-      scheduledEndDate: data.scheduledEndDate
-        ? new Date(data.scheduledEndDate).toISOString().split("T")[0]
+      scheduledEndDate: jobUpdateData.scheduledEndDate
+        ? new Date(jobUpdateData.scheduledEndDate).toISOString().split("T")[0]
         : undefined,
-      actualStartDate: data.actualStartDate
-        ? new Date(data.actualStartDate).toISOString().split("T")[0]
+      actualStartDate: jobUpdateData.actualStartDate
+        ? new Date(jobUpdateData.actualStartDate).toISOString().split("T")[0]
         : undefined,
-      actualEndDate: data.actualEndDate
-        ? new Date(data.actualEndDate).toISOString().split("T")[0]
+      actualEndDate: jobUpdateData.actualEndDate
+        ? new Date(jobUpdateData.actualEndDate).toISOString().split("T")[0]
         : undefined,
       updatedAt: new Date(),
     })
@@ -254,7 +308,21 @@ export const updateJob = async (
       )
     )
     .returning();
-  return job;
+  
+  if (!job) return null;
+
+  // Get updated bid to include priority in response
+  const [updatedBid] = await db
+    .select()
+    .from(bidsTable)
+    .where(eq(bidsTable.id, jobData.bidId))
+    .limit(1);
+
+  // Return job with bid priority
+  return {
+    ...job,
+    priority: updatedBid?.priority,
+  };
 };
 
 export const deleteJob = async (id: string, organizationId: string) => {
@@ -399,8 +467,18 @@ export const getJobWithAllData = async (jobId: string, organizationId: string) =
   const travelArrays = await Promise.all(travelPromises);
   const travel = travelArrays.flat();
 
+  // Get bid to include priority
+  const [bid] = await db
+    .select()
+    .from(bidsTable)
+    .where(eq(bidsTable.id, jobData.bidId))
+    .limit(1);
+
   return {
-    job: jobData.job,
+    job: {
+      ...jobData.job,
+      priority: bid?.priority, // Use bid priority instead of job priority
+    },
     teamMembers,
     financialBreakdown,
     materials,
@@ -476,7 +554,16 @@ export const getJobFinancialSummary = async (jobId: string, organizationId: stri
       )
     );
 
-  return result[0] || null;
+  if (!result[0]) return null;
+
+  // Include bid priority in job object for consistency
+  return {
+    ...result[0],
+    job: {
+      ...result[0].job,
+      priority: result[0].bid.priority,
+    },
+  };
 };
 
 export const updateJobFinancialSummary = async (

@@ -22,8 +22,10 @@ const jobStatusEnum = z.enum([
   message: "Status must be one of: planned, scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed"
 });
 
-const jobPriorityEnum = z.enum(["low", "medium", "high", "emergency"], {
-  message: "Priority must be one of: low, medium, high, or emergency"
+// Note: Priority updates the associated bid's priority, not the job's priority
+// Jobs now use bid priority instead of their own priority field
+const jobPriorityEnum = z.enum(["low", "medium", "high", "urgent"], {
+  message: "Priority must be one of: low, medium, high, or urgent (updates the associated bid's priority)"
 });
 
 const timelineStatusEnum = z.enum([
@@ -54,8 +56,6 @@ export const getJobsQuerySchema = z.object({
     status: jobStatusEnum.optional(),
     jobType: z.string().max(100).optional(),
     priority: jobPriorityEnum.optional(),
-    projectManager: uuidSchema.optional(),
-    leadTechnician: uuidSchema.optional(),
     search: z.string().optional(),
   }),
 });
@@ -78,20 +78,24 @@ export const createJobSchema = z.object({
       .max(100, "Job number is too long (maximum 100 characters)")
       .optional(),
     status: jobStatusEnum.optional().default("planned"),
-    priority: jobPriorityEnum.optional().default("medium"),
+    priority: jobPriorityEnum.optional(), // Updates the associated bid's priority
     jobType: z.string().max(100).optional(),
     serviceType: z.string().max(100).optional(),
     bidId: uuidSchema, // Now required - organization and property can be derived from bid
     description: z.string().optional(),
-    scheduledStartDate: z.string().date("Invalid date format").optional(),
-    scheduledEndDate: z.string().date("Invalid date format").optional(),
+    scheduledStartDate: z.string().date("Invalid date format. Must be in YYYY-MM-DD format"),
+    scheduledEndDate: z.string().date("Invalid date format. Must be in YYYY-MM-DD format"),
     siteAddress: z.string().optional(),
     siteContactName: z.string().max(150).optional(),
     siteContactPhone: z.string().max(20).optional(),
     accessInstructions: z.string().optional(),
     contractValue: numericStringSchema.optional(),
-    projectManager: uuidSchema.optional(),
-    leadTechnician: uuidSchema.optional(),
+    assignedTeamMembers: z.array(
+      z.object({
+        employeeId: z.number().int().positive("Employee ID must be a positive number"),
+        positionId: z.number().int().positive("Position ID must be a positive number").optional(),
+      })
+    ).optional(),
   }),
 });
 
@@ -116,8 +120,6 @@ export const updateJobSchema = z.object({
     accessInstructions: z.string().optional(),
     contractValue: numericStringSchema.optional(),
     actualCost: numericStringSchema.optional(),
-    projectManager: uuidSchema.optional(),
-    leadTechnician: uuidSchema.optional(),
     completionNotes: z.string().optional(),
     completionPercentage: numericStringSchema.optional(),
   }),

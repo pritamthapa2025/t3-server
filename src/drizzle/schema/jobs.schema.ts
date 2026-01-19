@@ -21,7 +21,6 @@ import { bidsTable } from "./bids.schema.js";
 // Import enums from centralized location
 import {
   jobStatusEnum,
-  jobPriorityEnum,
 } from "../enums/org.enums.js";
 
 const org = pgSchema("org");
@@ -45,15 +44,14 @@ export const jobs: any = org.table(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     status: jobStatusEnum("status").notNull().default("planned"),
-    priority: jobPriorityEnum("priority").notNull().default("medium"),
 
     // Job Type
     jobType: varchar("job_type", { length: 100 }), // Installation, Repair, Maintenance, etc.
     serviceType: varchar("service_type", { length: 100 }), // HVAC, Plumbing, etc.
 
     // Dates
-    scheduledStartDate: date("scheduled_start_date"),
-    scheduledEndDate: date("scheduled_end_date"),
+    scheduledStartDate: date("scheduled_start_date").notNull(),
+    scheduledEndDate: date("scheduled_end_date").notNull(),
     actualStartDate: date("actual_start_date"),
     actualEndDate: date("actual_end_date"),
 
@@ -66,10 +64,6 @@ export const jobs: any = org.table(
     // Financial
     contractValue: numeric("contract_value", { precision: 15, scale: 2 }),
     actualCost: numeric("actual_cost", { precision: 15, scale: 2 }),
-
-    // Team Assignment
-    projectManager: uuid("project_manager").references(() => users.id),
-    leadTechnician: uuid("lead_technician").references(() => users.id),
 
     // Completion
     completionNotes: text("completion_notes"),
@@ -88,10 +82,7 @@ export const jobs: any = org.table(
     unique("unique_job_number_per_bid").on(table.bidId, table.jobNumber),
     index("idx_jobs_bid").on(table.bidId),
     index("idx_jobs_status").on(table.status),
-    index("idx_jobs_priority").on(table.priority),
     index("idx_jobs_scheduled_start").on(table.scheduledStartDate),
-    index("idx_jobs_project_manager").on(table.projectManager),
-    index("idx_jobs_lead_technician").on(table.leadTechnician),
     index("idx_jobs_is_deleted").on(table.isDeleted),
   ]
 );

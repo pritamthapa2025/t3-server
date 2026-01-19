@@ -113,18 +113,12 @@ export const getJobsHandler = async (req: Request, res: Response) => {
       status?: string;
       jobType?: string;
       priority?: string;
-      projectManager?: string;
-      leadTechnician?: string;
       search?: string;
     } = {};
 
     if (req.query.status) filters.status = req.query.status as string;
     if (req.query.jobType) filters.jobType = req.query.jobType as string;
     if (req.query.priority) filters.priority = req.query.priority as string;
-    if (req.query.projectManager)
-      filters.projectManager = req.query.projectManager as string;
-    if (req.query.leadTechnician)
-      filters.leadTechnician = req.query.leadTechnician as string;
     if (req.query.search) filters.search = req.query.search as string;
 
     const jobs = await getJobs(
@@ -226,10 +220,13 @@ export const createJobHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
+    const { assignedTeamMembers, ...jobFields } = req.body;
+    
     const jobData = {
-      ...req.body,
+      ...jobFields,
       bidId, // Ensure bidId is included
       createdBy,
+      assignedTeamMembers, // Include assignedTeamMembers to be processed by service
     };
 
     // Remove organizationId and propertyId from jobData as they're no longer needed
