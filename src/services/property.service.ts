@@ -863,8 +863,19 @@ export const getPropertyServiceHistory = async (
 ) => {
   return await db
     .select({
-      service: propertyServiceHistory,
-      performedBy: {
+      // Service history columns
+      id: propertyServiceHistory.id,
+      propertyId: propertyServiceHistory.propertyId,
+      jobId: propertyServiceHistory.jobId,
+      bidId: propertyServiceHistory.bidId,
+      serviceDate: propertyServiceHistory.serviceDate,
+      serviceType: propertyServiceHistory.serviceType,
+      description: propertyServiceHistory.description,
+      performedBy: propertyServiceHistory.performedBy,
+      isDeleted: propertyServiceHistory.isDeleted,
+      createdAt: propertyServiceHistory.createdAt,
+      // User who performed the service
+      performedByUser: {
         id: users.id,
         fullName: users.fullName,
       },
