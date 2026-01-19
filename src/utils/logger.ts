@@ -1,6 +1,51 @@
 import type { Request } from "express";
 import { isDatabaseError, formatErrorForLogging } from "./database-error-parser.js";
 
+/**
+ * Format general (non-database) errors with helpful context
+ */
+function formatGeneralError(error: Error): string {
+  const lines = [
+    `   Error Type: ${error.name}`,
+    `   Message: ${error.message}`,
+  ];
+
+  // Extract stack trace and show relevant parts
+  if (error.stack) {
+    const stackLines = error.stack.split('\n').slice(0, 10); // First 10 lines of stack
+    if (stackLines.length > 1) {
+      lines.push("");
+      lines.push("📍 STACK TRACE:");
+      stackLines.slice(1).forEach((line, index) => {
+        // Clean up the stack trace for readability
+        const cleaned = line.trim().replace(/file:\/\/\/app\//g, '').replace(/C:\\Users\\[^\\]+\\Desktop\\t3-server\\/g, '');
+        lines.push(`   ${index + 1}. ${cleaned}`);
+      });
+    }
+  }
+
+  // Try to extract useful information from common error patterns
+  if (error.message.includes("Cannot convert undefined or null to object")) {
+    lines.push("");
+    lines.push("💡 LIKELY CAUSE:");
+    lines.push("   A null or undefined value was passed where an object was expected.");
+    lines.push("   Common causes:");
+    lines.push("   - Accessing properties on null/undefined");
+    lines.push("   - Passing null to functions expecting objects");
+    lines.push("   - Drizzle ORM trying to process undefined table/column references");
+  } else if (error.message.includes("Cannot read property")) {
+    lines.push("");
+    lines.push("💡 LIKELY CAUSE:");
+    lines.push("   Attempted to access a property on null/undefined.");
+  } else if (error.message.includes("is not a function")) {
+    lines.push("");
+    lines.push("💡 LIKELY CAUSE:");
+    lines.push("   Called a method that doesn't exist or is undefined.");
+  }
+
+  return lines.join("\n");
+}
+
 type LogLevel = "error" | "warn" | "info" | "debug";
 
 interface LogContext {
@@ -50,6 +95,9 @@ class Logger {
     // If it's a database error, also log the human-readable version
     if (isDatabaseError(error)) {
       console.error("\n" + formatErrorForLogging(error) + "\n");
+    } else if (error instanceof Error) {
+      // For non-database errors, also show formatted details
+      console.error("\n" + formatGeneralError(error) + "\n");
     }
   }
 

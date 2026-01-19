@@ -16,6 +16,7 @@ import {
   propertyDocuments,
   propertyServiceHistory,
   organizations,
+  clientTypes,
 } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -312,15 +313,43 @@ export const getPropertyById = async (id: string) => {
   // Get property basic info
   const propertyQuery = await db
     .select({
-      property: properties,
-      organization: {
-        id: organizations.id,
-        name: organizations.name,
-        clientType: organizations.clientType,
-      },
+      // Property columns
+      id: properties.id,
+      organizationId: properties.organizationId,
+      propertyName: properties.propertyName,
+      propertyCode: properties.propertyCode,
+      propertyType: properties.propertyType,
+      status: properties.status,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      city: properties.city,
+      state: properties.state,
+      zipCode: properties.zipCode,
+      country: properties.country,
+      squareFootage: properties.squareFootage,
+      numberOfFloors: properties.numberOfFloors,
+      yearBuilt: properties.yearBuilt,
+      accessInstructions: properties.accessInstructions,
+      gateCode: properties.gateCode,
+      parkingInstructions: properties.parkingInstructions,
+      operatingHours: properties.operatingHours,
+      latitude: properties.latitude,
+      longitude: properties.longitude,
+      description: properties.description,
+      notes: properties.notes,
+      tags: properties.tags,
+      createdBy: properties.createdBy,
+      isDeleted: properties.isDeleted,
+      createdAt: properties.createdAt,
+      updatedAt: properties.updatedAt,
+      // Organization columns
+      organizationName: organizations.name,
+      organizationClientTypeId: organizations.clientTypeId,
+      organizationClientTypeName: clientTypes.name,
     })
     .from(properties)
     .leftJoin(organizations, eq(properties.organizationId, organizations.id))
+    .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
     .where(and(eq(properties.id, id), eq(properties.isDeleted, false)))
     .limit(1);
 
@@ -329,8 +358,45 @@ export const getPropertyById = async (id: string) => {
   }
 
   const baseData = propertyQuery[0]!; // Safe because we checked length above
-  const property = baseData.property;
-  const organization = baseData.organization;
+  // Extract property data
+  const property = {
+    id: baseData.id,
+    organizationId: baseData.organizationId,
+    propertyName: baseData.propertyName,
+    propertyCode: baseData.propertyCode,
+    propertyType: baseData.propertyType,
+    status: baseData.status,
+    addressLine1: baseData.addressLine1,
+    addressLine2: baseData.addressLine2,
+    city: baseData.city,
+    state: baseData.state,
+    zipCode: baseData.zipCode,
+    country: baseData.country,
+    squareFootage: baseData.squareFootage,
+    numberOfFloors: baseData.numberOfFloors,
+    yearBuilt: baseData.yearBuilt,
+    accessInstructions: baseData.accessInstructions,
+    gateCode: baseData.gateCode,
+    parkingInstructions: baseData.parkingInstructions,
+    operatingHours: baseData.operatingHours,
+    latitude: baseData.latitude,
+    longitude: baseData.longitude,
+    description: baseData.description,
+    notes: baseData.notes,
+    tags: baseData.tags,
+    createdBy: baseData.createdBy,
+    isDeleted: baseData.isDeleted,
+    createdAt: baseData.createdAt,
+    updatedAt: baseData.updatedAt,
+  };
+  const organization = baseData.organizationId
+    ? {
+        id: baseData.organizationId,
+        name: baseData.organizationName,
+        clientTypeId: baseData.organizationClientTypeId,
+        clientType: baseData.organizationClientTypeName,
+      }
+    : null;
 
   // Get job counts - jobs are now linked through bid → organization
   // Since property belongs to organization, we count jobs for the organization
@@ -622,6 +688,7 @@ export const getPropertyById = async (id: string) => {
         ? {
             id: organization.id,
             name: organization.name,
+            clientType: organization.clientType,
           }
         : null,
     },
