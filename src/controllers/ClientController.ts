@@ -125,11 +125,33 @@ export const getClientsHandler = async (req: Request, res: Response) => {
       total: result.total,
       pagination: result.pagination,
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Error fetching clients", error, req);
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to fetch clients" });
+    
+    // Use database error parser for consistent, human-readable error messages
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+        technicalDetails:
+          process.env.NODE_ENV === "development"
+            ? parsedError.technicalMessage
+            : undefined,
+      });
+    }
+    
+    // For other errors, provide a more helpful message
+    const errorMessage = error?.message || "Failed to fetch clients";
+    return res.status(500).json({
+      success: false,
+      message: errorMessage.includes("Database query error") 
+        ? errorMessage 
+        : "Failed to fetch clients. Please try again or contact support if the issue persists.",
+      detail: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+    });
   }
 };
 

@@ -818,6 +818,7 @@ export const getPropertyKPIs = async () => {
       ),
 
     // 3. Under Service (properties with status "under_construction" OR properties with active jobs)
+    // Note: Jobs are linked to properties through bids → organization
     db.execute<{ count: string }>(
       sql.raw(`
         SELECT COUNT(DISTINCT p.id)::text as count
@@ -828,8 +829,10 @@ export const getPropertyKPIs = async () => {
             OR EXISTS (
               SELECT 1
               FROM org.jobs j
-              WHERE j.property_id = p.id
+              INNER JOIN org.bids b ON j.bid_id = b.id
+              WHERE b.organization_id = p.organization_id
                 AND j.is_deleted = false
+                AND b.is_deleted = false
                 AND j.status IN ('planned', 'scheduled', 'in_progress', 'on_hold')
             )
           )

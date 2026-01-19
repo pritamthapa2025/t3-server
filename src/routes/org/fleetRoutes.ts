@@ -95,137 +95,61 @@ router.get(
 // Vehicles Routes
 // ============================
 
-router.get(
-  "/vehicles",
-  validate(getVehiclesQuerySchema),
-  getVehiclesHandler
-);
+router
+  .route("/vehicles")
+  .get(validate(getVehiclesQuerySchema), getVehiclesHandler)
+  .post(validate(createVehicleSchema), createVehicleHandler);
 
-router.get(
-  "/vehicles/:id",
-  validate(getVehicleByIdSchema),
-  getVehicleByIdHandler
-);
-
-router.post(
-  "/vehicles",
-  validate(createVehicleSchema),
-  createVehicleHandler
-);
-
-router.put(
-  "/vehicles/:id",
-  validate(updateVehicleSchema),
-  updateVehicleHandler
-);
-
-router.delete(
-  "/vehicles/:id",
-  validate(deleteVehicleSchema),
-  deleteVehicleHandler
-);
+router
+  .route("/vehicles/:id")
+  .get(validate(getVehicleByIdSchema), getVehicleByIdHandler)
+  .put(validate(updateVehicleSchema), updateVehicleHandler)
+  .delete(validate(deleteVehicleSchema), deleteVehicleHandler);
 
 // ============================
 // Maintenance Records Routes
 // ============================
 
-router.get(
-  "/maintenance",
-  validate(getMaintenanceRecordsQuerySchema),
-  getMaintenanceRecordsHandler
-);
+router
+  .route("/maintenance")
+  .get(validate(getMaintenanceRecordsQuerySchema), getMaintenanceRecordsHandler)
+  .post(validate(createMaintenanceRecordSchema), createMaintenanceRecordHandler);
 
-router.get(
-  "/maintenance/:id",
-  validate(getMaintenanceRecordByIdSchema),
-  getMaintenanceRecordByIdHandler
-);
-
-router.post(
-  "/maintenance",
-  validate(createMaintenanceRecordSchema),
-  createMaintenanceRecordHandler
-);
-
-router.put(
-  "/maintenance/:id",
-  validate(updateMaintenanceRecordSchema),
-  updateMaintenanceRecordHandler
-);
-
-router.delete(
-  "/maintenance/:id",
-  validate(deleteMaintenanceRecordSchema),
-  deleteMaintenanceRecordHandler
-);
+router
+  .route("/maintenance/:id")
+  .get(validate(getMaintenanceRecordByIdSchema), getMaintenanceRecordByIdHandler)
+  .put(validate(updateMaintenanceRecordSchema), updateMaintenanceRecordHandler)
+  .delete(validate(deleteMaintenanceRecordSchema), deleteMaintenanceRecordHandler);
 
 // ============================
 // Repair Records Routes
 // ============================
 
-router.get(
-  "/repairs",
-  validate(getRepairRecordsQuerySchema),
-  getRepairRecordsHandler
-);
+router
+  .route("/repairs")
+  .get(validate(getRepairRecordsQuerySchema), getRepairRecordsHandler)
+  .post(validate(createRepairRecordSchema), createRepairRecordHandler);
 
-router.get(
-  "/repairs/:id",
-  validate(getRepairRecordByIdSchema),
-  getRepairRecordByIdHandler
-);
-
-router.post(
-  "/repairs",
-  validate(createRepairRecordSchema),
-  createRepairRecordHandler
-);
-
-router.put(
-  "/repairs/:id",
-  validate(updateRepairRecordSchema),
-  updateRepairRecordHandler
-);
-
-router.delete(
-  "/repairs/:id",
-  validate(deleteRepairRecordSchema),
-  deleteRepairRecordHandler
-);
+router
+  .route("/repairs/:id")
+  .get(validate(getRepairRecordByIdSchema), getRepairRecordByIdHandler)
+  .put(validate(updateRepairRecordSchema), updateRepairRecordHandler)
+  .delete(validate(deleteRepairRecordSchema), deleteRepairRecordHandler);
 
 // ============================
 // Safety Inspections Routes
 // ============================
 
-router.get(
-  "/inspections",
-  validate(getSafetyInspectionsQuerySchema),
-  getSafetyInspectionsHandler
-);
+router
+  .route("/inspections")
+  .get(validate(getSafetyInspectionsQuerySchema), getSafetyInspectionsHandler)
+  .post(validate(createSafetyInspectionSchema), createSafetyInspectionHandler);
 
-router.get(
-  "/inspections/:id",
-  validate(getSafetyInspectionByIdSchema),
-  getSafetyInspectionByIdHandler
-);
-
-router.post(
-  "/inspections",
-  validate(createSafetyInspectionSchema),
-  createSafetyInspectionHandler
-);
-
-router.put(
-  "/inspections/:id",
-  validate(updateSafetyInspectionSchema),
-  updateSafetyInspectionHandler
-);
-
-router.delete(
-  "/inspections/:id",
-  validate(deleteSafetyInspectionSchema),
-  deleteSafetyInspectionHandler
-);
+router
+  .route("/inspections/:id")
+  .get(validate(getSafetyInspectionByIdSchema), getSafetyInspectionByIdHandler)
+  .put(validate(updateSafetyInspectionSchema), updateSafetyInspectionHandler)
+  .delete(validate(deleteSafetyInspectionSchema), deleteSafetyInspectionHandler);
 
 // ============================
 // Safety Inspection Items Routes
@@ -247,69 +171,31 @@ router.post(
 // Fuel Records Routes
 // ============================
 
-router.get(
-  "/fuel",
-  validate(getFuelRecordsQuerySchema),
-  getFuelRecordsHandler
-);
+router
+  .route("/fuel")
+  .get(validate(getFuelRecordsQuerySchema), getFuelRecordsHandler)
+  .post(validate(createFuelRecordSchema), createFuelRecordHandler);
 
-router.get(
-  "/fuel/:id",
-  validate(getFuelRecordByIdSchema),
-  getFuelRecordByIdHandler
-);
-
-router.post(
-  "/fuel",
-  validate(createFuelRecordSchema),
-  createFuelRecordHandler
-);
-
-router.put(
-  "/fuel/:id",
-  validate(updateFuelRecordSchema),
-  updateFuelRecordHandler
-);
-
-router.delete(
-  "/fuel/:id",
-  validate(deleteFuelRecordSchema),
-  deleteFuelRecordHandler
-);
+router
+  .route("/fuel/:id")
+  .get(validate(getFuelRecordByIdSchema), getFuelRecordByIdHandler)
+  .put(validate(updateFuelRecordSchema), updateFuelRecordHandler)
+  .delete(validate(deleteFuelRecordSchema), deleteFuelRecordHandler);
 
 // ============================
 // Check-In/Out Records Routes
 // ============================
 
-router.get(
-  "/check-in-out",
-  validate(getCheckInOutRecordsQuerySchema),
-  getCheckInOutRecordsHandler
-);
+router
+  .route("/check-in-out")
+  .get(validate(getCheckInOutRecordsQuerySchema), getCheckInOutRecordsHandler)
+  .post(validate(createCheckInOutRecordSchema), createCheckInOutRecordHandler);
 
-router.get(
-  "/check-in-out/:id",
-  validate(getCheckInOutRecordByIdSchema),
-  getCheckInOutRecordByIdHandler
-);
-
-router.post(
-  "/check-in-out",
-  validate(createCheckInOutRecordSchema),
-  createCheckInOutRecordHandler
-);
-
-router.put(
-  "/check-in-out/:id",
-  validate(updateCheckInOutRecordSchema),
-  updateCheckInOutRecordHandler
-);
-
-router.delete(
-  "/check-in-out/:id",
-  validate(deleteCheckInOutRecordSchema),
-  deleteCheckInOutRecordHandler
-);
+router
+  .route("/check-in-out/:id")
+  .get(validate(getCheckInOutRecordByIdSchema), getCheckInOutRecordByIdHandler)
+  .put(validate(updateCheckInOutRecordSchema), updateCheckInOutRecordHandler)
+  .delete(validate(deleteCheckInOutRecordSchema), deleteCheckInOutRecordHandler);
 
 export default router;
 

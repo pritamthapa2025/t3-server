@@ -28,57 +28,75 @@ export const getClients = async (
     tags?: string[];
   }
 ) => {
-  let whereCondition = eq(organizations.isDeleted, false);
+  try {
+    let whereCondition = eq(organizations.isDeleted, false);
 
-  // Add filters
-  if (filters?.type) {
-    whereCondition = and(whereCondition, eq(organizations.clientTypeId, parseInt(filters.type))) ?? whereCondition;
-  }
-
-  if (filters?.status) {
-    whereCondition = and(whereCondition, eq(organizations.status, filters.status as any)) ?? whereCondition;
-  }
-
-  if (filters?.search) {
-    whereCondition = and(
-      whereCondition,
-      or(
-        ilike(organizations.name, `%${filters.search}%`),
-        ilike(organizations.website, `%${filters.search}%`),
-        ilike(organizations.streetAddress, `%${filters.search}%`)
-      )
-    ) ?? whereCondition;
-  }
-
-  const orgsData = await db
-    .select({
-      organization: organizations,
-      clientType: clientTypes,
-    })
-    .from(organizations)
-    .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
-    .where(whereCondition)
-    .orderBy(desc(organizations.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  // Get total count
-  const totalCountResult = await db
-    .select({ count: count() })
-    .from(organizations)
-    .where(whereCondition);
-  
-  const totalCount = totalCountResult[0]?.count || 0;
-
-  return {
-    data: orgsData,
-    total: totalCount,
-    pagination: {
-      offset,
-      limit,
-      totalPages: Math.ceil(totalCount / limit)
+    // Add filters
+    if (filters?.type) {
+      const typeId = parseInt(filters.type);
+      if (isNaN(typeId)) {
+        throw new Error(`Invalid client type filter: '${filters.type}' is not a valid number`);
+      }
+      whereCondition = and(whereCondition, eq(organizations.clientTypeId, typeId)) ?? whereCondition;
     }
-  };
+
+    if (filters?.status) {
+      whereCondition = and(whereCondition, eq(organizations.status, filters.status as any)) ?? whereCondition;
+    }
+
+    if (filters?.search) {
+      whereCondition = and(
+        whereCondition,
+        or(
+          ilike(organizations.name, `%${filters.search}%`),
+          ilike(organizations.website, `%${filters.search}%`),
+          ilike(organizations.streetAddress, `%${filters.search}%`)
+        )
+      ) ?? whereCondition;
+    }
+
+    const orgsData = await db
+      .select({
+        organization: organizations,
+        clientType: clientTypes,
+      })
+      .from(organizations)
+      .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
+      .where(whereCondition)
+      .orderBy(desc(organizations.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Get total count
+    const totalCountResult = await db
+      .select({ count: count() })
+      .from(organizations)
+      .where(whereCondition);
+    
+    const totalCount = totalCountResult[0]?.count || 0;
+
+    return {
+      data: orgsData,
+      total: totalCount,
+      pagination: {
+        offset,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    };
+  } catch (error: any) {
+    // Provide more detailed error message for database query errors
+    if (error?.message?.includes("Failed query") || error?.message?.includes("syntax")) {
+      const errorMessage = error.message || 'Unknown database query error';
+      throw new Error(
+        `Database query error while fetching clients: ${errorMessage}. ` +
+        `This may indicate a problem with the database query structure or invalid filter parameters. ` +
+        `Please check your filter values and try again.`
+      );
+    }
+    // Re-throw the error if it's already a well-formed error
+    throw error;
+  }
 };
 
 // Keep original function for backward compatibility
@@ -101,6 +119,11 @@ export const getClientById = async (id: string) => {
 export const getOrganizationById = getClientById;
 
 export const getOrganizationDashboard = async (organizationId: string) => {
+  // Validate organizationId
+  if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+    throw new Error("Invalid organization ID provided");
+  }
+
   const client = await getOrganizationById(organizationId);
   if (!client) {
     throw new Error("Organization not found");
@@ -127,7 +150,7 @@ export const getOrganizationDashboard = async (organizationId: string) => {
       totalContractValue: "0",
     };
 
-    // Get active jobs count
+    // Get active jobs count - fixed to include "scheduled" status
     const activeJobsCount = await db
       .select({ count: count() })
       .from(jobs)
@@ -138,6 +161,7 @@ export const getOrganizationDashboard = async (organizationId: string) => {
           eq(jobs.isDeleted, false),
           inArray(jobs.status, [
             "planned",
+            "scheduled",
             "in_progress",
             "on_hold",
           ])
@@ -186,9 +210,23 @@ export const getOrganizationDashboard = async (organizationId: string) => {
         bid: item.bid,
       })),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching organization dashboard:", error);
-    throw new Error("Failed to fetch organization dashboard");
+    
+    // Provide more detailed error message
+    if (error?.message?.includes("Failed query") || error?.message?.includes("syntax")) {
+      throw new Error(
+        `Database query error while fetching organization dashboard: ${error.message}. ` +
+        `This may indicate a problem with the database query structure. ` +
+        `Please verify that the organization ID '${organizationId}' is valid and try again.`
+      );
+    }
+    
+    if (error?.message) {
+      throw error;
+    }
+    
+    throw new Error(`Failed to fetch organization dashboard: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 

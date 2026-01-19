@@ -1,7 +1,10 @@
 /**
  * Database Error Parser
  * Converts PostgreSQL error codes and messages into human-readable messages
+ * Uses 'pg-error-codes' package for human-readable error code names
  */
+
+import pgErrorCodes from 'pg-error-codes' with { type: 'json' };
 
 interface DatabaseError extends Error {
   code?: string;
@@ -22,14 +25,54 @@ interface ParsedError {
 
 /**
  * Parse PostgreSQL error into a user-friendly message
+ * Uses 'pg-error-codes' package for human-readable error code names
  */
 export function parseDatabaseError(error: DatabaseError): ParsedError {
-  const errorCode = error.code;
-  const detail = error.detail || "";
-  const constraint = error.constraint || "";
-  const table = error.table || "";
-  const column = error.column || "";
-  const message = error.message || "";
+  // Check if error has a nested cause (drizzle wraps errors)
+  const dbError = error as any;
+  let actualError = error;
+  
+  if (dbError.cause && dbError.cause instanceof Error) {
+    const cause = dbError.cause;
+    // If cause has database error properties, use it instead
+    if ("code" in cause || "detail" in cause || "constraint" in cause) {
+      actualError = cause as DatabaseError;
+    }
+  }
+  
+  // Extract error properties, prioritizing nested error if it exists
+  const errorCode = actualError.code || dbError.code;
+  const detail = actualError.detail || dbError.detail || "";
+  const constraint = actualError.constraint || dbError.constraint || "";
+  const table = actualError.table || dbError.table || "";
+  const column = actualError.column || dbError.column || "";
+  // Use the actual error message, or fall back to wrapper message if it contains useful info
+  let message = actualError.message || error.message || "";
+  
+  // If we have a nested error but the wrapper message has more context, include it
+  if (actualError !== error && error.message && error.message.includes("Failed query")) {
+    message = `${error.message}\n\nUnderlying error: ${actualError.message}`;
+  }
+
+  // Get human-readable error name from pg-error-codes
+  let errorName = "Database Error";
+  if (errorCode) {
+    try {
+      // pg-error-codes exports an object with error codes as keys
+      const codeName = (pgErrorCodes as Record<string, string>)[errorCode];
+      if (codeName) {
+        // Convert snake_case to Title Case for better readability
+        errorName = codeName
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      } else {
+        errorName = `Error Code ${errorCode}`;
+      }
+    } catch {
+      errorName = errorCode || "Unknown Error";
+    }
+  }
 
   // PostgreSQL Error Codes Reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
   
@@ -58,7 +101,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
 
       return {
         userMessage: `The ${field}${value ? ` '${value}'` : ""} is already in use. Please use a different ${field}.`,
-        technicalMessage: `Unique constraint violation: ${constraint}. ${detail}`,
+        technicalMessage: `Unique constraint violation (${errorName}): ${constraint}. ${detail}`,
         statusCode: 409,
         errorCode: "DUPLICATE_ENTRY",
         suggestions: [
@@ -132,7 +175,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       // Make field name more readable
       fieldName = fieldName
         .replace(/_/g, " ")
-        .replace(/\b\w/g, (l) => l.toUpperCase());
+        .replace(/\b\w/g, (l: string) => l.toUpperCase());
 
       return {
         userMessage: `The field '${fieldName}' is required but was not provided. Please provide a value for ${fieldName}.`,
@@ -294,17 +337,76 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
         ],
       };
 
+    case "42601": { // Syntax error
+      // Try to extract more context from the error message
+      let syntaxIssue = "SQL syntax error";
+      if (message.includes("missing column") || message.includes("column") && message.includes("does not exist")) {
+        syntaxIssue = "Missing or invalid column reference in query";
+      } else if (message.includes("syntax error at or near")) {
+        const nearMatch = message.match(/syntax error at or near "([^"]+)"/i);
+        if (nearMatch) {
+          syntaxIssue = `SQL syntax error near "${nearMatch[1]}"`;
+        }
+      } else if (message.includes("Failed query")) {
+        // Drizzle ORM error format
+        const queryMatch = message.match(/Failed query: (.+?)\n/i);
+        if (queryMatch && queryMatch[1]) {
+          syntaxIssue = `Invalid SQL query structure: ${queryMatch[1].substring(0, 100)}...`;
+        }
+      }
+      
+      return {
+        userMessage: `A database query error occurred (${errorName}). This is likely a system issue. Please contact support if this persists.`,
+        technicalMessage: `${syntaxIssue}: ${message}`,
+        statusCode: 500,
+        errorCode: "SQL_SYNTAX_ERROR",
+        suggestions: [
+          `Contact technical support with the error details`,
+          `Check if recent database migrations have been applied`,
+          `Verify that all required database columns exist`,
+          `Try refreshing the page and attempting the operation again`,
+        ],
+      };
+    }
+
     // ========== GENERIC FALLBACK ==========
     default: {
       // Try to extract meaningful info from the message
       let userMessage = "A database error occurred while processing your request.";
+      let suggestions = [
+        `Try the operation again`,
+        `Contact support if the issue persists`,
+      ];
       
-      if (message.toLowerCase().includes("duplicate")) {
+      // Check for SQL syntax errors in the message
+      if (message.toLowerCase().includes("failed query") || message.toLowerCase().includes("syntax error")) {
+        // Try to extract the problematic query
+        const queryMatch = message.match(/select.*?from.*?where.*?\(/i);
+        if (queryMatch) {
+          userMessage = "A database query error occurred. The system attempted to execute an invalid database query. This is a system issue that needs to be fixed.";
+          suggestions = [
+            `Contact technical support immediately with this error`,
+            `Check if the requested data exists and is valid`,
+            `Try refreshing the page and attempting the operation again`,
+          ];
+        } else {
+          userMessage = "A database query error occurred. This is likely a system issue. Please contact support.";
+        }
+      } else if (message.toLowerCase().includes("duplicate")) {
         userMessage = "A record with this information already exists.";
       } else if (message.toLowerCase().includes("not found")) {
         userMessage = "The requested record was not found.";
       } else if (message.toLowerCase().includes("timeout")) {
         userMessage = "The operation took too long to complete. Please try again.";
+      } else if (message.includes(" = $") && message.includes("where")) {
+        // SQL query with missing column name
+        userMessage = "A database query error occurred. The system attempted to execute a query with missing information. This is a system issue that needs to be fixed.";
+        suggestions = [
+          `Contact technical support immediately with this error`,
+          `The error indicates a missing column reference in a database query`,
+          `Check if all required parameters were provided`,
+          `Try refreshing the page and attempting the operation again`,
+        ];
       }
 
       return {
@@ -312,10 +414,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
         technicalMessage: message || "Unknown database error",
         statusCode: 500,
         errorCode: errorCode || "DATABASE_ERROR",
-        suggestions: [
-          `Try the operation again`,
-          `Contact support if the issue persists`,
-        ],
+        suggestions,
       };
     }
   }
@@ -326,63 +425,104 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
  */
 export function formatErrorForLogging(error: DatabaseError): string {
   const parsed = parseDatabaseError(error);
+  const dbError = error as any;
+  
+  // Extract actual error (check for nested cause)
+  let actualError = error;
+  if (dbError.cause && dbError.cause instanceof Error) {
+    const cause = dbError.cause;
+    if ("code" in cause || "detail" in cause || "constraint" in cause) {
+      actualError = cause as DatabaseError;
+    }
+  }
   
   const lines = [
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    "🚨 DATABASE ERROR DETAILS",
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    "👤 USER-FRIENDLY MESSAGE:",
     `   ${parsed.userMessage}`,
     "",
-    "🔧 TECHNICAL DETAILS:",
     `   ${parsed.technicalMessage}`,
     "",
     "📋 ERROR CODE: " + (parsed.errorCode || "N/A"),
     "📊 HTTP STATUS: " + parsed.statusCode,
   ];
 
-  if (error.code) {
-    lines.push(`🔢 POSTGRES CODE: ${error.code}`);
-  }
-
-  if (error.constraint) {
-    lines.push(`🔗 CONSTRAINT: ${error.constraint}`);
-  }
-
-  if (error.table) {
-    lines.push(`📁 TABLE: ${error.table}`);
-  }
-
-  if (error.column) {
-    lines.push(`📝 COLUMN: ${error.column}`);
-  }
-
-  if (error.detail) {
-    lines.push(`📄 DETAIL: ${error.detail}`);
-  }
-
-  if (parsed.suggestions && parsed.suggestions.length > 0) {
+  // Show nested error info if it exists
+  if (dbError.cause && actualError !== error) {
     lines.push("");
-    lines.push("💡 SUGGESTIONS:");
-    parsed.suggestions.forEach((suggestion, index) => {
-      lines.push(`   ${index + 1}. ${suggestion}`);
-    });
+    lines.push("🔍 NESTED ERROR (from cause):");
+    lines.push(`   Name: ${(actualError as any).name || "Unknown"}`);
+    lines.push(`   Message: ${actualError.message || "N/A"}`);
   }
 
-  lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  const code = actualError.code || error.code;
+  if (code) {
+    lines.push(`🔢 POSTGRES CODE: ${code}`);
+  }
+
+  const constraint = actualError.constraint || error.constraint;
+  if (constraint) {
+    lines.push(`🔗 CONSTRAINT: ${constraint}`);
+  }
+
+  const table = actualError.table || error.table;
+  if (table) {
+    lines.push(`📁 TABLE: ${table}`);
+  }
+
+  const column = actualError.column || error.column;
+  if (column) {
+    lines.push(`📝 COLUMN: ${column}`);
+  }
+
+  const detail = actualError.detail || error.detail;
+  if (detail) {
+    lines.push(`📄 DETAIL: ${detail}`);
+  }
+  
+  if ((actualError as any).hint) {
+    lines.push(`💡 HINT: ${(actualError as any).hint}`);
+  }
+  
+  if ((actualError as any).position) {
+    lines.push(`📍 POSITION: ${(actualError as any).position}`);
+  }
 
   return lines.join("\n");
 }
 
 /**
  * Check if error is a database error
+ * Also checks for nested errors (drizzle wraps errors in cause property)
  */
 export function isDatabaseError(error: unknown): error is DatabaseError {
-  return (
-    error instanceof Error &&
-    ("code" in error || "detail" in error || "constraint" in error)
-  );
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  
+  // Check if error itself has database error properties
+  if ("code" in error || "detail" in error || "constraint" in error) {
+    return true;
+  }
+  
+  // Check if error has a cause that is a database error (drizzle wraps errors)
+  const dbError = error as any;
+  if (dbError.cause && dbError.cause instanceof Error) {
+    const cause = dbError.cause;
+    if ("code" in cause || "detail" in cause || "constraint" in cause) {
+      return true;
+    }
+  }
+  
+  // Check if error message indicates a database error
+  const message = error.message || "";
+  if (message.includes("Failed query") || 
+      message.includes("syntax error") ||
+      message.includes("relation") ||
+      message.includes("column") ||
+      message.includes("constraint")) {
+    return true;
+  }
+  
+  return false;
 }
 
 

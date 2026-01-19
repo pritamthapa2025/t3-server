@@ -14,8 +14,19 @@ class Logger {
     context?: LogContext
   ): string {
     const timestamp = new Date().toISOString();
-    const contextStr = context ? ` ${JSON.stringify(context, null, 2)}` : "";
-    return `[${timestamp}] [${level.toUpperCase()}] ${message}${contextStr}`;
+    
+    if (!context) {
+      return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+    }
+
+    // Stringify the context first
+    let contextStr = JSON.stringify(context, null, 2);
+    
+    // Replace escaped newlines (\n) with actual newlines in the JSON string
+    // This handles error messages and stack traces that contain newlines
+    contextStr = contextStr.replace(/\\n/g, '\n');
+    
+    return `[${timestamp}] [${level.toUpperCase()}] ${message} ${contextStr}`;
   }
 
   error(message: string, error?: Error | unknown, context?: LogContext): void {
@@ -23,24 +34,68 @@ class Logger {
 
     if (error instanceof Error) {
       errorContext.errorName = error.name;
-      errorContext.errorMessage = error.message;
-      errorContext.errorStack = error.stack;
       
-      // Capture PostgreSQL/Database specific error details
-      if ((error as any).code) {
-        errorContext.errorCode = (error as any).code;
+      // Capture PostgreSQL/Database specific error details (but not verbose messages/stacks)
+      const dbError = error as any;
+      if (dbError.code) {
+        errorContext.errorCode = dbError.code;
       }
-      if ((error as any).detail) {
-        errorContext.errorDetail = (error as any).detail;
+      if (dbError.detail) {
+        errorContext.errorDetail = dbError.detail;
       }
-      if ((error as any).constraint) {
-        errorContext.constraint = (error as any).constraint;
+      if (dbError.constraint) {
+        errorContext.constraint = dbError.constraint;
       }
-      if ((error as any).table) {
-        errorContext.table = (error as any).table;
+      if (dbError.table) {
+        errorContext.table = dbError.table;
       }
-      if ((error as any).column) {
-        errorContext.column = (error as any).column;
+      if (dbError.column) {
+        errorContext.column = dbError.column;
+      }
+      if (dbError.severity) {
+        errorContext.severity = dbError.severity;
+      }
+      if (dbError.hint) {
+        errorContext.hint = dbError.hint;
+      }
+      if (dbError.position) {
+        errorContext.position = dbError.position;
+      }
+      if (dbError.internalPosition) {
+        errorContext.internalPosition = dbError.internalPosition;
+      }
+      if (dbError.internalQuery) {
+        errorContext.internalQuery = dbError.internalQuery;
+      }
+      if (dbError.where) {
+        errorContext.where = dbError.where;
+      }
+      if (dbError.schema) {
+        errorContext.schema = dbError.schema;
+      }
+      if (dbError.dataType) {
+        errorContext.dataType = dbError.dataType;
+      }
+      
+      // Check if error has a cause (nested error) - drizzle often wraps errors
+      // Only capture essential error details, not verbose messages
+      if (dbError.cause) {
+        const cause = dbError.cause;
+        if (cause?.code) {
+          errorContext.causeErrorCode = cause.code;
+        }
+        if (cause?.detail) {
+          errorContext.causeErrorDetail = cause.detail;
+        }
+        if (cause?.constraint) {
+          errorContext.causeConstraint = cause.constraint;
+        }
+        if (cause?.table) {
+          errorContext.causeTable = cause.table;
+        }
+        if (cause?.column) {
+          errorContext.causeColumn = cause.column;
+        }
       }
     } else if (error) {
       errorContext.error = error;

@@ -1371,17 +1371,22 @@ export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
     );
 
   // Average MPG (last 12 months)
-  const avgMPGResult = await db
-    .select({
-      avgMPG: sql<string>`COALESCE(AVG(${fuelRecords.gallons}::numeric / NULLIF(${fuelRecords.odometer}::numeric - LAG(${fuelRecords.odometer}::numeric) OVER (PARTITION BY ${fuelRecords.vehicleId} ORDER BY ${fuelRecords.date}), 0)), 0)`,
-    })
-    .from(fuelRecords)
-    .where(
-      and(
-        eq(fuelRecords.isDeleted, false),
-        gte(fuelRecords.date, oneYearAgo.toISOString().split("T")[0]!)
-      )
-    );
+  // Calculate MPG for each fuel record: (current_odometer - previous_odometer) / gallons
+  // Then average all MPG values
+  const oneYearAgoDate = oneYearAgo.toISOString().split("T")[0]!;
+  const avgMPGResult = await db.execute<{ avgMPG: string }>(
+    sql`
+      SELECT COALESCE(AVG(mpg), 0) as "avgMPG"
+      FROM (
+        SELECT 
+          (odometer::numeric - LAG(odometer::numeric) OVER (PARTITION BY vehicle_id ORDER BY date)) / NULLIF(gallons::numeric, 0) as mpg
+        FROM "org"."fuel_records"
+        WHERE is_deleted = false 
+          AND date >= ${oneYearAgoDate}
+      ) subquery
+      WHERE mpg IS NOT NULL AND mpg > 0
+    `
+  );
 
   return {
     totalVehicles: totalVehiclesResult[0]?.count || 0,
@@ -1394,7 +1399,7 @@ export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
     overdueInspections: overdueInspectionsResult[0]?.count || 0,
     totalMaintenanceCost: totalMaintenanceCostResult[0]?.total || "0",
     totalFuelCost: totalFuelCostResult[0]?.total || "0",
-    averageMPG: avgMPGResult[0]?.avgMPG || "0",
+    averageMPG: avgMPGResult.rows[0]?.avgMPG || "0",
   };
 };
 
