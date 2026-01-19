@@ -11,9 +11,6 @@ import {
   bidPlanSpecData,
   bidDesignBuildData,
   bidTimeline,
-  bidDocuments,
-  bidPlanSpecFiles,
-  bidDesignBuildFiles,
   bidNotes,
   bidHistory,
 } from "../drizzle/schema/bids.schema.js";
@@ -214,15 +211,6 @@ export const createBid = async (data: {
     }
   };
 
-  // Helper function to convert date string to timestamp or undefined
-  const toTimestampOrUndefined = (dateStr?: string): Date | undefined => {
-    if (!dateStr || dateStr.trim() === "") return undefined;
-    try {
-      return new Date(dateStr);
-    } catch {
-      return undefined;
-    }
-  };
 
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
@@ -374,7 +362,7 @@ export const deleteBid = async (id: string, organizationId: string) => {
 
 export const getBidFinancialBreakdown = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
   const [breakdown] = await db
     .select()
@@ -504,7 +492,7 @@ export const updateBidOperatingExpenses = async (
 
 export const getBidMaterials = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
   const materials = await db
     .select()
@@ -549,7 +537,7 @@ export const updateBidMaterial = async (
   return material;
 };
 
-export const deleteBidMaterial = async (id: string, organizationId: string) => {
+export const deleteBidMaterial = async (id: string, _organizationId: string) => {
   const [material] = await db
     .update(bidMaterials)
     .set({
@@ -797,7 +785,7 @@ export const deleteBidTravel = async (id: string) => {
 
 export const getBidSurveyData = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
   const [surveyData] = await db
     .select()
@@ -860,7 +848,7 @@ export const updateBidSurveyData = async (
 
 export const getBidPlanSpecData = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
   const [planSpecData] = await db
     .select()
@@ -939,7 +927,7 @@ export const updateBidPlanSpecData = async (
 
 export const getBidDesignBuildData = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
   const [designBuildData] = await db
     .select()

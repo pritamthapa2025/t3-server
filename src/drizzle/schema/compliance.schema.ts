@@ -11,18 +11,14 @@ import {
   date,
   unique,
   index,
-  serial,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 import { organizations } from "./client.schema.js";
 import { employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
 // Import fleet tables (vehicles, safetyInspections, safetyInspectionItems) from fleet schema
-import {
-  vehicles,
-  safetyInspections,
-  safetyInspectionItems,
-} from "./fleet.schema.js";
+
+
 import {
   complianceCaseTypeEnum,
   complianceSeverityEnum,

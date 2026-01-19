@@ -8,10 +8,6 @@ import {
   fuelRecords,
   checkInOutRecords,
 } from "../drizzle/schema/fleet.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
-import { employees } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
-import { jobs } from "../drizzle/schema/jobs.schema.js";
 import {
   eq,
   and,
@@ -23,28 +19,20 @@ import {
   lte,
   like,
   or,
-  inArray,
   isNotNull,
 } from "drizzle-orm";
 import type {
-  Vehicle,
   CreateVehicleData,
   UpdateVehicleData,
-  MaintenanceRecord,
   CreateMaintenanceRecordData,
   UpdateMaintenanceRecordData,
-  RepairRecord,
   CreateRepairRecordData,
   UpdateRepairRecordData,
-  SafetyInspection,
   CreateSafetyInspectionData,
   UpdateSafetyInspectionData,
-  SafetyInspectionItem,
   CreateSafetyInspectionItemData,
-  FuelRecord,
   CreateFuelRecordData,
   UpdateFuelRecordData,
-  CheckInOutRecord,
   CreateCheckInOutRecordData,
   UpdateCheckInOutRecordData,
   FleetDashboardKPIs,

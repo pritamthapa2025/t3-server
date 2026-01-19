@@ -1,7 +1,6 @@
 import {
   pgSchema,
   uuid,
-  serial,
   text,
   varchar,
   boolean,
@@ -17,7 +16,6 @@ import {
 // Import related tables
 import { users } from "./auth.schema.js";
 import { organizations } from "./client.schema.js";
-import { jobs } from "./jobs.schema.js";
 import { employees, positions } from "./org.schema.js";
 
 // Import enums from centralized location
@@ -168,7 +166,7 @@ export const bidFinancialBreakdown = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => []
+  (_table) => []
 );
 
 /**

@@ -69,7 +69,6 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
-import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
 import {
   parseDatabaseError,
   isDatabaseError,
@@ -183,7 +182,7 @@ export const createClientHandler = async (req: Request, res: Response) => {
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -350,7 +349,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -619,7 +618,7 @@ export const createClientContactHandler = async (
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -694,7 +693,7 @@ export const updateClientContactHandler = async (
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -1741,7 +1740,7 @@ export const createClientDocumentHandler = async (
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -1918,7 +1917,7 @@ export const updateClientDocumentHandler = async (
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -2219,7 +2218,7 @@ export const removeDocumentCategoryHandler = async (
       });
     }
 
-    const result = await removeDocumentCategoryLink(documentId, categoryIdNum);
+    await removeDocumentCategoryLink(documentId, categoryIdNum);
 
     logger.info("Document category link removed successfully");
     return res.status(200).json({

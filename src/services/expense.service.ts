@@ -8,33 +8,23 @@ import {
   sql,
   gte,
   lte,
-  sum,
   ilike,
-  isNull,
-  isNotNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   expenseCategories,
   expenses,
-  expenseReports,
-  expenseReportItems,
   expenseReceipts,
   expenseApprovals,
   expenseAllocations,
   mileageLogs,
-  expenseReimbursements,
-  expenseReimbursementItems,
-  expenseBudgets,
   expenseHistory,
 } from "../drizzle/schema/expenses.schema.js";
 import {
   employees,
-  departments,
 } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { bidsTable } from "../drizzle/schema/bids.schema.js";
 
 // ============================
 // Expense Categories
@@ -220,7 +210,7 @@ export const getExpenseCategoryById = async (organizationId: string, id: string)
 export const createExpenseCategory = async (
   organizationId: string,
   categoryData: any,
-  createdBy: string
+  _createdBy: string
 ) => {
   const newCategory = await db
     .insert(expenseCategories)

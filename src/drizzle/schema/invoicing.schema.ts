@@ -10,7 +10,6 @@ import {
   date,
   unique,
   index,
-  jsonb,
 } from "drizzle-orm/pg-core";
 
 // Import related tables

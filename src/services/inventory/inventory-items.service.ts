@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, sql, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, asc, or, ilike } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -174,7 +174,7 @@ export const getInventoryItemById = async (id: string) => {
   };
 };
 
-export const createInventoryItem = async (data: any, userId: string) => {
+export const createInventoryItem = async (data: any, _userId: string) => {
   const [newItem] = await db
     .insert(inventoryItems)
     .values({
@@ -223,7 +223,7 @@ export const createInventoryItem = async (data: any, userId: string) => {
 export const updateInventoryItem = async (
   id: string,
   data: any,
-  userId: string
+  _userId: string
 ) => {
   const existingItem = await db
     .select()
@@ -304,7 +304,7 @@ export const updateInventoryItem = async (
   return updatedItem!;
 };
 
-export const deleteInventoryItem = async (id: string, userId: string) => {
+export const deleteInventoryItem = async (id: string, _userId: string) => {
   const [deletedItem] = await db
     .update(inventoryItems)
     .set({

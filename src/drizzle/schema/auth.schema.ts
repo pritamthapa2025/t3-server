@@ -1,13 +1,11 @@
 import {
   pgSchema,
-  pgTable,
   uuid,
   serial,
   text,
   varchar,
   boolean,
   timestamp,
-  bigint,
   primaryKey,
   integer,
   index,

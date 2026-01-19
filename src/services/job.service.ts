@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, max, sql, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, sql, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   jobs,
@@ -7,18 +7,8 @@ import {
 import { 
   bidsTable,
   bidFinancialBreakdown,
-  bidMaterials,
-  bidLabor,
-  bidTravel,
-  bidOperatingExpenses,
-  bidTimeline,
-  bidDocuments,
-  bidNotes,
-  bidHistory,
 } from "../drizzle/schema/bids.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
 import { 
   getBidFinancialBreakdown,
   getBidOperatingExpenses,
@@ -528,7 +518,7 @@ export const getJobPlannedFinancialBreakdown = async (jobId: string, organizatio
 // Job Materials Operations (Placeholder - would need materials table)
 // ============================
 
-export const getJobMaterials = async (jobId: string, organizationId: string) => {
+export const getJobMaterials = async (_jobId: string, _organizationId: string) => {
   // Placeholder - would need a job_materials table
   return [];
 };
@@ -560,7 +550,7 @@ export const updateJobMaterial = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobMaterial = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobMaterial = async (id: string, _jobId: string, _organizationId: string) => {
   // Placeholder - would need a job_materials table
   return { id, isDeleted: true, updatedAt: new Date() };
 };
@@ -569,7 +559,7 @@ export const deleteJobMaterial = async (id: string, jobId: string, organizationI
 // Job Labor Operations (Placeholder)
 // ============================
 
-export const getJobLabor = async (jobId: string, organizationId: string) => {
+export const getJobLabor = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -598,7 +588,7 @@ export const updateJobLabor = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobLabor = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobLabor = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -606,7 +596,7 @@ export const deleteJobLabor = async (id: string, jobId: string, organizationId: 
 // Job Travel Operations (Placeholder)
 // ============================
 
-export const getJobTravel = async (jobId: string, organizationId: string) => {
+export const getJobTravel = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -633,7 +623,7 @@ export const updateJobTravel = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobTravel = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobTravel = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -650,7 +640,7 @@ export const getJobPlannedOperatingExpenses = async (jobId: string, organization
 // Job Timeline Operations (Placeholder)
 // ============================
 
-export const getJobTimeline = async (jobId: string, organizationId: string) => {
+export const getJobTimeline = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -677,7 +667,7 @@ export const updateJobTimelineEvent = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobTimelineEvent = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobTimelineEvent = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -685,7 +675,7 @@ export const deleteJobTimelineEvent = async (id: string, jobId: string, organiza
 // Job Notes Operations (Placeholder)
 // ============================
 
-export const getJobNotes = async (jobId: string, organizationId: string) => {
+export const getJobNotes = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -711,7 +701,7 @@ export const updateJobNote = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobNote = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobNote = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -719,7 +709,7 @@ export const deleteJobNote = async (id: string, jobId: string, organizationId: s
 // Job History Operations (Placeholder)
 // ============================
 
-export const getJobHistory = async (jobId: string, organizationId: string) => {
+export const getJobHistory = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -737,7 +727,7 @@ export const createJobHistoryEntry = async (data: {
 // Job Tasks Operations (Placeholder)
 // ============================
 
-export const getJobTasks = async (jobId: string, organizationId: string) => {
+export const getJobTasks = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -767,7 +757,7 @@ export const updateJobTask = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobTask = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobTask = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -775,7 +765,7 @@ export const deleteJobTask = async (id: string, jobId: string, organizationId: s
 // Job Expenses Operations (Placeholder)
 // ============================
 
-export const getJobExpenses = async (jobId: string, organizationId: string) => {
+export const getJobExpenses = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -804,7 +794,7 @@ export const updateJobExpense = async (
   return { id, ...data, updatedAt: new Date() };
 };
 
-export const deleteJobExpense = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobExpense = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
 
@@ -812,7 +802,7 @@ export const deleteJobExpense = async (id: string, jobId: string, organizationId
 // Job Documents Operations (Placeholder)
 // ============================
 
-export const getJobDocuments = async (jobId: string, organizationId: string) => {
+export const getJobDocuments = async (_jobId: string, _organizationId: string) => {
   return [];
 };
 
@@ -826,6 +816,6 @@ export const createJobDocument = async (data: {
   return { id: "placeholder", ...data, createdAt: new Date() };
 };
 
-export const deleteJobDocument = async (id: string, jobId: string, organizationId: string) => {
+export const deleteJobDocument = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };

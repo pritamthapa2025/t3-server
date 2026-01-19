@@ -11,7 +11,6 @@ import {
   lte,
   sql,
   max,
-  sum,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -23,14 +22,9 @@ import {
   paymentDocuments,
   invoiceHistory,
   paymentHistory,
-  invoiceReminders,
-  creditNotes,
-  creditNoteApplications,
 } from "../drizzle/schema/invoicing.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { bidsTable } from "../drizzle/schema/bids.schema.js";
 
 // ============================
 // Helper Functions
@@ -655,7 +649,7 @@ export const updateInvoice = async (
   invoiceId: string,
   organizationId: string,
   data: any,
-  updatedBy: string
+  _updatedBy: string
 ) => {
   const invoice = await getInvoiceById(invoiceId, organizationId);
   if (!invoice) {
@@ -1041,7 +1035,7 @@ export const updatePayment = async (
   paymentId: string,
   organizationId: string,
   data: any,
-  updatedBy: string
+  _updatedBy: string
 ) => {
   const updateData: any = { updatedAt: new Date() };
   Object.keys(data).forEach(key => {
@@ -1060,8 +1054,8 @@ export const updatePayment = async (
  */
 export const deletePayment = async (
   paymentId: string,
-  organizationId: string,
-  deletedBy: string
+  _organizationId: string,
+  _deletedBy: string
 ) => {
   await db
     .update(payments)

@@ -4,12 +4,9 @@ import {
   desc,
   and,
   or,
-  sql,
   gte,
   lte,
   ilike,
-  isNull,
-  ne,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {

@@ -14,7 +14,7 @@ export const generateToken = (userId: string, expiresIn: string = "7d") => {
 export const verifyToken = (token: string) => {
   try {
     return jwt.verify(token, JWT_SECRET);
-  } catch (err) {
+  } catch {
     return null; // Invalid token
   }
 };

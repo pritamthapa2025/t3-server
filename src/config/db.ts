@@ -62,12 +62,12 @@ const testNetworkConnectivity = (
 ): Promise<boolean> => {
   return new Promise((resolve) => {
     const socket = new net.Socket();
-    let connected = false;
+    let _connected = false;
 
     socket.setTimeout(timeout);
 
     socket.once("connect", () => {
-      connected = true;
+      _connected = true;
       socket.destroy();
       resolve(true);
     });

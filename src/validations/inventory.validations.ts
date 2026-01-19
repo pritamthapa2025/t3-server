@@ -49,13 +49,6 @@ const purchaseOrderStatusEnum = z.enum([
   "closed",
 ]);
 
-const alertTypeEnum = z.enum([
-  "low_stock",
-  "out_of_stock",
-  "overstock",
-  "expiring",
-]);
-const alertSeverityEnum = z.enum(["info", "warning", "critical"]);
 const countTypeEnum = z.enum(["full", "cycle", "spot"]);
 const countStatusEnum = z.enum([
   "planned",

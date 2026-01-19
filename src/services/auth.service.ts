@@ -1,7 +1,6 @@
-import { eq, is } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { comparePassword } from "../utils/hash.js";
 

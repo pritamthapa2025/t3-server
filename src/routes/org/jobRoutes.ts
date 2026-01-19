@@ -61,7 +61,6 @@ import {
   removeJobTeamMemberSchema,
   getJobFinancialSummarySchema,
   updateJobFinancialSummarySchema,
-  getJobFinancialBreakdownSchema,
   updateJobFinancialBreakdownSchema,
   getJobMaterialsSchema,
   createJobMaterialSchema,

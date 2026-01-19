@@ -8,7 +8,6 @@ import {
   integer,
   jsonb,
   index,
-  primaryKey,
   unique,
 } from "drizzle-orm/pg-core";
 

@@ -1,4 +1,4 @@
-import { count, eq, and, desc, ilike, sum, sql, isNull } from "drizzle-orm";
+import { count, eq, and, desc, ilike, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -8,7 +8,6 @@ import {
   inventoryCategories,
   inventoryLocations,
 } from "../../drizzle/schema/inventory.schema.js";
-import { users } from "../../drizzle/schema/auth.schema.js";
 
 // ============================
 // Dashboard & Reports
@@ -283,7 +282,7 @@ export const getCountById = async (id: string) => {
   };
 };
 
-export const createCount = async (data: any, userId: string) => {
+export const createCount = async (data: any, _userId: string) => {
   const countNumber = await generateCountNumber();
 
   const [newCount] = await db.insert(inventoryCounts).values({
@@ -337,7 +336,7 @@ export const startCount = async (id: string) => {
   return startedCount;
 };
 
-export const completeCount = async (id: string, userId: string) => {
+export const completeCount = async (id: string, _userId: string) => {
   // Get all items that were counted in this count
   const countItems = await db
     .select({ itemId: inventoryCountItems.itemId })

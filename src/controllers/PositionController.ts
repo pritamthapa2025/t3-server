@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import {
   getPositions,
   getPositionById,
-  getPositionByName,
   createPosition,
   updatePosition,
   deletePosition,

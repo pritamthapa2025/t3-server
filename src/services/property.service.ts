@@ -3,7 +3,6 @@ import {
   eq,
   desc,
   and,
-  like,
   ilike,
   or,
   sql,
@@ -470,7 +469,7 @@ export const getPropertyById = async (id: string) => {
     const notesText = job.completionNotes || job.description || "";
     // Look for patterns like "Model XYZ-500", "x5", etc.
     const partsMatches = notesText.match(
-      /([A-Z0-9\-]+(?:\s+Model\s+[A-Z0-9\-]+)?|[A-Za-z\s]+x\d+)/gi
+      /([A-Z0-9-]+(?:\s+Model\s+[A-Z0-9-]+)?|[A-Za-z\s]+x\d+)/gi
     );
     if (partsMatches) {
       partsUsed.push(...partsMatches.slice(0, 5)); // Limit to 5 parts

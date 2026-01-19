@@ -78,7 +78,7 @@ export const createUserHandler = async (req: Request, res: Response) => {
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",

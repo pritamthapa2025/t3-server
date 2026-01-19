@@ -169,7 +169,7 @@ const parseFormData = (req: any, res: any, next: any) => {
       const parsedData = JSON.parse(req.body.data);
       // Replace req.body with the parsed data, preserving files
       req.body = parsedData;
-    } catch (error) {
+    } catch {
       return res.status(400).json({
         success: false,
         message: "Invalid JSON data in request body",

@@ -8,7 +8,6 @@ import {
   sql,
   gte,
   lte,
-  sum,
   ilike,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
@@ -394,7 +393,7 @@ export const updateExpenseReport = async (
   organizationId: string,
   id: string,
   updateData: any,
-  updatedBy: string
+  _updatedBy: string
 ) => {
   // If expenseIds are being updated, recalculate totals
   if (updateData.expenseIds) {

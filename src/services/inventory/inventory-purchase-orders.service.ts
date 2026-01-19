@@ -274,7 +274,7 @@ export const cancelPurchaseOrder = async (id: string, reason?: string) => {
   return cancelledPO;
 };
 
-export const closePurchaseOrder = async (id: string, userId: string) => {
+export const closePurchaseOrder = async (id: string, _userId: string) => {
   // Validate PO can be closed (must be received)
   const po = await db
     .select()

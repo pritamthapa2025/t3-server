@@ -1,4 +1,4 @@
-import { count, eq, and, ilike, isNull, desc, sql } from "drizzle-orm";
+import { count, eq, and, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventorySuppliers,
