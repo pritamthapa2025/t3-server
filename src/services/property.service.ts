@@ -172,39 +172,60 @@ export const getProperties = async (
 
   // Optimize: Fetch all job counts and last service dates in bulk
   const propertyIds = propertiesResult.map((p) => p.id);
-
-  // Get all job counts grouped by property
-  const allJobsCounts = await db
-    .select({
-      propertyId: jobs.propertyId,
-      totalJobs: sql<number>`COUNT(*)`,
-    })
-    .from(jobs)
-    .where(
-      and(inArray(jobs.propertyId, propertyIds), eq(jobs.isDeleted, false))
+  const organizationIds = Array.from(
+    new Set(
+      propertiesResult
+        .map((p) => p.organizationId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
     )
-    .groupBy(jobs.propertyId);
+  );
 
-  // Get all active jobs counts grouped by property
-  const activeJobsCounts = await db
-    .select({
-      propertyId: jobs.propertyId,
-      activeJobs: sql<number>`COUNT(*)`,
-    })
-    .from(jobs)
-    .where(
-      and(
-        inArray(jobs.propertyId, propertyIds),
-        eq(jobs.isDeleted, false),
-        inArray(jobs.status, [
-          "planned",
-          "scheduled",
-          "in_progress",
-          "on_hold",
-        ] as any)
-      )
-    )
-    .groupBy(jobs.propertyId);
+  // Jobs are linked through bid → organization (jobs table has bid_id, not property_id)
+  // Get all job counts grouped by organization
+  const allJobsCounts =
+    organizationIds.length > 0
+      ? await db
+          .select({
+            organizationId: bidsTable.organizationId,
+            totalJobs: sql<number>`COUNT(*)`,
+          })
+          .from(jobs)
+          .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+          .where(
+            and(
+              eq(jobs.isDeleted, false),
+              eq(bidsTable.isDeleted, false),
+              inArray(bidsTable.organizationId, organizationIds)
+            )
+          )
+          .groupBy(bidsTable.organizationId)
+      : [];
+
+  // Get all active jobs counts grouped by organization
+  const activeJobsCounts =
+    organizationIds.length > 0
+      ? await db
+          .select({
+            organizationId: bidsTable.organizationId,
+            activeJobs: sql<number>`COUNT(*)`,
+          })
+          .from(jobs)
+          .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+          .where(
+            and(
+              eq(jobs.isDeleted, false),
+              eq(bidsTable.isDeleted, false),
+              inArray(bidsTable.organizationId, organizationIds),
+              inArray(jobs.status, [
+                "planned",
+                "scheduled",
+                "in_progress",
+                "on_hold",
+              ] as any)
+            )
+          )
+          .groupBy(bidsTable.organizationId)
+      : [];
 
   // Get last service dates for all properties using DISTINCT ON (PostgreSQL-specific)
   const lastServiceDatesResult =
@@ -228,10 +249,10 @@ export const getProperties = async (
 
   // Create lookup maps for O(1) access
   const totalJobsMap = new Map(
-    allJobsCounts.map((j) => [j.propertyId, Number(j.totalJobs)])
+    allJobsCounts.map((j) => [j.organizationId, Number(j.totalJobs)])
   );
   const activeJobsMap = new Map(
-    activeJobsCounts.map((j) => [j.propertyId, Number(j.activeJobs)])
+    activeJobsCounts.map((j) => [j.organizationId, Number(j.activeJobs)])
   );
   const lastServiceMap = new Map(
     lastServiceDates.map((s) => [s.property_id, s.service_date])
@@ -313,37 +334,43 @@ export const getPropertyById = async (id: string) => {
 
   // Get job counts - jobs are now linked through bid → organization
   // Since property belongs to organization, we count jobs for the organization
-  const [totalJobsResult, activeJobsResult] = await Promise.all([
-    db
-      .select({ count: count() })
-      .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-      .where(
-        and(
-          eq(bidsTable.organizationId, property.organizationId),
-          eq(jobs.isDeleted, false)
-        )
-      ),
-    db
-      .select({ count: count() })
-      .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-      .where(
-        and(
-          eq(bidsTable.organizationId, property.organizationId),
-          eq(jobs.isDeleted, false),
-          inArray(jobs.status, [
-            "planned",
-            "scheduled",
-            "in_progress",
-            "on_hold",
-          ] as any)
-        )
-      ),
-  ]);
-
-  const totalJobs = Number(totalJobsResult[0]?.count || 0);
-  const activeJobs = Number(activeJobsResult[0]?.count || 0);
+  // Only query if property has an organizationId
+  let totalJobs = 0;
+  let activeJobs = 0;
+  
+  if (property.organizationId) {
+    const [totalJobsResult, activeJobsResult] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(
+          and(
+            eq(bidsTable.organizationId, property.organizationId),
+            eq(jobs.isDeleted, false)
+          )
+        ),
+      db
+        .select({ count: count() })
+        .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(
+          and(
+            eq(bidsTable.organizationId, property.organizationId),
+            eq(jobs.isDeleted, false),
+            inArray(jobs.status, [
+              "planned",
+              "scheduled",
+              "in_progress",
+              "on_hold",
+            ] as any)
+          )
+        ),
+    ]);
+    
+    totalJobs = Number(totalJobsResult[0]?.count || 0);
+    activeJobs = Number(activeJobsResult[0]?.count || 0);
+  }
 
   // Get last service date
   const lastServiceResult = await db

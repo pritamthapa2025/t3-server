@@ -436,21 +436,54 @@ export function formatErrorForLogging(error: DatabaseError): string {
     }
   }
   
+  // Extract SQL query from error message if present
+  let sqlQuery = "";
+  let sqlParams = "";
+  const errorMessage = error.message || "";
+  if (errorMessage.includes("Failed query:")) {
+    const queryMatch = errorMessage.match(/Failed query:\s*([\s\S]*?)(?:\nparams:|$)/);
+    if (queryMatch && queryMatch[1]) {
+      sqlQuery = queryMatch[1].trim();
+    }
+    const paramsMatch = errorMessage.match(/params:\s*([^\n]+)/);
+    if (paramsMatch && paramsMatch[1]) {
+      sqlParams = paramsMatch[1].trim();
+    }
+  }
+  
   const lines = [
     `   ${parsed.userMessage}`,
     "",
     `   ${parsed.technicalMessage}`,
-    "",
-    "📋 ERROR CODE: " + (parsed.errorCode || "N/A"),
-    "📊 HTTP STATUS: " + parsed.statusCode,
   ];
-
-  // Show nested error info if it exists
-  if (dbError.cause && actualError !== error) {
+  
+  // Show underlying error if it exists and is different from the main message
+  if (actualError !== error && actualError.message) {
     lines.push("");
-    lines.push("🔍 NESTED ERROR (from cause):");
-    lines.push(`   Name: ${(actualError as any).name || "Unknown"}`);
-    lines.push(`   Message: ${actualError.message || "N/A"}`);
+    lines.push(`Underlying error: ${actualError.message}`);
+  }
+  
+  // Show SQL query if available (only if not already in technical message)
+  if (sqlQuery && !parsed.technicalMessage.includes(sqlQuery.substring(0, 50))) {
+    lines.push("");
+    lines.push("🔍 SQL QUERY:");
+    const formattedSql = sqlQuery
+      .split('\n')
+      .map(line => `   ${line}`)
+      .join('\n');
+    lines.push(formattedSql);
+    
+    if (sqlParams) {
+      lines.push(`📋 PARAMS: ${sqlParams}`);
+    }
+  }
+  
+  lines.push("");
+  lines.push(`📋 ERROR CODE: ${parsed.errorCode || "N/A"} | 📊 HTTP STATUS: ${parsed.statusCode}`);
+
+  // Show nested error info if it exists (compact format)
+  if (dbError.cause && actualError !== error) {
+    lines.push(`🔍 NESTED: ${(actualError as any).name || "error"} - ${actualError.message || "N/A"}`);
   }
 
   const code = actualError.code || error.code;
