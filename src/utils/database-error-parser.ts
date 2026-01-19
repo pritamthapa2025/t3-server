@@ -295,7 +295,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       };
 
     // ========== GENERIC FALLBACK ==========
-    default:
+    default: {
       // Try to extract meaningful info from the message
       let userMessage = "A database error occurred while processing your request.";
       
@@ -317,6 +317,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
           `Contact support if the issue persists`,
         ],
       };
+    }
   }
 }
 

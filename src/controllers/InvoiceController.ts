@@ -236,7 +236,7 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
         message: "Invoice ID is required",
       });
     }
-    const { emailTo, subject, message, attachPdf = true, cc, bcc } = req.body;
+    const { emailTo } = req.body;
 
     // For now, we'll just update the invoice status to "sent"
     // In a full implementation, you'd integrate with an email service
@@ -474,8 +474,6 @@ export const updateInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    const { invoiceId, lineItemId } = req.params;
-
     // This is a simplified implementation
     // In production, you'd have dedicated line item CRUD operations
     res.status(501).json({
@@ -507,8 +505,6 @@ export const deleteInvoiceLineItem = async (req: Request, res: Response) => {
         message: "Organization access required",
       });
     }
-
-    const { invoiceId, lineItemId } = req.params;
 
     // This is a simplified implementation
     // In production, you'd have dedicated line item CRUD operations

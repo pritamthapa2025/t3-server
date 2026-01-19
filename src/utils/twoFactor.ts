@@ -53,7 +53,7 @@ const decryptCode = (encryptedData: string): string | null => {
     decrypted += final;
 
     return decrypted;
-  } catch (error) {
+  } catch {
     return null;
   }
 };

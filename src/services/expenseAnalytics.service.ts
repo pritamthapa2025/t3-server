@@ -2,14 +2,10 @@ import {
   count,
   eq,
   desc,
-  asc,
   and,
-  or,
   sql,
   gte,
   lte,
-  sum,
-  avg,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -22,7 +18,6 @@ import {
   departments,
 } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 // ============================
 // Expense Summary & Analytics

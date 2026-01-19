@@ -7,9 +7,6 @@ import {
   sql,
   gte,
   lte,
-  avg,
-  min,
-  max,
   inArray,
   isNull,
   isNotNull,
@@ -39,9 +36,6 @@ export const getDepartments = async (
       )!
     );
   }
-
-  const whereClause =
-    whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
   // Add soft delete filter
   whereConditions.push(eq(departments.isDeleted, false));
@@ -553,7 +547,6 @@ export const getDepartmentById = async (id: number) => {
   // Only query if there are employees
   let timesheetData = { rows: [{ total_hours: "0" }] };
   if (activeEmployees.length > 0) {
-    const employeeIds = activeEmployees.map((e) => e.employee.id);
     const result = await db.execute<{
       total_hours: string;
     }>(
@@ -646,7 +639,7 @@ export const getDepartmentById = async (id: number) => {
   });
 
   // Calculate overall pay range from positions (not employees)
-  const allPayRates = deptPositions
+  const _allPayRates = deptPositions
     .map((pos) => {
       if (pos.payRate && pos.payType) {
         const rate = Number(pos.payRate);
@@ -663,13 +656,6 @@ export const getDepartmentById = async (id: number) => {
     type: "hourly" | "salary";
     rate: number;
   }>;
-
-  const hourlyRates = allPayRates
-    .filter((p) => p.type === "hourly")
-    .map((p) => p.rate);
-  const salaryRates = allPayRates
-    .filter((p) => p.type === "salary")
-    .map((p) => p.rate);
 
   // Group positions by pay type and create ranges
   const hourlyPositions = deptPositions.filter(

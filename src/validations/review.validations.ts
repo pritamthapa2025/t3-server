@@ -17,23 +17,6 @@ const ratingCategorySchema = z.object({
   comments: z.string().optional(),
 });
 
-// Ratings schema - can contain multiple rating categories
-const ratingsSchema = z.object({
-  communication: ratingCategorySchema.optional(),
-  teamwork: ratingCategorySchema.optional(),
-  technical_skills: ratingCategorySchema.optional(),
-  leadership: ratingCategorySchema.optional(),
-  problem_solving: ratingCategorySchema.optional(),
-  time_management: ratingCategorySchema.optional(),
-  quality_of_work: ratingCategorySchema.optional(),
-  initiative: ratingCategorySchema.optional(),
-  adaptability: ratingCategorySchema.optional(),
-  overall_performance: ratingCategorySchema.optional(),
-}).refine(
-  (data) => Object.keys(data).length > 0,
-  { message: "At least one rating category is required" }
-);
-
 // Alternative: More flexible ratings schema for custom categories
 const flexibleRatingsSchema = z.record(
   z.string(),

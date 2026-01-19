@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, max, sql, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, asc, sql, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";

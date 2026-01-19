@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import {
   getDepartments,
   getDepartmentById,
-  getDepartmentByName,
   createDepartment,
   updateDepartment,
   deleteDepartment,

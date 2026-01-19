@@ -1,4 +1,4 @@
-import { count, eq, and, or, ilike, sql } from "drizzle-orm";
+import { count, eq, and, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { positions } from "../drizzle/schema/org.schema.js";
 

@@ -10,21 +10,9 @@ import {
   clientDocuments,
   documentCategories,
   clientDocumentCategories,
-  propertyContacts,
-  propertyEquipment,
-  propertyDocuments,
-  propertyServiceHistory,
-  financialSummary,
-  financialCostCategories,
-  profitTrend,
-  cashFlowProjection,
-  cashFlowScenarios,
-  revenueForecast,
-  financialReports,
 } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 
 // ============================
 // Organization Operations
@@ -893,7 +881,7 @@ export const removeDocumentCategoryLink = async (
   documentId: string,
   categoryId: number
 ) => {
-  const result = await db
+  await db
     .delete(clientDocumentCategories)
     .where(
       and(
@@ -908,7 +896,7 @@ export const removeDocumentCategoryLink = async (
 // Client KPIs and Settings
 // ============================
 
-export const getClientKPIs = async (organizationId: string) => {
+export const getClientKPIs = async (_organizationId: string) => {
   // This would aggregate various metrics for the client
   // For now, return basic structure
   return {

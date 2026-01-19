@@ -1,4 +1,4 @@
-import { eq, and, or, ne, sql } from "drizzle-orm";
+import { eq, and, ne, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users, roles } from "../drizzle/schema/auth.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";

@@ -109,7 +109,6 @@ import {
   acknowledgeAlertSchema,
   resolveAlertSchema,
   createCountSchema,
-  updateCountSchema,
   recordCountItemSchema,
   uuidParamSchema,
   deleteSchema,

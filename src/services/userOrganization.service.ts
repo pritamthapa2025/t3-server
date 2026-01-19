@@ -1,4 +1,4 @@
-import { count, eq, desc, and, or } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   userOrganizations,

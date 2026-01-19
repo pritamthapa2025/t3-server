@@ -2,9 +2,9 @@ import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
-import { generateToken, verifyToken } from "../utils/jwt.js";
+import { generateToken } from "../utils/jwt.js";
 import { db } from "../config/db.js";
-import { userRoles, roles, users } from "../drizzle/schema/auth.schema.js";
+import { userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 
 import {
@@ -23,7 +23,6 @@ import {
 } from "../utils/trusted-device.js";
 import {
   send2FACode,
-  sendPasswordResetEmail,
   sendPasswordResetOTP,
   sendChangePasswordOTP,
 } from "../services/email.service.js";
@@ -34,11 +33,9 @@ import {
   updatePassword,
 } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
-import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
-import {
-  parseDatabaseError,
-  isDatabaseError,
-} from "../utils/database-error-parser.js";
+import { ErrorMessages } from "../utils/error-messages.js";
+
+
 
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {

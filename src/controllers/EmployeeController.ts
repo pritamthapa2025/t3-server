@@ -32,7 +32,6 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
-import { ErrorMessages, handleDatabaseError } from "../utils/error-messages.js";
 import {
   parseDatabaseError,
   isDatabaseError,
@@ -45,7 +44,6 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string | undefined;
 
     const offset = (page - 1) * limit;
 
@@ -139,7 +137,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",

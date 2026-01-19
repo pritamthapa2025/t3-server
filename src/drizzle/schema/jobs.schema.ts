@@ -22,7 +22,6 @@ import { bidsTable } from "./bids.schema.js";
 import {
   jobStatusEnum,
   jobPriorityEnum,
-  timelineStatusEnum,
 } from "../enums/org.enums.js";
 
 const org = pgSchema("org");

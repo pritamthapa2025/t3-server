@@ -237,7 +237,7 @@ export const processPayment = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    const { processedDate = new Date().toISOString(), notes } = req.body;
+    const { processedDate = new Date().toISOString() } = req.body;
 
     const payment = await invoicingService.updatePayment(id, organizationId, {
       status: "processing",
@@ -290,7 +290,7 @@ export const markPaymentAsCleared = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    const { clearedDate = new Date().toISOString(), notes } = req.body;
+    const { clearedDate = new Date().toISOString() } = req.body;
 
     const payment = await invoicingService.updatePayment(id, organizationId, {
       status: "completed",
@@ -387,8 +387,6 @@ export const createPaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { paymentId } = req.params;
-
     // This is a simplified implementation
     // In production, you'd have dedicated allocation CRUD operations
     res.status(501).json({
@@ -421,8 +419,6 @@ export const updatePaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { paymentId, allocationId } = req.params;
-
     // This is a simplified implementation
     // In production, you'd have dedicated allocation CRUD operations
     res.status(501).json({
@@ -454,8 +450,6 @@ export const deletePaymentAllocation = async (req: Request, res: Response) => {
         message: "Organization access required",
       });
     }
-
-    const { paymentId, allocationId } = req.params;
 
     // This is a simplified implementation
     // In production, you'd have dedicated allocation CRUD operations

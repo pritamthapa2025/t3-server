@@ -223,7 +223,7 @@ export const getNavigationConfig = async (userId: string) => {
       if (config.features.length > 0) {
         modulePermissions[module] = config;
       }
-    } catch (error) {
+    } catch {
       // Module not accessible, skip
       continue;
     }

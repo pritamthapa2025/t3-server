@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-// Helper function to handle empty strings and convert to undefined
-const emptyStringToUndefined = z
-  .union([z.string(), z.null(), z.undefined()])
-  .transform((val) => (val === "" || val === null ? undefined : val));
-
 // Helper function to convert string numbers to integers or undefined
 const stringToIntOrUndefined = z
   .union([z.number(), z.string(), z.null(), z.undefined()])

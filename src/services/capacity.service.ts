@@ -3,15 +3,11 @@ import {
   eq,
   desc,
   and,
-  or,
   sql,
   gte,
   lte,
   sum,
   avg,
-  ilike,
-  isNull,
-  ne,
   inArray,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
@@ -20,7 +16,6 @@ import {
   employeeAvailability,
   resourceAllocations,
   departmentCapacityMetrics,
-  teamUtilizationHistory,
   capacityPlanningTemplates,
 } from "../drizzle/schema/capacity.schema.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
@@ -28,9 +23,7 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
 // Dashboard KPIs - Status cards
-export const getDashboardKPIs = async (organizationId: string, date?: string) => {
-  const queryDate = date ? new Date(date) : new Date();
-  
+export const getDashboardKPIs = async (_organizationId: string, _date?: string) => {
   // Get employee availability counts by status
   const statusCounts = await db
     .select({

@@ -13,7 +13,6 @@ import {
   unique,
   index,
   serial,
-  check,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 import { employees, departments } from "./org.schema.js";

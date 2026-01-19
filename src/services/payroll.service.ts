@@ -7,9 +7,7 @@ import {
   sql,
   gte,
   lte,
-  sum,
   ilike,
-  isNull,
   ne,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
@@ -17,15 +15,9 @@ import {
   payPeriods,
   payrollRuns,
   payrollEntries,
-  payrollDeductions,
-  payrollTimesheetEntries,
-  timesheetPayrollIntegrationLog,
   payrollAuditLog,
-  employeeCompensation,
 } from "../drizzle/schema/payroll.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
-import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 interface PayrollDashboardFilters {

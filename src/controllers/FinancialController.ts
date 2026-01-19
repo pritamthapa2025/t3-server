@@ -290,8 +290,6 @@ export const deleteFinancialCostCategoryHandler = async (
 export const getProfitTrendHandler = async (req: Request, res: Response) => {
   try {
     const organizationId = req.query.organizationId as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
 
     const trends = await getProfitTrend(organizationId);
 
@@ -321,8 +319,6 @@ export const getCashFlowProjectionsHandler = async (
 ) => {
   try {
     const organizationId = req.query.organizationId as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
 
     const projections = await getCashFlowProjections(organizationId);
 
@@ -443,7 +439,6 @@ export const getRevenueForecastHandler = async (
 ) => {
   try {
     const organizationId = req.query.organizationId as string;
-    const year = req.query.year as string;
 
     const forecast = await getRevenueForecast(organizationId);
 
@@ -501,7 +496,6 @@ export const getFinancialReportsHandler = async (
 ) => {
   try {
     const organizationId = req.query.organizationId as string;
-    const category = req.query.category as string;
 
     const reports = await getFinancialReports(organizationId);
 

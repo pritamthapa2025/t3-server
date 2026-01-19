@@ -15,16 +15,12 @@ import {
   lte,
   like,
   or,
-  inArray,
 } from "drizzle-orm";
 import type {
-  DispatchTask,
   CreateDispatchTaskData,
   UpdateDispatchTaskData,
-  DispatchAssignment,
   CreateDispatchAssignmentData,
   UpdateDispatchAssignmentData,
-  TechnicianAvailability,
   CreateTechnicianAvailabilityData,
   UpdateTechnicianAvailabilityData,
 } from "../types/dispatch.types.js";

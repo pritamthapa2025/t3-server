@@ -5,7 +5,6 @@ import {
   asc,
   and,
   or,
-  like,
   ilike,
   gte,
   lte,

@@ -230,14 +230,6 @@ export const updateTimesheet = async (
     updateData.employeeId = data.employeeId;
   }
 
-  // Determine which sheetDate string to use (new one or existing)
-  const sheetDateStrToUse = data.sheetDate
-    ? data.sheetDate instanceof Date
-      ? data.sheetDate.toISOString().split("T")[0]!
-      : typeof data.sheetDate === "string"
-      ? data.sheetDate
-      : new Date(data.sheetDate).toISOString().split("T")[0]!
-    : existingTimesheet.sheetDate;
 
   if (data.sheetDate !== undefined) {
     // Convert sheetDate to YYYY-MM-DD string format for date column
@@ -1018,7 +1010,7 @@ export const getWeeklyTimesheetsByEmployee = async (
 export const getMyWeeklyTimesheets = async (
   employeeId: number,
   weekStartDate: string,
-  search?: string
+  _search?: string
 ) => {
   // Get weekly data for this specific employee
   const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [employeeId]);

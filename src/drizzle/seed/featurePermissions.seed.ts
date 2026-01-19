@@ -1,7 +1,6 @@
 import { db } from "../../config/db.js";
 import { eq, and, sql } from "drizzle-orm";
 import {
-  roles,
   features,
   roleFeatures,
   uiElements,

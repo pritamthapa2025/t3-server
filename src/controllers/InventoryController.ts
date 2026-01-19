@@ -21,27 +21,6 @@ const validateUserAccess = (req: Request, res: Response): string | null => {
   return userId;
 };
 
-const validateOrganizationAccess = (
-  req: Request,
-  res: Response
-): string | null => {
-  // For now, using user ID as organization context
-  // In multi-tenant setup, you'd get organizationId from req.user.organizationId
-  const userId = req.user?.id;
-
-  if (!userId) {
-    res.status(403).json({
-      success: false,
-      message: "Access denied. Organization context required.",
-    });
-    return null;
-  }
-
-  // TODO: Get actual organizationId from user context
-  // For now, return userId as placeholder
-  return userId;
-};
-
 const validateParam = (
   param: string | undefined,
   paramName: string,
@@ -141,7 +120,6 @@ export const createInventoryItemHandler = async (
   req: Request,
   res: Response
 ) => {
-  let uploadedFileUrl: string | null = null;
   try {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -159,7 +137,7 @@ export const createInventoryItemHandler = async (
             typeof req.body.data === "string"
               ? JSON.parse(req.body.data)
               : req.body.data;
-        } catch (parseError) {
+        } catch {
           return res.status(400).json({
             success: false,
             message: "Invalid JSON in 'data' field",
@@ -180,8 +158,6 @@ export const createInventoryItemHandler = async (
           file.originalname,
           "inventory-items"
         );
-        uploadedFileUrl = uploadResult.url;
-        
         // Add image URL to images array
         if (!itemData.images) {
           itemData.images = [];
