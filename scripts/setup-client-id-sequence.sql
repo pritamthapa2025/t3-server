@@ -1,9 +1,10 @@
--- Migration: Update client_id sequence to handle CL- format
--- Purpose: Ensure the sequence is properly initialized for CL- format (not just CLT-)
--- This migration updates the existing sequence or creates it if it doesn't exist
+-- Setup Client ID Sequence for CL- Format
+-- Purpose: Create/update PostgreSQL sequence for automatic client ID generation
+-- Format: CL-000001, CL-000002, etc.
+-- This script ensures thread-safe client ID generation
 
 -- ======================================================================
--- Update client_id sequence to handle both CL- and CLT- formats
+-- Setup client_id sequence to handle CL- format
 -- ======================================================================
 
 DO $$
@@ -18,7 +19,7 @@ BEGIN
   ) INTO seq_exists;
 
   -- Get the highest numeric value from existing client_ids
-  -- Handle both CL- and CLT- formats
+  -- Handle both CL- and CLT- formats for backward compatibility
   WITH client_numbers AS (
     SELECT 
       CASE 
@@ -41,22 +42,35 @@ BEGIN
   IF seq_exists THEN
     -- Reset sequence to the next available number
     EXECUTE format('ALTER SEQUENCE org.client_id_seq RESTART WITH %s', max_client_num + 1);
+    RAISE NOTICE 'Updated existing sequence org.client_id_seq to start with %', max_client_num + 1;
   ELSE
     -- Create sequence starting from the next available number
     EXECUTE format('CREATE SEQUENCE org.client_id_seq START WITH %s INCREMENT BY 1', max_client_num + 1);
+    RAISE NOTICE 'Created new sequence org.client_id_seq starting with %', max_client_num + 1;
   END IF;
+
+  -- Display current status
+  RAISE NOTICE 'Client ID sequence setup complete. Next ID will be: CL-%', lpad((max_client_num + 1)::text, 6, '0');
 END $$;
 
 -- ======================================================================
--- Grant permissions (if needed for specific users/roles)
+-- Verification Query (Optional)
 -- ======================================================================
--- GRANT USAGE, SELECT ON SEQUENCE org.client_id_seq TO your_app_user;
+-- Uncomment the following lines to verify the sequence was created properly:
 
--- ======================================================================
--- NOTES:
--- ======================================================================
--- - This migration ensures the sequence handles both CL- and CLT- formats
--- - The sequence will be set to the next available number based on existing data
--- - The application code uses CL- format going forward
--- - The sequence is atomic and thread-safe, preventing duplicate IDs
+-- SELECT 
+--   schemaname,
+--   sequencename,
+--   start_value,
+--   increment_by,
+--   max_value,
+--   min_value,
+--   cache_size,
+--   cycle,
+--   last_value
+-- FROM pg_sequences 
+-- WHERE schemaname = 'org' AND sequencename = 'client_id_seq';
 
+-- Test sequence (uncomment to test):
+-- SELECT nextval('org.client_id_seq') as next_value;
+-- SELECT 'CL-' || lpad(currval('org.client_id_seq')::text, 6, '0') as formatted_id;
