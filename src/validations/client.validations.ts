@@ -765,20 +765,43 @@ export const updateClientSettingsSchema = z.object({
   }),
   body: z
     .object({
-      creditLimit: z.string().optional(), // Numeric as string for precision
-      paymentTerms: z.string().max(100).optional(), // e.g., "Net 30", "Net 60"
-      preferredPaymentMethod: z.string().max(50).optional(), // e.g., "ACH Transfer", "Check"
-      billingContactId: z.string().uuid().optional(), // Reference to client contact
+      creditLimit: z
+        .union([z.string(), z.null()])
+        .optional()
+        .refine(
+          (val) => {
+            if (val === null || val === undefined || val === "") return true;
+            return /^\d+(\.\d{1,2})?$/.test(val);
+          },
+          { message: "Credit limit must be a valid number" }
+        ), // Numeric as string for precision
+      paymentTerms: z
+        .union([z.string().max(100), z.null()])
+        .optional(), // e.g., "Net 30", "Net 60"
+      preferredPaymentMethod: z
+        .union([z.string().max(50), z.null()])
+        .optional(), // e.g., "ACH Transfer", "Check"
+      billingContactId: z
+        .union([z.string().uuid(), z.null()])
+        .optional(), // Reference to client contact
       billingDay: z
-        .union([z.number(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(z.number().int().min(1).max(31))
+        .union([
+          z.number().int().min(1).max(31),
+          z.string().transform((val) => {
+            const num = parseInt(val, 10);
+            return isNaN(num) ? null : num;
+          }),
+          z.null()
+        ])
         .optional(), // Day of month (1-31)
       taxExempt: z
         .union([z.boolean(), z.string()])
-        .transform((val) =>
-          typeof val === "string" ? val === "true" || val === "1" : val
-        )
+        .transform((val) => {
+          if (typeof val === "string") {
+            return val === "true" || val === "1";
+          }
+          return val;
+        })
         .pipe(z.boolean())
         .optional(), // Tax exemption status
     })

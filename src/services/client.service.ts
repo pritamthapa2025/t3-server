@@ -1014,30 +1014,119 @@ export const getClientKPIs = async (_organizationId: string): Promise<ClientKPIs
   };
 };
 
-export const getClientSettings = async (organizationId: string): Promise<ClientSettings> => {
-  // Return default settings structure
-  return {
-    id: organizationId,
-    notifications: {
-      email: true,
-      sms: false,
-    },
-    preferences: {
-      currency: "USD",
-      timezone: "UTC",
-    },
-  };
+export const getClientSettings = async (organizationId: string): Promise<ClientSettings | null> => {
+  try {
+    const result = await db
+      .select({
+        id: organizations.id,
+        creditLimit: organizations.creditLimit,
+        paymentTerms: organizations.paymentTerms,
+        preferredPaymentMethod: organizations.preferredPaymentMethod,
+        billingContactId: organizations.billingContactId,
+        billingDay: organizations.billingDay,
+        taxExempt: organizations.taxExempt,
+      })
+      .from(organizations)
+      .where(
+        and(
+          eq(organizations.id, organizationId),
+          eq(organizations.isDeleted, false)
+        )
+      )
+      .limit(1);
+
+    if (!result || result.length === 0) {
+      return null;
+    }
+
+    const client = result[0];
+    if (!client) {
+      return null;
+    }
+    
+    return {
+      id: client.id,
+      creditLimit: client.creditLimit?.toString() || null,
+      paymentTerms: client.paymentTerms || null,
+      preferredPaymentMethod: client.preferredPaymentMethod || null,
+      billingContactId: client.billingContactId || null,
+      billingDay: client.billingDay || null,
+      taxExempt: client.taxExempt || false,
+    };
+  } catch (error) {
+    console.error("Error fetching client settings:", error);
+    throw error;
+  }
 };
 
 export const updateClientSettings = async (
   organizationId: string,
   settings: Partial<ClientSettings>
-): Promise<ClientSettings> => {
-  // For now, just return the updated settings
-  // In a real implementation, this would store in a settings table
-  return {
-    id: organizationId,
-    ...settings,
-    updatedAt: new Date(),
-  };
+): Promise<ClientSettings | null> => {
+  try {
+    // Prepare update data, filtering out undefined values
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (settings.creditLimit !== undefined) {
+      updateData.creditLimit = settings.creditLimit ? settings.creditLimit : null;
+    }
+    if (settings.paymentTerms !== undefined) {
+      updateData.paymentTerms = settings.paymentTerms;
+    }
+    if (settings.preferredPaymentMethod !== undefined) {
+      updateData.preferredPaymentMethod = settings.preferredPaymentMethod;
+    }
+    if (settings.billingContactId !== undefined) {
+      updateData.billingContactId = settings.billingContactId;
+    }
+    if (settings.billingDay !== undefined) {
+      updateData.billingDay = settings.billingDay;
+    }
+    if (settings.taxExempt !== undefined) {
+      updateData.taxExempt = settings.taxExempt;
+    }
+
+    const result = await db
+      .update(organizations)
+      .set(updateData)
+      .where(
+        and(
+          eq(organizations.id, organizationId),
+          eq(organizations.isDeleted, false)
+        )
+      )
+      .returning({
+        id: organizations.id,
+        creditLimit: organizations.creditLimit,
+        paymentTerms: organizations.paymentTerms,
+        preferredPaymentMethod: organizations.preferredPaymentMethod,
+        billingContactId: organizations.billingContactId,
+        billingDay: organizations.billingDay,
+        taxExempt: organizations.taxExempt,
+      });
+
+    if (!result || result.length === 0) {
+      return null;
+    }
+
+    const client = result[0];
+    if (!client) {
+      return null;
+    }
+    
+    return {
+      id: client.id,
+      creditLimit: client.creditLimit?.toString() || null,
+      paymentTerms: client.paymentTerms || null,
+      preferredPaymentMethod: client.preferredPaymentMethod || null,
+      billingContactId: client.billingContactId || null,
+      billingDay: client.billingDay || null,
+      taxExempt: client.taxExempt || false,
+    };
+  } catch (error) {
+    console.error("Error updating client settings:", error);
+    throw error;
+  }
 };
