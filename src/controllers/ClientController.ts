@@ -1,4 +1,6 @@
 import type { Request, Response } from "express";
+// Import client types for better type safety
+// import type { ... } from "../types/client.types.js";
 
 // Helper function to validate organization access
 const validateUserAccess = (req: Request, res: Response): string | null => {
@@ -35,7 +37,9 @@ import {
   deleteClientNote,
   getClientKPIs,
   getClientTypes,
+  getClientTypeById,
   getIndustryClassifications,
+  getIndustryClassificationById,
   createClientType,
   createIndustryClassification,
   updateClientType,
@@ -44,6 +48,7 @@ import {
   deleteIndustryClassification,
   getDocumentCategories,
   getDocumentCategories2,
+  getDocumentCategoryById,
   createDocumentCategory,
   updateDocumentCategory,
   deleteDocumentCategory,
@@ -851,7 +856,9 @@ export const deleteClientContactHandler = async (
 export const getClientNotesHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+    const offset = (page - 1) * limit;
 
     if (!id) {
       return res
@@ -859,12 +866,19 @@ export const getClientNotesHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Client ID is required" });
     }
 
-    const notes = await getClientNotes(id, limit);
+    const notes = await getClientNotes(id, offset, limit);
 
     logger.info("Client notes fetched successfully");
     return res.status(200).json({
       success: true,
-      data: notes,
+      data: notes.notes,
+      total: notes.totalCount,
+      pagination: {
+        page,
+        limit,
+        total: notes.totalCount,
+        totalPages: Math.ceil(notes.totalCount / limit),
+      },
     });
   } catch (error) {
     logger.logApiError("Error fetching notes", error, req);
@@ -1045,6 +1059,49 @@ export const getClientTypesHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch client types",
+    });
+  }
+};
+
+export const getClientTypeByIdHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client type ID is required",
+      });
+    }
+
+    const clientTypeId = parseInt(id);
+
+    if (isNaN(clientTypeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client type ID",
+      });
+    }
+
+    const clientType = await getClientTypeById(clientTypeId);
+
+    if (!clientType) {
+      return res.status(404).json({
+        success: false,
+        message: "Client type not found",
+      });
+    }
+
+    logger.info("Client type fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: clientType,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching client type", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch client type",
     });
   }
 };
@@ -1272,6 +1329,52 @@ export const getIndustryClassificationsHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to fetch industry classifications",
+    });
+  }
+};
+
+export const getIndustryClassificationByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Industry classification ID is required",
+      });
+    }
+
+    const industryId = parseInt(id);
+
+    if (isNaN(industryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid industry classification ID",
+      });
+    }
+
+    const industry = await getIndustryClassificationById(industryId);
+
+    if (!industry) {
+      return res.status(404).json({
+        success: false,
+        message: "Industry classification not found",
+      });
+    }
+
+    logger.info("Industry classification fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: industry,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching industry classification", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch industry classification",
     });
   }
 };
@@ -1531,6 +1634,52 @@ export const getDocumentCategoriesHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to fetch document categories",
+    });
+  }
+};
+
+export const getDocumentCategoryByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Document category ID is required",
+      });
+    }
+
+    const categoryId = parseInt(id);
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document category ID",
+      });
+    }
+
+    const category = await getDocumentCategoryById(categoryId);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Document category not found",
+      });
+    }
+
+    logger.info("Document category fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching document category", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch document category",
     });
   }
 };
@@ -1849,7 +1998,9 @@ export const getClientDocumentsHandler = async (
 ) => {
   try {
     const { id: organizationId } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
 
     if (!organizationId) {
       return res.status(400).json({
@@ -1858,13 +2009,19 @@ export const getClientDocumentsHandler = async (
       });
     }
 
-    const documents = await getClientDocuments(organizationId, limit);
+    const documents = await getClientDocuments(organizationId, offset, limit);
 
     logger.info("Client documents fetched successfully");
     return res.status(200).json({
       success: true,
-      data: documents,
+      data: documents.documents,
       total: documents.totalCount,
+      pagination: {
+        page,
+        limit,
+        total: documents.totalCount,
+        totalPages: Math.ceil(documents.totalCount / limit),
+      },
     });
   } catch (error) {
     logger.logApiError("Error fetching client documents", error, req);

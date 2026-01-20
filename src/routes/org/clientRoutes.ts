@@ -18,14 +18,17 @@ import {
   deleteClientNoteHandler,
   getClientKPIsHandler,
   getClientTypesHandler,
+  getClientTypeByIdHandler,
   createClientTypeHandler,
   updateClientTypeHandler,
   deleteClientTypeHandler,
   getIndustryClassificationsHandler,
+  getIndustryClassificationByIdHandler,
   createIndustryClassificationHandler,
   updateIndustryClassificationHandler,
   deleteIndustryClassificationHandler,
   getDocumentCategoriesHandler,
+  getDocumentCategoryByIdHandler,
   createDocumentCategoryHandler,
   updateDocumentCategoryHandler,
   deleteDocumentCategoryHandler,
@@ -61,10 +64,13 @@ import {
   updateClientNoteSchema,
   deleteClientNoteSchema,
   createClientTypeSchema,
+  getClientTypeByIdSchema,
   updateClientTypeSchema,
   createIndustryClassificationSchema,
+  getIndustryClassificationByIdSchema,
   updateIndustryClassificationSchema,
   createDocumentCategorySchema,
+  getDocumentCategoryByIdSchema,
   updateDocumentCategorySchema,
   deleteDocumentCategorySchema,
   assignDocumentCategoriesSchema,
@@ -196,6 +202,7 @@ router
 
 router
   .route("/client-types/:id")
+  .get(validate(getClientTypeByIdSchema), getClientTypeByIdHandler)
   .put(validate(updateClientTypeSchema), updateClientTypeHandler)
   .delete(deleteClientTypeHandler);
 
@@ -209,6 +216,7 @@ router
 
 router
   .route("/industry-classifications/:id")
+  .get(validate(getIndustryClassificationByIdSchema), getIndustryClassificationByIdHandler)
   .put(
     validate(updateIndustryClassificationSchema),
     updateIndustryClassificationHandler
@@ -326,6 +334,7 @@ router
 
 router
   .route("/document-categories/:id")
+  .get(validate(getDocumentCategoryByIdSchema), getDocumentCategoryByIdHandler)
   .put(validate(updateDocumentCategorySchema), updateDocumentCategoryHandler)
   .delete(
     validate(deleteDocumentCategorySchema),

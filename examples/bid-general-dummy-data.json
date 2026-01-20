@@ -1,0 +1,175 @@
+{
+  "organizationId": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "HVAC System Installation - Office Building Renovation",
+  "jobType": "general",
+  "status": "draft",
+  "priority": "high",
+  "projectName": "Downtown Office Complex - HVAC Upgrade",
+  "siteAddress": "123 Main Street, Suite 500, Downtown District",
+  "buildingSuiteNumber": "Building A, Suite 500",
+  "acrossValuations": "Multiple floor renovation project",
+  "scopeOfWork": "Complete HVAC system installation including ductwork, units, and controls for 5,000 sq ft office space. Includes removal of existing system, installation of new energy-efficient units, and integration with building management system.",
+  "specialRequirements": "Work must be completed during off-hours (6 PM - 6 AM). All equipment must meet LEED certification standards. Noise levels must not exceed 45 dB during operation.",
+  "description": "This project involves the complete replacement of the existing HVAC system in a multi-tenant office building. The new system will provide improved energy efficiency, better climate control, and reduced operating costs.",
+  "startDate": "2024-03-01",
+  "endDate": "2024-04-15",
+  "plannedStartDate": "2024-03-01",
+  "estimatedCompletion": "2024-04-15",
+  "expiresDate": "2024-02-28",
+  "removalDate": "2024-05-01",
+  "bidAmount": "125000.00",
+  "estimatedDuration": 45,
+  "profitMargin": "25.50",
+  "expiresIn": 30,
+  "paymentTerms": "Net 30 days. 50% deposit upon acceptance, 25% at midpoint, 25% upon completion and inspection.",
+  "warrantyPeriod": "2 years",
+  "warrantyPeriodLabor": "2 years",
+  "warrantyDetails": "Full warranty on all equipment and labor. Includes parts and service for 24 months from completion date. Extended warranty available for additional cost.",
+  "specialTerms": "Client responsible for providing adequate electrical service. Building access must be available during agreed-upon hours. Weather delays may extend completion date.",
+  "exclusions": "Electrical upgrades beyond standard installation. Structural modifications. Removal of hazardous materials (asbestos, lead paint).",
+  "proposalBasis": "Fixed price proposal based on specifications provided. Valid for 30 days from proposal date.",
+  "referenceDate": "2024-01-15",
+  "templateSelection": "Standard Commercial HVAC Installation",
+  "supervisorManager": 1,
+  "primaryTechnicianId": 5,
+  "assignedTo": "660e8400-e29b-41d4-a716-446655440001",
+  "qtyNumber": "QTY-2024-001",
+  "marked": "URGENT",
+  "convertToJob": false,
+  "financialBreakdown": {
+    "materialsEquipment": "75000.00",
+    "labor": "35000.00",
+    "travel": "5000.00",
+    "operatingExpenses": "10000.00",
+    "totalCost": "125000.00"
+  },
+  "operatingExpenses": {
+    "enabled": true,
+    "grossRevenuePreviousYear": "5000000.00",
+    "currentBidAmount": "125000.00",
+    "operatingCostPreviousYear": "3500000.00",
+    "inflationAdjustedOperatingCost": "3675000.00",
+    "inflationRate": "2.50",
+    "utilizationPercentage": "75.00",
+    "calculatedOperatingCost": "10000.00",
+    "applyMarkup": true,
+    "markupPercentage": "15.00",
+    "operatingPrice": "11500.00"
+  },
+  "materials": [
+    {
+      "description": "HVAC Unit - 5 Ton Split System",
+      "quantity": "2",
+      "unitCost": "3500.00",
+      "markup": "20.00",
+      "totalCost": "8400.00"
+    },
+    {
+      "description": "Ductwork - Galvanized Steel, 12\" x 8\"",
+      "quantity": "500",
+      "unitCost": "25.00",
+      "markup": "15.00",
+      "totalCost": "14375.00"
+    },
+    {
+      "description": "Thermostats - Programmable Digital",
+      "quantity": "10",
+      "unitCost": "150.00",
+      "markup": "25.00",
+      "totalCost": "1875.00"
+    },
+    {
+      "description": "Refrigerant Lines - Copper, 3/8\" and 1/4\"",
+      "quantity": "200",
+      "unitCost": "8.50",
+      "markup": "20.00",
+      "totalCost": "2040.00"
+    },
+    {
+      "description": "Insulation - Duct Wrap, R-6",
+      "quantity": "1000",
+      "unitCost": "2.50",
+      "markup": "15.00",
+      "totalCost": "2875.00"
+    },
+    {
+      "description": "Electrical Components - Disconnects, Breakers, Wire",
+      "quantity": "1",
+      "unitCost": "2500.00",
+      "markup": "18.00",
+      "totalCost": "2950.00"
+    },
+    {
+      "description": "Mounting Hardware and Fasteners",
+      "quantity": "1",
+      "unitCost": "500.00",
+      "markup": "10.00",
+      "totalCost": "550.00"
+    }
+  ],
+  "laborAndTravel": {
+    "labor": [
+      {
+        "employeeId": 5,
+        "quantity": 2,
+        "days": 15,
+        "hoursPerDay": "8.00",
+        "totalHours": "240.00",
+        "costRate": "45.00",
+        "billableRate": "75.00",
+        "totalCost": "10800.00",
+        "totalPrice": "18000.00"
+      },
+      {
+        "employeeId": 8,
+        "quantity": 1,
+        "days": 20,
+        "hoursPerDay": "8.00",
+        "totalHours": "160.00",
+        "costRate": "55.00",
+        "billableRate": "90.00",
+        "totalCost": "8800.00",
+        "totalPrice": "14400.00"
+      },
+      {
+        "employeeId": 12,
+        "quantity": 1,
+        "days": 10,
+        "hoursPerDay": "6.00",
+        "totalHours": "60.00",
+        "costRate": "35.00",
+        "billableRate": "60.00",
+        "totalCost": "2100.00",
+        "totalPrice": "3600.00"
+      }
+    ],
+    "travel": [
+      {
+        "vehicleName": "Service Van 1",
+        "roundTripMiles": "50.00",
+        "mileageRate": "0.65",
+        "vehicleDayRate": "75.00",
+        "days": 15,
+        "mileageCost": "32.50",
+        "vehicleCost": "1125.00",
+        "markup": "10.00",
+        "totalCost": "1157.50",
+        "totalPrice": "1273.25"
+      },
+      {
+        "vehicleName": "Truck 2",
+        "roundTripMiles": "50.00",
+        "mileageRate": "0.75",
+        "vehicleDayRate": "100.00",
+        "days": 20,
+        "mileageCost": "37.50",
+        "vehicleCost": "2000.00",
+        "markup": "12.00",
+        "totalCost": "2037.50",
+        "totalPrice": "2282.00"
+      }
+    ]
+  }
+}
+
+

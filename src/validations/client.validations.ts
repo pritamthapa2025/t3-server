@@ -577,6 +577,15 @@ export const createDocumentCategorySchema = z.object({
   }),
 });
 
+export const getDocumentCategoryByIdSchema = z.object({
+  params: z.object({
+    id: z
+      .string()
+      .regex(/^\d+$/, "Document category ID must be a number")
+      .transform((val) => parseInt(val)),
+  }),
+});
+
 export const updateDocumentCategorySchema = z.object({
   params: z.object({
     id: z
@@ -671,6 +680,12 @@ export const createClientTypeSchema = z.object({
   }),
 });
 
+export const getClientTypeByIdSchema = z.object({
+  params: z.object({
+    id: z.string().transform((val) => parseInt(val)),
+  }),
+});
+
 export const updateClientTypeSchema = z.object({
   params: z.object({
     id: z.string().transform((val) => parseInt(val)),
@@ -705,6 +720,12 @@ export const createIndustryClassificationSchema = z.object({
       .pipe(z.number().int())
       .default(0)
       .optional(),
+  }),
+});
+
+export const getIndustryClassificationByIdSchema = z.object({
+  params: z.object({
+    id: z.string().transform((val) => parseInt(val)),
   }),
 });
 
