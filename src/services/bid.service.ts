@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, max, sql, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, asc, max, sql, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   bidsTable,
@@ -509,6 +509,16 @@ export const getBidMaterials = async (
   return materials;
 };
 
+export const getBidMaterialById = async (materialId: string, _organizationId: string) => {
+  const [material] = await db
+    .select()
+    .from(bidMaterials)
+    .where(
+      and(eq(bidMaterials.id, materialId), eq(bidMaterials.isDeleted, false))
+    );
+  return material || null;
+};
+
 export const createBidMaterial = async (data: {
   bidId: string;
   description: string;
@@ -671,6 +681,55 @@ export const getBidTravel = async (bidLaborId: string) => {
       and(eq(bidTravel.bidLaborId, bidLaborId), eq(bidTravel.isDeleted, false))
     );
   return travel;
+};
+
+export const getAllBidTravel = async (bidId: string) => {
+  try {
+    // First get all labor entries for this bid
+    const laborEntries = await db
+      .select({
+        id: bidLabor.id,
+        positionId: bidLabor.positionId,
+      })
+      .from(bidLabor)
+      .where(
+        and(eq(bidLabor.bidId, bidId), eq(bidLabor.isDeleted, false))
+      );
+
+    if (laborEntries.length === 0) {
+      return []; // No labor entries, so no travel entries
+    }
+
+    // Get all travel entries for these labor entries
+    const laborIds = laborEntries.map((labor) => labor.id);
+    
+    // Use simple select() to get all columns and avoid field-specific issues
+    const travel = await db
+      .select()
+      .from(bidTravel)
+      .where(
+        and(
+          inArray(bidTravel.bidLaborId, laborIds),
+          eq(bidTravel.isDeleted, false)
+        )
+      )
+      .orderBy(asc(bidTravel.createdAt));
+
+    return travel;
+  } catch (error) {
+    console.error('Error in getAllBidTravel:', error);
+    throw error; // Re-throw for proper error handling in controller
+  }
+};
+
+export const getBidTravelById = async (travelId: string) => {
+  const [travel] = await db
+    .select()
+    .from(bidTravel)
+    .where(
+      and(eq(bidTravel.id, travelId), eq(bidTravel.isDeleted, false))
+    );
+  return travel || null;
 };
 
 export const createBidTravel = async (data: {

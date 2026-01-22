@@ -242,7 +242,7 @@ class LRUCache {
 const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || "300000", 10); // Default: 5 minutes
 const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || "10000", 10); // Default: 10k entries
 const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== "false"; // Default enabled
-const DB_QUERY_TIMEOUT = parseInt(process.env.AUTH_DB_TIMEOUT || "60000", 10); // Default: 60 seconds
+const DB_QUERY_TIMEOUT = parseInt(process.env.AUTH_DB_TIMEOUT || "5000", 10); // Default: 5 seconds (fail fast)
 
 // Initialize optimized LRU cache
 const authCache = new LRUCache(MAX_CACHE_SIZE);
@@ -315,6 +315,19 @@ export const authenticate = async (
       });
     }
 
+    // Basic UUID format validation to prevent unnecessary database queries
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      logger.warn(`Invalid UUID format in token: ${userId}`, { 
+        method: req.method, 
+        url: req.originalUrl 
+      });
+      return res.status(401).json({
+        success: false,
+        message: "Authorization denied. Invalid user identifier format.",
+      });
+    }
+
     // Check cache first (if enabled)
     let user: Awaited<ReturnType<typeof getUserByIdForAuth>> | null;
     let dbTime = 0;
@@ -356,19 +369,32 @@ export const authenticate = async (
               req.originalUrl || req.url
             }]`
           );
-        } catch (dbError: any) {
-          dbTime = Date.now() - dbStart;
-          logger.error(
-            `Database query failed or timed out after ${dbTime}ms:`,
-            dbError
-          );
-          // Re-throw to be caught by outer catch block
-          throw new Error(
-            dbError.message?.includes("timeout")
-              ? "Database connection timeout. Please try again."
-              : "Database error during authentication"
-          );
-        }
+      } catch (dbError: any) {
+        dbTime = Date.now() - dbStart;
+        logger.error(
+          `Database query failed or timed out after ${dbTime}ms:`,
+          {
+            ...dbError,
+            userId,
+            method: req.method,
+            url: req.originalUrl,
+            userAgent: req.headers['user-agent'],
+            cacheEnabled: CACHE_ENABLED,
+            queryTimeout: DB_QUERY_TIMEOUT,
+            poolStatus: {
+              total: (req as any).__dbPoolTotal,
+              idle: (req as any).__dbPoolIdle,
+              waiting: (req as any).__dbPoolWaiting,
+            }
+          }
+        );
+        // Re-throw to be caught by outer catch block
+        throw new Error(
+          dbError.message?.includes("timeout")
+            ? "Database connection timeout. Please try again."
+            : "Database error during authentication"
+        );
+      }
       }
     } else {
       // Cache disabled - always fetch from DB with timeout
@@ -389,7 +415,15 @@ export const authenticate = async (
         dbTime = Date.now() - dbStart;
         logger.error(
           `Database query failed or timed out after ${dbTime}ms:`,
-          dbError
+          {
+            ...dbError,
+            userId,
+            method: req.method,
+            url: req.originalUrl,
+            userAgent: req.headers['user-agent'],
+            cacheEnabled: CACHE_ENABLED,
+            queryTimeout: DB_QUERY_TIMEOUT,
+          }
         );
         // Re-throw to be caught by outer catch block
         throw new Error(

@@ -8,17 +8,24 @@ import {
   getBidFinancialBreakdownHandler,
   updateBidFinancialBreakdownHandler,
   getBidMaterialsHandler,
+  getBidMaterialByIdHandler,
   createBidMaterialHandler,
   updateBidMaterialHandler,
   deleteBidMaterialHandler,
   getBidLaborHandler,
+  getBidLaborByIdHandler,
   createBidLaborHandler,
   updateBidLaborHandler,
   deleteBidLaborHandler,
   getBidTravelHandler,
+  getAllBidTravelHandler,
+  getBidTravelByIdHandler,
   createBidTravelHandler,
+  createBidTravelDirectHandler,
   updateBidTravelHandler,
+  updateBidTravelDirectHandler,
   deleteBidTravelHandler,
+  deleteBidTravelDirectHandler,
   createBulkLaborAndTravelHandler,
   getBidSurveyDataHandler,
   updateBidSurveyDataHandler,
@@ -53,17 +60,24 @@ import {
   deleteBidSchema,
   updateFinancialBreakdownSchema,
   getBidMaterialsSchema,
+  getBidMaterialByIdSchema,
   createBidMaterialSchema,
   updateBidMaterialSchema,
   deleteBidMaterialSchema,
   getBidLaborSchema,
+  getBidLaborByIdSchema,
   createBidLaborSchema,
   updateBidLaborSchema,
   deleteBidLaborSchema,
   getBidTravelSchema,
+  getAllBidTravelSchema,
+  getBidTravelByIdSchema,
   createBidTravelSchema,
+  createBidTravelDirectSchema,
   updateBidTravelSchema,
+  updateBidTravelDirectSchema,
   deleteBidTravelSchema,
+  deleteBidTravelDirectSchema,
   createBulkLaborAndTravelSchema,
   updateBidSurveyDataSchema,
   updateBidPlanSpecDataSchema,
@@ -147,6 +161,7 @@ router
 
 router
   .route("/bids/:bidId/materials/:materialId")
+  .get(validate(getBidMaterialByIdSchema), getBidMaterialByIdHandler)
   .put(validate(updateBidMaterialSchema), updateBidMaterialHandler)
   .delete(validate(deleteBidMaterialSchema), deleteBidMaterialHandler);
 
@@ -167,18 +182,32 @@ router
 
 router
   .route("/bids/:bidId/labor/:laborId")
+  .get(validate(getBidLaborByIdSchema), getBidLaborByIdHandler)
   .put(validate(updateBidLaborSchema), updateBidLaborHandler)
   .delete(validate(deleteBidLaborSchema), deleteBidLaborHandler);
 
 // Travel Routes
 
+// Get ALL travel entries for a bid (regardless of labor)
 router
   .route("/bids/:bidId/travel")
+  .get(validate(getAllBidTravelSchema), getAllBidTravelHandler)
+  .post(validate(createBidTravelDirectSchema), createBidTravelDirectHandler);
+
+router
+  .route("/bids/:bidId/travel/:travelId")
+  .get(validate(getBidTravelByIdSchema), getBidTravelByIdHandler)
+  .put(validate(updateBidTravelDirectSchema), updateBidTravelDirectHandler)
+  .delete(validate(deleteBidTravelDirectSchema), deleteBidTravelDirectHandler);
+
+// Travel for specific labor entry
+router
+  .route("/bids/:bidId/labor/:laborId/travel")
   .get(validate(getBidTravelSchema), getBidTravelHandler)
   .post(validate(createBidTravelSchema), createBidTravelHandler);
 
 router
-  .route("/bids/:bidId/travel/:travelId")
+  .route("/bids/:bidId/labor/:laborId/travel/:travelId")
   .put(validate(updateBidTravelSchema), updateBidTravelHandler)
   .delete(validate(deleteBidTravelSchema), deleteBidTravelHandler);
 

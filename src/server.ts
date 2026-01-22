@@ -2,6 +2,7 @@ import http from "http";
 import app from "./app.js";
 import { initDB, pool } from "./config/db.js";
 import redis from "./config/redis.js";
+import { warmupAuthCache, startAuthCacheRefresh } from "./utils/auth-warmup.js";
 
 import dotenv from "dotenv";
 
@@ -84,7 +85,15 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Initialize database connection before starting server
 initDB()
-  .then(() => {
+  .then(async () => {
+    // Warmup authentication cache with common users
+    try {
+      await warmupAuthCache();
+      startAuthCacheRefresh(30); // Refresh every 30 minutes
+    } catch (error) {
+      console.error("⚠️  Auth cache warmup failed (continuing anyway):", error);
+    }
+
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
     });

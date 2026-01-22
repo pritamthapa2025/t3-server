@@ -43,17 +43,33 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
   // Optimized connection pool for better performance  
-  max: 50, // Increased max connections to handle load spikes
-  min: 15, // Increased min connections to reduce connection overhead
-  idleTimeoutMillis: 45000, // Increased idle timeout
-  connectionTimeoutMillis: 60000, // Increased connection timeout to match auth timeout
-  // acquireTimeoutMillis not supported in this pool config - using connectionTimeoutMillis instead
+  max: 80, // Further increased for high concurrent auth requests
+  min: 20, // More idle connections ready
+  idleTimeoutMillis: 30000, // Reduced idle timeout to recycle connections faster
+  connectionTimeoutMillis: 10000, // Reduced - if can't get connection in 10s, fail fast
+  // Note: acquireTimeoutMillis not supported in pg Pool - using connectionTimeoutMillis instead
   query_timeout: 60000, // Query timeout increased to match auth timeout
   statement_timeout: 60000, // Statement timeout increased to match auth timeout
 });
 
 //  Create Drizzle ORM instance
 export const db = drizzle(pool);
+
+// Add connection pool monitoring
+pool.on('connect', (_client) => {
+  console.log(`🔗 New database connection established (Total: ${pool.totalCount}, Idle: ${pool.idleCount})`);
+});
+
+pool.on('error', (err) => {
+  console.error('🔥 Database pool error:', err);
+});
+
+// Log pool status periodically in development
+if (process.env.NODE_ENV === 'development') {
+  setInterval(() => {
+    console.log(`📊 DB Pool Status: Total: ${pool.totalCount}, Idle: ${pool.idleCount}, Waiting: ${pool.waitingCount}`);
+  }, 30000); // Every 30 seconds
+}
 
 export { pool };
 

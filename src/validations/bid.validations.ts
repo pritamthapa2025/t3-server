@@ -531,6 +531,13 @@ export const getBidMaterialsSchema = z.object({
   }),
 });
 
+export const getBidMaterialByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    materialId: uuidSchema,
+  }),
+});
+
 export const createBidMaterialSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
@@ -579,6 +586,13 @@ export const deleteBidMaterialSchema = z.object({
 export const getBidLaborSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
+  }),
+});
+
+export const getBidLaborByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    laborId: uuidSchema,
   }),
 });
 
@@ -643,11 +657,92 @@ export const deleteBidLaborSchema = z.object({
 export const getBidTravelSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
+    laborId: uuidSchema,
+  }),
+});
+
+export const getAllBidTravelSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const getBidTravelByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    travelId: uuidSchema,
+  }),
+});
+
+export const createBidTravelDirectSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    laborId: uuidSchema, // Which labor entry this travel belongs to
+    employeeName: z
+      .string()
+      .max(255, "Employee name is too long (maximum 255 characters)")
+      .optional(),
+    vehicleName: z
+      .string()
+      .max(255, "Vehicle name is too long (maximum 255 characters)")
+      .optional(),
+    roundTripMiles: numericStringSchema,
+    mileageRate: numericStringSchema,
+    vehicleDayRate: numericStringSchema,
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number"),
+    mileageCost: numericStringSchema,
+    vehicleCost: numericStringSchema,
+    markup: numericStringSchema.optional().default("0"),
+    totalCost: numericStringSchema,
+    totalPrice: numericStringSchema,
+  }),
+});
+
+export const updateBidTravelDirectSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    travelId: uuidSchema,
+  }),
+  body: z.object({
+    employeeName: z
+      .string()
+      .max(255, "Employee name is too long (maximum 255 characters)")
+      .optional(),
+    vehicleName: z
+      .string()
+      .max(255, "Vehicle name is too long (maximum 255 characters)")
+      .optional(),
+    roundTripMiles: numericStringSchema.optional(),
+    mileageRate: numericStringSchema.optional(),
+    vehicleDayRate: numericStringSchema.optional(),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .positive("Days must be a positive number")
+      .optional(),
+    mileageCost: numericStringSchema.optional(),
+    vehicleCost: numericStringSchema.optional(),
+    markup: numericStringSchema.optional(),
+    totalCost: numericStringSchema.optional(),
+    totalPrice: numericStringSchema.optional(),
+  }),
+});
+
+export const deleteBidTravelDirectSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    travelId: uuidSchema,
   }),
 });
 
 export const createBidTravelSchema = z.object({
   params: z.object({
+    bidId: uuidSchema,
     laborId: uuidSchema,
   }),
   body: z.object({
@@ -669,6 +764,7 @@ export const createBidTravelSchema = z.object({
 
 export const updateBidTravelSchema = z.object({
   params: z.object({
+    bidId: uuidSchema,
     laborId: uuidSchema,
     travelId: uuidSchema,
   }),
@@ -695,6 +791,7 @@ export const updateBidTravelSchema = z.object({
 
 export const deleteBidTravelSchema = z.object({
   params: z.object({
+    bidId: uuidSchema,
     laborId: uuidSchema,
     travelId: uuidSchema,
   }),
