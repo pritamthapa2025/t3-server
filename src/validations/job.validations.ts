@@ -68,11 +68,6 @@ export const getJobByIdSchema = z.object({
 
 export const createJobSchema = z.object({
   body: z.object({
-    name: z
-      .string()
-      .min(1, "Job name is required and cannot be empty")
-      .max(255, "Job name is too long (maximum 255 characters)")
-      .trim(),
     jobNumber: z
       .string()
       .max(100, "Job number is too long (maximum 100 characters)")
@@ -104,7 +99,6 @@ export const updateJobSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    name: z.string().min(1).max(255).trim().optional(),
     status: jobStatusEnum.optional(),
     priority: jobPriorityEnum.optional(),
     jobType: z.string().max(100).optional(),
@@ -627,6 +621,7 @@ export const getJobWithAllDataSchema = z.object({
     id: uuidSchema,
   }),
 });
+
 
 
 

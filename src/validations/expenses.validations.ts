@@ -120,6 +120,7 @@ const budgetPeriodEnum = z.enum([
 
 export const getExpenseCategoriesQuerySchema = z.object({
   query: z.object({
+    organizationId: uuidSchema,
     page: z
       .string()
       .optional()
@@ -168,6 +169,7 @@ export const getExpenseCategoriesQuerySchema = z.object({
 
 export const createExpenseCategorySchema = z.object({
   body: z.object({
+    organizationId: uuidSchema,
     name: z
       .string()
       .min(1, "Category name is required")
@@ -249,6 +251,7 @@ export const deleteExpenseCategorySchema = z.object({
 
 export const getExpensesQuerySchema = z.object({
   query: z.object({
+    organizationId: uuidSchema,
     page: z
       .string()
       .optional()
@@ -354,6 +357,7 @@ const expenseAllocationSchema = z.object({
 
 export const createExpenseSchema = z.object({
   body: z.object({
+    organizationId: uuidSchema,
     categoryId: uuidSchema,
     jobId: uuidSchema.optional(),
     bidId: uuidSchema.optional(),

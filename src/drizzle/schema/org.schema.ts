@@ -138,6 +138,7 @@ export const employees = org.table(
   (table) => [
     unique("unique_employee_id").on(table.employeeId),
     // Enhanced indexes
+    index("idx_employees_user_id").on(table.userId), // CRITICAL: Index for auth JOIN performance
     index("idx_employees_department").on(table.departmentId),
     index("idx_employees_position").on(table.positionId),
     index("idx_employees_status").on(table.status),

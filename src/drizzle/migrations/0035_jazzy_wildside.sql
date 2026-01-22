@@ -1,0 +1,1 @@
+ALTER TABLE "org"."jobs" DROP COLUMN "name";

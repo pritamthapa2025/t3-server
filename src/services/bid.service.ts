@@ -14,14 +14,14 @@ import {
   bidNotes,
   bidHistory,
 } from "../drizzle/schema/bids.schema.js";
-import { employees } from "../drizzle/schema/org.schema.js";
+import { employees, positions } from "../drizzle/schema/org.schema.js";
 
 // ============================
 // Main Bid Operations
 // ============================
 
 export const getBids = async (
-  organizationId: string,
+  organizationId: string | undefined,
   offset: number,
   limit: number,
   filters?: {
@@ -32,38 +32,28 @@ export const getBids = async (
     search?: string;
   }
 ) => {
-  let whereCondition = and(
-    eq(bidsTable.organizationId, organizationId),
-    eq(bidsTable.isDeleted, false)
-  );
+  // Build where conditions array - organizationId is optional
+  const whereConditions = [eq(bidsTable.isDeleted, false)];
+  
+  // If organizationId is provided, filter by it
+  if (organizationId) {
+    whereConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
 
   if (filters?.status) {
-    whereCondition = and(
-      whereCondition,
-      eq(bidsTable.status, filters.status as any)
-    );
+    whereConditions.push(eq(bidsTable.status, filters.status as any));
   }
   if (filters?.jobType) {
-    whereCondition = and(
-      whereCondition,
-      eq(bidsTable.jobType, filters.jobType as any)
-    );
+    whereConditions.push(eq(bidsTable.jobType, filters.jobType as any));
   }
   if (filters?.priority) {
-    whereCondition = and(
-      whereCondition,
-      eq(bidsTable.priority, filters.priority as any)
-    );
+    whereConditions.push(eq(bidsTable.priority, filters.priority as any));
   }
   if (filters?.assignedTo) {
-    whereCondition = and(
-      whereCondition,
-      eq(bidsTable.assignedTo, filters.assignedTo)
-    );
+    whereConditions.push(eq(bidsTable.assignedTo, filters.assignedTo));
   }
   if (filters?.search) {
-    whereCondition = and(
-      whereCondition,
+    whereConditions.push(
       or(
         ilike(bidsTable.title, `%${filters.search}%`),
         ilike(bidsTable.bidNumber, `%${filters.search}%`),
@@ -72,6 +62,9 @@ export const getBids = async (
       )!
     );
   }
+
+  // Always have at least isDeleted condition, so whereCondition is always defined
+  const whereCondition = and(...whereConditions);
 
   const result = await db
     .select()
@@ -107,6 +100,20 @@ export const getBidById = async (id: string, organizationId: string) => {
       and(
         eq(bidsTable.id, id),
         eq(bidsTable.organizationId, organizationId),
+        eq(bidsTable.isDeleted, false)
+      )
+    );
+  return bid || null;
+};
+
+// Simple version without organization validation - trusts bid ID access
+export const getBidByIdSimple = async (id: string) => {
+  const [bid] = await db
+    .select()
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.id, id),
         eq(bidsTable.isDeleted, false)
       )
     );
@@ -555,16 +562,48 @@ export const deleteBidMaterial = async (id: string, _organizationId: string) => 
 
 export const getBidLabor = async (bidId: string) => {
   const labor = await db
-    .select()
+    .select({
+      id: bidLabor.id,
+      bidId: bidLabor.bidId,
+      positionId: bidLabor.positionId,
+      positionName: positions.name,
+      days: bidLabor.days,
+      hoursPerDay: bidLabor.hoursPerDay,
+      totalHours: bidLabor.totalHours,
+      costRate: bidLabor.costRate,
+      billableRate: bidLabor.billableRate,
+      totalCost: bidLabor.totalCost,
+      totalPrice: bidLabor.totalPrice,
+      isDeleted: bidLabor.isDeleted,
+      createdAt: bidLabor.createdAt,
+      updatedAt: bidLabor.updatedAt,
+    })
     .from(bidLabor)
+    .leftJoin(positions, eq(bidLabor.positionId, positions.id))
     .where(and(eq(bidLabor.bidId, bidId), eq(bidLabor.isDeleted, false)));
   return labor;
 };
 
 export const getBidLaborById = async (laborId: string) => {
   const [labor] = await db
-    .select()
+    .select({
+      id: bidLabor.id,
+      bidId: bidLabor.bidId,
+      positionId: bidLabor.positionId,
+      positionName: positions.name,
+      days: bidLabor.days,
+      hoursPerDay: bidLabor.hoursPerDay,
+      totalHours: bidLabor.totalHours,
+      costRate: bidLabor.costRate,
+      billableRate: bidLabor.billableRate,
+      totalCost: bidLabor.totalCost,
+      totalPrice: bidLabor.totalPrice,
+      isDeleted: bidLabor.isDeleted,
+      createdAt: bidLabor.createdAt,
+      updatedAt: bidLabor.updatedAt,
+    })
     .from(bidLabor)
+    .leftJoin(positions, eq(bidLabor.positionId, positions.id))
     .where(and(eq(bidLabor.id, laborId), eq(bidLabor.isDeleted, false)));
   return labor || null;
 };

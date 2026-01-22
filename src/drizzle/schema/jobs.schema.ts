@@ -41,7 +41,6 @@ export const jobs: any = org.table(
       .references(() => bidsTable.id), // Reference to bid - organization and property can be derived from bid
 
     // Basic Info
-    name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     status: jobStatusEnum("status").notNull().default("planned"),
 

@@ -51,6 +51,7 @@ import {
 import {
   getBids,
   getBidById,
+  getBidByIdSimple,
   createBid,
   updateBid,
   deleteBid,
@@ -99,8 +100,14 @@ export const getBidsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    // Validate user access
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    // Get client organizationId from query parameter (optional)
+    // Note: organizationId in bids refers to CLIENT organizations (not T3)
+    // If not provided, returns all bids
+    const organizationId = req.query.organizationId as string | undefined;
 
     const offset = (page - 1) * limit;
 
@@ -141,10 +148,11 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    // Validate user access
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
-    const bid = await getBidById(id!, organizationId);
+    const bid = await getBidByIdSimple(id!);
 
     if (!bid) {
       return res.status(404).json({

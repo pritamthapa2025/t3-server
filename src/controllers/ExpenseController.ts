@@ -30,11 +30,11 @@ import {
 
 export const getExpenseCategoriesHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.query.organizationId as string;
     if (!organizationId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in query parameters.",
       });
     }
 
@@ -120,13 +120,13 @@ export const getExpenseCategoryByIdHandler = async (req: Request, res: Response)
 
 export const createExpenseCategoryHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
 
     if (!organizationId || !userId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in request body and user authentication required.",
       });
     }
 
@@ -254,11 +254,11 @@ export const deleteExpenseCategoryHandler = async (req: Request, res: Response) 
 
 export const getExpensesHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.query.organizationId as string;
     if (!organizationId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in query parameters.",
       });
     }
 
@@ -362,14 +362,14 @@ export const getExpenseByIdHandler = async (req: Request, res: Response) => {
 
 export const createExpenseHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
     const employeeId = req.user?.employeeId;
 
     if (!organizationId || !userId || !employeeId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Employee context required.",
+        message: "organizationId is required in request body and employee context required.",
       });
     }
 

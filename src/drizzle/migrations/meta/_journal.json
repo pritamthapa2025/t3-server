@@ -239,6 +239,20 @@
       "when": 1768820971643,
       "tag": "0033_boring_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1768911369158,
+      "tag": "0034_colorful_stingray",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1769059809362,
+      "tag": "0035_jazzy_wildside",
+      "breakpoints": true
     }
   ]
 }

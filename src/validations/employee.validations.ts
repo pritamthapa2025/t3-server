@@ -22,6 +22,16 @@ export const getEmployeesQuerySchema = z.object({
 export const getEmployeesSimpleQuerySchema = z.object({
   query: z.object({
     search: z.string().optional(),
+    positionId: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : undefined))
+      .pipe(z.number().int().positive().optional()),
+    roleId: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : undefined))
+      .pipe(z.number().int().positive().optional()),
   }),
 });
 

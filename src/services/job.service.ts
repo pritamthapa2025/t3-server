@@ -25,7 +25,6 @@ import {
 // ============================
 
 export const getJobs = async (
-  organizationId: string,
   offset: number,
   limit: number,
   filters?: {
@@ -53,14 +52,13 @@ export const getJobs = async (
     whereCondition = and(
       whereCondition,
       or(
-        ilike(jobs.name, `%${filters.search}%`),
         ilike(jobs.jobNumber, `%${filters.search}%`),
         ilike(jobs.description, `%${filters.search}%`)
       )
     );
   }
 
-  // Get jobs with bid organization filter
+  // Get all jobs without organization filter
   const jobsData = await db
     .select({
       job: jobs,
@@ -68,12 +66,7 @@ export const getJobs = async (
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        whereCondition,
-        eq(bidsTable.organizationId, organizationId)
-      )
-    )
+    .where(whereCondition)
     .orderBy(desc(jobs.createdAt))
     .limit(limit)
     .offset(offset);
@@ -83,19 +76,16 @@ export const getJobs = async (
     .select({ count: count() })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        whereCondition,
-        eq(bidsTable.organizationId, organizationId)
-      )
-    );
+    .where(whereCondition);
   
   const totalCount = totalCountResult[0]?.count || 0;
 
-  // Map jobs and add bid priority to each job
+  // Map jobs and add bid priority and name to each job
   const jobsList = jobsData.map(item => ({
     ...item.job,
     priority: item.bid.priority, // Use bid priority instead of job priority
+    name: item.bid.projectName, // Derive name from bid.projectName
+    organizationId: item.bid.organizationId, // Include organization info
   }));
   return {
     jobs: jobsList,
@@ -111,7 +101,7 @@ export const getJobs = async (
   };
 };
 
-export const getJobById = async (id: string, organizationId: string) => {
+export const getJobById = async (id: string) => {
   const [result] = await db
     .select({
       jobs: jobs,
@@ -122,20 +112,20 @@ export const getJobById = async (id: string, organizationId: string) => {
     .where(
       and(
         eq(jobs.id, id),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     );
   if (!result) return null;
-  // Return job with bid priority instead of job priority
+  // Return job with bid priority and name instead of job priority
   return {
     ...result.jobs,
     priority: result.bid.priority,
+    name: result.bid.projectName, // Derive name from bid.projectName
+    organizationId: result.bid.organizationId,
   };
 };
 
 export const createJob = async (data: {
-  name: string;
   status?: string;
   priority?: string;
   jobType?: string;
@@ -180,7 +170,6 @@ export const createJob = async (data: {
     .insert(jobs)
     .values({
       jobNumber,
-      name: data.name,
       createdBy: data.createdBy,
       status: (data.status as any) || "planned",
       jobType: data.jobType,
@@ -219,18 +208,17 @@ export const createJob = async (data: {
     .where(eq(bidsTable.id, data.bidId))
     .limit(1);
   
-  // Return job with bid priority
+  // Return job with bid priority and name
   return {
     ...job,
     priority: updatedBid?.priority,
+    name: updatedBid?.projectName, // Derive name from bid.projectName
   };
 };
 
 export const updateJob = async (
   id: string,
-  organizationId: string,
   data: Partial<{
-    name: string;
     status: string;
     priority: string;
     jobType: string;
@@ -255,13 +243,13 @@ export const updateJob = async (
     .select({
       job: jobs,
       bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
         eq(jobs.id, id),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     )
@@ -274,7 +262,7 @@ export const updateJob = async (
   // Update bid priority if provided
   if (data.priority !== undefined) {
     const { updateBid } = await import("./bid.service.js");
-    await updateBid(jobData.bidId, organizationId, { priority: data.priority });
+    await updateBid(jobData.bidId, jobData.organizationId, { priority: data.priority });
   }
 
   // Remove priority from data as it's not a job field anymore
@@ -298,12 +286,9 @@ export const updateJob = async (
         : undefined,
       updatedAt: new Date(),
     })
-    .from(bidsTable)
     .where(
       and(
         eq(jobs.id, id),
-        eq(jobs.bidId, bidsTable.id),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     )
@@ -318,26 +303,25 @@ export const updateJob = async (
     .where(eq(bidsTable.id, jobData.bidId))
     .limit(1);
 
-  // Return job with bid priority
+  // Return job with bid priority and name
   return {
     ...job,
     priority: updatedBid?.priority,
+    name: updatedBid?.title || updatedBid?.projectName || updatedBid?.bidNumber, // Derive name from bid
+    organizationId: jobData.organizationId,
   };
 };
 
-export const deleteJob = async (id: string, organizationId: string) => {
+export const deleteJob = async (id: string) => {
   const [job] = await db
     .update(jobs)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .from(bidsTable)
     .where(
       and(
         eq(jobs.id, id),
-        eq(jobs.bidId, bidsTable.id),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     )
@@ -349,7 +333,7 @@ export const deleteJob = async (id: string, organizationId: string) => {
 // Job Team Members
 // ============================
 
-export const getJobTeamMembers = async (jobId: string, organizationId: string) => {
+export const getJobTeamMembers = async (jobId: string) => {
   const members = await db
     .select({
       teamMember: jobTeamMembers,
@@ -360,11 +344,9 @@ export const getJobTeamMembers = async (jobId: string, organizationId: string) =
     .leftJoin(employees, eq(jobTeamMembers.employeeId, employees.id))
     .leftJoin(positions, eq(jobTeamMembers.positionId, positions.id))
     .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
         eq(jobTeamMembers.jobId, jobId),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobTeamMembers.isActive, true),
         eq(jobs.isDeleted, false)
       )
@@ -391,8 +373,7 @@ export const addJobTeamMember = async (data: {
 
 export const removeJobTeamMember = async (
   jobId: string,
-  employeeId: number,
-  organizationId: string
+  employeeId: number
 ) => {
   const [member] = await db
     .update(jobTeamMembers)
@@ -400,14 +381,10 @@ export const removeJobTeamMember = async (
       isActive: false,
       removedDate: new Date().toISOString().split("T")[0],
     })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
         eq(jobTeamMembers.jobId, jobId),
         eq(jobTeamMembers.employeeId, employeeId),
-        eq(jobs.id, jobId),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobTeamMembers.isActive, true)
       )
     )
@@ -419,19 +396,19 @@ export const removeJobTeamMember = async (
 // Job with All Data (from Bid)
 // ============================
 
-export const getJobWithAllData = async (jobId: string, organizationId: string) => {
+export const getJobWithAllData = async (jobId: string) => {
   // Get job with bid info
   const [jobData] = await db
     .select({
       job: jobs,
       bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
         eq(jobs.id, jobId),
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false)
       )
     );
@@ -441,9 +418,9 @@ export const getJobWithAllData = async (jobId: string, organizationId: string) =
   }
 
   // Get team members (job-specific)
-  const teamMembers = await getJobTeamMembers(jobId, organizationId);
+  const teamMembers = await getJobTeamMembers(jobId);
 
-  // Fetch all data from bid tables using job.bidId
+  // Fetch all data from bid tables using job.bidId and organizationId
   const [
     financialBreakdown,
     materials,
@@ -453,13 +430,13 @@ export const getJobWithAllData = async (jobId: string, organizationId: string) =
     notes,
     history
   ] = await Promise.all([
-    getBidFinancialBreakdown(jobData.bidId, organizationId),
-    getBidMaterials(jobData.bidId, organizationId),
+    getBidFinancialBreakdown(jobData.bidId, jobData.organizationId),
+    getBidMaterials(jobData.bidId, jobData.organizationId),
     getBidLabor(jobData.bidId),
-    getBidOperatingExpenses(jobData.bidId, organizationId),
-    getBidTimeline(jobData.bidId, organizationId),
-    getBidNotes(jobData.bidId, organizationId),
-    getBidHistory(jobData.bidId, organizationId)
+    getBidOperatingExpenses(jobData.bidId, jobData.organizationId),
+    getBidTimeline(jobData.bidId, jobData.organizationId),
+    getBidNotes(jobData.bidId, jobData.organizationId),
+    getBidHistory(jobData.bidId, jobData.organizationId)
   ]);
 
   // Get travel for each labor entry
@@ -478,6 +455,8 @@ export const getJobWithAllData = async (jobId: string, organizationId: string) =
     job: {
       ...jobData.job,
       priority: bid?.priority, // Use bid priority instead of job priority
+      name: bid?.projectName, // Derive name from bid.projectName
+      organizationId: jobData.organizationId,
     },
     teamMembers,
     financialBreakdown,
@@ -497,20 +476,40 @@ export const getJobWithAllData = async (jobId: string, organizationId: string) =
 
 const generateJobNumber = async (organizationId: string): Promise<string> => {
   try {
-    // Use atomic counter from organization
-    const result = await db.execute(
-      sql`SELECT org.get_next_counter(${organizationId}, 'job') as next_number`
+    // Try to use atomic database function first
+    const result = await db.execute<{ next_value: string }>(
+      sql.raw(`SELECT org.get_next_counter('${organizationId}'::uuid, 'job_number') as next_value`)
     );
     
-    const nextNumber = (result as any)[0]?.next_number;
-    if (!nextNumber) {
-      throw new Error("Failed to generate job number");
-    }
-
+    const nextNumber = parseInt(result.rows[0]?.next_value || "1");
     return `JOB-${nextNumber.toString().padStart(5, "0")}`;
   } catch (error) {
-    console.error("Error generating job number:", error);
-    throw new Error("Failed to generate job number");
+    // Fallback to manual counter if database function doesn't exist
+    console.warn("Counter function not found, using fallback method:", error);
+    
+    // Get the highest existing job number for this organization
+    const maxResult = await db
+      .select({ maxJobNumber: sql<string>`MAX(${jobs.jobNumber})` })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(
+          eq(bidsTable.organizationId, organizationId),
+          eq(jobs.isDeleted, false),
+          sql`${jobs.jobNumber} ~ '^JOB-\\d+$'` // Only count properly formatted job numbers
+        )
+      );
+    
+    let nextNumber = 1;
+    const maxJobNumber = maxResult[0]?.maxJobNumber;
+    if (maxJobNumber) {
+      const match = maxJobNumber.match(/^JOB-(\d+)$/);
+      if (match && match[1]) {
+        nextNumber = parseInt(match[1], 10) + 1;
+      }
+    }
+    
+    return `JOB-${nextNumber.toString().padStart(5, "0")}`;
   }
 };
 
@@ -556,12 +555,13 @@ export const getJobFinancialSummary = async (jobId: string, organizationId: stri
 
   if (!result[0]) return null;
 
-  // Include bid priority in job object for consistency
+  // Include bid priority and name in job object for consistency
   return {
     ...result[0],
     job: {
       ...result[0].job,
       priority: result[0].bid.priority,
+      name: result[0].bid.projectName, // Derive name from bid.projectName
     },
   };
 };
@@ -577,7 +577,7 @@ export const updateJobFinancialSummary = async (
   }
 ) => {
   // Get the job's bid
-  const jobData = await getJobById(jobId, organizationId);
+  const jobData = await getJobById(jobId);
   if (!jobData) return null;
 
   // Update the bid's financial breakdown
@@ -906,3 +906,4 @@ export const createJobDocument = async (data: {
 export const deleteJobDocument = async (id: string, _jobId: string, _organizationId: string) => {
   return { id, isDeleted: true, updatedAt: new Date() };
 };
+

@@ -63,6 +63,7 @@ const timelineStatusEnum = z.enum(
 
 export const getBidsQuerySchema = z.object({
   query: z.object({
+    organizationId: uuidSchema.optional(), // Optional: Client organization ID (not T3). If not provided, returns all bids
     page: z
       .string()
       .optional()
@@ -83,6 +84,7 @@ export const getBidsQuerySchema = z.object({
     jobType: bidJobTypeEnum.optional(),
     priority: bidPriorityEnum.optional(),
     assignedTo: uuidSchema.optional(),
+    search: z.string().optional(),
   }),
 });
 

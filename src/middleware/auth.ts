@@ -3,6 +3,20 @@ import { verifyToken } from "../utils/jwt.js";
 import { getUserByIdForAuth } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
 
+// Timeout wrapper for database queries to prevent hanging
+const withTimeout = <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+    ),
+  ]);
+};
+
 // Optimized LRU (Least Recently Used) cache with automatic eviction
 // Configurable via environment variables
 interface CachedUser {
@@ -228,6 +242,7 @@ class LRUCache {
 const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || "300000", 10); // Default: 5 minutes
 const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || "10000", 10); // Default: 10k entries
 const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== "false"; // Default enabled
+const DB_QUERY_TIMEOUT = parseInt(process.env.AUTH_DB_TIMEOUT || "15000", 10); // Default: 15 seconds
 
 // Initialize optimized LRU cache
 const authCache = new LRUCache(MAX_CACHE_SIZE);
@@ -318,35 +333,71 @@ export const authenticate = async (
           }]`
         );
       } else {
-        // Fetch user from database
+        // Fetch user from database with timeout
         const dbStart = Date.now();
-        user = await getUserByIdForAuth(userId);
-        dbTime = Date.now() - dbStart;
+        try {
+          user = await withTimeout(
+            getUserByIdForAuth(userId),
+            DB_QUERY_TIMEOUT,
+            "Database query timeout"
+          );
+          dbTime = Date.now() - dbStart;
 
-        if (user) {
-          // Cache the user data (LRU will auto-evict if needed)
-          authCache.set(userId, {
-            user,
-            expiresAt: Date.now() + CACHE_TTL,
-            lastAccessed: Date.now(),
-          });
+          if (user) {
+            // Cache the user data (LRU will auto-evict if needed)
+            authCache.set(userId, {
+              user,
+              expiresAt: Date.now() + CACHE_TTL,
+              lastAccessed: Date.now(),
+            });
+          }
+          console.log(
+            `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+              req.originalUrl || req.url
+            }]`
+          );
+        } catch (dbError: any) {
+          dbTime = Date.now() - dbStart;
+          logger.error(
+            `Database query failed or timed out after ${dbTime}ms:`,
+            dbError
+          );
+          // Re-throw to be caught by outer catch block
+          throw new Error(
+            dbError.message?.includes("timeout")
+              ? "Database connection timeout. Please try again."
+              : "Database error during authentication"
+          );
         }
+      }
+    } else {
+      // Cache disabled - always fetch from DB with timeout
+      const dbStart = Date.now();
+      try {
+        user = await withTimeout(
+          getUserByIdForAuth(userId),
+          DB_QUERY_TIMEOUT,
+          `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`
+        );
+        dbTime = Date.now() - dbStart;
         console.log(
           `✅ Auth: from db (${dbTime}ms) [${req.method} ${
             req.originalUrl || req.url
           }]`
         );
+      } catch (dbError: any) {
+        dbTime = Date.now() - dbStart;
+        logger.error(
+          `Database query failed or timed out after ${dbTime}ms:`,
+          dbError
+        );
+        // Re-throw to be caught by outer catch block
+        throw new Error(
+          dbError.message?.includes("timeout")
+            ? "Database connection timeout. Please try again."
+            : "Database error during authentication"
+        );
       }
-    } else {
-      // Cache disabled - always fetch from DB
-      const dbStart = Date.now();
-      user = await getUserByIdForAuth(userId);
-      dbTime = Date.now() - dbStart;
-      console.log(
-        `✅ Auth: from db (${dbTime}ms) [${req.method} ${
-          req.originalUrl || req.url
-        }]`
-      );
     }
 
     if (!user) {
@@ -386,11 +437,21 @@ export const authenticate = async (
 
     // Proceed to next middleware/route handler
     next();
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Authentication error", error, req);
-    return res.status(500).json({
+    
+    // Provide more specific error messages
+    const errorMessage = error?.message || String(error);
+    const isTimeout = errorMessage.includes("timeout");
+    const isDatabaseError = errorMessage.includes("Database");
+    
+    return res.status(isTimeout || isDatabaseError ? 503 : 500).json({
       success: false,
-      message: "Authentication failed",
+      message: isTimeout
+        ? "Authentication service temporarily unavailable. Please try again."
+        : isDatabaseError
+        ? errorMessage
+        : "Authentication failed",
     });
   }
 };

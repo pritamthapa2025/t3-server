@@ -14,11 +14,11 @@ import { getOrganizationById } from "../services/client.service.js";
  */
 export const getInvoices = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.query.organizationId as string;
     if (!organizationId) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
-        message: "Organization access required",
+        message: "organizationId is required in query parameters",
       });
     }
 
@@ -45,11 +45,11 @@ export const getInvoices = async (req: Request, res: Response) => {
  */
 export const getInvoiceById = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.query.organizationId as string;
     if (!organizationId) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
-        message: "Organization access required",
+        message: "organizationId is required in query parameters",
       });
     }
 
@@ -90,13 +90,13 @@ export const getInvoiceById = async (req: Request, res: Response) => {
  */
 export const createInvoice = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
     
     if (!organizationId || !userId) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
-        message: "Organization access required",
+        message: "organizationId is required in request body and user authentication required",
       });
     }
 

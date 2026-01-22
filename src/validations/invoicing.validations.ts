@@ -95,6 +95,7 @@ const lineItemSchema = z.object({
 
 // Get Invoices Query Schema
 export const getInvoicesQuerySchema = z.object({
+  organizationId: uuidString,
   page: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 1)),
   limit: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 10)),
   status: invoiceStatusEnum.optional(),
@@ -148,6 +149,7 @@ export const getInvoiceByIdQuerySchema = z.object({
 // Create Invoice Schema
 export const createInvoiceSchema = z.object({
   body: z.object({
+    organizationId: uuidString,
     clientId: uuidString,
     jobId: uuidString.optional(),
     bidId: uuidString.optional(),
@@ -425,6 +427,7 @@ export const applyCreditNoteSchema = z.object({
     notes: z.string().optional(),
   }),
 });
+
 
 
 

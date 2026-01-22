@@ -690,9 +690,14 @@ export const deleteEmployee = async (id: number) => {
   return employee || null;
 };
 
-export const getEmployeesSimple = async (search?: string) => {
+export const getEmployeesSimple = async (
+  search?: string,
+  positionId?: number,
+  roleId?: number
+) => {
   let whereConditions = [eq(employees.isDeleted, false)];
 
+  // Search filter
   if (search) {
     whereConditions.push(
       or(
@@ -703,6 +708,11 @@ export const getEmployeesSimple = async (search?: string) => {
     );
   }
 
+  // Position filter
+  if (positionId !== undefined) {
+    whereConditions.push(eq(employees.positionId, positionId));
+  }
+
   const result = await db
     .select({
       id: employees.id,
@@ -710,9 +720,12 @@ export const getEmployeesSimple = async (search?: string) => {
       status: employees.status,
       userId: users.id,
       fullName: users.fullName,
+      positionId: employees.positionId,
+      positionName: positions.name,
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
     .where(and(...whereConditions))
     .orderBy(users.fullName);
 
@@ -723,6 +736,7 @@ export const getEmployeesSimple = async (search?: string) => {
       ? await db
           .select({
             userId: userRoles.userId,
+            roleId: roles.id,
             roleName: roles.name,
           })
           .from(userRoles)
@@ -732,19 +746,38 @@ export const getEmployeesSimple = async (search?: string) => {
           )
       : [];
 
-  const rolesMap = new Map<string, string>();
+  const rolesMap = new Map<string, { id: number; name: string }>();
   for (const roleData of rolesData) {
     if (!rolesMap.has(roleData.userId)) {
-      rolesMap.set(roleData.userId, roleData.roleName);
+      rolesMap.set(roleData.userId, {
+        id: roleData.roleId,
+        name: roleData.roleName,
+      });
     }
   }
 
-  return result.map((emp) => ({
+  // Filter by roleId if specified
+  let filteredResult = result;
+  if (roleId !== undefined) {
+    filteredResult = result.filter((emp) => {
+      if (!emp.userId) return false;
+      const userRole = rolesMap.get(emp.userId);
+      return userRole && userRole.id === roleId;
+    });
+  }
+
+  return filteredResult.map((emp) => ({
     id: emp.id,
     employeeId: emp.employeeId,
     userId: emp.userId,
     name: emp.fullName,
-    role: emp.userId ? rolesMap.get(emp.userId) || null : null,
+    role: emp.userId ? rolesMap.get(emp.userId)?.name || null : null,
+    roleId: emp.userId ? rolesMap.get(emp.userId)?.id || null : null,
+    positionId: emp.positionId,
+    positionName: emp.positionName,
     status: emp.status || "available",
+    isAvailable: emp.status === "available", // Boolean flag for availability
   }));
 };
+
+

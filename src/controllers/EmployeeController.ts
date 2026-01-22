@@ -69,9 +69,11 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
 export const getEmployeesSimpleHandler = async (req: Request, res: Response) => {
   try {
     const search = req.query.search as string | undefined;
+    const positionId = req.query.positionId ? parseInt(req.query.positionId as string, 10) : undefined;
+    const roleId = req.query.roleId ? parseInt(req.query.roleId as string, 10) : undefined;
 
-    // Get simplified employee list (no pagination)
-    const employees = await getEmployeesSimple(search);
+    // Get simplified employee list with filters (no pagination)
+    const employees = await getEmployeesSimple(search, positionId, roleId);
 
     logger.info("Employees (simple) fetched successfully");
     return res.status(200).json({
