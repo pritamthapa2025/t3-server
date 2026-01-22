@@ -369,7 +369,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     const { bidNumber } = req.body;
 
     // Get original bid for history tracking
-    const originalBid = await getBidById(id!, organizationId);
+    const originalBid = await getBidById(id!);
     if (!originalBid) {
       return res.status(404).json({
         success: false,
@@ -1765,10 +1765,10 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
-    const bidData = await getBidWithAllData(id!, organizationId);
+    const bidData = await getBidWithAllData(id!);
 
     if (!bidData) {
       return res.status(404).json({

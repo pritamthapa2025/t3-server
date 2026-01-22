@@ -42,14 +42,14 @@ if (sslMode === "require" || sslMode === "prefer") {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
-  // Optimized connection pool for better performance
-  max: 25, // Increased max connections
-  min: 8, // Increased min connections to reduce connection overhead
+  // Optimized connection pool for better performance  
+  max: 50, // Increased max connections to handle load spikes
+  min: 15, // Increased min connections to reduce connection overhead
   idleTimeoutMillis: 45000, // Increased idle timeout
-  connectionTimeoutMillis: 30000, // Reduced connection timeout to fail faster
+  connectionTimeoutMillis: 60000, // Increased connection timeout to match auth timeout
   // acquireTimeoutMillis not supported in this pool config - using connectionTimeoutMillis instead
-  query_timeout: 25000, // Query timeout to prevent hanging queries
-  statement_timeout: 25000, // Statement timeout
+  query_timeout: 60000, // Query timeout increased to match auth timeout
+  statement_timeout: 60000, // Statement timeout increased to match auth timeout
 });
 
 //  Create Drizzle ORM instance

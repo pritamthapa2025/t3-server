@@ -242,7 +242,7 @@ class LRUCache {
 const CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL || "300000", 10); // Default: 5 minutes
 const MAX_CACHE_SIZE = parseInt(process.env.AUTH_CACHE_MAX_SIZE || "10000", 10); // Default: 10k entries
 const CACHE_ENABLED = process.env.AUTH_CACHE_ENABLED !== "false"; // Default enabled
-const DB_QUERY_TIMEOUT = parseInt(process.env.AUTH_DB_TIMEOUT || "15000", 10); // Default: 15 seconds
+const DB_QUERY_TIMEOUT = parseInt(process.env.AUTH_DB_TIMEOUT || "60000", 10); // Default: 60 seconds
 
 // Initialize optimized LRU cache
 const authCache = new LRUCache(MAX_CACHE_SIZE);

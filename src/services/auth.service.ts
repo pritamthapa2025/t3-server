@@ -43,21 +43,34 @@ export const getUserById = async (userId: string) => {
 
 // Lightweight user fetch for authentication (only needed fields, no password)
 export const getUserByIdForAuth = async (userId: string) => {
+  // Fast user-only query first (no JOIN)
   const [user] = await db
     .select({
       id: users.id,
       email: users.email,
       isActive: users.isActive,
       isDeleted: users.isDeleted,
-      // Employee context for internal T3 staff
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+
+  if (!user) return null;
+
+  // Only fetch employee data if user exists (separate fast query)
+  const [employee] = await db
+    .select({
       employeeId: employees.id,
       employeeNumber: employees.employeeId,
     })
-    .from(users)
-    .leftJoin(employees, eq(users.id, employees.userId))
-    .where(eq(users.id, userId));
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
 
-  return user || null;
+  return {
+    ...user,
+    employeeId: employee?.employeeId || null,
+    employeeNumber: employee?.employeeNumber || null,
+  };
 };
 
 // Full user fetch for profile (all fields except password)

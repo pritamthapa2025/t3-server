@@ -92,14 +92,13 @@ export const getBids = async (
   };
 };
 
-export const getBidById = async (id: string, organizationId: string) => {
+export const getBidById = async (id: string) => {
   const [bid] = await db
     .select()
     .from(bidsTable)
     .where(
       and(
         eq(bidsTable.id, id),
-        eq(bidsTable.organizationId, organizationId),
         eq(bidsTable.isDeleted, false)
       )
     );
@@ -425,10 +424,10 @@ export const updateBidFinancialBreakdown = async (
 
 export const getBidOperatingExpenses = async (
   bidId: string,
-  organizationId: string
+  _organizationId: string
 ) => {
-  // Verify bid belongs to organization
-  const bid = await getBidById(bidId, organizationId);
+  // Verify bid exists
+  const bid = await getBidById(bidId);
   if (!bid) {
     return null;
   }
@@ -462,8 +461,8 @@ export const updateBidOperatingExpenses = async (
     operatingPrice: string;
   }>
 ) => {
-  // Verify bid belongs to organization
-  const bid = await getBidById(bidId, organizationId);
+  // Verify bid exists
+  const bid = await getBidById(bidId);
   if (!bid) {
     return null;
   }
@@ -1345,9 +1344,12 @@ const createRelatedRecords = async (
 // Complete Bid Data with Relations
 // ============================
 
-export const getBidWithAllData = async (id: string, organizationId: string) => {
-  const bid = await getBidById(id, organizationId);
+export const getBidWithAllData = async (id: string) => {
+  const bid = await getBidById(id);
   if (!bid) return null;
+
+  // Use the bid's organizationId for related data that still needs it
+  const organizationId = bid.organizationId;
 
   const [
     financialBreakdown,
