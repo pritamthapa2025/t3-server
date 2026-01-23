@@ -9,6 +9,7 @@ import {
   bidFinancialBreakdown,
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 import { 
   getBidFinancialBreakdown,
   getBidOperatingExpenses,
@@ -63,9 +64,11 @@ export const getJobs = async (
     .select({
       job: jobs,
       bid: bidsTable,
+      createdByName: users.fullName,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(users, eq(jobs.createdBy, users.id))
     .where(whereCondition)
     .orderBy(desc(jobs.createdAt))
     .limit(limit)
@@ -86,6 +89,7 @@ export const getJobs = async (
     priority: item.bid.priority, // Use bid priority instead of job priority
     name: item.bid.projectName, // Derive name from bid.projectName
     organizationId: item.bid.organizationId, // Include organization info
+    createdByName: item.createdByName || null, // Include created by name
   }));
   return {
     jobs: jobsList,
@@ -106,9 +110,11 @@ export const getJobById = async (id: string) => {
     .select({
       jobs: jobs,
       bid: bidsTable,
+      createdByName: users.fullName,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(users, eq(jobs.createdBy, users.id))
     .where(
       and(
         eq(jobs.id, id),
@@ -122,6 +128,7 @@ export const getJobById = async (id: string) => {
     priority: result.bid.priority,
     name: result.bid.projectName, // Derive name from bid.projectName
     organizationId: result.bid.organizationId,
+    createdByName: result.createdByName || null,
   };
 };
 
@@ -208,11 +215,23 @@ export const createJob = async (data: {
     .where(eq(bidsTable.id, data.bidId))
     .limit(1);
   
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (job.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, job.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+  
   // Return job with bid priority and name
   return {
     ...job,
     priority: updatedBid?.priority,
     name: updatedBid?.projectName, // Derive name from bid.projectName
+    createdByName,
   };
 };
 
@@ -303,12 +322,24 @@ export const updateJob = async (
     .where(eq(bidsTable.id, jobData.bidId))
     .limit(1);
 
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (job.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, job.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
   // Return job with bid priority and name
   return {
     ...job,
     priority: updatedBid?.priority,
     name: updatedBid?.title || updatedBid?.projectName || updatedBid?.bidNumber, // Derive name from bid
     organizationId: jobData.organizationId,
+    createdByName,
   };
 };
 

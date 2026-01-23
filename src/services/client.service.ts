@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 
 // Import types
 import type {
@@ -342,11 +343,31 @@ export const createClient = async (data: CreateClientRequest & { createdBy: stri
       zipCode: data.zipCode,
       taxId: data.taxId,
       industryClassificationId: data.industryClassificationId,
+      createdBy: data.createdBy,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  
+  if (!Array.isArray(result) || result.length === 0) return null;
+  
+  const client = result[0] as any;
+  
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (client.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, client.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+  
+  return {
+    ...client,
+    createdByName,
+  };
 };
 
 // Keep original function for backward compatibility  

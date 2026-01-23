@@ -1,0 +1,165 @@
+# Cursor AI Rules for T3 Server Project
+
+## Project Overview
+This is a TypeScript/Node.js Express server application using:
+- Express.js for routing
+- Drizzle ORM with PostgreSQL
+- TypeScript with strict mode
+- ES Modules (type: "module")
+- Zod for validation
+- Redis for caching
+- Socket.io for real-time features
+
+## Code Style & Conventions
+
+### TypeScript
+- Use strict TypeScript settings as defined in `tsconfig.json`
+- Always use explicit types; avoid `any` unless absolutely necessary
+- Use `type` imports for type-only imports: `import type { Request, Response } from "express"`
+- Use `.js` extensions in import statements (ES modules requirement)
+- Follow the existing code structure and patterns
+
+### File Organization
+- **Routes**: `src/routes/` - Define API endpoints, use Express Router
+- **Controllers**: `src/controllers/` - Handle HTTP requests/responses, call services
+- **Services**: `src/services/` - Business logic and data operations
+- **Repositories**: `src/repositories/` - Database access layer
+- **Middleware**: `src/middleware/` - Authentication, validation, error handling
+- **Validations**: `src/validations/` - Zod schemas for request validation
+- **Types**: `src/types/` - TypeScript type definitions
+- **Schema**: `src/drizzle/schema/` - Drizzle ORM table definitions
+- **Utils**: `src/utils/` - Utility functions
+
+### Import Statements
+- Always use `.js` extension in import paths (required for ES modules)
+- Example: `import { authenticate } from "../../middleware/auth.js"`
+- Group imports: external packages first, then internal modules
+- Remove unused imports (ESLint will catch these)
+
+### Naming Conventions
+- **Files**: camelCase for TypeScript files (e.g., `propertyRoutes.ts`, `PropertyController.ts`)
+- **Functions**: camelCase (e.g., `getPropertiesHandler`, `createProperty`)
+- **Types/Interfaces**: PascalCase (e.g., `PropertyType`, `CreatePropertyRequest`)
+- **Constants**: UPPER_SNAKE_CASE (e.g., `MAX_RETRY_ATTEMPTS`)
+- **Database tables**: snake_case (as per Drizzle schema conventions)
+
+### Route Structure
+- Routes should use Express Router
+- Apply authentication middleware: `router.use(authenticate)`
+- Apply response transformers where needed: `router.use(generalTransformer)`
+- Use validation middleware: `validate(schema)` before handlers
+- Follow RESTful conventions for route naming
+
+### Controller Pattern
+- Controllers should be thin - only handle HTTP concerns
+- Extract query params, call service functions, return responses
+- Use try-catch blocks for error handling
+- Use logger for error logging: `logger.error(...)`
+- Return appropriate HTTP status codes
+
+### Service Pattern
+- Services contain business logic
+- Services interact with repositories for database operations
+- Services should be async functions
+- Handle business rules and data transformations
+- Return data objects, not HTTP responses
+
+### Validation
+- Use Zod schemas defined in `src/validations/`
+- Apply validation middleware in routes before handlers
+- Validate all user inputs (query params, body, params)
+- Use descriptive error messages
+
+### Error Handling
+- Use the error handler middleware pattern
+- Log errors appropriately using the logger utility
+- Return consistent error response format
+- Don't expose internal error details to clients
+
+### Database Operations
+- Use Drizzle ORM for all database operations
+- Follow existing schema patterns in `src/drizzle/schema/`
+- Use transactions for multi-step operations
+- Handle database errors gracefully
+- Use prepared statements (Drizzle handles this)
+
+### Database Schema Conventions
+- **Organizations Table (`org.organizations`)**: This table stores CLIENT data, not T3 employee data. It contains client organizations with fields like `clientId`, `clientTypeId`, `status`, `priority`, billing information, etc.
+- **Employees Table (`org.employees`)**: This table stores T3 INTERNAL EMPLOYEE data. It contains T3 staff information with fields like `employeeId` (e.g., "T3-00001"), `departmentId`, `positionId`, `reportsTo`, compensation, certifications, etc.
+- **Important Distinction**: 
+  - Organizations = External clients/customers
+  - Employees = T3 internal staff members
+  - Never confuse these two entities when writing queries or services
+
+### Code Quality
+- Follow ESLint rules (no unused imports, proper TypeScript usage)
+- Run `npm run lint` before committing
+- Keep functions focused and single-purpose
+- Add comments for complex business logic
+- Use meaningful variable and function names
+
+### Testing Considerations
+- Write testable code (pure functions where possible)
+- Keep business logic separate from HTTP concerns
+- Mock external dependencies in tests
+
+### Security
+- Always validate and sanitize user inputs
+- Use authentication middleware on protected routes
+- Use feature authorization where applicable
+- Never expose sensitive data in error messages
+- Use parameterized queries (Drizzle handles this)
+
+### Performance
+- Use Redis for caching when appropriate
+- Optimize database queries (avoid N+1 problems)
+- Use pagination for list endpoints
+- Consider indexing for frequently queried fields
+
+## Before Making Changes
+1. Review existing similar code patterns in the codebase
+2. Check if there are existing utilities or helpers that can be reused
+3. Ensure imports use `.js` extensions
+4. Verify TypeScript types are correct
+5. Run linter: `npm run lint`
+6. Test the changes locally
+
+## Common Patterns
+
+### Route Handler Example
+```typescript
+router
+  .route("/resource")
+  .get(validate(getResourceSchema), getResourceHandler)
+  .post(validate(createResourceSchema), createResourceHandler);
+```
+
+### Controller Handler Example
+```typescript
+export const getResourceHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await getResource(/* params */);
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error("Error in getResourceHandler:", error);
+    throw error; // Let error handler middleware handle it
+  }
+};
+```
+
+### Service Function Example
+```typescript
+export const getResource = async (params: GetResourceParams) => {
+  // Business logic here
+  const data = await repository.findResource(params);
+  return data;
+};
+```
+
+## Important Notes
+- This project uses ES modules - always use `.js` in import paths
+- TypeScript strict mode is enabled - ensure all types are correct
+- ESLint enforces no unused imports - clean up imports
+- Follow the existing architectural patterns
+- Maintain consistency with existing code style
+

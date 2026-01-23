@@ -6,7 +6,11 @@ import {
   updatePropertyHandler,
   deletePropertyHandler,
   // createPropertyContactHandler,
+  getPropertyEquipmentHandler,
+  getPropertyEquipmentByIdHandler,
   createPropertyEquipmentHandler,
+  updatePropertyEquipmentHandler,
+  deletePropertyEquipmentHandler,
   // createPropertyDocumentHandler,
   createServiceHistoryHandler,
   getPropertyKPIsHandler,
@@ -21,7 +25,11 @@ import {
   updatePropertySchema,
   deletePropertySchema,
   // createPropertyContactSchema,
+  getPropertyEquipmentSchema,
+  getPropertyEquipmentByIdSchema,
   createPropertyEquipmentSchema,
+  updatePropertyEquipmentSchema,
+  deletePropertyEquipmentSchema,
   // createPropertyDocumentSchema,
   createServiceHistorySchema,
 } from "../../validations/property.validations.js";
@@ -57,9 +65,28 @@ router
 // Property equipment routes
 router
   .route("/properties/:propertyId/equipment")
+  .get(
+    validate(getPropertyEquipmentSchema),
+    getPropertyEquipmentHandler
+  )
   .post(
     validate(createPropertyEquipmentSchema),
     createPropertyEquipmentHandler
+  );
+
+router
+  .route("/properties/:propertyId/equipment/:id")
+  .get(
+    validate(getPropertyEquipmentByIdSchema),
+    getPropertyEquipmentByIdHandler
+  )
+  .put(
+    validate(updatePropertyEquipmentSchema),
+    updatePropertyEquipmentHandler
+  )
+  .delete(
+    validate(deletePropertyEquipmentSchema),
+    deletePropertyEquipmentHandler
   );
 
 // Property documents routes (coming soon)

@@ -236,44 +236,82 @@ export const createPropertyContactSchema = z.object({
 });
 
 // Property Equipment validation schemas
+const equipmentBodySchema = z.object({
+  equipmentTag: z
+    .string()
+    .max(100, "Equipment tag is too long (maximum 100 characters)")
+    .optional(),
+  equipmentType: z
+    .string()
+    .min(1, "Equipment type is required and cannot be empty")
+    .max(100, "Equipment type is too long (maximum 100 characters)")
+    .trim(),
+  location: z
+    .string()
+    .max(255, "Location is too long (maximum 255 characters)")
+    .optional(),
+  make: z
+    .string()
+    .max(100, "Make is too long (maximum 100 characters)")
+    .optional(),
+  model: z
+    .string()
+    .max(100, "Model is too long (maximum 100 characters)")
+    .optional(),
+  serialNumber: z
+    .string()
+    .max(100, "Serial number is too long (maximum 100 characters)")
+    .optional(),
+  installDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Install date must be in YYYY-MM-DD format")
+    .optional()
+    .or(z.literal("")), // Date as string (YYYY-MM-DD)
+  warrantyExpiration: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Warranty expiration must be in YYYY-MM-DD format")
+    .optional()
+    .or(z.literal("")), // Date as string (YYYY-MM-DD)
+  capacity: z.string().max(100).optional(),
+  voltagePhase: z.string().max(50).optional(),
+  specifications: z.record(z.string(), z.any()).optional(), // JSON object
+  status: z.string().max(50).default("active"),
+  condition: z.string().max(50).optional(),
+  notes: z.string().optional(),
+});
+
+export const getPropertyEquipmentSchema = z.object({
+  params: z.object({
+    propertyId: z.string().uuid("Invalid property ID"),
+  }),
+});
+
+export const getPropertyEquipmentByIdSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid equipment ID"),
+  }),
+});
+
 export const createPropertyEquipmentSchema = z.object({
   params: z.object({
     propertyId: z.string().uuid("Invalid property ID"),
   }),
-  body: z.object({
-    equipmentTag: z
-      .string()
-      .max(100, "Equipment tag is too long (maximum 100 characters)")
-      .optional(),
-    equipmentType: z
-      .string()
-      .min(1, "Equipment type is required and cannot be empty")
-      .max(100, "Equipment type is too long (maximum 100 characters)")
-      .trim(),
-    location: z
-      .string()
-      .max(255, "Location is too long (maximum 255 characters)")
-      .optional(),
-    make: z
-      .string()
-      .max(100, "Make is too long (maximum 100 characters)")
-      .optional(),
-    model: z
-      .string()
-      .max(100, "Model is too long (maximum 100 characters)")
-      .optional(),
-    serialNumber: z
-      .string()
-      .max(100, "Serial number is too long (maximum 100 characters)")
-      .optional(),
-    installDate: z.string().optional(), // Date as string (YYYY-MM-DD)
-    warrantyExpiration: z.string().optional(), // Date as string (YYYY-MM-DD)
-    capacity: z.string().max(100).optional(),
-    voltagePhase: z.string().max(50).optional(),
-    specifications: z.record(z.string(), z.any()).optional(), // JSON object
-    status: z.string().max(50).default("active"),
-    condition: z.string().max(50).optional(),
-    notes: z.string().optional(),
+  body: equipmentBodySchema,
+});
+
+export const updatePropertyEquipmentSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid equipment ID"),
+  }),
+  body: equipmentBodySchema.partial().refine(
+    (data) => Object.keys(data).length > 0,
+    "At least one field must be provided for update"
+  ),
+});
+
+export const deletePropertyEquipmentSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("Invalid equipment ID"),
   }),
 });
 

@@ -16,7 +16,6 @@ import {
   propertyDocuments,
   propertyServiceHistory,
   organizations,
-  clientTypes,
 } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -149,14 +148,19 @@ export const getProperties = async (
       numberOfFloors: properties.numberOfFloors,
       yearBuilt: properties.yearBuilt,
       tags: properties.tags,
+      createdBy: properties.createdBy,
       createdAt: properties.createdAt,
 
       // Client/Organization
       organizationId: organizations.id,
       organizationName: organizations.name,
+
+      // Created by user name
+      createdByName: users.fullName,
     })
     .from(properties)
     .leftJoin(organizations, eq(properties.organizationId, organizations.id))
+    .leftJoin(users, eq(properties.createdBy, users.id))
     .where(and(...whereConditions))
     .orderBy(desc(properties.createdAt))
     .limit(limit)
@@ -293,6 +297,8 @@ export const getProperties = async (
       numberOfFloors: property.numberOfFloors,
       yearBuilt: property.yearBuilt,
       tags: property.tags,
+      createdBy: property.createdBy,
+      createdByName: property.createdByName,
       createdAt: property.createdAt,
     };
   });
@@ -310,46 +316,10 @@ export const getProperties = async (
 
 // Get property by ID with all related data
 export const getPropertyById = async (id: string) => {
-  // Get property basic info
+  // Get property basic info first (without joins to avoid Drizzle issues)
   const propertyQuery = await db
-    .select({
-      // Property columns
-      id: properties.id,
-      organizationId: properties.organizationId,
-      propertyName: properties.propertyName,
-      propertyCode: properties.propertyCode,
-      propertyType: properties.propertyType,
-      status: properties.status,
-      addressLine1: properties.addressLine1,
-      addressLine2: properties.addressLine2,
-      city: properties.city,
-      state: properties.state,
-      zipCode: properties.zipCode,
-      country: properties.country,
-      squareFootage: properties.squareFootage,
-      numberOfFloors: properties.numberOfFloors,
-      yearBuilt: properties.yearBuilt,
-      accessInstructions: properties.accessInstructions,
-      gateCode: properties.gateCode,
-      parkingInstructions: properties.parkingInstructions,
-      operatingHours: properties.operatingHours,
-      latitude: properties.latitude,
-      longitude: properties.longitude,
-      description: properties.description,
-      notes: properties.notes,
-      tags: properties.tags,
-      createdBy: properties.createdBy,
-      isDeleted: properties.isDeleted,
-      createdAt: properties.createdAt,
-      updatedAt: properties.updatedAt,
-      // Organization columns
-      organizationName: organizations.name,
-      organizationClientTypeId: organizations.clientTypeId,
-      organizationClientTypeName: clientTypes.name,
-    })
+    .select()
     .from(properties)
-    .leftJoin(organizations, eq(properties.organizationId, organizations.id))
-    .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
     .where(and(eq(properties.id, id), eq(properties.isDeleted, false)))
     .limit(1);
 
@@ -357,46 +327,54 @@ export const getPropertyById = async (id: string) => {
     return null;
   }
 
-  const baseData = propertyQuery[0]!; // Safe because we checked length above
+
+  const baseProperty = propertyQuery[0]!;
+
+  
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (baseProperty.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, baseProperty.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
   // Extract property data
   const property = {
-    id: baseData.id,
-    organizationId: baseData.organizationId,
-    propertyName: baseData.propertyName,
-    propertyCode: baseData.propertyCode,
-    propertyType: baseData.propertyType,
-    status: baseData.status,
-    addressLine1: baseData.addressLine1,
-    addressLine2: baseData.addressLine2,
-    city: baseData.city,
-    state: baseData.state,
-    zipCode: baseData.zipCode,
-    country: baseData.country,
-    squareFootage: baseData.squareFootage,
-    numberOfFloors: baseData.numberOfFloors,
-    yearBuilt: baseData.yearBuilt,
-    accessInstructions: baseData.accessInstructions,
-    gateCode: baseData.gateCode,
-    parkingInstructions: baseData.parkingInstructions,
-    operatingHours: baseData.operatingHours,
-    latitude: baseData.latitude,
-    longitude: baseData.longitude,
-    description: baseData.description,
-    notes: baseData.notes,
-    tags: baseData.tags,
-    createdBy: baseData.createdBy,
-    isDeleted: baseData.isDeleted,
-    createdAt: baseData.createdAt,
-    updatedAt: baseData.updatedAt,
+    id: baseProperty.id,
+    organizationId: baseProperty.organizationId,
+    propertyName: baseProperty.propertyName,
+    propertyCode: baseProperty.propertyCode,
+    propertyType: baseProperty.propertyType,
+    status: baseProperty.status,
+    addressLine1: baseProperty.addressLine1,
+    addressLine2: baseProperty.addressLine2,
+    city: baseProperty.city,
+    state: baseProperty.state,
+    zipCode: baseProperty.zipCode,
+    country: baseProperty.country,
+    squareFootage: baseProperty.squareFootage,
+    numberOfFloors: baseProperty.numberOfFloors,
+    yearBuilt: baseProperty.yearBuilt,
+    accessInstructions: baseProperty.accessInstructions,
+    gateCode: baseProperty.gateCode,
+    parkingInstructions: baseProperty.parkingInstructions,
+    operatingHours: baseProperty.operatingHours,
+    latitude: baseProperty.latitude,
+    longitude: baseProperty.longitude,
+    description: baseProperty.description,
+    notes: baseProperty.notes,
+    tags: baseProperty.tags,
+    createdBy: baseProperty.createdBy,
+    createdByName: createdByName,
+    isDeleted: baseProperty.isDeleted,
+    createdAt: baseProperty.createdAt,
+    updatedAt: baseProperty.updatedAt,
   };
-  const organization = baseData.organizationId
-    ? {
-        id: baseData.organizationId,
-        name: baseData.organizationName,
-        clientTypeId: baseData.organizationClientTypeId,
-        clientType: baseData.organizationClientTypeName,
-      }
-    : null;
+  const organization = null;
 
   // Get job counts - jobs are now linked through bid → organization
   // Since property belongs to organization, we count jobs for the organization
@@ -488,7 +466,6 @@ export const getPropertyById = async (id: string) => {
     .select({
       id: jobs.id,
       jobNumber: jobs.jobNumber,
-      name: jobs.name,
       description: jobs.description,
       status: jobs.status,
       jobType: jobs.jobType,
@@ -568,7 +545,7 @@ export const getPropertyById = async (id: string) => {
     jobHistoryMap.set(job.id, {
       id: job.id,
       jobNumber: job.jobNumber,
-      name: job.name,
+      name: job.jobNumber, // Use jobNumber as name since jobs table doesn't have a name field
       date: jobDate,
       technician: null, // Lead technician removed - use team members endpoint to get assigned team
       duration: duration ? `${duration} hours` : null,
@@ -681,13 +658,7 @@ export const getPropertyById = async (id: string) => {
         active: activeJobs,
       },
       lastService: lastService,
-      client: organization
-        ? {
-            id: organization.id,
-            name: organization.name,
-            clientType: organization.clientType,
-          }
-        : null,
+      client: null,
     },
 
     // Property notes (from description or notes field)
@@ -764,7 +735,23 @@ export const createProperty = async (data: {
     })
     .returning();
 
-  return property;
+  if (!property) return null;
+
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (property.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, property.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  return {
+    ...property,
+    createdByName,
+  };
 };
 
 // Update property
@@ -780,7 +767,23 @@ export const updateProperty = async (id: string, data: any) => {
     .where(eq(properties.id, id))
     .returning();
 
-  return property || null;
+  if (!property) return null;
+
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (property.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, property.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  return {
+    ...property,
+    createdByName,
+  };
 };
 
 // Soft delete property
@@ -834,6 +837,84 @@ export const getPropertyEquipment = async (propertyId: string) => {
       )
     )
     .orderBy(propertyEquipment.equipmentType, propertyEquipment.location);
+};
+
+export const getPropertyEquipmentById = async (id: string) => {
+  const [equipment] = await db
+    .select()
+    .from(propertyEquipment)
+    .where(
+      and(
+        eq(propertyEquipment.id, id),
+        eq(propertyEquipment.isDeleted, false)
+      )
+    )
+    .limit(1);
+  return equipment || null;
+};
+
+export const updatePropertyEquipment = async (
+  id: string,
+  data: Partial<{
+    equipmentTag?: string;
+    equipmentType?: string;
+    location?: string;
+    make?: string;
+    model?: string;
+    serialNumber?: string;
+    installDate?: string;
+    warrantyExpiration?: string;
+    capacity?: string;
+    voltagePhase?: string;
+    specifications?: any;
+    status?: string;
+    condition?: string;
+    notes?: string;
+  }>
+) => {
+  const updateData: any = {
+    ...data,
+    updatedAt: new Date(),
+  };
+
+  // Convert date strings to Date objects if provided
+  if (data.installDate) {
+    updateData.installDate = new Date(data.installDate).toISOString().split("T")[0];
+  }
+  if (data.warrantyExpiration) {
+    updateData.warrantyExpiration = new Date(data.warrantyExpiration).toISOString().split("T")[0];
+  }
+
+  const [equipment] = await db
+    .update(propertyEquipment)
+    .set(updateData)
+    .where(
+      and(
+        eq(propertyEquipment.id, id),
+        eq(propertyEquipment.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return equipment || null;
+};
+
+export const deletePropertyEquipment = async (id: string) => {
+  const [equipment] = await db
+    .update(propertyEquipment)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(propertyEquipment.id, id),
+        eq(propertyEquipment.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return equipment || null;
 };
 
 // Property Service History Management

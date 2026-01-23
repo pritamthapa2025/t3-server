@@ -11,6 +11,7 @@ import {
   lte,
   sql,
   max,
+  inArray,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -25,6 +26,7 @@ import {
 } from "../drizzle/schema/invoicing.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 
 // ============================
 // Helper Functions
@@ -369,6 +371,19 @@ export const getInvoices = async (
       .where(and(...whereConditions)),
   ]);
 
+  // Get unique creator IDs and fetch their names in batch
+  const creatorIds = Array.from(new Set(invoicesList.map(i => i.createdBy).filter((id): id is string => !!id)));
+  const creators = creatorIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+        })
+        .from(users)
+        .where(inArray(users.id, creatorIds))
+    : [];
+  const creatorMap = new Map(creators.map(c => [c.id, c.fullName]));
+
   // Get related data (client, job) for each invoice
   const invoicesWithRelations = await Promise.all(
     invoicesList.map(async (invoice) => {
@@ -405,6 +420,7 @@ export const getInvoices = async (
 
       return {
         ...invoice,
+        createdByName: invoice.createdBy ? (creatorMap.get(invoice.createdBy) || null) : null,
         client: client[0] || null,
         job: job[0] || null,
         lineItemsCount: lineItemsCount[0]?.count || 0,
@@ -453,7 +469,18 @@ export const getInvoiceById = async (
 
   if (!invoice) return null;
 
-  const result: any = { ...invoice };
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (invoice.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, invoice.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  const result: any = { ...invoice, createdByName };
 
   if (options?.includeLineItems !== false) {
     result.lineItems = await db

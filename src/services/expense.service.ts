@@ -9,6 +9,7 @@ import {
   gte,
   lte,
   ilike,
+  inArray,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -479,6 +480,19 @@ export const getExpenses = async (
 
   const total = totalResult[0]?.count || 0;
 
+  // Get unique creator IDs and fetch their names in batch
+  const creatorIds = Array.from(new Set(result.map(e => e.createdBy).filter((id): id is string => !!id)));
+  const creators = creatorIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+        })
+        .from(users)
+        .where(inArray(users.id, creatorIds))
+    : [];
+  const creatorMap = new Map(creators.map(c => [c.id, c.fullName]));
+
   // Get receipts and allocations count for each expense
   const expensesWithCounts = await Promise.all(
     result.map(async (expense) => {
@@ -505,6 +519,7 @@ export const getExpenses = async (
 
       return {
         ...expense,
+        createdByName: expense.createdBy ? (creatorMap.get(expense.createdBy) || null) : null,
         employee: expense.employeeFullName
           ? {
               id: expense.employeeId,
@@ -636,8 +651,21 @@ export const getExpenseById = async (
   }
 
   const expense = expenseResult[0];
+  
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (expense.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, expense.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
   const result: any = {
     ...expense,
+    createdByName,
     employee: expense.employeeFullName
       ? {
           id: expense.employeeId,

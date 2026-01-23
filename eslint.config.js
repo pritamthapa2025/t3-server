@@ -28,6 +28,8 @@ export default [
         setImmediate: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
         NodeJS: 'readonly',
         Express: 'readonly',
       },

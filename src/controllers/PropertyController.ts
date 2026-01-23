@@ -6,6 +6,10 @@ import {
   updateProperty,
   deleteProperty,
   createPropertyEquipment,
+  getPropertyEquipment,
+  getPropertyEquipmentById,
+  updatePropertyEquipment,
+  deletePropertyEquipment,
   createServiceHistoryEntry,
   getPropertyKPIs,
 } from "../services/property.service.js";
@@ -199,6 +203,70 @@ export const createPropertyContactHandler = async (
   }
 };
 
+// Get property equipment
+export const getPropertyEquipmentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { propertyId } = req.params;
+
+    if (!propertyId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Property ID is required" });
+    }
+
+    const equipment = await getPropertyEquipment(propertyId);
+
+    logger.info("Property equipment fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: equipment,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching equipment", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch equipment" });
+  }
+};
+
+// Get property equipment by ID
+export const getPropertyEquipmentByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Equipment ID is required" });
+    }
+
+    const equipment = await getPropertyEquipmentById(id);
+
+    if (!equipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Equipment not found" });
+    }
+
+    logger.info("Property equipment fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: equipment,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching equipment", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch equipment" });
+  }
+};
+
 // Create property equipment
 export const createPropertyEquipmentHandler = async (
   req: Request,
@@ -224,6 +292,77 @@ export const createPropertyEquipmentHandler = async (
     return res
       .status(500)
       .json({ success: false, message: "Failed to add equipment" });
+  }
+};
+
+// Update property equipment
+export const updatePropertyEquipmentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Equipment ID is required" });
+    }
+
+    const equipment = await updatePropertyEquipment(id, req.body);
+
+    if (!equipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Equipment not found" });
+    }
+
+    logger.info("Property equipment updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Equipment updated successfully",
+      data: equipment,
+    });
+  } catch (error) {
+    logger.logApiError("Error updating equipment", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update equipment" });
+  }
+};
+
+// Delete property equipment
+export const deletePropertyEquipmentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Equipment ID is required" });
+    }
+
+    const equipment = await deletePropertyEquipment(id);
+
+    if (!equipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Equipment not found" });
+    }
+
+    logger.info("Property equipment deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Equipment deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Error deleting equipment", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to delete equipment" });
   }
 };
 

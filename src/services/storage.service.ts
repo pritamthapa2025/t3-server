@@ -13,6 +13,9 @@ const spacesSecretAccessKey = process.env.DO_SPACES_SECRET_ACCESS_KEY || "";
 const spacesBucket = process.env.DO_SPACES_BUCKET || "";
 const spacesCdnUrl = process.env.DO_SPACES_CDN_URL || "";
 
+// Upload timeout in milliseconds (30 seconds default, configurable via env)
+const UPLOAD_TIMEOUT = parseInt(process.env.DO_SPACES_UPLOAD_TIMEOUT || "30000", 10);
+
 // Initialize S3 client for Digital Ocean Spaces
 const s3Client = new S3Client({
   endpoint: spacesEndpoint,
@@ -22,6 +25,7 @@ const s3Client = new S3Client({
     secretAccessKey: spacesSecretAccessKey,
   },
   forcePathStyle: false,
+  maxAttempts: 2, // Reduce retries to fail faster
 });
 
 export interface UploadResult {
@@ -30,7 +34,7 @@ export interface UploadResult {
 }
 
 /**
- * Upload a file to Digital Ocean Spaces
+ * Upload a file to Digital Ocean Spaces with timeout protection
  * @param file - The file buffer or stream
  * @param originalName - Original filename
  * @param folder - Folder path in the bucket (e.g., 'profile-pictures')
@@ -41,13 +45,15 @@ export const uploadToSpaces = async (
   originalName: string,
   folder: string = "uploads"
 ): Promise<UploadResult> => {
+  const startTime = Date.now();
+  
   try {
     // Generate unique filename
     const fileExtension = path.extname(originalName);
     const fileName = `${uuidv4()}${fileExtension}`;
     const key = `${folder}/${fileName}`;
 
-    // Upload to Digital Ocean Spaces
+    // Upload to Digital Ocean Spaces with timeout
     const command = new PutObjectCommand({
       Bucket: spacesBucket,
       Key: key,
@@ -56,7 +62,27 @@ export const uploadToSpaces = async (
       ContentType: getContentType(fileExtension),
     });
 
-    await s3Client.send(command);
+    // Create abort controller for timeout
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+    }, UPLOAD_TIMEOUT);
+
+    try {
+      await s3Client.send(command, { abortSignal: abortController.signal });
+      clearTimeout(timeoutId);
+    } catch (sendError: any) {
+      clearTimeout(timeoutId);
+      if (sendError.name === "AbortError" || abortController.signal.aborted) {
+        const elapsed = Date.now() - startTime;
+        console.error(`Upload timeout after ${elapsed}ms for file: ${originalName}`);
+        throw new Error(`Upload timeout: File upload exceeded ${UPLOAD_TIMEOUT}ms limit`);
+      }
+      throw sendError;
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ File uploaded successfully in ${elapsed}ms: ${key}`);
 
     // Construct the public URL
     // Use CDN URL if provided, otherwise construct from endpoint
@@ -68,9 +94,22 @@ export const uploadToSpaces = async (
       filePath: key,
       url: url,
     };
-  } catch (error) {
-    console.error("Error uploading to Digital Ocean Spaces:", error);
-    throw new Error("Failed to upload file to storage");
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`❌ Error uploading to Digital Ocean Spaces after ${elapsed}ms:`, error);
+    
+    // Provide more specific error messages
+    if (error.message?.includes("timeout")) {
+      throw new Error(`File upload timed out after ${UPLOAD_TIMEOUT}ms. Please try again or use a smaller file.`);
+    }
+    if (error.name === "TimeoutError" || error.code === "ETIMEDOUT") {
+      throw new Error(`Connection timeout while uploading file. Please check your network connection.`);
+    }
+    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+      throw new Error(`Cannot connect to storage service. Please check configuration.`);
+    }
+    
+    throw new Error(error.message || "Failed to upload file to storage");
   }
 };
 

@@ -15,6 +15,7 @@ import {
   bidHistory,
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 
 // ============================
 // Main Bid Operations
@@ -67,8 +68,12 @@ export const getBids = async (
   const whereCondition = and(...whereConditions);
 
   const result = await db
-    .select()
+    .select({
+      bid: bidsTable,
+      createdByName: users.fullName,
+    })
     .from(bidsTable)
+    .leftJoin(users, eq(bidsTable.createdBy, users.id))
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
@@ -81,8 +86,14 @@ export const getBids = async (
 
   const total = totalCount[0]?.count ?? 0;
 
+  // Map results to include createdByName
+  const enrichedBids = result.map((item) => ({
+    ...item.bid,
+    createdByName: item.createdByName || null,
+  }));
+
   return {
-    data: result || [],
+    data: enrichedBids || [],
     total: total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -93,30 +104,46 @@ export const getBids = async (
 };
 
 export const getBidById = async (id: string) => {
-  const [bid] = await db
-    .select()
+  const [result] = await db
+    .select({
+      bid: bidsTable,
+      createdByName: users.fullName,
+    })
     .from(bidsTable)
+    .leftJoin(users, eq(bidsTable.createdBy, users.id))
     .where(
       and(
         eq(bidsTable.id, id),
         eq(bidsTable.isDeleted, false)
       )
     );
-  return bid || null;
+  if (!result) return null;
+  return {
+    ...result.bid,
+    createdByName: result.createdByName || null,
+  };
 };
 
 // Simple version without organization validation - trusts bid ID access
 export const getBidByIdSimple = async (id: string) => {
-  const [bid] = await db
-    .select()
+  const [result] = await db
+    .select({
+      bid: bidsTable,
+      createdByName: users.fullName,
+    })
     .from(bidsTable)
+    .leftJoin(users, eq(bidsTable.createdBy, users.id))
     .where(
       and(
         eq(bidsTable.id, id),
         eq(bidsTable.isDeleted, false)
       )
     );
-  return bid || null;
+  if (!result) return null;
+  return {
+    ...result.bid,
+    createdByName: result.createdByName || null,
+  };
 };
 
 export const createBid = async (data: {
@@ -271,7 +298,23 @@ export const createBid = async (data: {
     await createRelatedRecords(bid.id, data.organizationId, data.jobType);
   }
 
-  return bid;
+  if (!bid) return null;
+
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (bid.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, bid.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  return {
+    ...bid,
+    createdByName,
+  };
 };
 
 export const updateBid = async (
@@ -340,7 +383,23 @@ export const updateBid = async (
     )
     .returning();
 
-  return bid || null;
+  if (!bid) return null;
+
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (bid.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, bid.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  return {
+    ...bid,
+    createdByName,
+  };
 };
 
 export const deleteBid = async (id: string, organizationId: string) => {
