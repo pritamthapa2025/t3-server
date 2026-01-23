@@ -5,6 +5,8 @@ import {
   createProperty,
   updateProperty,
   deleteProperty,
+  createPropertyContact,
+  createPropertyDocument,
   createPropertyEquipment,
   getPropertyEquipment,
   getPropertyEquipmentById,
@@ -14,6 +16,25 @@ import {
   getPropertyKPIs,
 } from "../services/property.service.js";
 import { logger } from "../utils/logger.js";
+import { uploadToSpaces } from "../services/storage.service.js";
+
+// Helper function to validate required params
+const validateParams = (
+  req: Request,
+  res: Response,
+  paramNames: string[]
+): boolean => {
+  for (const paramName of paramNames) {
+    if (!req.params[paramName]) {
+      res.status(400).json({
+        success: false,
+        message: `${paramName} is required`,
+      });
+      return false;
+    }
+  }
+  return true;
+};
 
 // Get all properties with pagination
 export const getPropertiesHandler = async (req: Request, res: Response) => {
@@ -184,16 +205,34 @@ export const deletePropertyHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Create property contact (placeholder)
+// Create property contact
 export const createPropertyContactHandler = async (
   req: Request,
   res: Response
 ) => {
   try {
-    logger.info("Property contact feature requested");
+    if (!validateParams(req, res, ["propertyId"])) return;
+    const { propertyId } = req.params;
+
+    const contactData = {
+      propertyId: propertyId!,
+      ...req.body,
+    };
+
+    const contact = await createPropertyContact(contactData);
+
+    if (!contact) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create property contact",
+      });
+    }
+
+    logger.info("Property contact created successfully");
     return res.status(201).json({
       success: true,
-      message: "Property contact feature coming soon",
+      message: "Property contact created successfully",
+      data: contact,
     });
   } catch (error) {
     logger.logApiError("Error creating property contact", error, req);
@@ -366,16 +405,104 @@ export const deletePropertyEquipmentHandler = async (
   }
 };
 
-// Create property document (placeholder)
+// Create property document
 export const createPropertyDocumentHandler = async (
   req: Request,
   res: Response
 ) => {
+  let uploadedFilePath: string | null = null;
   try {
-    logger.info("Property document upload requested");
+    if (!validateParams(req, res, ["propertyId"])) return;
+    const { propertyId } = req.params;
+
+    // Get user ID for uploadedBy
+    const uploadedBy = req.user?.id;
+    if (!uploadedBy) {
+      return res.status(403).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    // Parse document data - either from JSON body or from form-data field
+    let documentData: any;
+    if (req.headers["content-type"]?.includes("application/json")) {
+      // JSON request - data is in req.body
+      documentData = req.body;
+    } else {
+      // Multipart form-data - parse JSON from 'data' field
+      if (req.body.data) {
+        try {
+          documentData =
+            typeof req.body.data === "string"
+              ? JSON.parse(req.body.data)
+              : req.body.data;
+        } catch {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid JSON in 'data' field",
+          });
+        }
+      } else {
+        // Fallback: use req.body directly
+        documentData = req.body;
+      }
+    }
+
+    // Handle file upload if provided
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "property-documents"
+        );
+        uploadedFilePath = uploadResult.url;
+        documentData.filePath = uploadedFilePath;
+        documentData.fileName = file.originalname;
+        documentData.fileType = file.mimetype;
+        documentData.fileSize = file.size;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload document. Please try again.",
+        });
+      }
+    }
+
+    // Validate required fields
+    if (!documentData.fileName || !documentData.filePath) {
+      return res.status(400).json({
+        success: false,
+        message: "File name and file path are required",
+      });
+    }
+
+    const document = await createPropertyDocument({
+      propertyId: propertyId!,
+      fileName: documentData.fileName,
+      filePath: documentData.filePath,
+      fileType: documentData.fileType,
+      fileSize: documentData.fileSize,
+      documentType: documentData.documentType,
+      description: documentData.description,
+      uploadedBy,
+    });
+
+    if (!document) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create property document",
+      });
+    }
+
+    logger.info("Property document created successfully");
     return res.status(201).json({
       success: true,
-      message: "Document upload feature coming soon",
+      message: "Property document created successfully",
+      data: document,
     });
   } catch (error) {
     logger.logApiError("Error uploading document", error, req);

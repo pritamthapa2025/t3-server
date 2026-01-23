@@ -13,6 +13,7 @@ import {
   bidTimeline,
   bidNotes,
   bidHistory,
+  bidDocuments,
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
@@ -580,6 +581,8 @@ export const getBidMaterialById = async (materialId: string, _organizationId: st
 
 export const createBidMaterial = async (data: {
   bidId: string;
+  inventoryItemId?: string;
+  customName?: string;
   description: string;
   quantity: string;
   unitCost: string;
@@ -594,6 +597,8 @@ export const updateBidMaterial = async (
   id: string,
   organizationId: string,
   data: Partial<{
+    inventoryItemId: string;
+    customName: string;
     description: string;
     quantity: string;
     unitCost: string;
@@ -687,15 +692,22 @@ export const createBidLabor = async (data: {
   totalCost: string;
   totalPrice: string;
 }) => {
-  const [labor] = await db.insert(bidLabor).values(data).returning();
-  return labor;
+  try {
+    const [labor] = await db.insert(bidLabor).values(data).returning();
+    if (!labor) {
+      throw new Error("Failed to create labor entry - no data returned");
+    }
+    return labor;
+  } catch (error) {
+    console.error("Error in createBidLabor:", error);
+    throw error;
+  }
 };
 
 export const updateBidLabor = async (
   id: string,
   data: Partial<{
-    employeeId: number;
-    quantity: number;
+    positionId: number;
     days: number;
     hoursPerDay: string;
     totalHours: string;
@@ -1179,6 +1191,20 @@ export const getBidTimeline = async (bidId: string, organizationId: string) => {
   return timeline;
 };
 
+export const getBidTimelineEventById = async (eventId: string, organizationId: string) => {
+  const [timelineEvent] = await db
+    .select()
+    .from(bidTimeline)
+    .where(
+      and(
+        eq(bidTimeline.id, eventId),
+        eq(bidTimeline.organizationId, organizationId),
+        eq(bidTimeline.isDeleted, false)
+      )
+    );
+  return timelineEvent || null;
+};
+
 export const createBidTimelineEvent = async (data: {
   bidId: string;
   organizationId: string;
@@ -1277,6 +1303,20 @@ export const getBidNotes = async (bidId: string, organizationId: string) => {
   return notes;
 };
 
+export const getBidNoteById = async (noteId: string, organizationId: string) => {
+  const [note] = await db
+    .select()
+    .from(bidNotes)
+    .where(
+      and(
+        eq(bidNotes.id, noteId),
+        eq(bidNotes.organizationId, organizationId),
+        eq(bidNotes.isDeleted, false)
+      )
+    );
+  return note || null;
+};
+
 export const createBidNote = async (data: {
   bidId: string;
   organizationId: string;
@@ -1367,6 +1407,7 @@ export const createBidHistoryEntry = async (data: {
 // ============================
 
 // Generate next bid number using atomic database function
+// This is THREAD-SAFE and prevents race conditions
 // This is THREAD-SAFE and prevents race conditions
 const generateBidNumber = async (organizationId: string): Promise<string> => {
   try {
@@ -1509,4 +1550,127 @@ export const getBidWithAllData = async (id: string) => {
     notes,
     history,
   };
+};
+
+// ============================
+// Bid Documents Operations
+// ============================
+
+export const getBidDocuments = async (bidId: string) => {
+  const documents = await db
+    .select()
+    .from(bidDocuments)
+    .where(
+      and(eq(bidDocuments.bidId, bidId), eq(bidDocuments.isDeleted, false))
+    )
+    .orderBy(desc(bidDocuments.createdAt));
+  return documents;
+};
+
+export const getBidDocumentById = async (documentId: string) => {
+  const [document] = await db
+    .select()
+    .from(bidDocuments)
+    .where(
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+    );
+  return document || null;
+};
+
+export const createBidDocument = async (data: {
+  bidId: string;
+  fileName: string;
+  filePath: string;
+  fileType?: string;
+  fileSize?: number;
+  documentType?: string;
+  uploadedBy: string;
+}) => {
+  const [document] = await db
+    .insert(bidDocuments)
+    .values({
+      bidId: data.bidId,
+      fileName: data.fileName,
+      filePath: data.filePath,
+      fileType: data.fileType || undefined,
+      fileSize: data.fileSize || undefined,
+      documentType: data.documentType || undefined,
+      uploadedBy: data.uploadedBy,
+    })
+    .returning();
+  return document;
+};
+
+export const createBidDocuments = async (
+  bidId: string,
+  documents: Array<{
+    fileName: string;
+    filePath: string;
+    fileType?: string;
+    fileSize?: number;
+    documentType?: string;
+    uploadedBy: string;
+  }>
+) => {
+  if (documents.length === 0) {
+    return [];
+  }
+
+  const insertedDocuments = await db
+    .insert(bidDocuments)
+    .values(
+      documents.map((doc) => ({
+        bidId,
+        fileName: doc.fileName,
+        filePath: doc.filePath,
+        fileType: doc.fileType || undefined,
+        fileSize: doc.fileSize || undefined,
+        documentType: doc.documentType || undefined,
+        uploadedBy: doc.uploadedBy,
+      }))
+    )
+    .returning();
+
+  return insertedDocuments;
+};
+
+export const updateBidDocument = async (
+  documentId: string,
+  data: Partial<{
+    fileName: string;
+    filePath: string;
+    fileType: string;
+    fileSize: number;
+    documentType: string;
+  }>
+) => {
+  const [document] = await db
+    .update(bidDocuments)
+    .set({
+      fileName: data.fileName,
+      filePath: data.filePath,
+      fileType: data.fileType,
+      fileSize: data.fileSize,
+      documentType: data.documentType,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+    )
+    .returning();
+  return document || null;
+};
+
+export const deleteBidDocument = async (documentId: string) => {
+  const [document] = await db
+    .update(bidDocuments)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+    )
+    .returning();
+  return document || null;
 };

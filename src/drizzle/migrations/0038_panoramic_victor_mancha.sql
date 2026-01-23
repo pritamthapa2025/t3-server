@@ -1,0 +1,1 @@
+ALTER TABLE "org"."bid_materials" RENAME COLUMN "custome_name" TO "custom_name";

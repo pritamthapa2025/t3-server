@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getBidsHandler,
   getBidByIdHandler,
@@ -43,6 +44,11 @@ import {
   deleteBidNoteHandler,
   getBidHistoryHandler,
   getBidWithAllDataHandler,
+  createBidDocumentsHandler,
+  getBidDocumentsHandler,
+  getBidDocumentByIdHandler,
+  updateBidDocumentHandler,
+  deleteBidDocumentHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -92,10 +98,78 @@ import {
   deleteBidNoteSchema,
   getBidHistorySchema,
   getBidWithAllDataSchema,
+  createBidDocumentsSchema,
+  getBidDocumentsSchema,
+  getBidDocumentByIdSchema,
+  updateBidDocumentSchema,
+  deleteBidDocumentSchema,
 } from "../../validations/bid.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
+
+// Configure multer for bid document uploads (multiple files with dynamic field names)
+const uploadBidDocuments = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit per file
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept all file types for documents
+    cb(null, true);
+  },
+}).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
+
+// Multer error handler middleware
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum size is 5MB per file.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next();
+};
+
+// Middleware to parse JSON data field from multipart/form-data
+const parseFormData = (req: any, res: any, next: any) => {
+  // Only parse if it's multipart/form-data and has a 'data' field
+  if (
+    req.headers["content-type"]?.includes("multipart/form-data") &&
+    req.body &&
+    req.body.data
+  ) {
+    try {
+      // Parse the stringified JSON data field
+      const parsedData =
+        typeof req.body.data === "string"
+          ? JSON.parse(req.body.data)
+          : req.body.data;
+      // Merge parsed data into req.body, preserving files and other fields
+      req.body = { ...parsedData, ...req.body };
+      // Remove the 'data' field itself to avoid duplication
+      delete req.body.data;
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid JSON in 'data' field",
+      });
+    }
+  }
+  next();
+};
 
 router.use(authenticate);
 router.use(authorizeModule("bids"));
@@ -115,6 +189,9 @@ router
   )
   .post(
     authorizeFeature("bids", "create"),
+    uploadBidDocuments,
+    handleMulterError,
+    parseFormData,
     validate(createBidSchema),
     createBidHandler
   );
@@ -128,6 +205,8 @@ router
   )
   .put(
     authorizeAnyFeature("bids", ["edit_own", "edit_pending"]),
+    uploadBidDocuments,
+    handleMulterError,
     validate(updateBidSchema),
     updateBidHandler
   )
@@ -266,5 +345,28 @@ router
 router
   .route("/bids/:bidId/history")
   .get(validate(getBidHistorySchema), getBidHistoryHandler);
+
+// Documents Routes
+
+router
+  .route("/bids/:bidId/documents")
+  .get(validate(getBidDocumentsSchema), getBidDocumentsHandler)
+  .post(
+    uploadBidDocuments,
+    handleMulterError,
+    validate(createBidDocumentsSchema),
+    createBidDocumentsHandler
+  );
+
+router
+  .route("/bids/:bidId/documents/:documentId")
+  .get(validate(getBidDocumentByIdSchema), getBidDocumentByIdHandler)
+  .put(
+    uploadBidDocuments,
+    handleMulterError,
+    validate(updateBidDocumentSchema),
+    updateBidDocumentHandler
+  )
+  .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
 
 export default router;

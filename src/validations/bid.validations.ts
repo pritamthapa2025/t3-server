@@ -247,6 +247,8 @@ export const createBidSchema = z.object({
     materials: z
       .array(
         z.object({
+          inventoryItemId: uuidSchema.optional(),
+          customName: z.string().optional(),
           description: z.string(),
           quantity: z.string(),
           unitCost: z.string(),
@@ -495,6 +497,25 @@ export const updateBidSchema = z.object({
       .max(20, "Marked value is too long (maximum 20 characters)")
       .optional(),
     convertToJob: z.boolean().optional(),
+
+    // Document operations (optional)
+    // For adding new documents: upload files with document_0, document_1, etc.
+
+    // For updating existing documents: array of document IDs to update
+    documentIdsToUpdate: z.array(uuidSchema).optional(),
+
+    // Update data for documents (must match order of documentIdsToUpdate)
+    documentUpdates: z
+      .array(
+        z.object({
+          fileName: z.string().max(255).optional(),
+          documentType: z.string().max(50).optional(),
+        })
+      )
+      .optional(),
+
+    // For deleting documents: array of document IDs to delete
+    documentIdsToDelete: z.array(uuidSchema).optional(),
   }),
 });
 
@@ -543,6 +564,8 @@ export const createBidMaterialSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
+    inventoryItemId: uuidSchema.optional(),
+    customeName: z.string().optional(),
     description: z
       .string()
       .min(1, "Material description is required and cannot be empty")
@@ -560,6 +583,8 @@ export const updateBidMaterialSchema = z.object({
     materialId: uuidSchema,
   }),
   body: z.object({
+    inventoryItemId: uuidSchema.optional(),
+    customName: z.string().optional(),
     description: z
       .string()
       .min(1, "Material description cannot be empty")
@@ -1102,5 +1127,53 @@ export const updateBidOperatingExpensesSchema = z.object({
     applyMarkup: z.boolean().optional(),
     markupPercentage: numericStringSchema.optional(),
     operatingPrice: numericStringSchema.optional(),
+  }),
+});
+
+// ============================
+// Bid Documents Validations
+// ============================
+
+export const createBidDocumentsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({}).optional(),
+});
+
+export const getBidDocumentsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const getBidDocumentByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+});
+
+export const updateBidDocumentSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+  body: z.object({
+    fileName: z
+      .string()
+      .max(255, "File name is too long (maximum 255 characters)")
+      .optional(),
+    documentType: z
+      .string()
+      .max(50, "Document type is too long (maximum 50 characters)")
+      .optional(),
+  }),
+});
+
+export const deleteBidDocumentSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
   }),
 });

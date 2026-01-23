@@ -253,6 +253,27 @@
       "when": 1769059809362,
       "tag": "0035_jazzy_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1769162571987,
+      "tag": "0036_zippy_rawhide_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1769166434975,
+      "tag": "0037_quick_franklin_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1769166508789,
+      "tag": "0038_panoramic_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

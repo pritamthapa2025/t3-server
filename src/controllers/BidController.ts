@@ -48,6 +48,7 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
+import { uploadToSpaces } from "../services/storage.service.js";
 import {
   getBids,
   getBidById,
@@ -92,6 +93,11 @@ import {
   getBidHistory,
   createBidHistoryEntry,
   getBidWithAllData,
+  createBidDocument,
+  getBidDocuments,
+  getBidDocumentById,
+  updateBidDocument,
+  deleteBidDocument,
 } from "../services/bid.service.js";
 
 // ============================
@@ -164,10 +170,16 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Get documents for the bid
+    const documents = await getBidDocuments(id!);
+
     logger.info("Bid fetched successfully");
     return res.status(200).json({
       success: true,
-      data: bid,
+      data: {
+        ...bid,
+        documents,
+      },
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -313,6 +325,45 @@ export const createBidHandler = async (req: Request, res: Response) => {
       );
     }
 
+    // Handle document uploads if provided (document_0, document_1, etc.)
+    const files = (req.files as Express.Multer.File[]) || [];
+    const documentFiles = files.filter((file) =>
+      file.fieldname.startsWith("document_")
+    );
+
+    if (documentFiles.length > 0) {
+      const uploadedDocuments = [];
+      for (let i = 0; i < documentFiles.length; i++) {
+        const file = documentFiles[i];
+        if (!file) continue;
+
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "bid-documents"
+          );
+
+          const document = await createBidDocument({
+            bidId: bid.id,
+            fileName: file.originalname,
+            filePath: uploadResult.url,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            uploadedBy: createdBy,
+          });
+
+          uploadedDocuments.push(document);
+        } catch (uploadError: any) {
+          logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        }
+      }
+
+      if (uploadedDocuments.length > 0) {
+        createdRecords.documents = uploadedDocuments;
+      }
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bid.id,
@@ -408,8 +459,103 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Handle document operations
+    const documentUpdates: any = {};
+
+    // Handle new document uploads (document_0, document_1, etc.)
+    const files = (req.files as Express.Multer.File[]) || [];
+    const documentFiles = files.filter((file) =>
+      file.fieldname.startsWith("document_")
+    );
+
+    if (documentFiles.length > 0) {
+      const uploadedDocuments = [];
+      for (let i = 0; i < documentFiles.length; i++) {
+        const file = documentFiles[i];
+        if (!file) continue;
+
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "bid-documents"
+          );
+
+          const document = await createBidDocument({
+            bidId: id!,
+            fileName: file.originalname,
+            filePath: uploadResult.url,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            uploadedBy: performedBy,
+          });
+
+          uploadedDocuments.push(document);
+        } catch (uploadError: any) {
+          logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        }
+      }
+
+      if (uploadedDocuments.length > 0) {
+        documentUpdates.added = uploadedDocuments;
+      }
+    }
+
+    // Handle document updates (if documentIdsToUpdate is provided)
+    if (req.body.documentIdsToUpdate && Array.isArray(req.body.documentIdsToUpdate)) {
+      const documentUpdatesList = req.body.documentUpdates || [];
+      const updatedDocuments = [];
+
+      for (let i = 0; i < req.body.documentIdsToUpdate.length; i++) {
+        const documentId = req.body.documentIdsToUpdate[i];
+        const updateData = documentUpdatesList[i] || {};
+
+        try {
+          const existingDoc = await getBidDocumentById(documentId);
+          if (existingDoc && existingDoc.bidId === id!) {
+            const updated = await updateBidDocument(documentId, {
+              fileName: updateData.fileName,
+              documentType: updateData.documentType,
+            });
+            if (updated) updatedDocuments.push(updated);
+          }
+        } catch (error: any) {
+          logger.error(`Error updating document ${documentId}:`, error);
+        }
+      }
+
+      if (updatedDocuments.length > 0) {
+        documentUpdates.updated = updatedDocuments;
+      }
+    }
+
+    // Handle document deletions (if documentIdsToDelete is provided)
+    if (req.body.documentIdsToDelete && Array.isArray(req.body.documentIdsToDelete)) {
+      const deletedDocuments = [];
+
+      for (const documentId of req.body.documentIdsToDelete) {
+        try {
+          const existingDoc = await getBidDocumentById(documentId);
+          if (existingDoc && existingDoc.bidId === id!) {
+            const deleted = await deleteBidDocument(documentId);
+            if (deleted) deletedDocuments.push(deleted);
+          }
+        } catch (error: any) {
+          logger.error(`Error deleting document ${documentId}:`, error);
+        }
+      }
+
+      if (deletedDocuments.length > 0) {
+        documentUpdates.deleted = deletedDocuments;
+      }
+    }
+
     // Create history entries for changed fields
     for (const [key, value] of Object.entries(req.body)) {
+      // Skip document-related fields
+      if (key === "documentIdsToUpdate" || key === "documentUpdates" || key === "documentIdsToDelete") {
+        continue;
+      }
       const oldValue = (originalBid as any)[key];
       if (oldValue !== value) {
         await createBidHistoryEntry({
@@ -424,10 +570,24 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
     }
 
+    // Create history entry for document operations
+    if (Object.keys(documentUpdates).length > 0) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: organizationId,
+        action: "documents_updated",
+        description: `Documents updated: ${documentUpdates.added?.length || 0} added, ${documentUpdates.updated?.length || 0} updated, ${documentUpdates.deleted?.length || 0} deleted`,
+        performedBy: performedBy,
+      });
+    }
+
     logger.info("Bid updated successfully");
     return res.status(200).json({
       success: true,
-      data: updatedBid,
+      data: {
+        ...updatedBid,
+        ...(Object.keys(documentUpdates).length > 0 && { documentUpdates }),
+      },
       message: "Bid updated successfully",
     });
   } catch (error: any) {
@@ -475,6 +635,16 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Bid not found",
       });
+    }
+
+    // Soft delete all documents associated with the bid
+    const documents = await getBidDocuments(id!);
+    for (const document of documents) {
+      try {
+        await deleteBidDocument(document.id);
+      } catch (error: any) {
+        logger.error(`Error deleting document ${document.id}:`, error);
+      }
     }
 
     // Create history entry
@@ -707,6 +877,15 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
+    // Get the bid to retrieve its organizationId
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
     const material = await updateBidMaterial(
       materialId!,
       organizationId,
@@ -720,10 +899,10 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry
+    // Create history entry using the bid's organizationId
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: bid.organizationId,
       action: "material_updated",
       description: `Material "${material.description}" was updated`,
       performedBy: performedBy,
@@ -754,6 +933,15 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
 
     const performedBy = req.user!.id;
 
+    // Get the bid to retrieve its organizationId
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
     const material = await deleteBidMaterial(materialId!, organizationId);
 
     if (!material) {
@@ -763,10 +951,10 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry
+    // Create history entry using the bid's organizationId
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: bid.organizationId,
       action: "material_deleted",
       description: `Material "${material.description}" was deleted`,
       performedBy: performedBy,
@@ -2145,6 +2333,337 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       data: bidData,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Bid Documents Operations
+// ============================
+
+export const createBidDocumentsHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const { bidId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Extract files with pattern document_0, document_1, etc.
+    const files = (req.files as Express.Multer.File[]) || [];
+    const documentFiles = files.filter((file) =>
+      file.fieldname.startsWith("document_")
+    );
+
+    if (documentFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files provided. Files must be uploaded with field names like 'document_0', 'document_1', etc.",
+      });
+    }
+
+    // Upload files and create document records
+    const uploadedDocuments = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < documentFiles.length; i++) {
+      const file = documentFiles[i];
+      if (!file) continue;
+
+      try {
+        // Upload file to storage
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-documents"
+        );
+
+        // Create document record
+        const document = await createBidDocument({
+          bidId: bidId!,
+          fileName: file.originalname,
+          filePath: uploadResult.url,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          uploadedBy: userId,
+        });
+
+        uploadedDocuments.push(document);
+      } catch (uploadError: any) {
+        logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        errors.push(
+          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`
+        );
+      }
+    }
+
+    if (uploadedDocuments.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload any documents",
+        errors,
+      });
+    }
+
+    logger.info(
+      `Successfully uploaded ${uploadedDocuments.length} document(s) for bid ${bidId}`
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: uploadedDocuments,
+      message: `Successfully uploaded ${uploadedDocuments.length} document(s)`,
+      ...(errors.length > 0 && {
+        warnings: errors,
+        partialSuccess: true,
+      }),
+    });
+  } catch (error: any) {
+    logger.logApiError("Error uploading bid documents", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while uploading documents",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const getBidDocumentsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const { bidId } = req.params;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const documents = await getBidDocuments(bidId!);
+
+    logger.info(`Bid documents fetched successfully for bid ${bidId}`);
+    return res.status(200).json({
+      success: true,
+      data: documents,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getBidDocumentByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+
+    const { bidId, documentId } = req.params;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const document = await getBidDocumentById(documentId!);
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // Verify document belongs to the bid
+    if (document.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    logger.info(`Bid document ${documentId} fetched successfully`);
+    return res.status(200).json({
+      success: true,
+      data: document,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidDocumentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+
+    const { bidId, documentId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Verify document exists and belongs to bid
+    const existingDocument = await getBidDocumentById(documentId!);
+    if (!existingDocument || existingDocument.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // Handle file upload if provided
+    let uploadedFileUrl: string | null = null;
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-documents"
+        );
+        uploadedFileUrl = uploadResult.url;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new document file. Please try again.",
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    if (req.body.fileName) updateData.fileName = req.body.fileName;
+    if (req.body.documentType) updateData.documentType = req.body.documentType;
+    if (uploadedFileUrl) {
+      updateData.filePath = uploadedFileUrl;
+      if (file) {
+        updateData.fileName = file.originalname;
+        updateData.fileType = file.mimetype;
+        updateData.fileSize = file.size;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No fields to update",
+      });
+    }
+
+    const updatedDocument = await updateBidDocument(documentId!, updateData);
+
+    if (!updatedDocument) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found or failed to update",
+      });
+    }
+
+    logger.info(`Bid document ${documentId} updated successfully`);
+    return res.status(200).json({
+      success: true,
+      data: updatedDocument,
+      message: "Document updated successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating bid document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while updating the document",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const deleteBidDocumentHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+
+    const { bidId, documentId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Verify document exists and belongs to bid
+    const existingDocument = await getBidDocumentById(documentId!);
+    if (!existingDocument || existingDocument.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const deletedDocument = await deleteBidDocument(documentId!);
+
+    if (!deletedDocument) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    logger.info(`Bid document ${documentId} deleted successfully`);
+    return res.status(200).json({
+      success: true,
+      message: "Document deleted successfully",
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);

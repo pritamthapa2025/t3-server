@@ -60,39 +60,43 @@ import {
   updateJobFinancialSummary,
   getJobPlannedFinancialBreakdown,
   getJobMaterials,
+  getJobMaterialById,
   createJobMaterial,
   updateJobMaterial,
   deleteJobMaterial,
   getJobLabor,
+  getJobLaborById,
   createJobLabor,
   updateJobLabor,
   deleteJobLabor,
   getJobTravel,
+  getJobTravelById,
   createJobTravel,
   updateJobTravel,
   deleteJobTravel,
   getJobPlannedOperatingExpenses,
   getJobTimeline,
+  getJobTimelineEventById,
   createJobTimelineEvent,
   updateJobTimelineEvent,
   deleteJobTimelineEvent,
   getJobNotes,
+  getJobNoteById,
   createJobNote,
   updateJobNote,
   deleteJobNote,
   getJobHistory,
   createJobHistoryEntry,
   getJobTasks,
+  getJobTaskById,
   createJobTask,
   updateJobTask,
   deleteJobTask,
   getJobExpenses,
+  getJobExpenseById,
   createJobExpense,
   updateJobExpense,
   deleteJobExpense,
-  getJobDocuments,
-  createJobDocument,
-  deleteJobDocument,
   getJobWithAllData,
 } from "../services/job.service.js";
 
@@ -562,10 +566,17 @@ export const getJobFinancialSummaryHandler = async (
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
-    const summary = await getJobFinancialSummary(jobId!, organizationId);
+    const summary = await getJobFinancialSummary(jobId!);
+
+    if (!summary) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job financial summary fetched successfully");
     return res.status(200).json({
@@ -693,10 +704,17 @@ export const getJobMaterialsHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
-    const materials = await getJobMaterials(jobId!, organizationId);
+    const materials = await getJobMaterials(jobId!);
+
+    if (materials === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job materials fetched successfully");
     return res.status(200).json({
@@ -712,20 +730,56 @@ export const getJobMaterialsHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const getJobMaterialByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "materialId"])) return;
+    const { jobId, materialId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const material = await getJobMaterialById(jobId!, materialId!);
+
+    if (!material) {
+      return res.status(404).json({
+        success: false,
+        message: "Material not found",
+      });
+    }
+
+    logger.info("Job material fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: material,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 export const createJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const performedBy = req.user!.id;
+    // Get job to retrieve organizationId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     const materialData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
     };
 
     const material = await createJobMaterial(materialData);
@@ -737,13 +791,13 @@ export const createJobMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry
+    // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: job.organizationId,
       action: "material_added",
-      description: `Material "${material.materialName}" was added`,
-      createdBy: performedBy,
+      description: `Material "${material.description}" was added`,
+      createdBy: userId,
     });
 
     logger.info("Job material created successfully");
@@ -765,16 +819,21 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "jobId"])) return;
     const { materialId, jobId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-
-    const performedBy = req.user!.id;
+    // Get job to retrieve organizationId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     const material = await updateJobMaterial(
       materialId!,
       jobId!,
-      organizationId,
       req.body
     );
 
@@ -785,13 +844,13 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry
+    // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: job.organizationId,
       action: "material_updated",
-      description: `Material "${material.materialName || "Unknown"}" was updated`,
-      createdBy: performedBy,
+      description: `Material "${material.description}" was updated`,
+      createdBy: userId,
     });
 
     logger.info("Job material updated successfully");
@@ -813,13 +872,23 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "jobId"])) return;
     const { materialId, jobId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    // Get job to retrieve organizationId and verify material exists
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
-    const performedBy = req.user!.id;
-
-    const material = await deleteJobMaterial(materialId!, jobId!, organizationId);
+    // Get the material before deleting to use in history
+    const { getBidMaterialById } = await import("../services/bid.service.js");
+    const existingMaterial = await getBidMaterialById(materialId!, job.organizationId);
+    
+    const material = await deleteJobMaterial(materialId!, jobId!);
 
     if (!material) {
       return res.status(404).json({
@@ -828,13 +897,13 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry
+    // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: job.organizationId,
       action: "material_deleted",
-      description: `Material deleted`,
-      createdBy: performedBy,
+      description: `Material "${existingMaterial?.description || 'Unknown'}" was deleted`,
+      createdBy: userId,
     });
 
     logger.info("Job material deleted successfully");
@@ -859,12 +928,51 @@ export const getJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const labor = await getJobLabor(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const labor = await getJobLabor(jobId!);
+
+    if (labor === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job labor fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: labor,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobLaborByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "laborId"])) return;
+    const { jobId, laborId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const labor = await getJobLaborById(jobId!, laborId!);
+
+    if (!labor) {
+      return res.status(404).json({
+        success: false,
+        message: "Labor entry not found",
+      });
+    }
+
+    logger.info("Job labor entry fetched successfully");
     return res.status(200).json({
       success: true,
       data: labor,
@@ -896,9 +1004,9 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
     const labor = await createJobLabor(laborData);
 
     if (!labor) {
-      return res.status(500).json({
+      return res.status(404).json({
         success: false,
-        message: "Failed to create labor entry",
+        message: "Job not found or the labor entry could not be created. Please verify the job ID and position ID.",
       });
     }
 
@@ -917,11 +1025,29 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
       data: labor,
       message: "Labor added successfully",
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Job error", error, req);
+    
+    // Check for specific database errors
+    if (error?.code === "23503") {
+      // Foreign key constraint violation
+      if (error?.constraint?.includes("position_id")) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid position ID. The specified position does not exist.",
+        });
+      }
+      if (error?.constraint?.includes("bid_id")) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid bid ID. The job's associated bid does not exist.",
+        });
+      }
+    }
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error?.message || "Internal server error",
     });
   }
 };
@@ -1019,12 +1145,51 @@ export const getJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const travel = await getJobTravel(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const travel = await getJobTravel(jobId!);
+
+    if (travel === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job travel fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: travel,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobTravelByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "travelId"])) return;
+    const { jobId, travelId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const travel = await getJobTravelById(jobId!, travelId!);
+
+    if (!travel) {
+      return res.status(404).json({
+        success: false,
+        message: "Travel entry not found",
+      });
+    }
+
+    logger.info("Job travel entry fetched successfully");
     return res.status(200).json({
       success: true,
       data: travel,
@@ -1182,17 +1347,24 @@ export const getJobOperatingExpensesHandler = async (
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    // Get planned operating expenses from the associated bid
-    const expenses = await getJobPlannedOperatingExpenses(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
-    logger.info("Job planned operating expenses fetched successfully");
+    // Get operating expenses from the associated bid
+    const expenses = await getJobPlannedOperatingExpenses(jobId!);
+
+    if (expenses === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    logger.info("Job operating expenses fetched successfully");
     return res.status(200).json({
       success: true,
       data: expenses,
-      message: "Planned operating expenses retrieved from bid",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1231,10 +1403,18 @@ export const getJobTimelineHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const timeline = await getJobTimeline(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const timeline = await getJobTimeline(jobId!);
+
+    if (timeline === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job timeline fetched successfully");
     return res.status(200).json({
@@ -1283,7 +1463,7 @@ export const createJobTimelineEventHandler = async (
       jobId: jobId!,
       organizationId,
       action: "timeline_event_added",
-      description: `Timeline event "${event.eventName}" was added`,
+      description: `Timeline event "${event.event}" was added`,
       createdBy: performedBy,
     });
 
@@ -1292,6 +1472,37 @@ export const createJobTimelineEventHandler = async (
       success: true,
       data: event,
       message: "Timeline event added successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobTimelineEventByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "eventId"])) return;
+    const { jobId, eventId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const timelineEvent = await getJobTimelineEventById(jobId!, eventId!);
+
+    if (!timelineEvent) {
+      return res.status(404).json({
+        success: false,
+        message: "Timeline event not found",
+      });
+    }
+
+    logger.info("Job timeline event fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: timelineEvent,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1406,10 +1617,18 @@ export const getJobNotesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const notes = await getJobNotes(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const notes = await getJobNotes(jobId!);
+
+    if (notes === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job notes fetched successfully");
     return res.status(200).json({
@@ -1464,6 +1683,37 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
       success: true,
       data: note,
       message: "Note added successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobNoteByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "noteId"])) return;
+    const { jobId, noteId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const note = await getJobNoteById(jobId!, noteId!);
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found",
+      });
+    }
+
+    logger.info("Job note fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: note,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1594,10 +1844,18 @@ export const getJobTasksHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const tasks = await getJobTasks(jobId!, organizationId);
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const tasks = await getJobTasks(jobId!);
+
+    if (tasks === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
     logger.info("Job tasks fetched successfully");
     return res.status(200).json({
@@ -1617,15 +1875,15 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
     const taskData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
       createdBy: performedBy,
     };
 
@@ -1641,7 +1899,7 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: task.organizationId,
       action: "task_added",
       description: `Task "${task.taskName}" was added`,
       createdBy: performedBy,
@@ -1652,6 +1910,37 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
       success: true,
       data: task,
       message: "Task added successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobTaskByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId"])) return;
+    const { jobId, taskId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const task = await getJobTaskById(jobId!, taskId!);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    logger.info("Job task fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: task,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1774,19 +2063,50 @@ export const getJobExpensesHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const getJobExpenseByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "expenseId"])) return;
+    const { jobId, expenseId } = req.params;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
+
+    const expense = await getJobExpenseById(jobId!, expenseId!);
+
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+
+    logger.info("Job expense fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: expense,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 export const createJobExpenseHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+
+    const userId = validateOrganizationAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
     const expenseData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
       createdBy: performedBy,
     };
 
@@ -1802,9 +2122,9 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: expense.organizationId,
       action: "expense_added",
-      description: `Expense was added`,
+      description: `Expense "${expense.expenseType}" was added`,
       createdBy: performedBy,
     });
 
@@ -1916,12 +2236,21 @@ export const getJobDocumentsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
 
-    const documents = await getJobDocuments(jobId!, organizationId);
+    // Get job to retrieve bidId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
-    logger.info("Job documents fetched successfully");
+    // Get bid documents using the job's bidId
+    const { getBidDocuments } = await import("../services/bid.service.js");
+    const documents = await getBidDocuments(job.bidId);
+
+    logger.info(`Job documents fetched successfully for job ${jobId}`);
     return res.status(200).json({
       success: true,
       data: documents,
@@ -1935,45 +2264,158 @@ export const getJobDocumentsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const createJobDocumentHandler = async (req: Request, res: Response) => {
+export const createJobDocumentsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const performedBy = req.user!.id;
-
-    const documentData = {
-      ...req.body,
-      jobId: jobId!,
-      organizationId,
-      uploadedBy: performedBy,
-    };
-
-    const document = await createJobDocument(documentData);
-
-    if (!document) {
-      return res.status(500).json({
+    // Get job to retrieve bidId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
         success: false,
-        message: "Failed to create document",
+        message: "Job not found",
       });
     }
 
-    // Create history entry
+    const bidId = job.bidId;
+
+    // Handle file uploads
+    const files = (req.files as Express.Multer.File[]) || [];
+    const documentFiles = files.filter((file) =>
+      file.fieldname.startsWith("document_")
+    );
+
+    if (documentFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files provided. Please upload at least one document.",
+      });
+    }
+
+    const { uploadToSpaces } = await import("../services/storage.service.js");
+    const {
+      createBidDocument,
+      getBidById,
+    } = await import("../services/bid.service.js");
+
+    // Verify bid exists
+    const bid = await getBidById(bidId);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const uploadedDocuments = [];
+    const errors: string[] = [];
+
+    for (const file of documentFiles) {
+      if (!file) continue;
+
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-documents"
+        );
+
+        const document = await createBidDocument({
+          bidId: bidId,
+          fileName: file.originalname,
+          filePath: uploadResult.url,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          uploadedBy: userId,
+        });
+
+        uploadedDocuments.push(document);
+      } catch (uploadError: any) {
+        logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        errors.push(
+          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`
+        );
+      }
+    }
+
+    if (uploadedDocuments.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload any documents",
+        errors,
+      });
+    }
+
+    // Create history entry using job's organizationId
+    const { createJobHistoryEntry } = await import("../services/job.service.js");
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: job.organizationId,
       action: "document_added",
-      description: `Document was added`,
-      createdBy: performedBy,
+      description: `${uploadedDocuments.length} document(s) were added`,
+      createdBy: userId,
     });
 
-    logger.info("Job document created successfully");
+    logger.info(
+      `Successfully uploaded ${uploadedDocuments.length} document(s) for job ${jobId}`
+    );
+
     return res.status(201).json({
       success: true,
+      data: uploadedDocuments,
+      message: `Successfully uploaded ${uploadedDocuments.length} document(s)`,
+      ...(errors.length > 0 && {
+        warnings: errors,
+        partialSuccess: true,
+      }),
+    });
+  } catch (error: any) {
+    logger.logApiError("Error uploading job documents", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while uploading documents",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const getJobDocumentByIdHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "documentId"])) return;
+
+    const { jobId, documentId } = req.params;
+
+    // Get job to retrieve bidId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    // Get bid document using the job's bidId
+    const { getBidDocumentById } = await import("../services/bid.service.js");
+    const document = await getBidDocumentById(documentId!);
+
+    if (!document || document.bidId !== job.bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    logger.info(`Job document fetched successfully for job ${jobId}`);
+    return res.status(200).json({
+      success: true,
       data: document,
-      message: "Document added successfully",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1984,37 +2426,156 @@ export const createJobDocumentHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
+export const updateJobDocumentHandler = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    if (!validateParams(req, res, ["documentId", "jobId"])) return;
-    const { documentId } = req.params;
-    const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    if (!validateParams(req, res, ["jobId", "documentId"])) return;
 
-    const performedBy = req.user!.id;
+    const { jobId, documentId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const document = await deleteJobDocument(documentId!, jobId!, organizationId);
+    // Get job to retrieve bidId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
 
-    if (!document) {
+    // Verify document exists and belongs to the job's bid
+    const { getBidDocumentById, updateBidDocument } = await import(
+      "../services/bid.service.js"
+    );
+    const existingDocument = await getBidDocumentById(documentId!);
+    if (!existingDocument || existingDocument.bidId !== job.bidId) {
       return res.status(404).json({
         success: false,
         message: "Document not found",
       });
     }
 
-    // Create history entry
-    await createJobHistoryEntry({
-      jobId: jobId!,
-      organizationId,
-      action: "document_deleted",
-      description: `Document deleted`,
-      createdBy: performedBy,
-    });
+    // Handle file upload if provided
+    let uploadedFileUrl: string | null = null;
+    const file = req.file;
+    if (file) {
+      try {
+        const { uploadToSpaces } = await import("../services/storage.service.js");
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-documents"
+        );
+        uploadedFileUrl = uploadResult.url;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new document file. Please try again.",
+        });
+      }
+    }
 
-    logger.info("Job document deleted successfully");
+    // Prepare update data
+    const updateData: any = {};
+    if (req.body.fileName) updateData.fileName = req.body.fileName;
+    if (req.body.documentType) updateData.documentType = req.body.documentType;
+    if (uploadedFileUrl) {
+      updateData.filePath = uploadedFileUrl;
+      if (file) {
+        updateData.fileName = file.originalname;
+        updateData.fileType = file.mimetype;
+        updateData.fileSize = file.size;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No fields to update",
+      });
+    }
+
+    const updatedDocument = await updateBidDocument(documentId!, updateData);
+
+    if (!updatedDocument) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found or failed to update",
+      });
+    }
+
+    logger.info(`Job document ${documentId} updated successfully`);
     return res.status(200).json({
       success: true,
+      data: updatedDocument,
+      message: "Document updated successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating job document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while updating the document",
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["documentId", "jobId"])) return;
+    const { documentId, jobId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Get job to retrieve bidId and organizationId
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    // Verify document exists and belongs to the job's bid
+    const { getBidDocumentById, deleteBidDocument } = await import(
+      "../services/bid.service.js"
+    );
+    const existingDocument = await getBidDocumentById(documentId!);
+    if (!existingDocument || existingDocument.bidId !== job.bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const document = await deleteBidDocument(documentId!);
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found or failed to delete",
+      });
+    }
+
+    // Create history entry using job's organizationId
+    const { createJobHistoryEntry } = await import("../services/job.service.js");
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      organizationId: job.organizationId,
+      action: "document_deleted",
+      description: `Document "${existingDocument.fileName}" was deleted`,
+      createdBy: userId,
+    });
+
+    logger.info(`Job document ${documentId} deleted successfully`);
+    return res.status(200).json({
+      success: true,
+      data: document,
       message: "Document deleted successfully",
     });
   } catch (error) {

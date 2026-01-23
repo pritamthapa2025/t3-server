@@ -1,17 +1,18 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getPropertiesHandler,
   getPropertyByIdHandler,
   createPropertyHandler,
   updatePropertyHandler,
   deletePropertyHandler,
-  // createPropertyContactHandler,
+  createPropertyContactHandler,
   getPropertyEquipmentHandler,
   getPropertyEquipmentByIdHandler,
   createPropertyEquipmentHandler,
   updatePropertyEquipmentHandler,
   deletePropertyEquipmentHandler,
-  // createPropertyDocumentHandler,
+  createPropertyDocumentHandler,
   createServiceHistoryHandler,
   getPropertyKPIsHandler,
 } from "../../controllers/PropertyController.js";
@@ -24,17 +25,52 @@ import {
   createPropertySchema,
   updatePropertySchema,
   deletePropertySchema,
-  // createPropertyContactSchema,
+  createPropertyContactSchema,
   getPropertyEquipmentSchema,
   getPropertyEquipmentByIdSchema,
   createPropertyEquipmentSchema,
   updatePropertyEquipmentSchema,
   deletePropertyEquipmentSchema,
-  // createPropertyDocumentSchema,
+  createPropertyDocumentSchema,
   createServiceHistorySchema,
 } from "../../validations/property.validations.js";
 
 const router = Router();
+
+// Configure multer for document uploads
+const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for documents
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept all file types for documents
+    cb(null, true);
+  },
+}).single("document"); // Handle the document field
+
+// Multer error handler middleware
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum size is 50MB.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next();
+};
 
 // Apply authentication middleware to all property routes
 router.use(authenticate);
@@ -57,10 +93,10 @@ router
   .put(validate(updatePropertySchema), updatePropertyHandler)
   .delete(validate(deletePropertySchema), deletePropertyHandler);
 
-// Property contacts routes (coming soon)
-// router
-//   .route("/properties/:propertyId/contacts")
-//   .post(validate(createPropertyContactSchema), createPropertyContactHandler);
+// Property contacts routes
+router
+  .route("/properties/:propertyId/contacts")
+  .post(validate(createPropertyContactSchema), createPropertyContactHandler);
 
 // Property equipment routes
 router
@@ -89,10 +125,27 @@ router
     deletePropertyEquipmentHandler
   );
 
-// Property documents routes (coming soon)
-// router
-//   .route("/properties/:propertyId/documents")
-//   .post(validate(createPropertyDocumentSchema), createPropertyDocumentHandler);
+// Property documents routes
+router
+  .route("/properties/:propertyId/documents")
+  .post(
+    (req, res, next) => {
+      // Apply multer only if Content-Type is multipart/form-data
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadDocument(req, res, (err) => {
+          if (err) {
+            return handleMulterError(err, req, res, next);
+          }
+          next();
+        });
+      } else {
+        // Skip multer for JSON requests
+        next();
+      }
+    },
+    validate(createPropertyDocumentSchema),
+    createPropertyDocumentHandler
+  );
 
 // Property service history routes
 router

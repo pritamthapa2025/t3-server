@@ -2,6 +2,7 @@ import { count, eq, and, desc, asc, sql, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
+import { getBidFinancialBreakdown } from "./bid.service.js";
 import {
   financialSummary,
   financialCostCategories,
@@ -258,19 +259,34 @@ export const updateFinancialSummary = async (
 };
 
 export const getJobFinancialSummary = async (jobId: string) => {
-  // Get job financial data from existing tables
-  const result = await db
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
     .select({
       job: jobs,
       bid: bidsTable,
-      financialBreakdown: bidFinancialBreakdown,
+      bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
-    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
 
-  return result[0] || null;
+  if (!jobData) {
+    return null;
+  }
+
+  // Get the financial breakdown using the bid's organizationId
+  const financialBreakdown = await getBidFinancialBreakdown(
+    jobData.bidId,
+    jobData.organizationId
+  );
+
+  return financialBreakdown;
 };
 
 export const createJobFinancialSummary = async (data: {

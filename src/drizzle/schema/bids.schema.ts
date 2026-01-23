@@ -17,6 +17,7 @@ import {
 import { users } from "./auth.schema.js";
 import { organizations } from "./client.schema.js";
 import { employees, positions } from "./org.schema.js";
+import { inventoryItems } from "./inventory.schema.js";
 
 // Import enums from centralized location
 import {
@@ -180,8 +181,10 @@ export const bidMaterials = org.table(
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
+    inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id),
+    customName: text("custom_name"),
 
-    description: text("description").notNull(),
+    description: text("description"),
     quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull(),
     unitCost: numeric("unit_cost", { precision: 15, scale: 2 }).notNull(),
     markup: numeric("markup", { precision: 5, scale: 2 })
@@ -492,9 +495,6 @@ export const bidDocuments = org.table(
   "bid_documents",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
@@ -513,7 +513,6 @@ export const bidDocuments = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_bid_documents_org").on(table.organizationId),
     index("idx_bid_documents_bid_id").on(table.bidId),
     index("idx_bid_documents_type").on(table.documentType),
     index("idx_bid_documents_uploaded_by").on(table.uploadedBy),

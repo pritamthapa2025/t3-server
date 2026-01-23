@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getJobsHandler,
   getJobByIdHandler,
@@ -13,38 +14,47 @@ import {
   getJobFinancialBreakdownHandler,
   updateJobFinancialBreakdownHandler,
   getJobMaterialsHandler,
+  getJobMaterialByIdHandler,
   createJobMaterialHandler,
   updateJobMaterialHandler,
   deleteJobMaterialHandler,
   getJobLaborHandler,
+  getJobLaborByIdHandler,
   createJobLaborHandler,
   updateJobLaborHandler,
   deleteJobLaborHandler,
   getJobTravelHandler,
+  getJobTravelByIdHandler,
   createJobTravelHandler,
   updateJobTravelHandler,
   deleteJobTravelHandler,
   getJobOperatingExpensesHandler,
   updateJobOperatingExpensesHandler,
   getJobTimelineHandler,
+  getJobTimelineEventByIdHandler,
   createJobTimelineEventHandler,
   updateJobTimelineEventHandler,
   deleteJobTimelineEventHandler,
   getJobNotesHandler,
+  getJobNoteByIdHandler,
   createJobNoteHandler,
   updateJobNoteHandler,
   deleteJobNoteHandler,
   getJobHistoryHandler,
   getJobTasksHandler,
+  getJobTaskByIdHandler,
   createJobTaskHandler,
   updateJobTaskHandler,
   deleteJobTaskHandler,
   getJobExpensesHandler,
+  getJobExpenseByIdHandler,
   createJobExpenseHandler,
   updateJobExpenseHandler,
   deleteJobExpenseHandler,
   getJobDocumentsHandler,
-  createJobDocumentHandler,
+  createJobDocumentsHandler,
+  getJobDocumentByIdHandler,
+  updateJobDocumentHandler,
   deleteJobDocumentHandler,
   getJobWithAllDataHandler,
 } from "../../controllers/JobController.js";
@@ -63,44 +73,89 @@ import {
   updateJobFinancialSummarySchema,
   updateJobFinancialBreakdownSchema,
   getJobMaterialsSchema,
+  getJobMaterialByIdSchema,
   createJobMaterialSchema,
   updateJobMaterialSchema,
   deleteJobMaterialSchema,
   getJobLaborSchema,
+  getJobLaborByIdSchema,
   createJobLaborSchema,
   updateJobLaborSchema,
   deleteJobLaborSchema,
   getJobTravelSchema,
+  getJobTravelByIdSchema,
   createJobTravelSchema,
   updateJobTravelSchema,
   deleteJobTravelSchema,
   getJobOperatingExpensesSchema,
   updateJobOperatingExpensesSchema,
   getJobTimelineSchema,
+  getJobTimelineEventByIdSchema,
   createJobTimelineEventSchema,
   updateJobTimelineEventSchema,
   deleteJobTimelineEventSchema,
   getJobNotesSchema,
+  getJobNoteByIdSchema,
   createJobNoteSchema,
   updateJobNoteSchema,
   deleteJobNoteSchema,
   getJobHistorySchema,
   getJobTasksSchema,
+  getJobTaskByIdSchema,
   createJobTaskSchema,
   updateJobTaskSchema,
   deleteJobTaskSchema,
   getJobExpensesSchema,
+  getJobExpenseByIdSchema,
   createJobExpenseSchema,
   updateJobExpenseSchema,
   deleteJobExpenseSchema,
   getJobDocumentsSchema,
-  createJobDocumentSchema,
+  createJobDocumentsSchema,
+  getJobDocumentByIdSchema,
+  updateJobDocumentSchema,
   deleteJobDocumentSchema,
   getJobWithAllDataSchema,
 } from "../../validations/job.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
+
+// Configure multer for job document uploads (multiple files with dynamic field names)
+// Note: Job documents are stored in bid_documents table via job.bidId
+const uploadJobDocuments = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit per file
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept all file types for documents
+    cb(null, true);
+  },
+}).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
+
+// Multer error handler middleware
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum size is 5MB per file.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err) {
+    return res.status(500).json({
+      success: false,
+      message: "File upload error",
+    });
+  }
+  next();
+};
 
 router.use(authenticate);
 
@@ -165,6 +220,7 @@ router
 
 router
   .route("/jobs/:jobId/materials/:materialId")
+  .get(validate(getJobMaterialByIdSchema), getJobMaterialByIdHandler)
   .put(validate(updateJobMaterialSchema), updateJobMaterialHandler)
   .delete(validate(deleteJobMaterialSchema), deleteJobMaterialHandler);
 
@@ -177,6 +233,7 @@ router
 
 router
   .route("/jobs/:jobId/labor/:laborId")
+  .get(validate(getJobLaborByIdSchema), getJobLaborByIdHandler)
   .put(validate(updateJobLaborSchema), updateJobLaborHandler)
   .delete(validate(deleteJobLaborSchema), deleteJobLaborHandler);
 
@@ -189,6 +246,7 @@ router
 
 router
   .route("/jobs/:jobId/travel/:travelId")
+  .get(validate(getJobTravelByIdSchema), getJobTravelByIdHandler)
   .put(validate(updateJobTravelSchema), updateJobTravelHandler)
   .delete(validate(deleteJobTravelSchema), deleteJobTravelHandler);
 
@@ -211,6 +269,7 @@ router
 
 router
   .route("/jobs/:jobId/timeline/:eventId")
+  .get(validate(getJobTimelineEventByIdSchema), getJobTimelineEventByIdHandler)
   .put(validate(updateJobTimelineEventSchema), updateJobTimelineEventHandler)
   .delete(
     validate(deleteJobTimelineEventSchema),
@@ -226,6 +285,7 @@ router
 
 router
   .route("/jobs/:jobId/notes/:noteId")
+  .get(validate(getJobNoteByIdSchema), getJobNoteByIdHandler)
   .put(validate(updateJobNoteSchema), updateJobNoteHandler)
   .delete(validate(deleteJobNoteSchema), deleteJobNoteHandler);
 
@@ -244,6 +304,7 @@ router
 
 router
   .route("/jobs/:jobId/tasks/:taskId")
+  .get(validate(getJobTaskByIdSchema), getJobTaskByIdHandler)
   .put(validate(updateJobTaskSchema), updateJobTaskHandler)
   .delete(validate(deleteJobTaskSchema), deleteJobTaskHandler);
 
@@ -256,6 +317,7 @@ router
 
 router
   .route("/jobs/:jobId/expenses/:expenseId")
+  .get(validate(getJobExpenseByIdSchema), getJobExpenseByIdHandler)
   .put(validate(updateJobExpenseSchema), updateJobExpenseHandler)
   .delete(validate(deleteJobExpenseSchema), deleteJobExpenseHandler);
 
@@ -264,10 +326,22 @@ router
 router
   .route("/jobs/:jobId/documents")
   .get(validate(getJobDocumentsSchema), getJobDocumentsHandler)
-  .post(validate(createJobDocumentSchema), createJobDocumentHandler);
+  .post(
+    uploadJobDocuments,
+    handleMulterError,
+    validate(createJobDocumentsSchema),
+    createJobDocumentsHandler
+  );
 
 router
   .route("/jobs/:jobId/documents/:documentId")
+  .get(validate(getJobDocumentByIdSchema), getJobDocumentByIdHandler)
+  .put(
+    uploadJobDocuments,
+    handleMulterError,
+    validate(updateJobDocumentSchema),
+    updateJobDocumentHandler
+  )
   .delete(validate(deleteJobDocumentSchema), deleteJobDocumentHandler);
 
 export default router;

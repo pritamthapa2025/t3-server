@@ -970,6 +970,52 @@ export const getPropertyServiceHistory = async (
     .limit(limit);
 };
 
+// ============================
+// Property Contact Operations
+// ============================
+
+export const createPropertyContact = async (data: {
+  propertyId: string;
+  fullName: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  mobilePhone?: string;
+  contactType?: string;
+  isPrimary?: boolean;
+  availableHours?: string;
+  notes?: string;
+}) => {
+  const [contact] = await db
+    .insert(propertyContacts)
+    .values(data)
+    .returning();
+
+  return contact;
+};
+
+// ============================
+// Property Document Operations
+// ============================
+
+export const createPropertyDocument = async (data: {
+  propertyId: string;
+  fileName: string;
+  filePath: string;
+  fileType?: string;
+  fileSize?: number;
+  documentType?: string;
+  description?: string;
+  uploadedBy: string;
+}) => {
+  const [document] = await db
+    .insert(propertyDocuments)
+    .values(data)
+    .returning();
+
+  return document;
+};
+
 // Get Property KPIs for dashboard
 export const getPropertyKPIs = async () => {
   // OPTIMIZATION: Run all queries in parallel for maximum performance

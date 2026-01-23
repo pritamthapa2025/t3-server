@@ -211,6 +211,13 @@ export const getJobMaterialsSchema = z.object({
   }),
 });
 
+export const getJobMaterialByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    materialId: uuidSchema,
+  }),
+});
+
 export const createJobMaterialSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -254,6 +261,13 @@ export const deleteJobMaterialSchema = z.object({
 export const getJobLaborSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
+  }),
+});
+
+export const getJobLaborByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    laborId: uuidSchema,
   }),
 });
 
@@ -306,6 +320,13 @@ export const deleteJobLaborSchema = z.object({
 export const getJobTravelSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
+  }),
+});
+
+export const getJobTravelByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    travelId: uuidSchema,
   }),
 });
 
@@ -398,6 +419,13 @@ export const getJobTimelineSchema = z.object({
   }),
 });
 
+export const getJobTimelineEventByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    eventId: uuidSchema,
+  }),
+});
+
 export const createJobTimelineEventSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -449,6 +477,13 @@ export const createJobNoteSchema = z.object({
   body: z.object({
     note: z.string().min(1, "Note is required"),
     isInternal: z.boolean().optional().default(true),
+  }),
+});
+
+export const getJobNoteByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    noteId: uuidSchema,
   }),
 });
 
@@ -506,6 +541,13 @@ export const createJobTaskSchema = z.object({
   }),
 });
 
+export const getJobTaskByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+  }),
+});
+
 export const updateJobTaskSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -558,6 +600,13 @@ export const createJobExpenseSchema = z.object({
   }),
 });
 
+export const getJobExpenseByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    expenseId: uuidSchema,
+  }),
+});
+
 export const updateJobExpenseSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -592,16 +641,34 @@ export const getJobDocumentsSchema = z.object({
   }),
 });
 
-export const createJobDocumentSchema = z.object({
+export const createJobDocumentsSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
   }),
+  body: z.object({}).optional(),
+});
+
+export const getJobDocumentByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+});
+
+export const updateJobDocumentSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    documentId: uuidSchema,
+  }),
   body: z.object({
-    fileName: z.string().min(1, "File name is required").max(255),
-    filePath: z.string().min(1, "File path is required").max(500),
-    fileType: z.string().max(50).optional(),
-    fileSize: z.number().int().positive().optional(),
-    documentType: z.string().max(50).optional(),
+    fileName: z
+      .string()
+      .max(255, "File name is too long (maximum 255 characters)")
+      .optional(),
+    documentType: z
+      .string()
+      .max(50, "Document type is too long (maximum 50 characters)")
+      .optional(),
   }),
 });
 
