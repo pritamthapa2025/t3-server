@@ -1545,7 +1545,7 @@ export const updateJobTimelineEventHandler = async (
       jobId: jobId!,
       organizationId,
       action: "timeline_event_updated",
-      description: `Timeline event "${event?.eventName || "Unknown"}" was updated`,
+      description: `Timeline event "${event?.event || "Unknown"}" was updated`,
       createdBy: performedBy,
     });
 

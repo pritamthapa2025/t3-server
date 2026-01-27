@@ -24,14 +24,24 @@ import {
   deleteBidLabor,
   getBidTravel,
   getBidTravelById,
+  createBidTravel,
+  updateBidTravel,
+  deleteBidTravel,
   getBidTimeline,
   getBidTimelineEventById,
   createBidTimelineEvent,
+  updateBidTimelineEvent,
+  deleteBidTimelineEvent,
   getBidNotes,
   getBidNoteById,
   createBidNote,
+  updateBidNote,
+  deleteBidNote,
   getBidHistory,
   createBidHistoryEntry,
+  getBidDocuments,
+  createBidDocument,
+  deleteBidDocument,
 } from "./bid.service.js";
 
 // ============================
@@ -1071,11 +1081,50 @@ export const getJobTravelById = async (jobId: string, travelId: string) => {
 export const createJobTravel = async (data: {
   jobId: string;
   organizationId: string;
-  description: string;
-  distance?: number;
-  cost: string;
+  bidLaborId: string;
+  roundTripMiles: string;
+  mileageRate: string;
+  vehicleDayRate: string;
+  days: number;
+  mileageCost: string;
+  vehicleCost: string;
+  markup: string;
+  totalCost: string;
+  totalPrice: string;
 }) => {
-  return { id: "placeholder", ...data, createdAt: new Date() };
+  // Verify the job exists and get bidId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, data.jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Create travel entry using bid service
+  const travel = await createBidTravel({
+    bidLaborId: data.bidLaborId,
+    roundTripMiles: data.roundTripMiles,
+    mileageRate: data.mileageRate,
+    vehicleDayRate: data.vehicleDayRate,
+    days: data.days,
+    mileageCost: data.mileageCost,
+    vehicleCost: data.vehicleCost,
+    markup: data.markup,
+    totalCost: data.totalCost,
+    totalPrice: data.totalPrice,
+  });
+
+  return travel;
 };
 
 export const updateJobTravel = async (
@@ -1083,16 +1132,66 @@ export const updateJobTravel = async (
   jobId: string,
   organizationId: string,
   data: Partial<{
-    description: string;
-    distance: number;
-    cost: string;
+    bidLaborId: string;
+    vehicleName: string;
+    roundTripMiles: string;
+    mileageRate: string;
+    vehicleDayRate: string;
+    days: number;
+    mileageCost: string;
+    vehicleCost: string;
+    markup: string;
+    totalCost: string;
+    totalPrice: string;
   }>
 ) => {
-  return { id, ...data, updatedAt: new Date() };
+  // Verify the job exists
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update travel entry using bid service
+  const travel = await updateBidTravel(id, data);
+
+  return travel;
 };
 
-export const deleteJobTravel = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobTravel = async (id: string, jobId: string, _organizationId: string) => {
+  // Verify the job exists
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Delete travel entry using bid service
+  const travel = await deleteBidTravel(id);
+
+  return travel;
 };
 
 export const getJobPlannedOperatingExpenses = async (jobId: string) => {
@@ -1235,16 +1334,66 @@ export const updateJobTimelineEvent = async (
   jobId: string,
   organizationId: string,
   data: Partial<{
-    eventName: string;
+    event: string;
     eventDate: string;
+    status: string;
     description: string;
+    sortOrder: number;
   }>
 ) => {
-  return { id, ...data, updatedAt: new Date() };
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update timeline event using bid service
+  const timelineEvent = await updateBidTimelineEvent(
+    id,
+    jobData.organizationId,
+    data
+  );
+
+  return timelineEvent;
 };
 
-export const deleteJobTimelineEvent = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobTimelineEvent = async (id: string, jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Delete timeline event using bid service
+  const timelineEvent = await deleteBidTimelineEvent(id, jobData.organizationId);
+
+  return timelineEvent;
 };
 
 // ============================
@@ -1348,16 +1497,60 @@ export const updateJobNote = async (
   id: string,
   jobId: string,
   organizationId: string,
-  data: Partial<{
-    title: string;
-    content: string;
-  }>
+  data: {
+    note: string;
+    isInternal?: boolean;
+  }
 ) => {
-  return { id, ...data, updatedAt: new Date() };
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update note using bid service
+  const note = await updateBidNote(id, jobData.organizationId, data);
+
+  return note;
 };
 
-export const deleteJobNote = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobNote = async (id: string, jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Delete note using bid service
+  const note = await deleteBidNote(id, jobData.organizationId);
+
+  return note;
 };
 
 // ============================
@@ -1567,24 +1760,133 @@ export const updateJobTask = async (
   data: Partial<{
     taskName: string;
     description: string;
+    status: string;
+    priority: string;
     assignedTo: string;
     dueDate: string;
-    status: string;
+    completedDate: string;
+    estimatedHours: string;
+    actualHours: string;
+    sortOrder: number;
   }>
 ) => {
-  return { id, ...data, updatedAt: new Date() };
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      jobId: jobs.id,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update the task in the database
+  const [task] = await db
+    .update(jobTasks)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobTasks.id, id),
+        eq(jobTasks.jobId, jobId),
+        eq(jobTasks.organizationId, jobData.organizationId),
+        eq(jobTasks.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return task || null;
 };
 
-export const deleteJobTask = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobTask = async (id: string, jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      jobId: jobs.id,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Soft delete the task
+  const [task] = await db
+    .update(jobTasks)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobTasks.id, id),
+        eq(jobTasks.jobId, jobId),
+        eq(jobTasks.organizationId, jobData.organizationId),
+        eq(jobTasks.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return task || null;
 };
 
 // ============================
 // Job Expenses Operations (Placeholder)
 // ============================
 
-export const getJobExpenses = async (_jobId: string, _organizationId: string) => {
-  return [];
+export const getJobExpenses = async (jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      jobId: jobs.id,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Get expenses for this job
+  const expenses = await db
+    .select()
+    .from(jobExpenses)
+    .where(
+      and(
+        eq(jobExpenses.jobId, jobId),
+        eq(jobExpenses.organizationId, jobData.organizationId),
+        eq(jobExpenses.isDeleted, false)
+      )
+    )
+    .orderBy(desc(jobExpenses.expenseDate));
+
+  return expenses;
 };
 
 export const getJobExpenseById = async (jobId: string, expenseId: string) => {
@@ -1682,39 +1984,190 @@ export const updateJobExpense = async (
   jobId: string,
   organizationId: string,
   data: Partial<{
-    expenseName: string;
+    expenseType: string;
+    description: string;
     amount: string;
-    category: string;
-    date: string;
+    expenseDate: string;
+    vendorName: string;
+    invoiceNumber: string;
+    receiptPath: string;
+    approvedBy: string;
   }>
 ) => {
-  return { id, ...data, updatedAt: new Date() };
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      jobId: jobs.id,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Update the expense in the database
+  const [expense] = await db
+    .update(jobExpenses)
+    .set({
+      ...data,
+      approvedAt: data.approvedBy ? new Date() : undefined,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobExpenses.id, id),
+        eq(jobExpenses.jobId, jobId),
+        eq(jobExpenses.organizationId, jobData.organizationId),
+        eq(jobExpenses.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return expense || null;
 };
 
-export const deleteJobExpense = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobExpense = async (id: string, jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bid's organizationId
+  const [jobData] = await db
+    .select({
+      jobId: jobs.id,
+      organizationId: bidsTable.organizationId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Soft delete the expense
+  const [expense] = await db
+    .update(jobExpenses)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobExpenses.id, id),
+        eq(jobExpenses.jobId, jobId),
+        eq(jobExpenses.organizationId, jobData.organizationId),
+        eq(jobExpenses.isDeleted, false)
+      )
+    )
+    .returning();
+
+  return expense || null;
 };
 
 // ============================
 // Job Documents Operations (Placeholder)
 // ============================
 
-export const getJobDocuments = async (_jobId: string, _organizationId: string) => {
-  return [];
+export const getJobDocuments = async (jobId: string, _organizationId: string) => {
+  // Get job with bid info to retrieve the bidId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Get documents from the bid
+  const documents = await getBidDocuments(jobData.bidId);
+
+  return documents;
 };
 
 export const createJobDocument = async (data: {
   jobId: string;
   organizationId: string;
-  documentName: string;
+  fileName: string;
   filePath: string;
+  fileType?: string;
+  fileSize?: number;
+  documentType?: string;
   uploadedBy: string;
 }) => {
-  return { id: "placeholder", ...data, createdAt: new Date() };
+  // Get job with bid info to retrieve the bidId
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, data.jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Create document in the bid
+  const document = await createBidDocument({
+    bidId: jobData.bidId,
+    fileName: data.fileName,
+    filePath: data.filePath,
+    ...(data.fileType && { fileType: data.fileType }),
+    ...(data.fileSize && { fileSize: data.fileSize }),
+    ...(data.documentType && { documentType: data.documentType }),
+    uploadedBy: data.uploadedBy,
+  });
+
+  return document;
 };
 
-export const deleteJobDocument = async (id: string, _jobId: string, _organizationId: string) => {
-  return { id, isDeleted: true, updatedAt: new Date() };
+export const deleteJobDocument = async (id: string, jobId: string, _organizationId: string) => {
+  // Verify the job exists
+  const [jobData] = await db
+    .select({
+      bidId: jobs.bidId,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.isDeleted, false)
+      )
+    );
+
+  if (!jobData) {
+    return null;
+  }
+
+  // Delete document using bid service
+  const document = await deleteBidDocument(id);
+
+  return document;
 };
 
 
