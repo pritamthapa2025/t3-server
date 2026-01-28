@@ -1,13 +1,22 @@
 import { z } from "zod";
 
-// Helper to validate decimal strings
-const decimalString = z.string().regex(/^\d+(\.\d{1,2})?$/, "Must be a valid decimal number");
+// Helper to validate decimal strings (up to 2 decimal places)
+const decimalString = z
+  .string()
+  .regex(/^\d+(\.\d{1,2})?$/, "Must be a valid decimal number");
+
+// Helper to validate tax rate strings (up to 4 decimal places for precision like 0.0825)
+const taxRateString = z
+  .string()
+  .regex(
+    /^\d+(\.\d{1,4})?$/,
+    "Must be a valid decimal number (up to 4 decimal places)",
+  );
 
 // Helper to validate date strings (YYYY-MM-DD)
-const dateString = z.string().refine(
-  (val) => !isNaN(Date.parse(val)),
-  { message: "Invalid date format. Please use YYYY-MM-DD format" }
-);
+const dateString = z.string().refine((val) => !isNaN(Date.parse(val)), {
+  message: "Invalid date format. Please use YYYY-MM-DD format",
+});
 
 // Helper to validate UUID strings
 const uuidString = z.string().uuid("Must be a valid UUID");
@@ -78,15 +87,12 @@ const itemTypeEnum = z.enum([
 
 // Line Item Schema
 const lineItemSchema = z.object({
+  title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
   itemType: itemTypeEnum.optional(),
   quantity: decimalString.optional().default("1"),
   unitPrice: decimalString,
   discountAmount: decimalString.optional().default("0"),
-  taxRate: decimalString.optional().default("0"),
-  jobId: uuidString.optional(),
-  bidId: uuidString.optional(),
-  inventoryItemId: uuidString.optional(),
   notes: z.string().optional(),
   sortOrder: z.number().int().optional().default(0),
 });
@@ -95,20 +101,26 @@ const lineItemSchema = z.object({
 
 // Get Invoices Query Schema
 export const getInvoicesQuerySchema = z.object({
-  organizationId: uuidString,
-  page: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 1)),
-  limit: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 10)),
+  organizationId: uuidString.optional(),
+  page: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 10)),
   status: invoiceStatusEnum.optional(),
   invoiceType: invoiceTypeEnum.optional(),
-  clientId: uuidString.optional(),
   jobId: uuidString.optional(),
-  bidId: uuidString.optional(),
   startDate: dateString.optional(),
   endDate: dateString.optional(),
   dueDateStart: dateString.optional(),
   dueDateEnd: dateString.optional(),
   search: z.string().optional(),
-  sortBy: z.enum(["invoiceDate", "dueDate", "totalAmount", "createdAt"]).optional(),
+  sortBy: z
+    .enum(["invoiceDate", "dueDate", "totalAmount", "createdAt"])
+    .optional(),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
   includeDeleted: z
     .union([z.boolean(), z.string()])
@@ -149,16 +161,13 @@ export const getInvoiceByIdQuerySchema = z.object({
 // Create Invoice Schema
 export const createInvoiceSchema = z.object({
   body: z.object({
-    organizationId: uuidString,
-    clientId: uuidString,
-    jobId: uuidString.optional(),
-    bidId: uuidString.optional(),
+    jobId: uuidString,
     invoiceType: invoiceTypeEnum.optional().default("standard"),
     invoiceDate: dateString,
     dueDate: dateString,
     paymentTerms: z.string().max(100).optional(),
     paymentTermsDays: z.number().int().positive().optional(),
-    taxRate: decimalString.optional(),
+    taxRate: taxRateString.optional(),
     discountType: z.enum(["percentage", "fixed"]).optional(),
     discountValue: decimalString.optional(),
     notes: z.string().optional(),
@@ -171,10 +180,22 @@ export const createInvoiceSchema = z.object({
     billingZipCode: z.string().max(20).optional(),
     billingCountry: z.string().max(100).optional(),
     isRecurring: z.boolean().optional().default(false),
-    recurringFrequency: z.enum(["weekly", "biweekly", "monthly", "quarterly", "semi_annually", "annually", "custom"]).optional(),
+    recurringFrequency: z
+      .enum([
+        "weekly",
+        "biweekly",
+        "monthly",
+        "quarterly",
+        "semi_annually",
+        "annually",
+        "custom",
+      ])
+      .optional(),
     recurringStartDate: dateString.optional(),
     recurringEndDate: dateString.optional(),
-    lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+    lineItems: z
+      .array(lineItemSchema)
+      .min(1, "At least one line item is required"),
   }),
 });
 
@@ -186,7 +207,7 @@ export const updateInvoiceSchema = z.object({
     status: invoiceStatusEnum.optional(),
     paymentTerms: z.string().max(100).optional(),
     paymentTermsDays: z.number().int().positive().optional(),
-    taxRate: decimalString.optional(),
+    taxRate: taxRateString.optional(),
     discountType: z.enum(["percentage", "fixed"]).optional(),
     discountValue: decimalString.optional(),
     notes: z.string().optional(),
@@ -237,8 +258,14 @@ export const updateInvoiceLineItemSchema = z.object({
 
 // Get Payments Query Schema
 export const getPaymentsQuerySchema = z.object({
-  page: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 1)),
-  limit: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 10)),
+  page: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 10)),
   status: paymentStatusEnum.optional(),
   paymentMethod: paymentMethodEnum.optional(),
   paymentType: paymentTypeEnum.optional(),
@@ -249,7 +276,9 @@ export const getPaymentsQuerySchema = z.object({
   paymentDateStart: dateString.optional(),
   paymentDateEnd: dateString.optional(),
   search: z.string().optional(),
-  sortBy: z.enum(["paymentDate", "receivedDate", "amount", "createdAt"]).optional(),
+  sortBy: z
+    .enum(["paymentDate", "receivedDate", "amount", "createdAt"])
+    .optional(),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
   includeDeleted: z
     .union([z.boolean(), z.string()])
@@ -310,7 +339,7 @@ export const createPaymentSchema = z.object({
           invoiceId: uuidString,
           allocatedAmount: decimalString,
           notes: z.string().optional(),
-        })
+        }),
       )
       .optional(),
   }),
@@ -372,10 +401,10 @@ export const updatePaymentAllocationSchema = z.object({
 // ==================== REPORTS VALIDATIONS ====================
 
 // Invoice Summary Query Schema
-export const getInvoiceSummaryQuerySchema = z.object({
+export const getInvoiceKPIsQuerySchema = z.object({
+  organizationId: uuidString.optional(), // Optional UUID for organization - if not provided, returns all invoices
   startDate: dateString.optional(),
   endDate: dateString.optional(),
-  clientId: uuidString.optional(),
   status: invoiceStatusEnum.optional(),
 });
 
@@ -389,14 +418,19 @@ export const getPaymentSummaryQuerySchema = z.object({
 
 // Aging Report Query Schema
 export const getAgingReportQuerySchema = z.object({
-  clientId: uuidString.optional(),
   asOfDate: dateString.optional(),
 });
 
 // Credit Note Validations
 export const getCreditNotesQuerySchema = z.object({
-  page: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 1)),
-  limit: z.string().optional().transform((val) => (val ? parseInt(val, 10) : 10)),
+  page: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 10)),
   status: z.enum(["pending", "applied", "expired", "cancelled"]).optional(),
   clientId: uuidString.optional(),
   invoiceId: uuidString.optional(),
@@ -413,7 +447,9 @@ export const createCreditNoteSchema = z.object({
     invoiceId: uuidString.optional(),
     paymentId: uuidString.optional(),
     creditNoteDate: dateString,
-    reason: z.enum(["refund", "adjustment", "discount", "cancellation", "other"]).optional(),
+    reason: z
+      .enum(["refund", "adjustment", "discount", "cancellation", "other"])
+      .optional(),
     description: z.string().optional(),
     creditAmount: decimalString,
     expiryDate: dateString.optional(),
@@ -428,16 +464,89 @@ export const applyCreditNoteSchema = z.object({
   }),
 });
 
+// ==================== WRAPPED SCHEMAS FOR ROUTES ====================
+// These schemas combine query/params/body for use in route validation
 
+// Invoice routes
+export const getInvoicesSchema = z.object({
+  query: getInvoicesQuerySchema,
+});
 
+export const getInvoiceByIdSchema = z.object({
+  query: getInvoiceByIdQuerySchema,
+  params: z.object({ id: uuidString }),
+});
 
+export const updateInvoiceByIdSchema = z.object({
+  ...updateInvoiceSchema.shape,
+  params: z.object({ id: uuidString }),
+});
 
+export const sendInvoiceByIdSchema = z.object({
+  ...sendInvoiceEmailSchema.shape,
+  params: z.object({ id: uuidString }),
+});
 
+export const markInvoicePaidByIdSchema = z.object({
+  ...markInvoicePaidSchema.shape,
+  params: z.object({ id: uuidString }),
+});
 
+export const voidInvoiceByIdSchema = z.object({
+  ...voidInvoiceSchema.shape,
+  params: z.object({ id: uuidString }),
+});
 
+export const deleteInvoiceByIdSchema = z.object({
+  params: z.object({ id: uuidString }),
+});
 
+export const getInvoiceKPIsSchema = z.object({
+  query: getInvoiceKPIsQuerySchema,
+});
 
+// Invoice line item routes
+export const getInvoiceLineItemsSchema = z.object({
+  params: z.object({ invoiceId: uuidString }),
+});
 
+export const createInvoiceLineItemForInvoiceSchema = z.object({
+  ...createInvoiceLineItemSchema.shape,
+  params: z.object({ invoiceId: uuidString }),
+});
 
+export const getInvoiceLineItemByIdSchema = z.object({
+  params: z.object({
+    invoiceId: uuidString,
+    lineItemId: uuidString,
+  }),
+});
 
+export const updateInvoiceLineItemByIdSchema = z.object({
+  ...updateInvoiceLineItemSchema.shape,
+  params: z.object({
+    invoiceId: uuidString,
+    lineItemId: uuidString,
+  }),
+});
 
+export const deleteInvoiceLineItemByIdSchema = z.object({
+  params: z.object({
+    invoiceId: uuidString,
+    lineItemId: uuidString,
+  }),
+});
+
+// PDF routes
+export const downloadInvoicePDFSchema = z.object({
+  params: z.object({ id: uuidString }),
+  query: z
+    .object({
+      save: z.string().optional(), // "true" to save to storage
+    })
+    .optional(),
+});
+
+export const previewInvoicePDFSchema = z.object({
+  params: z.object({ id: uuidString }),
+});

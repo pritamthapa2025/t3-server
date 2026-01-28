@@ -40,7 +40,7 @@ export const getDashboardKPIsHandler = async (req: Request, res: Response) => {
 // Get Compliance Cases Handler
 export const getComplianceCasesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -98,7 +98,7 @@ export const getComplianceCasesHandler = async (
 // Get Compliance Case by ID Handler
 export const getComplianceCaseByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -135,7 +135,7 @@ export const getComplianceCaseByIdHandler = async (
 // Create Compliance Case Handler
 export const createComplianceCaseHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const caseData = req.body;
@@ -171,7 +171,7 @@ export const createComplianceCaseHandler = async (
 // Update Compliance Case Handler
 export const updateComplianceCaseHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -210,7 +210,7 @@ export const updateComplianceCaseHandler = async (
 // Delete Compliance Case Handler (Soft Delete)
 export const deleteComplianceCaseHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -261,7 +261,7 @@ export const updateCaseStatusHandler = async (req: Request, res: Response) => {
       status,
       notes,
       resolvedBy,
-      resolvedDate ? new Date(resolvedDate) : undefined
+      resolvedDate ? new Date(resolvedDate) : undefined,
     );
 
     if (!updatedCase) {
@@ -289,7 +289,7 @@ export const updateCaseStatusHandler = async (req: Request, res: Response) => {
 // Get Violation Watchlist Handler
 export const getViolationWatchlistHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -328,22 +328,25 @@ export const getViolationWatchlistHandler = async (
 // Create Employee Violation Handler
 export const createEmployeeViolationHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is optional - only include if provided in body and is a valid client UUID
+    // Don't use req.user.organizationId as it may be "t3-org-default" which is not a valid UUID
+    const organizationId = req.body.organizationId; // Get from request body, not from user context
     const userId = req.user?.id;
-    
-    if (!organizationId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
     const violationData = {
       ...req.body,
-      organizationId,
+      // Only include organizationId if it's provided in the body (service will validate it)
+      ...(organizationId && { organizationId }),
       createdBy: userId,
     };
 
@@ -375,7 +378,7 @@ export const createEmployeeViolationHandler = async (
 // Get Violation Counts Handler
 export const getViolationCountsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { organizationId, jobId, employeeId, dateFrom, dateTo, groupBy } =

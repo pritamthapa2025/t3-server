@@ -50,7 +50,7 @@ router.use("/org/inventory", inventoryRoutes);
 router.use("/org/compliance", complianceRoutes);
 router.use("/org/fleet", fleetRoutes);
 router.use("/org/dispatch", dispatchRoutes);
-router.use("/org/invoices", invoiceRoutes);
+router.use("/org", invoiceRoutes);
 router.use("/org/payments", paymentRoutes);
 router.use("/org/reviews", reviewRoutes);
 

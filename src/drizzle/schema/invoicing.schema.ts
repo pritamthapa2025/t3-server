@@ -16,8 +16,6 @@ import {
 import { users } from "./auth.schema.js";
 import { organizations } from "./client.schema.js";
 import { jobs } from "./jobs.schema.js";
-import { bidsTable } from "./bids.schema.js";
-import { inventoryItems } from "./inventory.schema.js";
 
 // Import enums from centralized location
 import {
@@ -42,14 +40,7 @@ export const invoices: any = org.table(
     invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
     
     // Relationships
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
-    clientId: uuid("client_id")
-      .notNull()
-      .references(() => organizations.id), // Client organization
     jobId: uuid("job_id").references(() => jobs.id),
-    bidId: uuid("bid_id").references(() => bidsTable.id),
     
     // Invoice Details
     invoiceType: invoiceTypeEnum("invoice_type").notNull().default("standard"),
@@ -128,16 +119,10 @@ export const invoices: any = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    // Unique constraint: invoiceNumber unique per organization
-    unique("unique_invoice_number_per_org").on(
-      table.organizationId,
-      table.invoiceNumber
-    ),
+    // Unique constraint: invoiceNumber must be unique
+    unique("unique_invoice_number").on(table.invoiceNumber),
     // Indexes for performance
-    index("idx_invoices_org").on(table.organizationId),
-    index("idx_invoices_client").on(table.clientId),
     index("idx_invoices_job").on(table.jobId),
-    index("idx_invoices_bid").on(table.bidId),
     index("idx_invoices_status").on(table.status),
     index("idx_invoices_type").on(table.invoiceType),
     index("idx_invoices_invoice_date").on(table.invoiceDate),
@@ -156,15 +141,13 @@ export const invoiceLineItems = org.table(
   "invoice_line_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
     
     // Line Item Details
-    description: text("description").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
     itemType: varchar("item_type", { length: 50 }), // "service", "material", "labor", "travel", "other"
     quantity: numeric("quantity", { precision: 10, scale: 2 })
       .notNull()
@@ -173,18 +156,10 @@ export const invoiceLineItems = org.table(
     discountAmount: numeric("discount_amount", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
-    taxRate: numeric("tax_rate", { precision: 5, scale: 4 })
-      .notNull()
-      .default("0"),
     taxAmount: numeric("tax_amount", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
     lineTotal: numeric("line_total", { precision: 15, scale: 2 }).notNull(),
-    
-    // References (optional)
-    jobId: uuid("job_id").references(() => jobs.id),
-    bidId: uuid("bid_id").references(() => bidsTable.id),
-    inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id), // Reference to inventory if applicable
     
     // Metadata
     sortOrder: integer("sort_order").default(0),
@@ -195,11 +170,7 @@ export const invoiceLineItems = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_invoice_line_items_org").on(table.organizationId),
     index("idx_invoice_line_items_invoice").on(table.invoiceId),
-    index("idx_invoice_line_items_job").on(table.jobId),
-    index("idx_invoice_line_items_bid").on(table.bidId),
-    index("idx_invoice_line_items_inventory").on(table.inventoryItemId),
   ]
 );
 
@@ -214,12 +185,9 @@ export const payments = org.table(
     paymentNumber: varchar("payment_number", { length: 100 }).notNull(),
     
     // Relationships
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     clientId: uuid("client_id")
       .notNull()
-      .references(() => organizations.id), // Client organization
+      .references(() => organizations.id), // Client organization (derived from invoice → job → bid)
     invoiceId: uuid("invoice_id")
       .references(() => invoices.id), // Optional for deposits/prepayments
     
@@ -278,13 +246,9 @@ export const payments = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    // Unique constraint: paymentNumber unique per organization
-    unique("unique_payment_number_per_org").on(
-      table.organizationId,
-      table.paymentNumber
-    ),
+    // Unique constraint: paymentNumber must be globally unique
+    unique("unique_payment_number").on(table.paymentNumber),
     // Indexes for performance
-    index("idx_payments_org").on(table.organizationId),
     index("idx_payments_client").on(table.clientId),
     index("idx_payments_invoice").on(table.invoiceId),
     index("idx_payments_status").on(table.status),
@@ -426,9 +390,6 @@ export const invoiceHistory = org.table(
   "invoice_history",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
@@ -447,7 +408,6 @@ export const invoiceHistory = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_invoice_history_org").on(table.organizationId),
     index("idx_invoice_history_invoice").on(table.invoiceId),
     index("idx_invoice_history_performed_by").on(table.performedBy),
     index("idx_invoice_history_created_at").on(table.createdAt),

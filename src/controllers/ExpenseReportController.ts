@@ -9,19 +9,18 @@ import {
 } from "../services/expenseReport.service.js";
 import { logger } from "../utils/logger.js";
 
-
-
 // ============================
 // Expense Reports Controllers
 // ============================
 
 export const getExpenseReportsHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is required - can be provided in query params
+    const organizationId = req.query.organizationId as string | undefined;
     if (!organizationId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in query parameters",
       });
     }
 
@@ -31,7 +30,9 @@ export const getExpenseReportsHandler = async (req: Request, res: Response) => {
 
     const filters = {
       status: req.query.status as string,
-      employeeId: req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined,
+      employeeId: req.query.employeeId
+        ? parseInt(req.query.employeeId as string)
+        : undefined,
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
       submittedStartDate: req.query.submittedStartDate as string,
@@ -45,9 +46,14 @@ export const getExpenseReportsHandler = async (req: Request, res: Response) => {
 
     // Clean up undefined values from filters
     const cleanFilters = Object.fromEntries(
-      Object.entries(filters).filter(([_, value]) => value !== undefined)
+      Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
-    const result = await getExpenseReports(organizationId, offset, limit, cleanFilters as any);
+    const result = await getExpenseReports(
+      organizationId,
+      offset,
+      limit,
+      cleanFilters as any,
+    );
 
     logger.info("Expense reports fetched successfully");
     return res.status(200).json({
@@ -66,15 +72,13 @@ export const getExpenseReportsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getExpenseReportByIdHandler = async (req: Request, res: Response) => {
+export const getExpenseReportByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Organization context required.",
-      });
-    }
+    // organizationId is optional - can be provided in query params or derived from report
+    const organizationId = req.query.organizationId as string | undefined;
 
     const { id } = req.params;
     if (!id) {
@@ -107,20 +111,30 @@ export const getExpenseReportByIdHandler = async (req: Request, res: Response) =
   }
 };
 
-export const createExpenseReportHandler = async (req: Request, res: Response) => {
+export const createExpenseReportHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is required in request body
+    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
     const employeeId = req.user?.employeeId;
 
     if (!organizationId || !userId || !employeeId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Employee context required.",
+        message:
+          "organizationId is required in request body and employee context required",
       });
     }
 
-    const result = await createExpenseReport(organizationId, employeeId, req.body, userId);
+    const result = await createExpenseReport(
+      organizationId,
+      employeeId,
+      req.body,
+      userId,
+    );
 
     logger.info("Expense report created successfully");
     return res.status(201).json({
@@ -129,7 +143,10 @@ export const createExpenseReportHandler = async (req: Request, res: Response) =>
       data: result,
     });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("not valid for this report")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("not valid for this report")
+    ) {
       return res.status(400).json({
         success: false,
         message: error.message,
@@ -144,15 +161,17 @@ export const createExpenseReportHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const updateExpenseReportHandler = async (req: Request, res: Response) => {
+export const updateExpenseReportHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
 
-    if (!organizationId || !userId) {
-      return res.status(403).json({
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "User authentication required",
       });
     }
 
@@ -163,7 +182,31 @@ export const updateExpenseReportHandler = async (req: Request, res: Response) =>
         message: "Report ID is required",
       });
     }
-    const report = await updateExpenseReport(organizationId, id, req.body, userId);
+
+    // Get report first to derive organizationId
+    const existingReport = await getExpenseReportById(undefined, id);
+    if (!existingReport) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense report not found",
+      });
+    }
+
+    const organizationId =
+      existingReport.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for expense report",
+      });
+    }
+
+    const report = await updateExpenseReport(
+      organizationId,
+      id,
+      req.body,
+      userId,
+    );
 
     if (!report) {
       return res.status(404).json({
@@ -187,16 +230,11 @@ export const updateExpenseReportHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const deleteExpenseReportHandler = async (req: Request, res: Response) => {
+export const deleteExpenseReportHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Organization context required.",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -204,6 +242,25 @@ export const deleteExpenseReportHandler = async (req: Request, res: Response) =>
         message: "Report ID is required",
       });
     }
+
+    // Get report first to derive organizationId
+    const existingReport = await getExpenseReportById(undefined, id);
+    if (!existingReport) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense report not found",
+      });
+    }
+
+    const organizationId =
+      existingReport.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for expense report",
+      });
+    }
+
     const report = await deleteExpenseReport(organizationId, id);
 
     if (!report) {
@@ -227,15 +284,17 @@ export const deleteExpenseReportHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const submitExpenseReportHandler = async (req: Request, res: Response) => {
+export const submitExpenseReportHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
 
-    if (!organizationId || !userId) {
-      return res.status(403).json({
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "User authentication required",
       });
     }
 
@@ -246,6 +305,25 @@ export const submitExpenseReportHandler = async (req: Request, res: Response) =>
         message: "Report ID is required",
       });
     }
+
+    // Get report first to derive organizationId
+    const existingReport = await getExpenseReportById(undefined, id);
+    if (!existingReport) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense report not found",
+      });
+    }
+
+    const organizationId =
+      existingReport.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for expense report",
+      });
+    }
+
     const { notes } = req.body;
 
     const result = await submitExpenseReport(organizationId, id, userId, notes);

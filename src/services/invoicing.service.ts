@@ -24,8 +24,8 @@ import {
   invoiceHistory,
   paymentHistory,
 } from "../drizzle/schema/invoicing.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // ============================
@@ -36,10 +36,14 @@ import { users } from "../drizzle/schema/auth.schema.js";
  * Generate invoice number using atomic database function
  * Format: INV-YYYY-#####
  */
-const generateInvoiceNumber = async (organizationId: string): Promise<string> => {
+const generateInvoiceNumber = async (
+  organizationId: string,
+): Promise<string> => {
   try {
     const result = await db.execute<{ next_value: string }>(
-      sql.raw(`SELECT org.get_next_counter('${organizationId}'::uuid, 'invoice_number') as next_value`)
+      sql.raw(
+        `SELECT org.get_next_counter('${organizationId}'::uuid, 'invoice_number') as next_value`,
+      ),
     );
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
     const year = new Date().getFullYear();
@@ -51,16 +55,13 @@ const generateInvoiceNumber = async (organizationId: string): Promise<string> =>
     const maxResult = await db
       .select({ maxInvoiceNumber: max(invoices.invoiceNumber) })
       .from(invoices)
-      .where(
-        and(
-          eq(invoices.organizationId, organizationId),
-          like(invoices.invoiceNumber, `${prefix}%`)
-        )
-      );
+      .where(like(invoices.invoiceNumber, `${prefix}%`));
     const maxInvoiceNumber = maxResult[0]?.maxInvoiceNumber;
     let nextNumber = 1;
     if (maxInvoiceNumber) {
-      const match = maxInvoiceNumber.match(new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)`));
+      const match = maxInvoiceNumber.match(
+        new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)`),
+      );
       if (match && match[1]) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
@@ -73,10 +74,14 @@ const generateInvoiceNumber = async (organizationId: string): Promise<string> =>
  * Generate payment number using atomic database function
  * Format: PAY-YYYY-#####
  */
-const generatePaymentNumber = async (organizationId: string): Promise<string> => {
+const generatePaymentNumber = async (
+  organizationId: string,
+): Promise<string> => {
   try {
     const result = await db.execute<{ next_value: string }>(
-      sql.raw(`SELECT org.get_next_counter('${organizationId}'::uuid, 'payment_number') as next_value`)
+      sql.raw(
+        `SELECT org.get_next_counter('${organizationId}'::uuid, 'payment_number') as next_value`,
+      ),
     );
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
     const year = new Date().getFullYear();
@@ -88,16 +93,13 @@ const generatePaymentNumber = async (organizationId: string): Promise<string> =>
     const maxResult = await db
       .select({ maxPaymentNumber: max(payments.paymentNumber) })
       .from(payments)
-      .where(
-        and(
-          eq(payments.organizationId, organizationId),
-          like(payments.paymentNumber, `${prefix}%`)
-        )
-      );
+      .where(like(payments.paymentNumber, `${prefix}%`));
     const maxPaymentNumber = maxResult[0]?.maxPaymentNumber;
     let nextNumber = 1;
     if (maxPaymentNumber) {
-      const match = maxPaymentNumber.match(new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)`));
+      const match = maxPaymentNumber.match(
+        new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)`),
+      );
       if (match && match[1]) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
@@ -113,7 +115,7 @@ const calculateLineItemTotal = (
   quantity: string,
   unitPrice: string,
   discountAmount: string,
-  taxRate: string
+  taxRate: string,
 ): { lineTotal: string; taxAmount: string } => {
   const qty = parseFloat(quantity || "1");
   const price = parseFloat(unitPrice || "0");
@@ -138,8 +140,22 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
     .select()
     .from(invoiceLineItems)
     .where(
-      and(eq(invoiceLineItems.invoiceId, invoiceId), eq(invoiceLineItems.isDeleted, false))
+      and(
+        eq(invoiceLineItems.invoiceId, invoiceId),
+        eq(invoiceLineItems.isDeleted, false),
+      ),
     );
+
+  // Get invoice first to get taxRate
+  const [invoice] = await db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId));
+
+  if (!invoice) return;
+
+  // Use invoice-level taxRate for all line items
+  const invoiceTaxRate = parseFloat(invoice.taxRate || "0");
 
   let subtotal = 0;
   let totalTax = 0;
@@ -148,25 +164,16 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
     const qty = parseFloat(item.quantity || "1");
     const price = parseFloat(item.unitPrice || "0");
     const discount = parseFloat(item.discountAmount || "0");
-    const tax = parseFloat(item.taxRate || "0");
 
     const itemSubtotal = qty * price - discount;
-    const itemTax = itemSubtotal * tax;
+    const itemTax = itemSubtotal * invoiceTaxRate;
 
     subtotal += itemSubtotal;
     totalTax += itemTax;
   }
 
-  // Get invoice to check for invoice-level discount
-  const [invoice] = await db
-    .select()
-    .from(invoices)
-    .where(eq(invoices.id, invoiceId));
-
-  if (!invoice) return;
-
   let discountAmount = 0;
-  
+
   // Apply invoice-level discount if exists
   if (invoice.discountType === "percentage" && invoice.discountValue) {
     const discountPercent = parseFloat(invoice.discountValue);
@@ -189,11 +196,8 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
       and(
         eq(payments.invoiceId, invoiceId),
         eq(payments.isDeleted, false),
-        or(
-          eq(payments.status, "completed"),
-          eq(payments.status, "processing")
-        )
-      )
+        or(eq(payments.status, "completed"), eq(payments.status, "processing")),
+      ),
     );
 
   const amountPaid = parseFloat(paymentsResult[0]?.totalPaid || "0");
@@ -236,16 +240,14 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
  */
 const createInvoiceHistoryEntry = async (
   invoiceId: string,
-  organizationId: string,
   performedBy: string,
   action: string,
   oldValue?: string,
   newValue?: string,
-  description?: string
+  description?: string,
 ) => {
   return await db.insert(invoiceHistory).values({
     invoiceId,
-    organizationId,
     performedBy,
     action,
     oldValue: oldValue || null,
@@ -259,180 +261,116 @@ const createInvoiceHistoryEntry = async (
 // ============================
 
 /**
- * Get invoices with pagination and filters
+ * Get invoices with line items and pagination
  */
 export const getInvoices = async (
-  organizationId: string,
-  options: {
+  organizationId?: string,
+  options?: {
     page?: number;
     limit?: number;
-    status?: string;
-    invoiceType?: string;
-    clientId?: string;
-    jobId?: string;
-    bidId?: string;
-    startDate?: string;
-    endDate?: string;
-    dueDateStart?: string;
-    dueDateEnd?: string;
-    search?: string;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-    includeDeleted?: boolean;
-  }
+  },
 ) => {
-  const page = options.page || 1;
-  const limit = Math.min(options.limit || 10, 100);
+  const page = options?.page || 1;
+  const limit = Math.min(options?.limit || 10, 100);
   const offset = (page - 1) * limit;
 
-  let whereConditions: any[] = [eq(invoices.organizationId, organizationId)];
+  let whereConditions: any[] = [eq(invoices.isDeleted, false)];
 
-  if (!options.includeDeleted) {
-    whereConditions.push(eq(invoices.isDeleted, false));
+  // Filter by organizationId through job → bid → organizationId
+  if (organizationId) {
+    // Get job IDs for this organization through job → bid relationship
+    const jobIdsResult = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
+
+    const jobIds = jobIdsResult.map((j) => j.id);
+
+    if (jobIds.length > 0) {
+      whereConditions.push(inArray(invoices.jobId, jobIds));
+    } else {
+      // If no jobs found for this organization, return empty result
+      return {
+        invoices: [],
+        pagination: {
+          page: 1,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
   }
 
-  if (options.status) {
-    whereConditions.push(eq(invoices.status, options.status as any));
-  }
+  const whereClause = and(...whereConditions);
 
-  if (options.invoiceType) {
-    whereConditions.push(eq(invoices.invoiceType, options.invoiceType as any));
-  }
-
-  if (options.clientId) {
-    whereConditions.push(eq(invoices.clientId, options.clientId));
-  }
-
-  if (options.jobId) {
-    whereConditions.push(eq(invoices.jobId, options.jobId));
-  }
-
-  if (options.bidId) {
-    whereConditions.push(eq(invoices.bidId, options.bidId));
-  }
-
-  if (options.startDate) {
-    whereConditions.push(gte(invoices.invoiceDate, options.startDate));
-  }
-
-  if (options.endDate) {
-    whereConditions.push(lte(invoices.invoiceDate, options.endDate));
-  }
-
-  if (options.dueDateStart) {
-    whereConditions.push(gte(invoices.dueDate, options.dueDateStart));
-  }
-
-  if (options.dueDateEnd) {
-    whereConditions.push(lte(invoices.dueDate, options.dueDateEnd));
-  }
-
-  if (options.search) {
-    const searchTerm = `%${options.search}%`;
-    const clientSubquery = db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(ilike(organizations.name, searchTerm));
-
-    whereConditions.push(
-      or(
-        ilike(invoices.invoiceNumber, searchTerm),
-        sql`${invoices.clientId} IN (${clientSubquery})`
-      )!
-    );
-  }
-
-  const orderBy =
-    options.sortBy === "invoiceDate"
-      ? options.sortOrder === "asc"
-        ? asc(invoices.invoiceDate)
-        : desc(invoices.invoiceDate)
-      : options.sortBy === "dueDate"
-      ? options.sortOrder === "asc"
-        ? asc(invoices.dueDate)
-        : desc(invoices.dueDate)
-      : options.sortBy === "totalAmount"
-      ? options.sortOrder === "asc"
-        ? asc(invoices.totalAmount)
-        : desc(invoices.totalAmount)
-      : desc(invoices.createdAt);
-
-  const [invoicesList, totalResult] = await Promise.all([
+  // Select invoices - wrap table in object to handle 'any' typing (pattern used in other services)
+  const [invoicesResult, totalResult] = await Promise.all([
     db
-      .select()
+      .select({
+        invoice: invoices,
+      })
       .from(invoices)
-      .where(and(...whereConditions))
-      .orderBy(orderBy)
+      .where(whereClause)
+      .orderBy(desc(invoices.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: count() })
-      .from(invoices)
-      .where(and(...whereConditions)),
+    db.select({ count: count() }).from(invoices).where(whereClause),
   ]);
 
-  // Get unique creator IDs and fetch their names in batch
-  const creatorIds = Array.from(new Set(invoicesList.map(i => i.createdBy).filter((id): id is string => !!id)));
-  const creators = creatorIds.length > 0
-    ? await db
-        .select({
-          id: users.id,
-          fullName: users.fullName,
-        })
-        .from(users)
-        .where(inArray(users.id, creatorIds))
-    : [];
-  const creatorMap = new Map(creators.map(c => [c.id, c.fullName]));
+  // Extract invoices from wrapped result
+  const invoicesList = invoicesResult.map((item) => item.invoice);
 
-  // Get related data (client, job) for each invoice
-  const invoicesWithRelations = await Promise.all(
-    invoicesList.map(async (invoice) => {
-      const [client, job, lineItemsCount] = await Promise.all([
-        db
+  // Get unique creator IDs and fetch their names in batch
+  const creatorIds = Array.from(
+    new Set(
+      invoicesList
+        .map((inv) => inv.createdBy)
+        .filter((id): id is string => !!id),
+    ),
+  );
+  const creators =
+    creatorIds.length > 0
+      ? await db
           .select({
-            id: organizations.id,
-            name: organizations.name,
+            id: users.id,
+            fullName: users.fullName,
           })
-          .from(organizations)
-          .where(eq(organizations.id, invoice.clientId))
-          .limit(1),
-        invoice.jobId
-          ? db
-              .select({
-                id: jobs.id,
-                jobNumber: jobs.jobNumber,
-                name: jobs.name,
-              })
-              .from(jobs)
-              .where(eq(jobs.id, invoice.jobId))
-              .limit(1)
-          : Promise.resolve([]),
-        db
-          .select({ count: count() })
-          .from(invoiceLineItems)
-          .where(
-            and(
-              eq(invoiceLineItems.invoiceId, invoice.id),
-              eq(invoiceLineItems.isDeleted, false)
-            )
+          .from(users)
+          .where(inArray(users.id, creatorIds))
+      : [];
+  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
+
+  // Get line items for each invoice
+  const invoicesWithLineItems = await Promise.all(
+    invoicesList.map(async (invoice: any) => {
+      const lineItems = await db
+        .select()
+        .from(invoiceLineItems)
+        .where(
+          and(
+            eq(invoiceLineItems.invoiceId, invoice.id),
+            eq(invoiceLineItems.isDeleted, false),
           ),
-      ]);
+        )
+        .orderBy(invoiceLineItems.sortOrder);
 
       return {
         ...invoice,
-        createdByName: invoice.createdBy ? (creatorMap.get(invoice.createdBy) || null) : null,
-        client: client[0] || null,
-        job: job[0] || null,
-        lineItemsCount: lineItemsCount[0]?.count || 0,
+        createdByName: invoice.createdBy
+          ? creatorMap.get(invoice.createdBy) || null
+          : null,
+        lineItems,
       };
-    })
+    }),
   );
 
   const total = totalResult[0]?.count || 0;
   const totalPages = Math.ceil(total / limit);
 
   return {
-    invoices: invoicesWithRelations,
+    invoices: invoicesWithLineItems,
     pagination: {
       page,
       limit,
@@ -447,27 +385,37 @@ export const getInvoices = async (
  */
 export const getInvoiceById = async (
   invoiceId: string,
-  organizationId: string,
+  organizationId?: string,
   options?: {
     includeLineItems?: boolean;
     includePayments?: boolean;
     includeDocuments?: boolean;
     includeHistory?: boolean;
-  }
+  },
 ) => {
-  const [invoice] = await db
-    .select()
+  // Get organizationId from invoice's job → bid
+  const invoiceWithOrg = await db
+    .select({
+      invoice: invoices,
+      organizationId: bidsTable.organizationId,
+    })
     .from(invoices)
-    .where(
-      and(
-        eq(invoices.id, invoiceId),
-        eq(invoices.organizationId, organizationId),
-        eq(invoices.isDeleted, false)
-      )
-    )
+    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(eq(invoices.id, invoiceId), eq(invoices.isDeleted, false)))
     .limit(1);
 
-  if (!invoice) return null;
+  if (!invoiceWithOrg[0] || !invoiceWithOrg[0].invoice) {
+    return null;
+  }
+
+  // Verify organizationId matches if provided
+  if (organizationId && invoiceWithOrg[0].organizationId !== organizationId) {
+    return null;
+  }
+
+  const invoice = invoiceWithOrg[0].invoice;
+  const invoiceOrganizationId = invoiceWithOrg[0].organizationId;
 
   // Get createdBy user name
   let createdByName: string | null = null;
@@ -480,7 +428,11 @@ export const getInvoiceById = async (
     createdByName = creator?.fullName || null;
   }
 
-  const result: any = { ...invoice, createdByName };
+  const result: any = {
+    ...invoice,
+    createdByName,
+    organizationId: invoiceOrganizationId,
+  };
 
   if (options?.includeLineItems !== false) {
     result.lineItems = await db
@@ -489,8 +441,8 @@ export const getInvoiceById = async (
       .where(
         and(
           eq(invoiceLineItems.invoiceId, invoiceId),
-          eq(invoiceLineItems.isDeleted, false)
-        )
+          eq(invoiceLineItems.isDeleted, false),
+        ),
       )
       .orderBy(invoiceLineItems.sortOrder);
   }
@@ -507,25 +459,31 @@ export const getInvoiceById = async (
       })
       .from(payments)
       .where(
-        and(
-          eq(payments.invoiceId, invoiceId),
-          eq(payments.isDeleted, false)
-        )
+        and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)),
       )
       .orderBy(desc(payments.paymentDate));
   }
 
   if (options?.includeDocuments !== false) {
-    result.documents = await db
-      .select()
+    const documentsResult = await db
+      .select({
+        document: invoiceDocuments,
+        uploadedByName: users.fullName,
+      })
       .from(invoiceDocuments)
+      .leftJoin(users, eq(invoiceDocuments.uploadedBy, users.id))
       .where(
         and(
           eq(invoiceDocuments.invoiceId, invoiceId),
-          eq(invoiceDocuments.isDeleted, false)
-        )
+          eq(invoiceDocuments.isDeleted, false),
+        ),
       )
       .orderBy(desc(invoiceDocuments.createdAt));
+
+    result.documents = documentsResult.map((doc) => ({
+      ...doc.document,
+      uploadedByName: doc.uploadedByName || null,
+    }));
   }
 
   if (options?.includeHistory) {
@@ -542,50 +500,67 @@ export const getInvoiceById = async (
 /**
  * Create invoice
  */
-export const createInvoice = async (
-  organizationId: string,
-  data: {
-    clientId: string;
-    jobId?: string;
-    bidId?: string;
-    invoiceType?: string;
-    invoiceDate: string;
-    dueDate: string;
-    paymentTerms?: string;
-    paymentTermsDays?: number;
-    taxRate?: string;
-    discountType?: "percentage" | "fixed";
-    discountValue?: string;
+export const createInvoice = async (data: {
+  jobId: string;
+  invoiceType?: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+  paymentTermsDays?: number;
+  taxRate?: string;
+  discountType?: "percentage" | "fixed";
+  discountValue?: string;
+  notes?: string;
+  termsAndConditions?: string;
+  internalNotes?: string;
+  billingAddressLine1?: string;
+  billingAddressLine2?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingZipCode?: string;
+  billingCountry?: string;
+  isRecurring?: boolean;
+  recurringFrequency?: string;
+  recurringStartDate?: string;
+  recurringEndDate?: string;
+  lineItems: Array<{
+    title: string;
+    description: string;
+    itemType?: string;
+    quantity?: string;
+    unitPrice: string;
+    discountAmount?: string;
     notes?: string;
-    termsAndConditions?: string;
-    internalNotes?: string;
-    billingAddressLine1?: string;
-    billingAddressLine2?: string;
-    billingCity?: string;
-    billingState?: string;
-    billingZipCode?: string;
-    billingCountry?: string;
-    isRecurring?: boolean;
-    recurringFrequency?: string;
-    recurringStartDate?: string;
-    recurringEndDate?: string;
-    lineItems: Array<{
-      description: string;
-      itemType?: string;
-      quantity?: string;
-      unitPrice: string;
-      discountAmount?: string;
-      taxRate?: string;
-      jobId?: string;
-      bidId?: string;
-      inventoryItemId?: string;
-      notes?: string;
-      sortOrder?: number;
-    }>;
-    createdBy: string;
-  }
-) => {
+    sortOrder?: number;
+  }>;
+  createdBy: string;
+}) => {
   return await db.transaction(async (tx) => {
+    // Get organizationId from job → bid → organizationId
+    const [job] = await tx
+      .select({ bidId: jobs.bidId })
+      .from(jobs)
+      .where(eq(jobs.id, data.jobId))
+      .limit(1);
+
+    if (!job?.bidId) {
+      throw new Error("Job not found or job does not have a valid bidId");
+    }
+
+    const [bid] = await tx
+      .select({ organizationId: bidsTable.organizationId })
+      .from(bidsTable)
+      .where(eq(bidsTable.id, job.bidId))
+      .limit(1);
+
+    if (!bid?.organizationId) {
+      throw new Error(
+        "Bid not found or bid does not have a valid organizationId",
+      );
+    }
+
+    const organizationId = bid.organizationId;
+
     // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber(organizationId);
 
@@ -594,10 +569,7 @@ export const createInvoice = async (
       .insert(invoices)
       .values({
         invoiceNumber,
-        organizationId,
-        clientId: data.clientId,
-        jobId: data.jobId || null,
-        bidId: data.bidId || null,
+        jobId: data.jobId,
         invoiceType: (data.invoiceType as any) || "standard",
         status: "draft",
         invoiceDate: data.invoiceDate,
@@ -629,11 +601,16 @@ export const createInvoice = async (
         balanceDue: "0",
       })
       .returning();
-    
-    const invoice = Array.isArray(invoiceResult) ? invoiceResult[0] : invoiceResult as any;
+
+    const invoice = Array.isArray(invoiceResult)
+      ? invoiceResult[0]
+      : (invoiceResult as any);
     if (!invoice) {
       throw new Error("Failed to create invoice");
     }
+
+    // Get invoice tax rate (use invoice-level taxRate for all line items)
+    const invoiceTaxRate = data.taxRate || "0";
 
     // Create line items
     for (const item of data.lineItems) {
@@ -641,31 +618,25 @@ export const createInvoice = async (
         item.quantity || "1",
         item.unitPrice,
         item.discountAmount || "0",
-        item.taxRate || "0"
+        invoiceTaxRate,
       );
 
-      await tx
-        .insert(invoiceLineItems)
-        .values({
-          organizationId,
-          invoiceId: invoice.id,
-          description: item.description,
-          itemType: item.itemType || null,
-          quantity: item.quantity || "1",
-          unitPrice: item.unitPrice,
-          discountAmount: item.discountAmount || "0",
-          taxRate: item.taxRate || "0",
-          taxAmount,
-          lineTotal,
-          jobId: item.jobId || null,
-          bidId: item.bidId || null,
-          inventoryItemId: item.inventoryItemId || null,
-          notes: item.notes || null,
-          sortOrder: item.sortOrder || 0,
-        });
+      await tx.insert(invoiceLineItems).values({
+        invoiceId: invoice.id,
+        title: item.title,
+        description: item.description,
+        itemType: item.itemType || null,
+        quantity: item.quantity || "1",
+        unitPrice: item.unitPrice,
+        discountAmount: item.discountAmount || "0",
+        taxAmount,
+        lineTotal,
+        notes: item.notes || null,
+        sortOrder: item.sortOrder || 0,
+      });
     }
 
-    return invoice.id;
+    return { invoiceId: invoice.id, organizationId };
   });
 };
 
@@ -676,7 +647,7 @@ export const updateInvoice = async (
   invoiceId: string,
   organizationId: string,
   data: any,
-  _updatedBy: string
+  _updatedBy: string,
 ) => {
   const invoice = await getInvoiceById(invoiceId, organizationId);
   if (!invoice) {
@@ -684,7 +655,7 @@ export const updateInvoice = async (
   }
 
   const updateData: any = { updatedAt: new Date() };
-  Object.keys(data).forEach(key => {
+  Object.keys(data).forEach((key) => {
     if (data[key] !== undefined) {
       updateData[key] = data[key];
     }
@@ -693,7 +664,11 @@ export const updateInvoice = async (
   await db.update(invoices).set(updateData).where(eq(invoices.id, invoiceId));
 
   // Recalculate totals if financial fields changed
-  if (data.taxRate !== undefined || data.discountType !== undefined || data.discountValue !== undefined) {
+  if (
+    data.taxRate !== undefined ||
+    data.discountType !== undefined ||
+    data.discountValue !== undefined
+  ) {
     await recalculateInvoiceTotals(invoiceId);
   }
 
@@ -706,7 +681,7 @@ export const updateInvoice = async (
 export const deleteInvoice = async (
   invoiceId: string,
   organizationId: string,
-  deletedBy: string
+  deletedBy: string,
 ) => {
   await db
     .update(invoices)
@@ -715,12 +690,11 @@ export const deleteInvoice = async (
 
   await createInvoiceHistoryEntry(
     invoiceId,
-    organizationId,
     deletedBy,
     "deleted",
     undefined,
     undefined,
-    "Invoice deleted"
+    "Invoice deleted",
   );
 
   return { success: true };
@@ -733,10 +707,10 @@ export const markInvoiceAsPaid = async (
   invoiceId: string,
   organizationId: string,
   data: { paidDate?: string; notes?: string },
-  performedBy: string
+  performedBy: string,
 ) => {
-  const paidDateStr = data.paidDate || new Date().toISOString().split('T')[0];
-  
+  const paidDateStr = data.paidDate || new Date().toISOString().split("T")[0];
+
   await db
     .update(invoices)
     .set({
@@ -748,12 +722,11 @@ export const markInvoiceAsPaid = async (
 
   await createInvoiceHistoryEntry(
     invoiceId,
-    organizationId,
     performedBy,
     "marked_paid",
     undefined,
     paidDateStr,
-    data.notes || "Invoice marked as paid"
+    data.notes || "Invoice marked as paid",
   );
 
   return await getInvoiceById(invoiceId, organizationId);
@@ -766,7 +739,7 @@ export const voidInvoice = async (
   invoiceId: string,
   organizationId: string,
   data: { reason: string; notes?: string },
-  performedBy: string
+  performedBy: string,
 ) => {
   await db
     .update(invoices)
@@ -778,12 +751,11 @@ export const voidInvoice = async (
 
   await createInvoiceHistoryEntry(
     invoiceId,
-    organizationId,
     performedBy,
     "voided",
     undefined,
     data.reason,
-    data.notes || `Invoice voided: ${data.reason}`
+    data.notes || `Invoice voided: ${data.reason}`,
   );
 
   return await getInvoiceById(invoiceId, organizationId);
@@ -797,7 +769,7 @@ export const voidInvoice = async (
  * Get payments with pagination and filters
  */
 export const getPayments = async (
-  organizationId: string,
+  organizationId: string | undefined,
   options: {
     page?: number;
     limit?: number;
@@ -814,13 +786,70 @@ export const getPayments = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
     includeDeleted?: boolean;
-  }
+  },
 ) => {
   const page = options.page || 1;
   const limit = Math.min(options.limit || 10, 100);
   const offset = (page - 1) * limit;
 
-  let whereConditions: any[] = [eq(payments.organizationId, organizationId)];
+  // Get invoice IDs for this organization through invoice → job → bid relationship
+  let whereConditions: any[] = [];
+
+  if (organizationId) {
+    // Validate organizationId is a valid UUID
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(organizationId)) {
+      throw new Error(
+        `Invalid organizationId format: "${organizationId}". Expected a valid UUID.`,
+      );
+    }
+
+    // Get job IDs for this organization
+    const jobIdsResult = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
+
+    const jobIds = jobIdsResult.map((j) => j.id);
+
+    if (jobIds.length > 0) {
+      // Get invoice IDs for these jobs
+      const invoiceIdsResult = await db
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(inArray(invoices.jobId, jobIds));
+
+      const invoiceIds = invoiceIdsResult.map((i) => i.id);
+
+      if (invoiceIds.length > 0) {
+        whereConditions.push(inArray(payments.invoiceId, invoiceIds));
+      } else {
+        // No invoices for this organization, return empty result
+        return {
+          payments: [],
+          pagination: {
+            page: 1,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      }
+    } else {
+      // No jobs for this organization, return empty result
+      return {
+        payments: [],
+        pagination: {
+          page: 1,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
+  }
 
   if (!options.includeDeleted) {
     whereConditions.push(eq(payments.isDeleted, false));
@@ -831,7 +860,9 @@ export const getPayments = async (
   }
 
   if (options.paymentMethod) {
-    whereConditions.push(eq(payments.paymentMethod, options.paymentMethod as any));
+    whereConditions.push(
+      eq(payments.paymentMethod, options.paymentMethod as any),
+    );
   }
 
   if (options.paymentType) {
@@ -868,18 +899,25 @@ export const getPayments = async (
       or(
         ilike(payments.paymentNumber, searchTerm),
         ilike(payments.checkNumber, searchTerm),
-        ilike(payments.transactionId, searchTerm)
-      )!
+        ilike(payments.transactionId, searchTerm),
+      )!,
     );
   }
 
-  const orderBy = options.sortBy === "paymentDate"
-    ? options.sortOrder === "asc" ? asc(payments.paymentDate) : desc(payments.paymentDate)
-    : options.sortBy === "receivedDate"
-    ? options.sortOrder === "asc" ? asc(payments.receivedDate) : desc(payments.receivedDate)
-    : options.sortBy === "amount"
-    ? options.sortOrder === "asc" ? asc(payments.amount) : desc(payments.amount)
-    : desc(payments.createdAt);
+  const orderBy =
+    options.sortBy === "paymentDate"
+      ? options.sortOrder === "asc"
+        ? asc(payments.paymentDate)
+        : desc(payments.paymentDate)
+      : options.sortBy === "receivedDate"
+        ? options.sortOrder === "asc"
+          ? asc(payments.receivedDate)
+          : desc(payments.receivedDate)
+        : options.sortBy === "amount"
+          ? options.sortOrder === "asc"
+            ? asc(payments.amount)
+            : desc(payments.amount)
+          : desc(payments.createdAt);
 
   const [paymentsList, totalResult] = await Promise.all([
     db
@@ -898,8 +936,31 @@ export const getPayments = async (
   const total = totalResult[0]?.count || 0;
   const totalPages = Math.ceil(total / limit);
 
+  // Get unique creator IDs and fetch their names in batch
+  const creatorIds = Array.from(
+    new Set(
+      paymentsList.map((p) => p.createdBy).filter((id): id is string => !!id),
+    ),
+  );
+  const creators =
+    creatorIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+          })
+          .from(users)
+          .where(inArray(users.id, creatorIds))
+      : [];
+  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
+
   return {
-    payments: paymentsList,
+    payments: paymentsList.map((payment) => ({
+      ...payment,
+      createdByName: payment.createdBy
+        ? creatorMap.get(payment.createdBy) || null
+        : null,
+    })),
     pagination: {
       page,
       limit,
@@ -914,28 +975,48 @@ export const getPayments = async (
  */
 export const getPaymentById = async (
   paymentId: string,
-  organizationId: string,
+  organizationId?: string,
   options?: {
     includeAllocations?: boolean;
     includeDocuments?: boolean;
     includeHistory?: boolean;
-  }
+  },
 ) => {
+  // Get payment and verify it belongs to the organization through invoice → job → bid
   const [payment] = await db
-    .select()
+    .select({
+      payment: payments,
+      organizationId: bidsTable.organizationId,
+    })
     .from(payments)
-    .where(
-      and(
-        eq(payments.id, paymentId),
-        eq(payments.organizationId, organizationId),
-        eq(payments.isDeleted, false)
-      )
-    )
+    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
+    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(eq(payments.id, paymentId), eq(payments.isDeleted, false)))
     .limit(1);
 
-  if (!payment) return null;
+  if (!payment || !payment.payment) return null;
 
-  const result: any = { ...payment };
+  // Verify organizationId matches if provided
+  if (organizationId && payment.organizationId !== organizationId) {
+    return null;
+  }
+
+  // Get createdBy user name
+  let createdByName: string | null = null;
+  if (payment.payment.createdBy) {
+    const [creator] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, payment.payment.createdBy))
+      .limit(1);
+    createdByName = creator?.fullName || null;
+  }
+
+  const result: any = {
+    ...payment.payment,
+    createdByName,
+  };
 
   if (options?.includeAllocations !== false) {
     result.allocations = await db
@@ -944,22 +1025,31 @@ export const getPaymentById = async (
       .where(
         and(
           eq(paymentAllocations.paymentId, paymentId),
-          eq(paymentAllocations.isDeleted, false)
-        )
+          eq(paymentAllocations.isDeleted, false),
+        ),
       );
   }
 
   if (options?.includeDocuments !== false) {
-    result.documents = await db
-      .select()
+    const documentsResult = await db
+      .select({
+        document: paymentDocuments,
+        uploadedByName: users.fullName,
+      })
       .from(paymentDocuments)
+      .leftJoin(users, eq(paymentDocuments.uploadedBy, users.id))
       .where(
         and(
           eq(paymentDocuments.paymentId, paymentId),
-          eq(paymentDocuments.isDeleted, false)
-        )
+          eq(paymentDocuments.isDeleted, false),
+        ),
       )
       .orderBy(desc(paymentDocuments.createdAt));
+
+    result.documents = documentsResult.map((doc) => ({
+      ...doc.document,
+      uploadedByName: doc.uploadedByName || null,
+    }));
   }
 
   if (options?.includeHistory) {
@@ -976,15 +1066,9 @@ export const getPaymentById = async (
 /**
  * Create payment
  */
-export const createPayment = async (
-  organizationId: string,
-  data: any,
-  createdBy: string
-) => {
+export const createPayment = async (data: any, createdBy: string) => {
   return await db.transaction(async (tx) => {
-    const paymentNumber = await generatePaymentNumber(organizationId);
-
-    // Get invoice to validate and get client
+    // Get invoice to validate and get client/organization
     const [invoice] = await tx
       .select()
       .from(invoices)
@@ -994,12 +1078,45 @@ export const createPayment = async (
       throw new Error("Invoice not found");
     }
 
+    if (!invoice.jobId) {
+      throw new Error(
+        "Invoice must be associated with a job to create payment",
+      );
+    }
+
+    // Get organizationId and clientId from job's bid
+    const [job] = await tx
+      .select({ bidId: jobs.bidId })
+      .from(jobs)
+      .where(eq(jobs.id, invoice.jobId))
+      .limit(1);
+
+    if (!job?.bidId) {
+      throw new Error("Job must have a valid bid to create payment");
+    }
+
+    const [bid] = await tx
+      .select({ organizationId: bidsTable.organizationId })
+      .from(bidsTable)
+      .where(eq(bidsTable.id, job.bidId))
+      .limit(1);
+
+    if (!bid?.organizationId) {
+      throw new Error(
+        "Cannot determine organizationId. Bid must have a valid organizationId.",
+      );
+    }
+
+    const clientId = bid.organizationId; // Client is the organization
+    const organizationId = bid.organizationId; // For payment number generation
+
+    const paymentNumber = await generatePaymentNumber(organizationId);
+
     const paymentResult = await tx
       .insert(payments)
       .values({
         paymentNumber,
-        organizationId,
-        clientId: invoice.clientId,
+        clientId,
         invoiceId: data.invoiceId,
         paymentType: data.paymentType || "full",
         paymentMethod: data.paymentMethod,
@@ -1025,7 +1142,9 @@ export const createPayment = async (
       })
       .returning();
 
-    const payment = Array.isArray(paymentResult) ? paymentResult[0] : paymentResult as any;
+    const payment = Array.isArray(paymentResult)
+      ? paymentResult[0]
+      : (paymentResult as any);
     if (!payment) {
       throw new Error("Failed to create payment");
     }
@@ -1060,12 +1179,12 @@ export const createPayment = async (
  */
 export const updatePayment = async (
   paymentId: string,
-  organizationId: string,
+  organizationId: string | undefined,
   data: any,
-  _updatedBy: string
+  _updatedBy: string,
 ) => {
   const updateData: any = { updatedAt: new Date() };
-  Object.keys(data).forEach(key => {
+  Object.keys(data).forEach((key) => {
     if (data[key] !== undefined) {
       updateData[key] = data[key];
     }
@@ -1081,8 +1200,8 @@ export const updatePayment = async (
  */
 export const deletePayment = async (
   paymentId: string,
-  _organizationId: string,
-  _deletedBy: string
+  _organizationId: string | undefined,
+  _deletedBy: string,
 ) => {
   await db
     .update(payments)
@@ -1097,21 +1216,56 @@ export const deletePayment = async (
 // ============================
 
 /**
- * Get invoice summary
+ * Get invoice KPIs
  */
-export const getInvoiceSummary = async (
-  organizationId: string,
+export const getInvoiceKPIs = async (
+  organizationId: string | undefined,
   options: {
     startDate?: string;
     endDate?: string;
-    clientId?: string;
     status?: string;
-  }
+  },
 ) => {
-  let whereConditions: any[] = [
-    eq(invoices.organizationId, organizationId),
-    eq(invoices.isDeleted, false)
-  ];
+  let whereConditions: any[] = [eq(invoices.isDeleted, false)];
+
+  // Filter by organizationId if provided
+  if (organizationId) {
+    // Validate organizationId is a valid UUID
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(organizationId)) {
+      throw new Error(
+        `Invalid organizationId format: "${organizationId}". Expected a valid UUID.`,
+      );
+    }
+
+    // Get job IDs for this organization through job → bid relationship
+    const jobIdsResult = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
+
+    const jobIds = jobIdsResult.map((j) => j.id);
+
+    // Filter by jobIds if we have any
+    if (jobIds.length > 0) {
+      whereConditions.push(inArray(invoices.jobId, jobIds));
+    } else {
+      // If no jobs found for this organization, return empty KPIs
+      return {
+        totalInvoiced: "0",
+        invoiceCount: 0,
+        totalPaid: "0",
+        collectionRate: "0.0",
+        outstanding: "0",
+        overdue: "0",
+        overdueCount: 0,
+        avgInvoice: "0",
+      };
+    }
+  }
+  // If organizationId is not provided, return KPIs for all invoices
 
   if (options.startDate) {
     whereConditions.push(gte(invoices.invoiceDate, options.startDate));
@@ -1121,43 +1275,117 @@ export const getInvoiceSummary = async (
     whereConditions.push(lte(invoices.invoiceDate, options.endDate));
   }
 
-  if (options.clientId) {
-    whereConditions.push(eq(invoices.clientId, options.clientId));
-  }
-
   if (options.status) {
     whereConditions.push(eq(invoices.status, options.status as any));
   }
 
-  const summary = await db
-    .select({
-      totalInvoices: count(),
-      totalAmount: sql<string>`COALESCE(SUM(${invoices.totalAmount}), 0)`,
-      totalPaid: sql<string>`COALESCE(SUM(${invoices.amountPaid}), 0)`,
-      totalOutstanding: sql<string>`COALESCE(SUM(${invoices.balanceDue}), 0)`,
-    })
-    .from(invoices)
-    .where(and(...whereConditions));
+  // Get current date for overdue calculation
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  return summary[0];
+  // Get all KPIs in parallel
+  const [summary, overdueResult] = await Promise.all([
+    // Main summary
+    db
+      .select({
+        totalInvoices: count(),
+        totalAmount: sql<string>`COALESCE(SUM(${invoices.totalAmount}), 0)`,
+        totalPaid: sql<string>`COALESCE(SUM(${invoices.amountPaid}), 0)`,
+        totalOutstanding: sql<string>`COALESCE(SUM(${invoices.balanceDue}), 0)`,
+      })
+      .from(invoices)
+      .where(and(...whereConditions)),
+    // Overdue invoices (due date is in the past and status is not paid/cancelled/void)
+    db
+      .select({
+        overdueCount: count(),
+        overdueAmount: sql<string>`COALESCE(SUM(${invoices.balanceDue}), 0)`,
+      })
+      .from(invoices)
+      .where(
+        and(
+          ...whereConditions,
+          lte(invoices.dueDate, today.toISOString().split("T")[0]!),
+          sql`${invoices.status} NOT IN ('paid', 'cancelled', 'void')`,
+        ),
+      ),
+  ]);
+
+  // count() returns a number, sql<string> returns a string
+  // count() returns number, sql<string> returns string - handle accordingly
+  const totalInvoices = summary[0]?.totalInvoices ?? 0;
+  const totalAmount = parseFloat(summary[0]?.totalAmount ?? "0");
+  const totalPaid = parseFloat(summary[0]?.totalPaid ?? "0");
+  const totalOutstanding = parseFloat(summary[0]?.totalOutstanding ?? "0");
+  const overdueCount = overdueResult[0]?.overdueCount ?? 0;
+  const overdueAmount = parseFloat(overdueResult[0]?.overdueAmount ?? "0");
+
+  // Calculate collection rate
+  const collectionRate = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+
+  // Calculate average invoice
+  const avgInvoice = totalInvoices > 0 ? totalAmount / totalInvoices : 0;
+
+  return {
+    totalInvoiced: totalAmount.toFixed(2),
+    invoiceCount: totalInvoices,
+    totalPaid: totalPaid.toFixed(2),
+    collectionRate: collectionRate.toFixed(1),
+    outstanding: totalOutstanding.toFixed(2),
+    overdue: overdueAmount.toFixed(2),
+    overdueCount: overdueCount,
+    avgInvoice: avgInvoice.toFixed(2),
+  };
 };
 
 /**
  * Get payment summary
  */
 export const getPaymentSummary = async (
-  organizationId: string,
+  organizationId: string | undefined,
   options: {
     startDate?: string;
     endDate?: string;
     clientId?: string;
     paymentMethod?: string;
-  }
+  },
 ) => {
-  let whereConditions: any[] = [
-    eq(payments.organizationId, organizationId),
-    eq(payments.isDeleted, false)
-  ];
+  // Get invoice IDs for this organization through invoice → job → bid relationship
+  const jobIdsResult = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(eq(bidsTable.organizationId, organizationId));
+
+  const jobIds = jobIdsResult.map((j) => j.id);
+
+  let whereConditions: any[] = [eq(payments.isDeleted, false)];
+
+  // Filter by invoice IDs if we have any
+  if (jobIds.length > 0) {
+    const invoiceIdsResult = await db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(inArray(invoices.jobId, jobIds));
+
+    const invoiceIds = invoiceIdsResult.map((i) => i.id);
+
+    if (invoiceIds.length > 0) {
+      whereConditions.push(inArray(payments.invoiceId, invoiceIds));
+    } else {
+      // No invoices for this organization, return empty summary
+      return {
+        totalPayments: 0,
+        totalAmount: "0",
+      };
+    }
+  } else {
+    // No jobs for this organization, return empty summary
+    return {
+      totalPayments: 0,
+      totalAmount: "0",
+    };
+  }
 
   if (options.startDate) {
     whereConditions.push(gte(payments.paymentDate, options.startDate));
@@ -1172,7 +1400,9 @@ export const getPaymentSummary = async (
   }
 
   if (options.paymentMethod) {
-    whereConditions.push(eq(payments.paymentMethod, options.paymentMethod as any));
+    whereConditions.push(
+      eq(payments.paymentMethod, options.paymentMethod as any),
+    );
   }
 
   const summary = await db

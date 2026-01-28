@@ -2,7 +2,6 @@ import http from "http";
 import app from "./app.js";
 import { initDB, pool } from "./config/db.js";
 import redis from "./config/redis.js";
-import { warmupAuthCache, startAuthCacheRefresh } from "./utils/auth-warmup.js";
 
 import dotenv from "dotenv";
 
@@ -17,7 +16,7 @@ if (!process.env.DATABASE_URL) {
 if (!process.env.REDIS_URL) {
   console.error("❌ REDIS_URL environment variable is not set!");
   console.error(
-    "Redis is required for 2FA, password reset, and email change features."
+    "Redis is required for 2FA, password reset, and email change features.",
   );
   process.exit(1);
 }
@@ -86,14 +85,6 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Initialize database connection before starting server
 initDB()
   .then(async () => {
-    // Warmup authentication cache with common users
-    try {
-      await warmupAuthCache();
-      startAuthCacheRefresh(30); // Refresh every 30 minutes
-    } catch (error) {
-      console.error("⚠️  Auth cache warmup failed (continuing anyway):", error);
-    }
-
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
     });

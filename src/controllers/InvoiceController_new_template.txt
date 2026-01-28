@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T3 Mechanical - Project Quote</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1a1a1a;
+            background: #ffffff;
+            line-height: 1.6;
+            font-size: 12px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .quote-container {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 20mm;
+        }
+
+        /* Header */
+        .header {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 50px;
+            margin-bottom: 25px;
+            align-items: start;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e5e5;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .company-logo {
+            max-width: 100px;
+            height: auto;
+        }
+
+        .company-name {
+            font-size: 24px;
+            font-weight: 800;
+            color: #1a1a1a;
+            line-height: 1.2;
+            letter-spacing: -0.5px;
+        }
+
+        .header-right {
+            text-align: right;
+            border: 2px solid #DC2626;
+            border-radius: 4px;
+            padding: 14px 18px;
+            background: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .header-right table {
+            border-collapse: collapse;
+            margin-left: auto;
+            width: 100%;
+        }
+
+        .header-right td {
+            padding: 6px 10px;
+            font-size: 11px;
+        }
+
+        .header-right .label {
+            font-weight: 700;
+            background: #DC2626;
+            color: white;
+            text-align: center;
+            padding: 8px 12px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header-right .value {
+            text-align: center;
+            border: 1px solid #e5e5e5;
+            background: #ffffff;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        /* Locations */
+        .locations {
+            text-align: center;
+            padding: 14px 20px;
+            background: #f8f9fa;
+            margin-bottom: 25px;
+            font-size: 11px;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+        }
+
+        .locations strong {
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        /* Info Grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .info-box {
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .info-label {
+            background: #DC2626;
+            color: white;
+            padding: 8px 14px;
+            font-weight: 700;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .info-content {
+            padding: 12px 14px;
+            font-size: 12px;
+            color: #1a1a1a;
+            font-weight: 500;
+        }
+
+        /* Proposal Text */
+        .proposal-text {
+            text-align: center;
+            padding: 16px 20px;
+            border: 1px solid #d1d5db;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 13px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .proposal-note {
+            font-style: italic;
+            color: #DC2626;
+            font-size: 10px;
+            margin-bottom: 25px;
+            padding: 0 4px;
+        }
+
+        /* Work Items Table */
+        .work-items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .work-items-table thead {
+            background: #6b7280;
+        }
+
+        .work-items-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .work-items-table td {
+            padding: 14px 16px;
+            font-size: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+            color: #374151;
+        }
+
+        .work-items-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .work-items-table tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        .work-items-table td:first-child {
+            width: 50px;
+            text-align: center;
+            font-weight: 700;
+            color: #DC2626;
+            background: #fef2f2;
+        }
+
+        /* Total Job Cost */
+        .total-cost {
+            text-align: right;
+            padding: 18px 24px;
+            border: 2px solid #DC2626;
+            margin-bottom: 25px;
+            font-size: 18px;
+            font-weight: 700;
+            background: #fef2f2;
+            border-radius: 4px;
+            color: #1a1a1a;
+        }
+
+        /* Sections */
+        .exclusions-section,
+        .terms-section,
+        .warranty-section {
+            margin-bottom: 20px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .section-header {
+            background: #6b7280;
+            color: white;
+            padding: 10px 16px;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-content {
+            padding: 18px 16px;
+            font-size: 11px;
+            line-height: 1.7;
+            color: #374151;
+        }
+
+        .exclusions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 35px;
+            list-style: none;
+            padding: 0;
+        }
+
+        .exclusions-grid li {
+            font-size: 11px;
+            line-height: 1.7;
+            padding-left: 18px;
+            position: relative;
+        }
+
+        .exclusions-grid li::before {
+            content: "—";
+            position: absolute;
+            left: 0;
+            color: #DC2626;
+            font-weight: 700;
+        }
+
+        .terms-section .section-content,
+        .warranty-section .section-content {
+            font-size: 11px;
+            line-height: 1.8;
+        }
+
+        .warranty-section .section-content strong {
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 8px;
+            color: #1a1a1a;
+            font-weight: 700;
+        }
+
+        .warranty-section ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            list-style: none;
+        }
+
+        .warranty-section li {
+            margin-bottom: 6px;
+            padding-left: 18px;
+            position: relative;
+        }
+
+        .warranty-section li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #DC2626;
+            font-weight: 700;
+        }
+
+        .warranty-disclaimer {
+            margin-top: 15px;
+            font-style: italic;
+            font-size: 9px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        /* Footer */
+        .footer-section {
+            margin-top: 35px;
+            padding-top: 25px;
+            border-top: 2px solid #e5e7eb;
+        }
+
+        .thank-you {
+            font-size: 12px;
+            margin-bottom: 25px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .signature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            margin-bottom: 35px;
+        }
+
+        .signature-block {
+            padding: 0;
+        }
+
+        .signature-block h3 {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            background: #6b7280;
+            color: white;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+            text-align: center;
+            border-radius: 4px;
+            letter-spacing: 0.8px;
+        }
+
+        .signature-name {
+            font-family: 'Brush Script MT', cursive;
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: #1a1a1a;
+            font-weight: 400;
+        }
+
+        .signature-info {
+            font-size: 11px;
+            line-height: 1.7;
+            color: #374151;
+        }
+
+        .signature-field {
+            border-bottom: 2px solid #d1d5db;
+            height: 32px;
+            margin-bottom: 16px;
+            background: #ffffff;
+        }
+
+        .field-label {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Footer Info */
+        .footer-info {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 10px;
+            line-height: 1.8;
+            color: #6b7280;
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .quote-container {
+                padding: 15mm 20mm;
+                margin: 0;
+            }
+
+            @page {
+                margin: 0;
+                size: A4;
+            }
+
+            .work-items-table tbody tr:hover {
+                background: transparent;
+            }
+        }
+    </style>
+    <!-- Redesigned theme overrides (keeps same layout/content) -->
+    <style>
+        :root{
+            --ink: #0f172a;
+            --muted: #475569;
+            --muted-2: #64748b;
+            --line: #e5e7eb;
+            --panel: #ffffff;
+            --wash: #f8fafc;
+            --wash-2: #f1f5f9;
+            --accent: #DC2626;
+            --accent-2: #991b1b;
+            --radius: 10px;
+        }
+
+        body{
+            color: var(--ink);
+            line-height: 1.55;
+        }
+
+        .company-name{ display:none !important; }
+
+        .quote-container{
+            padding: 18mm 20mm;
+        }
+
+        .header{
+            gap: 28px;
+            margin-bottom: 16px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .header-left{
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .company-logo{
+            width: 200px;
+            max-width: 200px;
+        }
+
+        .header-right{
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: none;
+            padding: 12px 14px;
+            position: relative;
+            overflow: hidden;
+            min-width: 270px;
+        }
+
+        .header-right::before{
+            content: "";
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 4px;
+            background: var(--accent);
+        }
+
+        .header-right table{
+            border-collapse: separate;
+            border-spacing: 6px 6px;
+        }
+
+        .header-right td{
+            font-size: 10.5px;
+            padding: 8px 10px;
+        }
+
+        .header-right .label{
+            background: var(--wash-2);
+            color: var(--muted);
+            letter-spacing: 1px;
+            border-radius: 8px;
+        }
+
+        .header-right .value{
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .locations{
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            text-align: left;
+            padding: 0;
+            border: none;
+            background: transparent;
+            margin-bottom: 16px;
+        }
+
+        .chip{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding: 7px 11px;
+            border: 1px solid var(--line);
+            background: var(--wash);
+            border-radius: 999px;
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+        .chip strong{
+            color: var(--ink);
+            font-weight: 800;
+        }
+
+        .info-grid{
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .info-box{
+            border-color: var(--line);
+            border-radius: var(--radius);
+            box-shadow: none;
+        }
+
+        .info-label{
+            background: var(--accent);
+            letter-spacing: 1px;
+            font-weight: 900;
+        }
+
+        .info-content{
+            color: var(--ink);
+            font-weight: 650;
+        }
+
+        .proposal-text{
+            border-color: var(--line);
+            background: var(--wash);
+            border-radius: var(--radius);
+            font-weight: 800;
+            padding: 14px 16px;
+        }
+
+        .proposal-note{
+            color: var(--muted-2);
+            font-size: 10.5px;
+            margin-bottom: 14px;
+        }
+
+        .work-items-table{
+            border-color: var(--line);
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+        }
+
+        .work-items-table thead{
+            background: var(--accent);
+        }
+
+        .work-items-table th{
+            font-weight: 900;
+            letter-spacing: 1px;
+            padding: 12px 14px;
+        }
+
+        .work-items-table td{
+            color: var(--muted);
+            border-bottom-color: var(--line);
+            padding: 13px 14px;
+        }
+
+        .work-items-table tbody tr:nth-child(odd){ background: #ffffff; }
+        .work-items-table tbody tr:nth-child(even){ background: var(--wash); }
+
+        .work-items-table td:first-child{
+            font-weight: 900;
+            background: rgba(220, 38, 38, 0.06);
+        }
+
+        .total-cost{
+            padding: 0;
+            border: none;
+            background: transparent;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
+        }
+
+        .total-cost-inner{
+            width: 100%;
+            max-width: 380px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            background: var(--wash);
+            border-radius: var(--radius);
+            box-shadow: none;
+        }
+
+        .total-label{
+            font-weight: 900;
+            color: var(--muted);
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            font-size: 10.5px;
+        }
+
+        .total-value{
+            font-weight: 900;
+            font-size: 20px;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .exclusions-section,
+        .terms-section,
+        .warranty-section{
+            border-color: var(--line);
+            border-radius: var(--radius);
+            box-shadow: none;
+            margin-bottom: 14px;
+        }
+
+        .section-header{
+            background: var(--wash-2);
+            color: var(--ink);
+            border-bottom: 1px solid var(--line);
+            font-weight: 900;
+            padding: 10px 14px;
+        }
+
+        .section-content{
+            color: var(--muted);
+            padding: 14px 14px 16px;
+            font-size: 11.25px;
+        }
+
+        .footer-section{
+            border-top: 1px solid var(--line);
+            margin-top: 18px;
+            padding-top: 16px;
+        }
+
+        .thank-you{
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        .signature-grid{
+            gap: 34px;
+            margin-bottom: 18px;
+        }
+
+        .signature-block h3{
+            background: var(--wash-2);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            font-weight: 900;
+        }
+
+        .signature-info,
+        .field-label{
+            color: var(--muted);
+        }
+
+        .signature-field{
+            border-bottom-color: var(--line);
+        }
+
+        .footer-info{
+            border-top-color: var(--line);
+            color: var(--muted-2);
+        }
+    </style>
+</head>
+<body>
+    <div class="quote-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <img src="https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-black.png" alt="T3 Mechanical Logo" class="company-logo">
+            </div>
+            <div class="header-right">
+                <table>
+                    <tr>
+                        <td class="label">Date</td>
+                        <td class="label">Quote #</td>
+                        <td class="label">PM Rep</td>
+                    </tr>
+                    <tr>
+                        <td class="value">${invoiceDate}</td>
+                        <td class="value">${invoiceNumber}</td>
+                        <td class="value">${pmRep}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Locations -->
+        <div class="locations">
+            <span class="chip"><strong>Locations</strong>: 4749 Bennett Drive, Suite H, Livermore, CA 94551</span>
+            <span class="chip"><strong>Office Phone</strong>: (888) 488-2312</span>
+        </div>
+
+        <!-- Info Grid -->
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Company</div>
+                <div class="info-content">${companyName}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Site Address</div>
+                <div class="info-content">${siteAddress}</div>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Attn</div>
+                <div class="info-content">${contactName}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Scope</div>
+                <div class="info-content">${scope}</div>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Email</div>
+                <div class="info-content">${emailAddress}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Client Address</div>
+                <div class="info-content">${clientAddress}</div>
+            </div>
+        </div>
+
+        <!-- Proposal Text -->
+        <div class="proposal-text">
+            Please review the following proposal for your consideration regarding the outlined work.
+        </div>
+
+        <div class="proposal-note">
+            This proposal was based on Clients RFP, job walk information from ${invoiceDate}, and revised plans dated ${invoiceDate} by [Engineering Firm]
+        </div>
+
+        <!-- Work Items Table -->
+        <table class="work-items-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Work description and services included in this proposal</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${workItems}${emptyRows}
+            </tbody>
+        </table>
+
+        <!-- Total Job Cost -->
+        <div class="total-cost">
+            <div class="total-cost-inner">
+                <div class="total-label">Total job cost</div>
+                <div class="total-value">$${totalAmount}</div>
+            </div>
+        </div>
+
+        <!-- Exclusions -->
+        <div class="exclusions-section">
+            <div class="section-header">EXCLUSIONS: Unless otherwise stated above</div>
+            <div class="section-content">
+                <ul class="exclusions-grid">
+                    <li>Permit fees or any associated permitting costs</li>
+                    <li>Connections to fire/life safety systems</li>
+                    <li>Structural upgrades of any kind</li>
+                    <li>Fire sprinkler work</li>
+                    <li>Roof screens and any roof work, including patching/repair</li>
+                    <li>Fire smoke dampers</li>
+                    <li>Off-hours work or overtime</li>
+                    <li>Electrical work</li>
+                    <li>Hazardous material removal or disposal</li>
+                    <li>Controls work</li>
+                    <li>Third party air balance</li>
+                    <li>Condensate piping</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Terms and Conditions -->
+        <div class="terms-section">
+            <div class="section-header">TERMS AND CONDITIONS</div>
+            <div class="section-content">
+                Terms are Net 30 days from the date of invoice. Due to market volatility, this quotation is valid for 30 days and will expire on ${expirationDate}.
+            </div>
+        </div>
+
+        <!-- Warranty -->
+        <div class="warranty-section">
+            <div class="section-header">WARRANTY</div>
+            <div class="section-content">
+                <p>All materials provided in this job are warranted to be free from defects for 1 year, and workmanship is warranted for 90 days from the installation date. If the customer provides notice to the Contractor of any such defect within thirty (30) days after its appearance or discovery, T3 Mechanical Inc. shall, at its option, repair or replace the defective equipment and/or parts.</p>
+                
+                <strong>These warranties do not cover:</strong>
+                <ul>
+                    <li>Any equipment and/or parts repaired by others</li>
+                    <li>Normal wear and tear (e.g., belts, filters, etc.)</li>
+                    <li>Abuse, alteration, misuse, or vandalism</li>
+                    <li>Damage caused by acts of God</li>
+                </ul>
+                
+                <p class="warranty-disclaimer">
+                    THESE WARRANTIES ARE IN LIEU OF ALL OTHER WARRANTIES, EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A SPECIFIC PURPOSE.
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-section">
+            <div class="thank-you">
+                Thank you for the opportunity to provide you with the above proposal.
+            </div>
+
+            <!-- Signatures -->
+            <div class="signature-grid">
+                <div class="signature-block">
+                    <div style="margin-bottom: 18px; font-size: 12px; color: #374151;">Sincerely,</div>
+                    <div class="signature-name">Stephen Ferreira</div>
+                    <div class="signature-info">
+                        Stephen@t3mechanicalinc.com<br>
+                        T3 Mechanical Inc.<br>
+                        (408) 646-4737<br>
+                        Stephen@t3mechanicalinc.com
+                    </div>
+                </div>
+                <div class="signature-block">
+                    <h3>AUTHORIZATION AND APPROVAL</h3>
+                    <div class="field-label">Sign:</div>
+                    <div class="signature-field"></div>
+                    <div class="field-label">Print:</div>
+                    <div class="signature-field"></div>
+                    <div class="field-label">Date:</div>
+                    <div class="signature-field"></div>
+                    <div class="field-label">PO Number:</div>
+                    <div class="signature-field"></div>
+                </div>
+            </div>
+
+            <!-- Footer Info -->
+            <div class="footer-info">
+                ${companyName} | ${siteAddress} | Bid #${bidNumber}<br>
+                T3 Mechanical Inc. | CA License #1038631 | 1.888.488.2312 | info@t3mechanicalinc.com
+            </div>
+        </div>
+    </div>
+</body>
+</html>

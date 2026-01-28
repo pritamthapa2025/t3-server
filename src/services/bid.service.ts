@@ -1,4 +1,15 @@
-import { count, eq, and, desc, asc, max, sql, or, ilike, inArray } from "drizzle-orm";
+import {
+  count,
+  eq,
+  and,
+  desc,
+  asc,
+  max,
+  sql,
+  or,
+  ilike,
+  inArray,
+} from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   bidsTable,
@@ -32,11 +43,11 @@ export const getBids = async (
     priority?: string;
     assignedTo?: string;
     search?: string;
-  }
+  },
 ) => {
   // Build where conditions array - organizationId is optional
   const whereConditions = [eq(bidsTable.isDeleted, false)];
-  
+
   // If organizationId is provided, filter by it
   if (organizationId) {
     whereConditions.push(eq(bidsTable.organizationId, organizationId));
@@ -60,8 +71,8 @@ export const getBids = async (
         ilike(bidsTable.title, `%${filters.search}%`),
         ilike(bidsTable.bidNumber, `%${filters.search}%`),
         ilike(bidsTable.projectName, `%${filters.search}%`),
-        ilike(bidsTable.siteAddress, `%${filters.search}%`)
-      )!
+        ilike(bidsTable.siteAddress, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -112,12 +123,7 @@ export const getBidById = async (id: string) => {
     })
     .from(bidsTable)
     .leftJoin(users, eq(bidsTable.createdBy, users.id))
-    .where(
-      and(
-        eq(bidsTable.id, id),
-        eq(bidsTable.isDeleted, false)
-      )
-    );
+    .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
   return {
     ...result.bid,
@@ -134,12 +140,7 @@ export const getBidByIdSimple = async (id: string) => {
     })
     .from(bidsTable)
     .leftJoin(users, eq(bidsTable.createdBy, users.id))
-    .where(
-      and(
-        eq(bidsTable.id, id),
-        eq(bidsTable.isDeleted, false)
-      )
-    );
+    .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
   return {
     ...result.bid,
@@ -204,14 +205,14 @@ export const createBid = async (data: {
       .where(
         and(
           eq(employees.id, data.supervisorManager),
-          eq(employees.isDeleted, false)
-        )
+          eq(employees.isDeleted, false),
+        ),
       )
       .limit(1);
 
     if (!supervisor) {
       throw new Error(
-        `Supervisor manager with ID ${data.supervisorManager} does not exist`
+        `Supervisor manager with ID ${data.supervisorManager} does not exist`,
       );
     }
   }
@@ -223,14 +224,14 @@ export const createBid = async (data: {
       .where(
         and(
           eq(employees.id, data.primaryTechnicianId),
-          eq(employees.isDeleted, false)
-        )
+          eq(employees.isDeleted, false),
+        ),
       )
       .limit(1);
 
     if (!technician) {
       throw new Error(
-        `Primary technician with ID ${data.primaryTechnicianId} does not exist`
+        `Primary technician with ID ${data.primaryTechnicianId} does not exist`,
       );
     }
   }
@@ -244,7 +245,6 @@ export const createBid = async (data: {
       return undefined;
     }
   };
-
 
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
@@ -339,7 +339,7 @@ export const updateBid = async (
     supervisorManager: number;
     primaryTechnicianId: number;
     assignedTo: string;
-  }>
+  }>,
 ) => {
   const [bid] = await db
     .update(bidsTable)
@@ -379,8 +379,8 @@ export const updateBid = async (
       and(
         eq(bidsTable.id, id),
         eq(bidsTable.organizationId, organizationId),
-        eq(bidsTable.isDeleted, false)
-      )
+        eq(bidsTable.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -414,8 +414,8 @@ export const deleteBid = async (id: string, organizationId: string) => {
       and(
         eq(bidsTable.id, id),
         eq(bidsTable.organizationId, organizationId),
-        eq(bidsTable.isDeleted, false)
-      )
+        eq(bidsTable.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -428,7 +428,7 @@ export const deleteBid = async (id: string, organizationId: string) => {
 
 export const getBidFinancialBreakdown = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   const [breakdown] = await db
     .select()
@@ -436,8 +436,8 @@ export const getBidFinancialBreakdown = async (
     .where(
       and(
         eq(bidFinancialBreakdown.bidId, bidId),
-        eq(bidFinancialBreakdown.isDeleted, false)
-      )
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
     );
   return breakdown || null;
 };
@@ -451,7 +451,7 @@ export const updateBidFinancialBreakdown = async (
     travel: string;
     operatingExpenses: string;
     totalCost: string;
-  }
+  },
 ) => {
   // Check if breakdown exists
   const existing = await getBidFinancialBreakdown(bidId, organizationId);
@@ -484,7 +484,7 @@ export const updateBidFinancialBreakdown = async (
 
 export const getBidOperatingExpenses = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   // Verify bid exists
   const bid = await getBidById(bidId);
@@ -498,8 +498,8 @@ export const getBidOperatingExpenses = async (
     .where(
       and(
         eq(bidOperatingExpenses.bidId, bidId),
-        eq(bidOperatingExpenses.isDeleted, false)
-      )
+        eq(bidOperatingExpenses.isDeleted, false),
+      ),
     );
   return operatingExpenses || null;
 };
@@ -519,7 +519,7 @@ export const updateBidOperatingExpenses = async (
     applyMarkup: boolean;
     markupPercentage: string;
     operatingPrice: string;
-  }>
+  }>,
 ) => {
   // Verify bid exists
   const bid = await getBidById(bidId);
@@ -558,23 +558,26 @@ export const updateBidOperatingExpenses = async (
 
 export const getBidMaterials = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   const materials = await db
     .select()
     .from(bidMaterials)
     .where(
-      and(eq(bidMaterials.bidId, bidId), eq(bidMaterials.isDeleted, false))
+      and(eq(bidMaterials.bidId, bidId), eq(bidMaterials.isDeleted, false)),
     );
   return materials;
 };
 
-export const getBidMaterialById = async (materialId: string, _organizationId: string) => {
+export const getBidMaterialById = async (
+  materialId: string,
+  _organizationId: string,
+) => {
   const [material] = await db
     .select()
     .from(bidMaterials)
     .where(
-      and(eq(bidMaterials.id, materialId), eq(bidMaterials.isDeleted, false))
+      and(eq(bidMaterials.id, materialId), eq(bidMaterials.isDeleted, false)),
     );
   return material || null;
 };
@@ -604,7 +607,7 @@ export const updateBidMaterial = async (
     unitCost: string;
     markup: string;
     totalCost: string;
-  }>
+  }>,
 ) => {
   const [material] = await db
     .update(bidMaterials)
@@ -617,7 +620,10 @@ export const updateBidMaterial = async (
   return material;
 };
 
-export const deleteBidMaterial = async (id: string, _organizationId: string) => {
+export const deleteBidMaterial = async (
+  id: string,
+  _organizationId: string,
+) => {
   const [material] = await db
     .update(bidMaterials)
     .set({
@@ -715,7 +721,7 @@ export const updateBidLabor = async (
     billableRate: string;
     totalCost: string;
     totalPrice: string;
-  }>
+  }>,
 ) => {
   const [labor] = await db
     .update(bidLabor)
@@ -749,7 +755,7 @@ export const getBidTravel = async (bidLaborId: string) => {
     .select()
     .from(bidTravel)
     .where(
-      and(eq(bidTravel.bidLaborId, bidLaborId), eq(bidTravel.isDeleted, false))
+      and(eq(bidTravel.bidLaborId, bidLaborId), eq(bidTravel.isDeleted, false)),
     );
   return travel;
 };
@@ -763,9 +769,7 @@ export const getAllBidTravel = async (bidId: string) => {
         positionId: bidLabor.positionId,
       })
       .from(bidLabor)
-      .where(
-        and(eq(bidLabor.bidId, bidId), eq(bidLabor.isDeleted, false))
-      );
+      .where(and(eq(bidLabor.bidId, bidId), eq(bidLabor.isDeleted, false)));
 
     if (laborEntries.length === 0) {
       return []; // No labor entries, so no travel entries
@@ -773,7 +777,7 @@ export const getAllBidTravel = async (bidId: string) => {
 
     // Get all travel entries for these labor entries
     const laborIds = laborEntries.map((labor) => labor.id);
-    
+
     // Use simple select() to get all columns and avoid field-specific issues
     const travel = await db
       .select()
@@ -781,14 +785,14 @@ export const getAllBidTravel = async (bidId: string) => {
       .where(
         and(
           inArray(bidTravel.bidLaborId, laborIds),
-          eq(bidTravel.isDeleted, false)
-        )
+          eq(bidTravel.isDeleted, false),
+        ),
       )
       .orderBy(asc(bidTravel.createdAt));
 
     return travel;
   } catch (error) {
-    console.error('Error in getAllBidTravel:', error);
+    console.error("Error in getAllBidTravel:", error);
     throw error; // Re-throw for proper error handling in controller
   }
 };
@@ -797,9 +801,7 @@ export const getBidTravelById = async (travelId: string) => {
   const [travel] = await db
     .select()
     .from(bidTravel)
-    .where(
-      and(eq(bidTravel.id, travelId), eq(bidTravel.isDeleted, false))
-    );
+    .where(and(eq(bidTravel.id, travelId), eq(bidTravel.isDeleted, false)));
   return travel || null;
 };
 
@@ -848,12 +850,12 @@ export const createBulkLaborAndTravel = async (
     markup: string;
     totalCost: string;
     totalPrice: string;
-  }>
+  }>,
 ) => {
   // Validate arrays have same length
   if (laborEntries.length !== travelEntries.length) {
     throw new Error(
-      "Number of labor entries must equal number of travel entries"
+      "Number of labor entries must equal number of travel entries",
     );
   }
 
@@ -922,7 +924,7 @@ export const updateBidTravel = async (
     markup: string;
     totalCost: string;
     totalPrice: string;
-  }>
+  }>,
 ) => {
   const [travel] = await db
     .update(bidTravel)
@@ -953,13 +955,13 @@ export const deleteBidTravel = async (id: string) => {
 
 export const getBidSurveyData = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   const [surveyData] = await db
     .select()
     .from(bidSurveyData)
     .where(
-      and(eq(bidSurveyData.bidId, bidId), eq(bidSurveyData.isDeleted, false))
+      and(eq(bidSurveyData.bidId, bidId), eq(bidSurveyData.isDeleted, false)),
     );
   return surveyData || null;
 };
@@ -988,7 +990,7 @@ export const updateBidSurveyData = async (
     termsAndConditions: string;
     dateOfSurvey: string;
     timeOfSurvey: string;
-  }>
+  }>,
 ) => {
   const existing = await getBidSurveyData(bidId, organizationId);
 
@@ -1016,7 +1018,7 @@ export const updateBidSurveyData = async (
 
 export const getBidPlanSpecData = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   const [planSpecData] = await db
     .select()
@@ -1024,8 +1026,8 @@ export const getBidPlanSpecData = async (
     .where(
       and(
         eq(bidPlanSpecData.bidId, bidId),
-        eq(bidPlanSpecData.isDeleted, false)
-      )
+        eq(bidPlanSpecData.isDeleted, false),
+      ),
     );
   return planSpecData || null;
 };
@@ -1051,7 +1053,7 @@ export const updateBidPlanSpecData = async (
     // Legacy fields
     specifications: string;
     designRequirements: string;
-  }>
+  }>,
 ) => {
   const existing = await getBidPlanSpecData(bidId, organizationId);
 
@@ -1068,7 +1070,9 @@ export const updateBidPlanSpecData = async (
   const processedData = {
     ...data,
     plansReceivedDate: toDateOrUndefined(data.plansReceivedDate),
-    specificationsReceivedDate: toDateOrUndefined(data.specificationsReceivedDate),
+    specificationsReceivedDate: toDateOrUndefined(
+      data.specificationsReceivedDate,
+    ),
   };
 
   if (existing) {
@@ -1095,7 +1099,7 @@ export const updateBidPlanSpecData = async (
 
 export const getBidDesignBuildData = async (
   bidId: string,
-  _organizationId: string
+  _organizationId: string,
 ) => {
   const [designBuildData] = await db
     .select()
@@ -1103,8 +1107,8 @@ export const getBidDesignBuildData = async (
     .where(
       and(
         eq(bidDesignBuildData.bidId, bidId),
-        eq(bidDesignBuildData.isDeleted, false)
-      )
+        eq(bidDesignBuildData.isDeleted, false),
+      ),
     );
   return designBuildData || null;
 };
@@ -1130,7 +1134,7 @@ export const updateBidDesignBuildData = async (
     designFees: string;
     // Legacy/Construction
     buildSpecifications: string;
-  }>
+  }>,
 ) => {
   const existing = await getBidDesignBuildData(bidId, organizationId);
 
@@ -1184,14 +1188,17 @@ export const getBidTimeline = async (bidId: string, organizationId: string) => {
       and(
         eq(bidTimeline.bidId, bidId),
         eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false)
-      )
+        eq(bidTimeline.isDeleted, false),
+      ),
     )
     .orderBy(asc(bidTimeline.sortOrder), asc(bidTimeline.eventDate));
   return timeline;
 };
 
-export const getBidTimelineEventById = async (eventId: string, organizationId: string) => {
+export const getBidTimelineEventById = async (
+  eventId: string,
+  organizationId: string,
+) => {
   const [timelineEvent] = await db
     .select()
     .from(bidTimeline)
@@ -1199,8 +1206,8 @@ export const getBidTimelineEventById = async (eventId: string, organizationId: s
       and(
         eq(bidTimeline.id, eventId),
         eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false)
-      )
+        eq(bidTimeline.isDeleted, false),
+      ),
     );
   return timelineEvent || null;
 };
@@ -1240,7 +1247,7 @@ export const updateBidTimelineEvent = async (
     status: string;
     description: string;
     sortOrder: number;
-  }>
+  }>,
 ) => {
   const [timelineEvent] = await db
     .update(bidTimeline)
@@ -1256,8 +1263,8 @@ export const updateBidTimelineEvent = async (
       and(
         eq(bidTimeline.id, id),
         eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false)
-      )
+        eq(bidTimeline.isDeleted, false),
+      ),
     )
     .returning();
   return timelineEvent;
@@ -1265,7 +1272,7 @@ export const updateBidTimelineEvent = async (
 
 export const deleteBidTimelineEvent = async (
   id: string,
-  organizationId: string
+  organizationId: string,
 ) => {
   const [timelineEvent] = await db
     .update(bidTimeline)
@@ -1277,8 +1284,8 @@ export const deleteBidTimelineEvent = async (
       and(
         eq(bidTimeline.id, id),
         eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false)
-      )
+        eq(bidTimeline.isDeleted, false),
+      ),
     )
     .returning();
   return timelineEvent;
@@ -1296,14 +1303,17 @@ export const getBidNotes = async (bidId: string, organizationId: string) => {
       and(
         eq(bidNotes.bidId, bidId),
         eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false)
-      )
+        eq(bidNotes.isDeleted, false),
+      ),
     )
     .orderBy(desc(bidNotes.createdAt));
   return notes;
 };
 
-export const getBidNoteById = async (noteId: string, organizationId: string) => {
+export const getBidNoteById = async (
+  noteId: string,
+  organizationId: string,
+) => {
   const [note] = await db
     .select()
     .from(bidNotes)
@@ -1311,8 +1321,8 @@ export const getBidNoteById = async (noteId: string, organizationId: string) => 
       and(
         eq(bidNotes.id, noteId),
         eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false)
-      )
+        eq(bidNotes.isDeleted, false),
+      ),
     );
   return note || null;
 };
@@ -1334,7 +1344,7 @@ export const updateBidNote = async (
   data: {
     note: string;
     isInternal?: boolean;
-  }
+  },
 ) => {
   const [note] = await db
     .update(bidNotes)
@@ -1346,8 +1356,8 @@ export const updateBidNote = async (
       and(
         eq(bidNotes.id, id),
         eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false)
-      )
+        eq(bidNotes.isDeleted, false),
+      ),
     )
     .returning();
   return note;
@@ -1364,8 +1374,8 @@ export const deleteBidNote = async (id: string, organizationId: string) => {
       and(
         eq(bidNotes.id, id),
         eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false)
-      )
+        eq(bidNotes.isDeleted, false),
+      ),
     )
     .returning();
   return note;
@@ -1382,8 +1392,8 @@ export const getBidHistory = async (bidId: string, organizationId: string) => {
     .where(
       and(
         eq(bidHistory.bidId, bidId),
-        eq(bidHistory.organizationId, organizationId)
-      )
+        eq(bidHistory.organizationId, organizationId),
+      ),
     )
     .orderBy(desc(bidHistory.createdAt));
   return history;
@@ -1414,8 +1424,8 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
     // Use atomic database function to get next counter value
     const result = await db.execute<{ next_value: string }>(
       sql.raw(
-        `SELECT org.get_next_counter('${organizationId}'::uuid, 'bid_number') as next_value`
-      )
+        `SELECT org.get_next_counter('${organizationId}'::uuid, 'bid_number') as next_value`,
+      ),
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
@@ -1455,7 +1465,7 @@ const createRelatedRecords = async (
     | "plan_spec"
     | "design_build"
     | "service"
-    | "preventative_maintenance"
+    | "preventative_maintenance",
 ) => {
   // Create financial breakdown
   await db.insert(bidFinancialBreakdown).values({
@@ -1557,24 +1567,42 @@ export const getBidWithAllData = async (id: string) => {
 // ============================
 
 export const getBidDocuments = async (bidId: string) => {
-  const documents = await db
-    .select()
+  const documentsResult = await db
+    .select({
+      document: bidDocuments,
+      uploadedByName: users.fullName,
+    })
     .from(bidDocuments)
+    .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
     .where(
-      and(eq(bidDocuments.bidId, bidId), eq(bidDocuments.isDeleted, false))
+      and(eq(bidDocuments.bidId, bidId), eq(bidDocuments.isDeleted, false)),
     )
     .orderBy(desc(bidDocuments.createdAt));
-  return documents;
+
+  return documentsResult.map((doc) => ({
+    ...doc.document,
+    uploadedByName: doc.uploadedByName || null,
+  }));
 };
 
 export const getBidDocumentById = async (documentId: string) => {
-  const [document] = await db
-    .select()
+  const [result] = await db
+    .select({
+      document: bidDocuments,
+      uploadedByName: users.fullName,
+    })
     .from(bidDocuments)
+    .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
     .where(
-      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false)),
     );
-  return document || null;
+
+  if (!result) return null;
+
+  return {
+    ...result.document,
+    uploadedByName: result.uploadedByName || null,
+  };
 };
 
 export const createBidDocument = async (data: {
@@ -1610,7 +1638,7 @@ export const createBidDocuments = async (
     fileSize?: number;
     documentType?: string;
     uploadedBy: string;
-  }>
+  }>,
 ) => {
   if (documents.length === 0) {
     return [];
@@ -1627,7 +1655,7 @@ export const createBidDocuments = async (
         fileSize: doc.fileSize || undefined,
         documentType: doc.documentType || undefined,
         uploadedBy: doc.uploadedBy,
-      }))
+      })),
     )
     .returning();
 
@@ -1642,7 +1670,7 @@ export const updateBidDocument = async (
     fileType: string;
     fileSize: number;
     documentType: string;
-  }>
+  }>,
 ) => {
   const [document] = await db
     .update(bidDocuments)
@@ -1655,7 +1683,7 @@ export const updateBidDocument = async (
       updatedAt: new Date(),
     })
     .where(
-      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false)),
     )
     .returning();
   return document || null;
@@ -1669,7 +1697,7 @@ export const deleteBidDocument = async (documentId: string) => {
       updatedAt: new Date(),
     })
     .where(
-      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false))
+      and(eq(bidDocuments.id, documentId), eq(bidDocuments.isDeleted, false)),
     )
     .returning();
   return document || null;

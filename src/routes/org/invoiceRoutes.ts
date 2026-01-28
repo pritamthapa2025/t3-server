@@ -1,19 +1,24 @@
 import { Router } from "express";
-import { z } from "zod";
 import * as invoiceController from "../../controllers/InvoiceController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
-  getInvoicesQuerySchema,
-  getInvoiceByIdQuerySchema,
+  getInvoicesSchema,
+  getInvoiceByIdSchema,
   createInvoiceSchema,
-  updateInvoiceSchema,
-  sendInvoiceEmailSchema,
-  markInvoicePaidSchema,
-  voidInvoiceSchema,
-  createInvoiceLineItemSchema,
-  updateInvoiceLineItemSchema,
-  getInvoiceSummaryQuerySchema,
+  updateInvoiceByIdSchema,
+  sendInvoiceByIdSchema,
+  markInvoicePaidByIdSchema,
+  voidInvoiceByIdSchema,
+  deleteInvoiceByIdSchema,
+  createInvoiceLineItemForInvoiceSchema,
+  updateInvoiceLineItemByIdSchema,
+  getInvoiceKPIsSchema,
+  getInvoiceLineItemsSchema,
+  getInvoiceLineItemByIdSchema,
+  deleteInvoiceLineItemByIdSchema,
+  downloadInvoicePDFSchema,
+  previewInvoicePDFSchema,
 } from "../../validations/invoicing.validations.js";
 
 const router = Router();
@@ -23,164 +28,91 @@ router.use(authenticate);
 
 // ==================== INVOICE ROUTES ====================
 
-// Get invoices (list) with pagination and filters
+// Get invoices (list) with pagination and filters, Create new invoice
+router
+  .route("/invoices")
+  .get(validate(getInvoicesSchema), invoiceController.getInvoices)
+  .post(validate(createInvoiceSchema), invoiceController.createInvoice);
+
+// Get invoice KPIs
 router.get(
-  "/",
-  validate(z.object({ query: getInvoicesQuerySchema })),
-  invoiceController.getInvoices
+  "/invoices/kpis",
+  validate(getInvoiceKPIsSchema),
+  invoiceController.getInvoiceKPIs,
 );
 
-// Get invoice summary report
-router.get(
-  "/summary",
-  validate(z.object({ query: getInvoiceSummaryQuerySchema })),
-  invoiceController.getInvoiceSummary
-);
-
-// Get invoice by ID
-router.get(
-  "/:id",
-  validate(z.object({ 
-    query: getInvoiceByIdQuerySchema,
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.getInvoiceById
-);
-
-// Create new invoice
-router.post(
-  "/",
-  validate(createInvoiceSchema),
-  invoiceController.createInvoice
-);
-
-// Update invoice
-router.put(
-  "/:id",
-  validate(z.object({
-    ...updateInvoiceSchema.shape,
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.updateInvoice
-);
-
-// Delete invoice (soft delete)
-router.delete(
-  "/:id",
-  validate(z.object({
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.deleteInvoice
-);
+// Get invoice by ID, Update invoice, Delete invoice (soft delete)
+router
+  .route("/invoices/:id")
+  .get(validate(getInvoiceByIdSchema), invoiceController.getInvoiceById)
+  .put(validate(updateInvoiceByIdSchema), invoiceController.updateInvoice)
+  .delete(validate(deleteInvoiceByIdSchema), invoiceController.deleteInvoice);
 
 // Send invoice via email
 router.post(
-  "/:id/send",
-  validate(z.object({
-    ...sendInvoiceEmailSchema.shape,
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.sendInvoiceEmail
+  "/invoices/:id/send",
+  validate(sendInvoiceByIdSchema),
+  invoiceController.sendInvoiceEmail,
 );
 
 // Mark invoice as paid
 router.post(
-  "/:id/mark-paid",
-  validate(z.object({
-    ...markInvoicePaidSchema.shape,
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.markInvoiceAsPaid
+  "/invoices/:id/mark-paid",
+  validate(markInvoicePaidByIdSchema),
+  invoiceController.markInvoiceAsPaid,
 );
 
 // Void invoice
 router.post(
-  "/:id/void",
-  validate(z.object({
-    ...voidInvoiceSchema.shape,
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.voidInvoice
+  "/invoices/:id/void",
+  validate(voidInvoiceByIdSchema),
+  invoiceController.voidInvoice,
 );
 
 // ==================== INVOICE LINE ITEMS ROUTES ====================
 
-// Get invoice line items
-router.get(
-  "/:invoiceId/line-items",
-  validate(z.object({
-    params: z.object({ invoiceId: z.string().uuid() })
-  })),
-  invoiceController.getInvoiceLineItems
-);
+// Get invoice line items, Create invoice line item
+router
+  .route("/invoices/:invoiceId/line-items")
+  .get(
+    validate(getInvoiceLineItemsSchema),
+    invoiceController.getInvoiceLineItems,
+  )
+  .post(
+    validate(createInvoiceLineItemForInvoiceSchema),
+    invoiceController.createInvoiceLineItem,
+  );
 
-// Create invoice line item
-router.post(
-  "/:invoiceId/line-items",
-  validate(z.object({
-    ...createInvoiceLineItemSchema.shape,
-    params: z.object({ invoiceId: z.string().uuid() })
-  })),
-  invoiceController.createInvoiceLineItem
-);
-
-// Update invoice line item
-router.put(
-  "/:invoiceId/line-items/:lineItemId",
-  validate(z.object({
-    ...updateInvoiceLineItemSchema.shape,
-    params: z.object({ 
-      invoiceId: z.string().uuid(),
-      lineItemId: z.string().uuid()
-    })
-  })),
-  invoiceController.updateInvoiceLineItem
-);
-
-// Delete invoice line item
-router.delete(
-  "/:invoiceId/line-items/:lineItemId",
-  validate(z.object({
-    params: z.object({ 
-      invoiceId: z.string().uuid(),
-      lineItemId: z.string().uuid()
-    })
-  })),
-  invoiceController.deleteInvoiceLineItem
-);
+// Get single invoice line item, Update invoice line item, Delete invoice line item
+router
+  .route("/invoices/:invoiceId/line-items/:lineItemId")
+  .get(
+    validate(getInvoiceLineItemByIdSchema),
+    invoiceController.getInvoiceLineItem,
+  )
+  .put(
+    validate(updateInvoiceLineItemByIdSchema),
+    invoiceController.updateInvoiceLineItem,
+  )
+  .delete(
+    validate(deleteInvoiceLineItemByIdSchema),
+    invoiceController.deleteInvoiceLineItem,
+  );
 
 // ==================== INVOICE PDF ROUTES ====================
 
 // Download invoice as PDF
 router.get(
-  "/:id/pdf",
-  validate(z.object({
-    params: z.object({ id: z.string().uuid() }),
-    query: z.object({
-      save: z.string().optional() // "true" to save to storage
-    }).optional()
-  })),
-  invoiceController.downloadInvoicePDF
+  "/invoices/:id/pdf",
+  validate(downloadInvoicePDFSchema),
+  invoiceController.downloadInvoicePDF,
 );
 
 // Preview invoice PDF (inline display)
 router.get(
-  "/:id/pdf/preview", 
-  validate(z.object({
-    params: z.object({ id: z.string().uuid() })
-  })),
-  invoiceController.previewInvoicePDF
+  "/invoices/:id/pdf/preview",
+  validate(previewInvoicePDFSchema),
+  invoiceController.previewInvoicePDF,
 );
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-

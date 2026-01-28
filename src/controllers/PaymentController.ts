@@ -8,15 +8,13 @@ import { logger } from "../utils/logger.js";
  */
 export const getPayments = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // organizationId is optional - can be provided in query params for filtering
+    const organizationId = req.query.organizationId as string | undefined;
 
-    const result = await invoicingService.getPayments(organizationId, req.query as any);
+    const result = await invoicingService.getPayments(
+      organizationId,
+      req.query as any,
+    );
 
     logger.info("Payments fetched successfully");
     res.json({
@@ -39,13 +37,8 @@ export const getPayments = async (req: Request, res: Response) => {
  */
 export const getPaymentById = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // organizationId is optional - can be provided in query params for filtering, or derived from payment
+    const organizationId = req.query.organizationId as string | undefined;
 
     const { id } = req.params;
     if (!id) {
@@ -54,7 +47,11 @@ export const getPaymentById = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    const payment = await invoicingService.getPaymentById(id, organizationId, req.query as any);
+    const payment = await invoicingService.getPaymentById(
+      id,
+      organizationId,
+      req.query as any,
+    );
 
     if (!payment) {
       return res.status(404).json({
@@ -84,35 +81,41 @@ export const getPaymentById = async (req: Request, res: Response) => {
  */
 export const createPayment = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
-    const paymentId = await invoicingService.createPayment(organizationId, req.body, userId);
+    const paymentId = await invoicingService.createPayment(req.body, userId);
 
-    const payment = await invoicingService.getPaymentById(paymentId, organizationId, {
-      includeAllocations: true,
-    });
+    // Get payment - organizationId will be derived from payment → invoice → job → bid
+    const payment = await invoicingService.getPaymentById(
+      paymentId,
+      undefined,
+      {
+        includeAllocations: true,
+      },
+    );
 
-    // Get updated invoice to return in response
-    const invoice = await invoicingService.getInvoiceById(req.body.invoiceId, organizationId);
+    // Get updated invoice - organizationId will be derived from invoice
+    const invoice = await invoicingService.getInvoiceById(req.body.invoiceId);
 
     logger.info(`Payment ${paymentId} created successfully`);
     res.status(201).json({
       success: true,
       data: {
         payment,
-        invoice: invoice ? {
-          amountPaid: invoice.amountPaid,
-          balanceDue: invoice.balanceDue,
-          status: invoice.status,
-        } : null,
+        invoice: invoice
+          ? {
+              amountPaid: invoice.amountPaid,
+              balanceDue: invoice.balanceDue,
+              status: invoice.status,
+            }
+          : null,
       },
       message: "Payment recorded successfully",
     });
@@ -132,13 +135,12 @@ export const createPayment = async (req: Request, res: Response) => {
  */
 export const updatePayment = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -149,7 +151,30 @@ export const updatePayment = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    const payment = await invoicingService.updatePayment(id, organizationId, req.body, userId);
+
+    // Get payment first to derive organizationId
+    const existingPayment = await invoicingService.getPaymentById(id);
+    if (!existingPayment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    // Get organizationId from payment's invoice → job → bid relationship
+    // We need to get it from the invoice
+    const invoice = await invoicingService.getInvoiceById(
+      existingPayment.invoiceId,
+    );
+    const organizationId =
+      invoice?.organizationId || (req.query.organizationId as string);
+
+    const payment = await invoicingService.updatePayment(
+      id,
+      organizationId,
+      req.body,
+      userId,
+    );
 
     if (!payment) {
       return res.status(404).json({
@@ -180,13 +205,12 @@ export const updatePayment = async (req: Request, res: Response) => {
  */
 export const deletePayment = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -197,7 +221,7 @@ export const deletePayment = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    await invoicingService.deletePayment(id, organizationId, userId);
+    await invoicingService.deletePayment(id, undefined, userId);
 
     logger.info(`Payment ${id} deleted successfully`);
     res.json({
@@ -220,13 +244,12 @@ export const deletePayment = async (req: Request, res: Response) => {
  */
 export const processPayment = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -237,12 +260,34 @@ export const processPayment = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
+
+    // Get payment first to derive organizationId
+    const existingPayment = await invoicingService.getPaymentById(id);
+    if (!existingPayment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    // Get organizationId from payment's invoice
+    const invoice = await invoicingService.getInvoiceById(
+      existingPayment.invoiceId,
+    );
+    const organizationId =
+      invoice?.organizationId || (req.query.organizationId as string);
+
     const { processedDate = new Date().toISOString() } = req.body;
 
-    const payment = await invoicingService.updatePayment(id, organizationId, {
-      status: "processing",
-      processedDate,
-    }, userId);
+    const payment = await invoicingService.updatePayment(
+      id,
+      organizationId,
+      {
+        status: "processing",
+        processedDate,
+      },
+      userId,
+    );
 
     if (!payment) {
       return res.status(404).json({
@@ -273,13 +318,12 @@ export const processPayment = async (req: Request, res: Response) => {
  */
 export const markPaymentAsCleared = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -290,12 +334,34 @@ export const markPaymentAsCleared = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
+
+    // Get payment first to derive organizationId
+    const existingPayment = await invoicingService.getPaymentById(id);
+    if (!existingPayment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    // Get organizationId from payment's invoice
+    const invoice = await invoicingService.getInvoiceById(
+      existingPayment.invoiceId,
+    );
+    const organizationId =
+      invoice?.organizationId || (req.query.organizationId as string);
+
     const { clearedDate = new Date().toISOString() } = req.body;
 
-    const payment = await invoicingService.updatePayment(id, organizationId, {
-      status: "completed",
-      clearedDate,
-    }, userId);
+    const payment = await invoicingService.updatePayment(
+      id,
+      organizationId,
+      {
+        status: "completed",
+        clearedDate,
+      },
+      userId,
+    );
 
     if (!payment) {
       return res.status(404).json({
@@ -326,13 +392,8 @@ export const markPaymentAsCleared = async (req: Request, res: Response) => {
  */
 export const getPaymentAllocations = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // organizationId is optional - can be provided in query params or derived from payment
+    const organizationId = req.query.organizationId as string | undefined;
 
     const { paymentId } = req.params;
     if (!paymentId) {
@@ -341,11 +402,15 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
         message: "Payment ID is required",
       });
     }
-    const payment = await invoicingService.getPaymentById(paymentId, organizationId, {
-      includeAllocations: true,
-      includeDocuments: false,
-      includeHistory: false,
-    });
+    const payment = await invoicingService.getPaymentById(
+      paymentId,
+      organizationId,
+      {
+        includeAllocations: true,
+        includeDocuments: false,
+        includeHistory: false,
+      },
+    );
 
     if (!payment) {
       return res.status(404).json({
@@ -354,7 +419,9 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
       });
     }
 
-    logger.info(`Payment allocations for payment ${paymentId} fetched successfully`);
+    logger.info(
+      `Payment allocations for payment ${paymentId} fetched successfully`,
+    );
     res.json({
       success: true,
       data: {
@@ -377,13 +444,12 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
  */
 export const createPaymentAllocation = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -409,13 +475,12 @@ export const createPaymentAllocation = async (req: Request, res: Response) => {
  */
 export const updatePaymentAllocation = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -441,13 +506,12 @@ export const updatePaymentAllocation = async (req: Request, res: Response) => {
  */
 export const deletePaymentAllocation = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    
-    if (!organizationId || !userId) {
+
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Organization access required",
+        message: "User authentication required",
       });
     }
 
@@ -473,15 +537,13 @@ export const deletePaymentAllocation = async (req: Request, res: Response) => {
  */
 export const getPaymentSummary = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // organizationId is optional - can be provided in query params for filtering
+    const organizationId = req.query.organizationId as string | undefined;
 
-    const summary = await invoicingService.getPaymentSummary(organizationId, req.query as any);
+    const summary = await invoicingService.getPaymentSummary(
+      organizationId,
+      req.query as any,
+    );
 
     logger.info("Payment summary fetched successfully");
     res.json({

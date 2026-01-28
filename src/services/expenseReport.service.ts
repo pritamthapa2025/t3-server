@@ -9,6 +9,7 @@ import {
   gte,
   lte,
   ilike,
+  inArray,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -17,9 +18,7 @@ import {
   expenses,
   expenseCategories,
 } from "../drizzle/schema/expenses.schema.js";
-import {
-  employees,
-} from "../drizzle/schema/org.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { logExpenseHistory } from "./expense.service.js";
 
@@ -43,7 +42,7 @@ export const getExpenseReports = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
     includeDeleted?: boolean;
-  }
+  },
 ) => {
   let whereConditions = [eq(expenseReports.organizationId, organizationId)];
 
@@ -62,7 +61,9 @@ export const getExpenseReports = async (
   }
 
   if (filters?.startDate) {
-    whereConditions.push(gte(expenseReports.reportPeriodStart, filters.startDate));
+    whereConditions.push(
+      gte(expenseReports.reportPeriodStart, filters.startDate),
+    );
   }
 
   if (filters?.endDate) {
@@ -70,11 +71,15 @@ export const getExpenseReports = async (
   }
 
   if (filters?.submittedStartDate) {
-    whereConditions.push(gte(expenseReports.submittedDate, new Date(filters.submittedStartDate)));
+    whereConditions.push(
+      gte(expenseReports.submittedDate, new Date(filters.submittedStartDate)),
+    );
   }
 
   if (filters?.submittedEndDate) {
-    whereConditions.push(lte(expenseReports.submittedDate, new Date(filters.submittedEndDate)));
+    whereConditions.push(
+      lte(expenseReports.submittedDate, new Date(filters.submittedEndDate)),
+    );
   }
 
   if (filters?.approvedBy) {
@@ -86,8 +91,8 @@ export const getExpenseReports = async (
       or(
         ilike(expenseReports.title, `%${filters.search}%`),
         ilike(expenseReports.description, `%${filters.search}%`),
-        ilike(expenseReports.reportNumber, `%${filters.search}%`)
-      )!
+        ilike(expenseReports.reportNumber, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -163,9 +168,38 @@ export const getExpenseReports = async (
 
   const total = totalResult[0]?.count || 0;
 
-  // Add employee info to results
+  // Get unique user IDs and fetch their names in batch
+  const userIds = Array.from(
+    new Set([
+      ...result.map((r) => r.createdBy).filter((id): id is string => !!id),
+      ...result.map((r) => r.approvedBy).filter((id): id is string => !!id),
+      ...result.map((r) => r.rejectedBy).filter((id): id is string => !!id),
+    ]),
+  );
+  const userMap = new Map<string, string>();
+  if (userIds.length > 0) {
+    const usersResult = await db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+      })
+      .from(users)
+      .where(inArray(users.id, userIds));
+    usersResult.forEach((u) => userMap.set(u.id, u.fullName));
+  }
+
+  // Add employee info and user names to results
   const reportsWithEmployee = result.map((report) => ({
     ...report,
+    createdByName: report.createdBy
+      ? userMap.get(report.createdBy) || null
+      : null,
+    approvedByName: report.approvedBy
+      ? userMap.get(report.approvedBy) || null
+      : null,
+    rejectedByName: report.rejectedBy
+      ? userMap.get(report.rejectedBy) || null
+      : null,
     employee: report.employeeFullName
       ? {
           id: report.employeeId,
@@ -187,7 +221,10 @@ export const getExpenseReports = async (
   };
 };
 
-export const getExpenseReportById = async (organizationId: string, id: string) => {
+export const getExpenseReportById = async (
+  organizationId: string | undefined,
+  id: string,
+) => {
   // Get main report data
   const reportResult = await db
     .select({
@@ -225,13 +262,17 @@ export const getExpenseReportById = async (organizationId: string, id: string) =
     .from(expenseReports)
     .leftJoin(employees, eq(expenseReports.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
-    .where(
-      and(
+    .where(() => {
+      const conditions = [
         eq(expenseReports.id, id),
-        eq(expenseReports.organizationId, organizationId),
-        eq(expenseReports.isDeleted, false)
-      )
-    )
+        organizationId
+          ? eq(expenseReports.organizationId, organizationId)
+          : undefined,
+        eq(expenseReports.isDeleted, false),
+      ].filter(Boolean) as any[];
+
+      return conditions.length > 0 ? and(...conditions) : undefined;
+    })
     .limit(1);
 
   if (!reportResult[0]) {
@@ -239,6 +280,25 @@ export const getExpenseReportById = async (organizationId: string, id: string) =
   }
 
   const report = reportResult[0];
+
+  // Get user names for createdBy, approvedBy, rejectedBy
+  const userIds = [
+    report.createdBy,
+    report.approvedBy,
+    report.rejectedBy,
+  ].filter((id): id is string => !!id);
+
+  const userMap = new Map<string, string>();
+  if (userIds.length > 0) {
+    const usersResult = await db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+      })
+      .from(users)
+      .where(inArray(users.id, userIds));
+    usersResult.forEach((u) => userMap.set(u.id, u.fullName));
+  }
 
   // Get report items (expenses)
   const itemsResult = await db
@@ -268,14 +328,28 @@ export const getExpenseReportById = async (organizationId: string, id: string) =
     .where(
       and(
         eq(expenseReportItems.reportId, id),
-        eq(expenseReportItems.organizationId, organizationId),
-        eq(expenseReportItems.isDeleted, false)
-      )
+        organizationId
+          ? eq(expenseReportItems.organizationId, organizationId)
+          : undefined,
+        eq(expenseReportItems.isDeleted, false),
+      ),
     )
-    .orderBy(asc(expenseReportItems.sortOrder), asc(expenseReportItems.addedAt));
+    .orderBy(
+      asc(expenseReportItems.sortOrder),
+      asc(expenseReportItems.addedAt),
+    );
 
   return {
     ...report,
+    createdByName: report.createdBy
+      ? userMap.get(report.createdBy) || null
+      : null,
+    approvedByName: report.approvedBy
+      ? userMap.get(report.approvedBy) || null
+      : null,
+    rejectedByName: report.rejectedBy
+      ? userMap.get(report.rejectedBy) || null
+      : null,
     employee: report.employeeFullName
       ? {
           id: report.employeeId,
@@ -314,7 +388,7 @@ export const createExpenseReport = async (
   organizationId: string,
   employeeId: number,
   reportData: any,
-  createdBy: string
+  createdBy: string,
 ) => {
   // Generate report number
   const reportNumber = await generateReportNumber(organizationId);
@@ -336,13 +410,15 @@ export const createExpenseReport = async (
       and(
         sql`${expenses.id} = ANY(${reportData.expenseIds})`,
         eq(expenses.organizationId, organizationId),
-        eq(expenses.isDeleted, false)
-      )
+        eq(expenses.isDeleted, false),
+      ),
     );
 
   // Validate expenses
   const invalidExpenses = expenseValidation.filter(
-    (exp) => exp.employeeId !== employeeId || !["draft", "submitted"].includes(exp.status)
+    (exp) =>
+      exp.employeeId !== employeeId ||
+      !["draft", "submitted"].includes(exp.status),
   );
 
   if (invalidExpenses.length > 0) {
@@ -382,8 +458,8 @@ export const createExpenseReport = async (
           addedAt: new Date(),
           createdAt: new Date(),
         })
-        .returning()
-    )
+        .returning(),
+    ),
   );
 
   return { report, items: items.map((item) => item[0]) };
@@ -393,7 +469,7 @@ export const updateExpenseReport = async (
   organizationId: string,
   id: string,
   updateData: any,
-  _updatedBy: string
+  _updatedBy: string,
 ) => {
   // If expenseIds are being updated, recalculate totals
   if (updateData.expenseIds) {
@@ -411,8 +487,8 @@ export const updateExpenseReport = async (
         and(
           sql`${expenses.id} = ANY(${updateData.expenseIds})`,
           eq(expenses.organizationId, organizationId),
-          eq(expenses.isDeleted, false)
-        )
+          eq(expenses.isDeleted, false),
+        ),
       );
 
     const totals = calculateReportTotals(expenseValidation);
@@ -425,24 +501,22 @@ export const updateExpenseReport = async (
       .where(
         and(
           eq(expenseReportItems.reportId, id),
-          eq(expenseReportItems.organizationId, organizationId)
-        )
+          eq(expenseReportItems.organizationId, organizationId),
+        ),
       );
 
     // Create new items
     await Promise.all(
       updateData.expenseIds.map((expenseId: string, index: number) =>
-        db
-          .insert(expenseReportItems)
-          .values({
-            organizationId,
-            reportId: id,
-            expenseId,
-            sortOrder: index,
-            addedAt: new Date(),
-            createdAt: new Date(),
-          })
-      )
+        db.insert(expenseReportItems).values({
+          organizationId,
+          reportId: id,
+          expenseId,
+          sortOrder: index,
+          addedAt: new Date(),
+          createdAt: new Date(),
+        }),
+      ),
     );
   }
 
@@ -456,15 +530,18 @@ export const updateExpenseReport = async (
       and(
         eq(expenseReports.id, id),
         eq(expenseReports.organizationId, organizationId),
-        eq(expenseReports.isDeleted, false)
-      )
+        eq(expenseReports.isDeleted, false),
+      ),
     )
     .returning();
 
   return updated[0] || null;
 };
 
-export const deleteExpenseReport = async (organizationId: string, id: string) => {
+export const deleteExpenseReport = async (
+  organizationId: string,
+  id: string,
+) => {
   const deleted = await db
     .update(expenseReports)
     .set({
@@ -474,8 +551,8 @@ export const deleteExpenseReport = async (organizationId: string, id: string) =>
     .where(
       and(
         eq(expenseReports.id, id),
-        eq(expenseReports.organizationId, organizationId)
-      )
+        eq(expenseReports.organizationId, organizationId),
+      ),
     )
     .returning();
 
@@ -486,7 +563,7 @@ export const submitExpenseReport = async (
   organizationId: string,
   id: string,
   submittedBy: string,
-  notes?: string
+  notes?: string,
 ) => {
   const updated = await db
     .update(expenseReports)
@@ -501,8 +578,8 @@ export const submitExpenseReport = async (
         eq(expenseReports.id, id),
         eq(expenseReports.organizationId, organizationId),
         eq(expenseReports.status, "draft"),
-        eq(expenseReports.isDeleted, false)
-      )
+        eq(expenseReports.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -515,8 +592,8 @@ export const submitExpenseReport = async (
         and(
           eq(expenseReportItems.reportId, id),
           eq(expenseReportItems.organizationId, organizationId),
-          eq(expenseReportItems.isDeleted, false)
-        )
+          eq(expenseReportItems.isDeleted, false),
+        ),
       );
 
     await Promise.all(
@@ -532,10 +609,10 @@ export const submitExpenseReport = async (
             and(
               eq(expenses.id, item.expenseId),
               eq(expenses.organizationId, organizationId),
-              eq(expenses.status, "draft")
-            )
-          )
-      )
+              eq(expenses.status, "draft"),
+            ),
+          ),
+      ),
     );
 
     // Log history for each expense
@@ -546,9 +623,9 @@ export const submitExpenseReport = async (
           item.expenseId,
           "submitted_via_report",
           `Expense submitted via report ${updated[0]?.reportNumber}`,
-          submittedBy
-        )
-      )
+          submittedBy,
+        ),
+      ),
     );
   }
 
@@ -559,7 +636,9 @@ export const submitExpenseReport = async (
 // Helper Functions
 // ============================
 
-const generateReportNumber = async (organizationId: string): Promise<string> => {
+const generateReportNumber = async (
+  organizationId: string,
+): Promise<string> => {
   const year = new Date().getFullYear();
   const month = (new Date().getMonth() + 1).toString().padStart(2, "0");
   const prefix = `RPT-${year}${month}-`;
@@ -570,15 +649,16 @@ const generateReportNumber = async (organizationId: string): Promise<string> => 
     .where(
       and(
         eq(expenseReports.organizationId, organizationId),
-        ilike(expenseReports.reportNumber, `${prefix}%`)
-      )
+        ilike(expenseReports.reportNumber, `${prefix}%`),
+      ),
     )
     .orderBy(desc(expenseReports.reportNumber))
     .limit(1);
 
   let nextNumber = 1;
   if (lastReport[0]) {
-    const lastNumber = parseInt(lastReport[0]?.reportNumber?.split("-")[2] || "0") || 0;
+    const lastNumber =
+      parseInt(lastReport[0]?.reportNumber?.split("-")[2] || "0") || 0;
     nextNumber = lastNumber + 1;
   }
 

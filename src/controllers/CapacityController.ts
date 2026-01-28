@@ -5,19 +5,12 @@ import { logger } from "../utils/logger.js";
 // Dashboard KPIs - Status cards (In Field, Available, Suspended, Total Technicians)
 export const getDashboardKPIs = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const { date } = req.query;
 
     const kpis = await capacityService.getDashboardKPIs(
-      organizationId,
-      date as string
+      undefined, // T3 employees see all data
+      date as string,
     );
 
     logger.info("Capacity dashboard KPIs fetched successfully");
@@ -38,14 +31,7 @@ export const getDashboardKPIs = async (req: Request, res: Response) => {
 // Overall Utilization metrics and trend
 export const getUtilizationMetrics = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const {
       startDate,
       endDate,
@@ -54,7 +40,7 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
     } = req.query;
 
     const metrics = await capacityService.getUtilizationMetrics(
-      organizationId,
+      undefined, // T3 employees see all data
       {
         startDate: startDate as string,
         endDate: endDate as string,
@@ -62,7 +48,7 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
           ? parseInt(departmentId as string)
           : undefined,
         periodType: periodType as "daily" | "weekly" | "monthly" | "quarterly",
-      }
+      },
     );
 
     logger.info("Utilization metrics fetched successfully");
@@ -83,14 +69,7 @@ export const getUtilizationMetrics = async (req: Request, res: Response) => {
 // Utilization chart data (historical trend)
 export const getUtilizationChartData = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const {
       startDate,
       endDate,
@@ -99,7 +78,7 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
     } = req.query;
 
     const chartData = await capacityService.getUtilizationChartData(
-      organizationId,
+      undefined, // T3 employees see all data
       {
         startDate: startDate as string,
         endDate: endDate as string,
@@ -107,7 +86,7 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
         departmentId: departmentId
           ? parseInt(departmentId as string)
           : undefined,
-      }
+      },
     );
 
     logger.info("Utilization chart data fetched successfully");
@@ -128,19 +107,12 @@ export const getUtilizationChartData = async (req: Request, res: Response) => {
 // Coverage by Team - table data
 export const getCoverageByTeam = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const { date } = req.query;
 
     const teamCoverage = await capacityService.getCoverageByTeam(
-      organizationId,
-      date as string
+      undefined, // T3 employees see all data
+      date as string,
     );
 
     logger.info("Team coverage fetched successfully");
@@ -161,26 +133,18 @@ export const getCoverageByTeam = async (req: Request, res: Response) => {
 // Real-time employee availability
 export const getEmployeeAvailability = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const { status, departmentId, page = 1, limit = 10 } = req.query;
 
     const result = await capacityService.getEmployeeAvailability(
       parseInt(page as string),
       parseInt(limit as string),
       {
-        organizationId,
         status: status as string,
         departmentId: departmentId
           ? parseInt(departmentId as string)
           : undefined,
-      }
+      },
     );
 
     logger.info("Employee availability fetched successfully");
@@ -207,15 +171,14 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
 // Update employee availability status
 export const updateEmployeeAvailability = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -236,7 +199,9 @@ export const updateEmployeeAvailability = async (
         lastUpdated: new Date(),
       });
 
-    logger.info(`Employee availability for employee ${employeeId} updated successfully`);
+    logger.info(
+      `Employee availability for employee ${employeeId} updated successfully`,
+    );
     res.json({
       success: true,
       message: "Employee availability updated successfully",
@@ -255,14 +220,7 @@ export const updateEmployeeAvailability = async (
 // Resource allocations (job assignments)
 export const getResourceAllocations = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const {
       startDate,
       endDate,
@@ -278,14 +236,13 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
       parseInt(page as string),
       parseInt(limit as string),
       {
-        organizationId,
         startDate: startDate as string,
         endDate: endDate as string,
         employeeId: employeeId ? parseInt(employeeId as string) : undefined,
         jobId: jobId as string,
         status: status as string,
         priority: priority ? parseInt(priority as string) : undefined,
-      }
+      },
     );
 
     logger.info("Resource allocations fetched successfully");
@@ -312,12 +269,11 @@ export const getResourceAllocations = async (req: Request, res: Response) => {
 // Create resource allocation
 export const createResourceAllocation = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -329,7 +285,9 @@ export const createResourceAllocation = async (req: Request, res: Response) => {
       assignedBy: userId,
     });
 
-    logger.info(`Resource allocation ${newAllocation?.id || 'unknown'} created successfully`);
+    logger.info(
+      `Resource allocation ${newAllocation?.id || "unknown"} created successfully`,
+    );
     res.status(201).json({
       success: true,
       message: "Resource allocation created successfully",
@@ -348,12 +306,11 @@ export const createResourceAllocation = async (req: Request, res: Response) => {
 // Update resource allocation
 export const updateResourceAllocation = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -372,7 +329,7 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
       {
         ...updateData,
         updatedAt: new Date(),
-      }
+      },
     );
 
     logger.info(`Resource allocation ${allocationId} updated successfully`);
@@ -394,14 +351,7 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
 // Employee shifts
 export const getEmployeeShifts = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const {
       startDate,
       endDate,
@@ -416,7 +366,6 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
       parseInt(page as string),
       parseInt(limit as string),
       {
-        organizationId,
         startDate: startDate as string,
         endDate: endDate as string,
         employeeId: employeeId ? parseInt(employeeId as string) : undefined,
@@ -424,7 +373,7 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
           ? parseInt(departmentId as string)
           : undefined,
         isActive: isActive === "true",
-      }
+      },
     );
 
     logger.info("Employee shifts fetched successfully");
@@ -451,12 +400,11 @@ export const getEmployeeShifts = async (req: Request, res: Response) => {
 // Create employee shift
 export const createEmployeeShift = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -467,7 +415,9 @@ export const createEmployeeShift = async (req: Request, res: Response) => {
       createdBy: userId,
     });
 
-    logger.info(`Employee shift ${newShift?.id || 'unknown'} created successfully`);
+    logger.info(
+      `Employee shift ${newShift?.id || "unknown"} created successfully`,
+    );
     res.status(201).json({
       success: true,
       message: "Employee shift created successfully",
@@ -486,13 +436,7 @@ export const createEmployeeShift = async (req: Request, res: Response) => {
 // Update employee shift
 export const updateEmployeeShift = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // T3 employees see all capacity data - organizationId not needed
 
     const { shiftId } = req.params;
     const updateData = req.body;
@@ -509,7 +453,7 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
       {
         ...updateData,
         updatedAt: new Date(),
-      }
+      },
     );
 
     logger.info(`Employee shift ${shiftId} updated successfully`);
@@ -531,13 +475,7 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
 // Delete employee shift
 export const deleteEmployeeShift = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
+    // T3 employees see all capacity data - organizationId not needed
 
     const { shiftId } = req.params;
 
@@ -568,26 +506,19 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
 // Department capacity overview
 export const getDepartmentCapacityOverview = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const { startDate, endDate, periodType = "daily" } = req.query;
 
     const overview = await capacityService.getDepartmentCapacityOverview(
-      organizationId,
+      undefined, // T3 employees see all data
       {
         startDate: startDate as string,
         endDate: endDate as string,
         periodType: periodType as "daily" | "weekly" | "monthly" | "quarterly",
-      }
+      },
     );
 
     logger.info("Department capacity overview fetched successfully");
@@ -596,7 +527,11 @@ export const getDepartmentCapacityOverview = async (
       data: overview,
     });
   } catch (error: any) {
-    logger.logApiError("Error fetching department capacity overview", error, req);
+    logger.logApiError(
+      "Error fetching department capacity overview",
+      error,
+      req,
+    );
     res.status(500).json({
       success: false,
       message: "Failed to fetch department capacity overview",
@@ -608,29 +543,21 @@ export const getDepartmentCapacityOverview = async (
 // Capacity planning templates
 export const getCapacityPlanningTemplates = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(401).json({
-        success: false,
-        message: "Organization access required",
-      });
-    }
-
+    // T3 employees see all capacity data - organizationId not needed
     const { departmentId, isActive, page = 1, limit = 10 } = req.query;
 
     const result = await capacityService.getCapacityPlanningTemplates(
       parseInt(page as string),
       parseInt(limit as string),
       {
-        organizationId,
         departmentId: departmentId
           ? parseInt(departmentId as string)
           : undefined,
         isActive: isActive === "true",
-      }
+      },
     );
 
     logger.info("Capacity planning templates fetched successfully");
@@ -645,7 +572,11 @@ export const getCapacityPlanningTemplates = async (
       },
     });
   } catch (error: any) {
-    logger.logApiError("Error fetching capacity planning templates", error, req);
+    logger.logApiError(
+      "Error fetching capacity planning templates",
+      error,
+      req,
+    );
     res.status(500).json({
       success: false,
       message: "Failed to fetch capacity planning templates",
@@ -657,15 +588,14 @@ export const getCapacityPlanningTemplates = async (
 // Create capacity planning template
 export const createCapacityPlanningTemplate = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -676,7 +606,9 @@ export const createCapacityPlanningTemplate = async (
       createdBy: userId,
     });
 
-    logger.info(`Capacity planning template ${newTemplate?.id || 'unknown'} created successfully`);
+    logger.info(
+      `Capacity planning template ${newTemplate?.id || "unknown"} created successfully`,
+    );
     res.status(201).json({
       success: true,
       message: "Capacity planning template created successfully",
@@ -693,14 +625,16 @@ export const createCapacityPlanningTemplate = async (
 };
 
 // Create department capacity metric
-export const createDepartmentCapacityMetric = async (req: Request, res: Response) => {
+export const createDepartmentCapacityMetric = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required",
+        message: "User authentication required",
       });
     }
 
@@ -711,7 +645,9 @@ export const createDepartmentCapacityMetric = async (req: Request, res: Response
       calculatedBy: userId,
     });
 
-    logger.info(`Department capacity metric ${newMetric?.id || 'unknown'} created successfully`);
+    logger.info(
+      `Department capacity metric ${newMetric?.id || "unknown"} created successfully`,
+    );
     res.status(201).json({
       success: true,
       message: "Department capacity metric created successfully",

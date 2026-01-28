@@ -23,7 +23,10 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 
 // Dashboard KPIs - Status cards
-export const getDashboardKPIs = async (_organizationId: string, _date?: string) => {
+export const getDashboardKPIs = async (
+  _organizationId: string | undefined,
+  _date?: string,
+) => {
   // Get employee availability counts by status
   const statusCounts = await db
     .select({
@@ -34,9 +37,9 @@ export const getDashboardKPIs = async (_organizationId: string, _date?: string) 
     .innerJoin(employees, eq(employeeAvailability.employeeId, employees.id))
     .where(
       and(
-        eq(employees.isDeleted, false)
+        eq(employees.isDeleted, false),
         // Note: Organization filtering temporarily removed until schema is clarified
-      )
+      ),
     )
     .groupBy(employeeAvailability.currentStatus);
 
@@ -46,27 +49,30 @@ export const getDashboardKPIs = async (_organizationId: string, _date?: string) 
     .from(employees)
     .where(
       and(
-        eq(employees.isDeleted, false)
+        eq(employees.isDeleted, false),
         // Note: Organization filtering temporarily removed until schema is clarified
-      )
+      ),
     );
 
   const totalTechnicians = totalResult[0]?.count || 0;
 
   // Transform status counts into dashboard format
-  const statusMap = statusCounts.reduce((acc, item) => {
-    acc[item.status] = item.count;
-    return acc;
-  }, {} as Record<string, number>);
+  const statusMap = statusCounts.reduce(
+    (acc, item) => {
+      acc[item.status] = item.count;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
   return {
-    inField: statusMap['on_job'] || 0,
-    available: statusMap['available'] || 0,
-    suspended: statusMap['suspended'] || 0,
-    onBreak: statusMap['break'] || 0,
-    onPTO: statusMap['pto'] || 0,
-    sick: statusMap['sick'] || 0,
-    offShift: statusMap['off_shift'] || 0,
+    inField: statusMap["on_job"] || 0,
+    available: statusMap["available"] || 0,
+    suspended: statusMap["suspended"] || 0,
+    onBreak: statusMap["break"] || 0,
+    onPTO: statusMap["pto"] || 0,
+    sick: statusMap["sick"] || 0,
+    offShift: statusMap["off_shift"] || 0,
     totalTechnicians,
     lastUpdated: new Date().toISOString(),
   };
@@ -74,16 +80,18 @@ export const getDashboardKPIs = async (_organizationId: string, _date?: string) 
 
 // Overall utilization metrics and trend
 export const getUtilizationMetrics = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters: {
     startDate?: string | undefined;
     endDate?: string | undefined;
     departmentId?: number | undefined;
-    periodType: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  }
+    periodType: "daily" | "weekly" | "monthly" | "quarterly";
+  },
 ) => {
-  const startDate = filters.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const endDate = filters.endDate || new Date().toISOString().split('T')[0];
+  const startDate =
+    filters.startDate ||
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const endDate = filters.endDate || new Date().toISOString().split("T")[0];
 
   let whereConditions = [
     eq(departmentCapacityMetrics.periodType, filters.periodType),
@@ -98,7 +106,9 @@ export const getUtilizationMetrics = async (
   }
 
   if (filters.departmentId) {
-    whereConditions.push(eq(departmentCapacityMetrics.departmentId, filters.departmentId));
+    whereConditions.push(
+      eq(departmentCapacityMetrics.departmentId, filters.departmentId),
+    );
   }
 
   // Get current period utilization
@@ -113,14 +123,22 @@ export const getUtilizationMetrics = async (
       totalCompletedJobs: sum(departmentCapacityMetrics.completedJobsCount),
     })
     .from(departmentCapacityMetrics)
-    .innerJoin(departments, eq(departmentCapacityMetrics.departmentId, departments.id))
+    .innerJoin(
+      departments,
+      eq(departmentCapacityMetrics.departmentId, departments.id),
+    )
     .where(and(...whereConditions));
 
   // Get previous period for trend calculation
-  let previousMetrics: { avgUtilization: string | null }[] = [{ avgUtilization: null }];
-  
+  let previousMetrics: { avgUtilization: string | null }[] = [
+    { avgUtilization: null },
+  ];
+
   if (startDate && endDate) {
-    const previousStartDate = new Date(new Date(startDate).getTime() - (new Date(endDate).getTime() - new Date(startDate).getTime()));
+    const previousStartDate = new Date(
+      new Date(startDate).getTime() -
+        (new Date(endDate).getTime() - new Date(startDate).getTime()),
+    );
     const previousEndDate = new Date(startDate);
 
     previousMetrics = await db
@@ -128,13 +146,22 @@ export const getUtilizationMetrics = async (
         avgUtilization: avg(departmentCapacityMetrics.utilizationPercentage),
       })
       .from(departmentCapacityMetrics)
-      .innerJoin(departments, eq(departmentCapacityMetrics.departmentId, departments.id))
+      .innerJoin(
+        departments,
+        eq(departmentCapacityMetrics.departmentId, departments.id),
+      )
       .where(
         and(
-          gte(departmentCapacityMetrics.metricDate, previousStartDate.toISOString().split('T')[0]!),
-          lte(departmentCapacityMetrics.metricDate, previousEndDate.toISOString().split('T')[0]!),
-          eq(departmentCapacityMetrics.periodType, filters.periodType)
-        )
+          gte(
+            departmentCapacityMetrics.metricDate,
+            previousStartDate.toISOString().split("T")[0]!,
+          ),
+          lte(
+            departmentCapacityMetrics.metricDate,
+            previousEndDate.toISOString().split("T")[0]!,
+          ),
+          eq(departmentCapacityMetrics.periodType, filters.periodType),
+        ),
       );
   }
 
@@ -142,17 +169,18 @@ export const getUtilizationMetrics = async (
   const previous = previousMetrics[0];
 
   // Calculate trend percentage
-  const currentUtil = parseFloat(current?.avgUtilization || '0');
-  const previousUtil = parseFloat(previous?.avgUtilization || '0');
-  const trendPercentage = previousUtil > 0 ? ((currentUtil - previousUtil) / previousUtil) * 100 : 0;
+  const currentUtil = parseFloat(current?.avgUtilization || "0");
+  const previousUtil = parseFloat(previous?.avgUtilization || "0");
+  const trendPercentage =
+    previousUtil > 0 ? ((currentUtil - previousUtil) / previousUtil) * 100 : 0;
 
   return {
     teamUtilization: Math.round(currentUtil),
     trendPercentage: Math.round(trendPercentage * 100) / 100,
-    efficiency: Math.round(parseFloat(current?.avgEfficiency || '0')),
-    totalPlannedHours: parseFloat(current?.totalPlannedHours || '0'),
-    totalScheduledHours: parseFloat(current?.totalScheduledHours || '0'),
-    totalActualHours: parseFloat(current?.totalActualHours || '0'),
+    efficiency: Math.round(parseFloat(current?.avgEfficiency || "0")),
+    totalPlannedHours: parseFloat(current?.totalPlannedHours || "0"),
+    totalScheduledHours: parseFloat(current?.totalScheduledHours || "0"),
+    totalActualHours: parseFloat(current?.totalActualHours || "0"),
     totalActiveJobs: current?.totalActiveJobs || 0,
     totalCompletedJobs: current?.totalCompletedJobs || 0,
     period: {
@@ -165,13 +193,13 @@ export const getUtilizationMetrics = async (
 
 // Utilization chart data for historical trends
 export const getUtilizationChartData = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters: {
     startDate?: string | undefined;
     endDate?: string | undefined;
-    periodType: 'daily' | 'weekly' | 'monthly' | 'quarterly';
+    periodType: "daily" | "weekly" | "monthly" | "quarterly";
     departmentId?: number | undefined;
-  }
+  },
 ) => {
   let whereConditions = [
     eq(departmentCapacityMetrics.periodType, filters.periodType),
@@ -180,15 +208,21 @@ export const getUtilizationChartData = async (
   // Only add date filters if explicitly provided
   // If not provided, return all available data
   if (filters.startDate) {
-    whereConditions.push(gte(departmentCapacityMetrics.metricDate, filters.startDate));
+    whereConditions.push(
+      gte(departmentCapacityMetrics.metricDate, filters.startDate),
+    );
   }
 
   if (filters.endDate) {
-    whereConditions.push(lte(departmentCapacityMetrics.metricDate, filters.endDate));
+    whereConditions.push(
+      lte(departmentCapacityMetrics.metricDate, filters.endDate),
+    );
   }
 
   if (filters.departmentId) {
-    whereConditions.push(eq(departmentCapacityMetrics.departmentId, filters.departmentId));
+    whereConditions.push(
+      eq(departmentCapacityMetrics.departmentId, filters.departmentId),
+    );
   }
 
   // Query metrics directly - no need to join with departments for chart data
@@ -206,19 +240,22 @@ export const getUtilizationChartData = async (
     .groupBy(departmentCapacityMetrics.metricDate)
     .orderBy(departmentCapacityMetrics.metricDate);
 
-  return chartData.map(item => ({
+  return chartData.map((item) => ({
     period: item.period,
-    utilization: Math.round(parseFloat(item.utilization || '0')),
-    efficiency: Math.round(parseFloat(item.efficiency || '0')),
-    plannedHours: parseFloat(item.plannedHours || '0'),
-    scheduledHours: parseFloat(item.scheduledHours || '0'),
-    actualHours: parseFloat(item.actualHours || '0'),
+    utilization: Math.round(parseFloat(item.utilization || "0")),
+    efficiency: Math.round(parseFloat(item.efficiency || "0")),
+    plannedHours: parseFloat(item.plannedHours || "0"),
+    scheduledHours: parseFloat(item.scheduledHours || "0"),
+    actualHours: parseFloat(item.actualHours || "0"),
   }));
 };
 
 // Coverage by Team - table data
-export const getCoverageByTeam = async (organizationId: string, date?: string | undefined) => {
-  const queryDate = date || new Date().toISOString().split('T')[0];
+export const getCoverageByTeam = async (
+  organizationId: string | undefined,
+  date?: string | undefined,
+) => {
+  const queryDate = date || new Date().toISOString().split("T")[0];
 
   // Optimized: Run both queries in parallel for better performance
   const [teamCoverage, jobsInProgress] = await Promise.all([
@@ -234,28 +271,36 @@ export const getCoverageByTeam = async (organizationId: string, date?: string | 
       })
       .from(departments)
       .leftJoin(users, eq(departments.leadId, users.id))
-      .leftJoin(employees, and(
-        eq(employees.departmentId, departments.id),
-        eq(employees.isDeleted, false)
-      ))
-      .leftJoin(departmentCapacityMetrics, and(
-        eq(departmentCapacityMetrics.departmentId, departments.id),
-        queryDate ? eq(departmentCapacityMetrics.metricDate, queryDate) : sql`true`
-      ))
+      .leftJoin(
+        employees,
+        and(
+          eq(employees.departmentId, departments.id),
+          eq(employees.isDeleted, false),
+        ),
+      )
+      .leftJoin(
+        departmentCapacityMetrics,
+        and(
+          eq(departmentCapacityMetrics.departmentId, departments.id),
+          queryDate
+            ? eq(departmentCapacityMetrics.metricDate, queryDate)
+            : sql`true`,
+        ),
+      )
       .where(
         and(
-          eq(departments.isDeleted, false)
+          eq(departments.isDeleted, false),
           // Note: Organization filtering temporarily removed until schema is clarified
-        )
+        ),
       )
       .groupBy(
         departments.id,
         departments.name,
         departments.leadId,
         users.fullName,
-        departmentCapacityMetrics.coverageAreas
+        departmentCapacityMetrics.coverageAreas,
       ),
-    
+
     // Get jobs in progress for each department
     db
       .select({
@@ -267,29 +312,34 @@ export const getCoverageByTeam = async (organizationId: string, date?: string | 
       .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
       .where(
         and(
-          inArray(jobs.status, ['in_progress', 'scheduled']),
+          inArray(jobs.status, ["in_progress", "scheduled"]),
           eq(jobs.isDeleted, false),
-          inArray(resourceAllocations.status, ['assigned', 'in_progress'])
-        )
+          inArray(resourceAllocations.status, ["assigned", "in_progress"]),
+        ),
       )
-      .groupBy(employees.departmentId)
+      .groupBy(employees.departmentId),
   ]);
 
   // Combine data
-  const jobsMap = jobsInProgress.reduce((acc, item) => {
-    if (item.departmentId) {
-      acc[item.departmentId] = item.jobsCount;
-    }
-    return acc;
-  }, {} as Record<number, number>);
+  const jobsMap = jobsInProgress.reduce(
+    (acc, item) => {
+      if (item.departmentId) {
+        acc[item.departmentId] = item.jobsCount;
+      }
+      return acc;
+    },
+    {} as Record<number, number>,
+  );
 
-  return teamCoverage.map(team => ({
+  return teamCoverage.map((team) => ({
     departmentId: team.departmentId,
     team: team.teamName,
-    manager: team.managerName || 'Unassigned',
+    manager: team.managerName || "Unassigned",
     technicians: team.totalTechnicians,
     jobsInProgress: jobsMap[team.departmentId] || 0,
-    coverage: Array.isArray(team.coverageAreas) ? team.coverageAreas.join(' • ') : 'Not specified',
+    coverage: Array.isArray(team.coverageAreas)
+      ? team.coverageAreas.join(" • ")
+      : "Not specified",
   }));
 };
 
@@ -298,17 +348,17 @@ export const getEmployeeAvailability = async (
   offset: number,
   limit: number,
   filters: {
-    organizationId: string;
+    organizationId?: string;
     status?: string | undefined;
     departmentId?: number | undefined;
-  }
+  },
 ) => {
-  let whereConditions = [
-    eq(employees.isDeleted, false),
-  ];
+  let whereConditions = [eq(employees.isDeleted, false)];
 
   if (filters.status) {
-    whereConditions.push(eq(employeeAvailability.currentStatus, filters.status as any));
+    whereConditions.push(
+      eq(employeeAvailability.currentStatus, filters.status as any),
+    );
   }
 
   if (filters.departmentId) {
@@ -353,7 +403,7 @@ export const getEmployeeAvailability = async (
 // Update employee availability
 export const updateEmployeeAvailability = async (
   employeeId: number,
-  updateData: any
+  updateData: any,
 ) => {
   const [updatedAvailability] = await db
     .update(employeeAvailability)
@@ -372,29 +422,35 @@ export const getResourceAllocations = async (
   offset: number,
   limit: number,
   filters: {
-    organizationId: string;
+    organizationId?: string;
     startDate?: string | undefined;
     endDate?: string | undefined;
     employeeId?: number | undefined;
     jobId?: string | undefined;
     status?: string | undefined;
     priority?: number | undefined;
-  }
+  },
 ) => {
   let whereConditions = [
     // Note: Organization filtering temporarily removed until schema is clarified
   ];
 
   if (filters.startDate) {
-    whereConditions.push(gte(resourceAllocations.plannedStartTime, new Date(filters.startDate)));
+    whereConditions.push(
+      gte(resourceAllocations.plannedStartTime, new Date(filters.startDate)),
+    );
   }
 
   if (filters.endDate) {
-    whereConditions.push(lte(resourceAllocations.plannedEndTime, new Date(filters.endDate)));
+    whereConditions.push(
+      lte(resourceAllocations.plannedEndTime, new Date(filters.endDate)),
+    );
   }
 
   if (filters.employeeId) {
-    whereConditions.push(eq(resourceAllocations.employeeId, filters.employeeId));
+    whereConditions.push(
+      eq(resourceAllocations.employeeId, filters.employeeId),
+    );
   }
 
   if (filters.jobId) {
@@ -484,13 +540,13 @@ export const getEmployeeShifts = async (
   offset: number,
   limit: number,
   filters: {
-    organizationId: string;
+    organizationId?: string;
     startDate?: string | undefined;
     endDate?: string | undefined;
     employeeId?: number | undefined;
     departmentId?: number | undefined;
     isActive?: boolean | undefined;
-  }
+  },
 ) => {
   let whereConditions = [
     // Note: Organization filtering temporarily removed until schema is clarified
@@ -584,25 +640,23 @@ export const updateEmployeeShift = async (id: number, updateData: any) => {
 
 // Delete employee shift
 export const deleteEmployeeShift = async (id: number) => {
-  await db
-    .delete(employeeShifts)
-    .where(eq(employeeShifts.id, id));
+  await db.delete(employeeShifts).where(eq(employeeShifts.id, id));
 };
 
 // Department capacity overview
 export const getDepartmentCapacityOverview = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters: {
     startDate?: string | undefined;
     endDate?: string | undefined;
-    periodType: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  }
+    periodType: "daily" | "weekly" | "monthly" | "quarterly";
+  },
 ) => {
-  const startDate = filters.startDate || new Date().toISOString().split('T')[0];
-  const endDate = filters.endDate || new Date().toISOString().split('T')[0];
+  const startDate = filters.startDate || new Date().toISOString().split("T")[0];
+  const endDate = filters.endDate || new Date().toISOString().split("T")[0];
 
   let whereConditions = [
-    eq(departmentCapacityMetrics.periodType, filters.periodType)
+    eq(departmentCapacityMetrics.periodType, filters.periodType),
     // Note: Organization filtering temporarily removed until schema is clarified
   ];
 
@@ -628,7 +682,10 @@ export const getDepartmentCapacityOverview = async (
       metricDate: departmentCapacityMetrics.metricDate,
     })
     .from(departmentCapacityMetrics)
-    .innerJoin(departments, eq(departmentCapacityMetrics.departmentId, departments.id))
+    .innerJoin(
+      departments,
+      eq(departmentCapacityMetrics.departmentId, departments.id),
+    )
     .where(and(...whereConditions))
     .orderBy(desc(departmentCapacityMetrics.metricDate));
 
@@ -640,28 +697,35 @@ export const getCapacityPlanningTemplates = async (
   offset: number,
   limit: number,
   filters: {
-    organizationId: string;
+    organizationId?: string;
     departmentId?: number | undefined;
     isActive?: boolean | undefined;
-  }
+  },
 ) => {
   let whereConditions = [
     // Note: Organization filtering temporarily removed until schema is clarified
   ];
 
   if (filters.departmentId) {
-    whereConditions.push(eq(capacityPlanningTemplates.departmentId, filters.departmentId));
+    whereConditions.push(
+      eq(capacityPlanningTemplates.departmentId, filters.departmentId),
+    );
   }
 
   if (filters.isActive !== undefined) {
-    whereConditions.push(eq(capacityPlanningTemplates.isActive, filters.isActive));
+    whereConditions.push(
+      eq(capacityPlanningTemplates.isActive, filters.isActive),
+    );
   }
 
   // Get total count
   const totalResult = await db
     .select({ total: count() })
     .from(capacityPlanningTemplates)
-    .leftJoin(departments, eq(capacityPlanningTemplates.departmentId, departments.id))
+    .leftJoin(
+      departments,
+      eq(capacityPlanningTemplates.departmentId, departments.id),
+    )
     .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
   const total = totalResult[0]?.total || 0;
@@ -688,7 +752,10 @@ export const getCapacityPlanningTemplates = async (
       updatedAt: capacityPlanningTemplates.updatedAt,
     })
     .from(capacityPlanningTemplates)
-    .leftJoin(departments, eq(capacityPlanningTemplates.departmentId, departments.id))
+    .leftJoin(
+      departments,
+      eq(capacityPlanningTemplates.departmentId, departments.id),
+    )
     .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
     .limit(limit)
     .offset((offset - 1) * limit)
@@ -734,7 +801,7 @@ export const getTeamAssignments = async () => {
       departmentId: departments.id,
       departmentName: departments.name,
       location: departments.primaryLocation,
-      
+
       // Team lead info
       teamLeadId: departments.leadId,
       teamLeadName: users.fullName,
@@ -744,84 +811,91 @@ export const getTeamAssignments = async () => {
     .from(departments)
     .leftJoin(users, eq(departments.leadId, users.id))
     .where(
-      and(
-        eq(departments.isDeleted, false),
-        eq(departments.isActive, true)
-      )
+      and(eq(departments.isDeleted, false), eq(departments.isActive, true)),
     )
     .orderBy(departments.sortOrder, departments.name);
 
   // Get roles for all team leads in one query
   const teamLeadIds = departmentsWithLeads
-    .map(d => d.teamLeadId)
+    .map((d) => d.teamLeadId)
     .filter((id): id is string => id !== null);
 
-  const teamLeadRoles = teamLeadIds.length > 0
-    ? await db
-        .select({
-          userId: userRoles.userId,
-          roleName: roles.name,
-        })
-        .from(userRoles)
-        .innerJoin(roles, eq(userRoles.roleId, roles.id))
-        .where(
-          and(
-            inArray(userRoles.userId, teamLeadIds),
-            eq(roles.isDeleted, false)
+  const teamLeadRoles =
+    teamLeadIds.length > 0
+      ? await db
+          .select({
+            userId: userRoles.userId,
+            roleName: roles.name,
+          })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(
+            and(
+              inArray(userRoles.userId, teamLeadIds),
+              eq(roles.isDeleted, false),
+            ),
           )
-        )
-    : [];
+      : [];
 
   // Create role lookup map
-  const roleMap = teamLeadRoles.reduce((acc, item) => {
-    acc[item.userId] = item.roleName;
-    return acc;
-  }, {} as Record<string, string>);
+  const roleMap = teamLeadRoles.reduce(
+    (acc, item) => {
+      acc[item.userId] = item.roleName;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
 
   // Get employees who report to each team lead
-  const reportingEmployees = teamLeadIds.length > 0
-    ? await db
-        .select({
-          reportsTo: employees.reportsTo,
-          employeeName: users.fullName,
-          employeeId: employees.employeeId,
-        })
-        .from(employees)
-        .innerJoin(users, eq(employees.userId, users.id))
-        .where(
-          and(
-            inArray(employees.reportsTo, teamLeadIds),
-            eq(employees.isDeleted, false)
+  const reportingEmployees =
+    teamLeadIds.length > 0
+      ? await db
+          .select({
+            reportsTo: employees.reportsTo,
+            employeeName: users.fullName,
+            employeeId: employees.employeeId,
+          })
+          .from(employees)
+          .innerJoin(users, eq(employees.userId, users.id))
+          .where(
+            and(
+              inArray(employees.reportsTo, teamLeadIds),
+              eq(employees.isDeleted, false),
+            ),
           )
-        )
-        .orderBy(users.fullName)
-    : [];
+          .orderBy(users.fullName)
+      : [];
 
   // Create employees lookup map grouped by reportsTo
-  const employeesMap = reportingEmployees.reduce((acc, emp) => {
-    if (emp.reportsTo) {
-      const reportsToId = emp.reportsTo;
-      if (!acc[reportsToId]) {
-        acc[reportsToId] = [];
+  const employeesMap = reportingEmployees.reduce(
+    (acc, emp) => {
+      if (emp.reportsTo) {
+        const reportsToId = emp.reportsTo;
+        if (!acc[reportsToId]) {
+          acc[reportsToId] = [];
+        }
+        acc[reportsToId].push({
+          name: emp.employeeName || "Unknown",
+          employeeId: emp.employeeId || "",
+        });
       }
-      acc[reportsToId].push({
-        name: emp.employeeName || 'Unknown',
-        employeeId: emp.employeeId || '',
-      });
-    }
-    return acc;
-  }, {} as Record<string, Array<{ name: string; employeeId: string }>>);
+      return acc;
+    },
+    {} as Record<string, Array<{ name: string; employeeId: string }>>,
+  );
 
   // Combine all data into simplified structure
-  return departmentsWithLeads.map(dept => ({
+  return departmentsWithLeads.map((dept) => ({
     departmentName: dept.departmentName,
-    location: dept.location || 'Not specified',
-    teamLead: dept.teamLeadId ? {
-      role: roleMap[dept.teamLeadId] || 'No role assigned',
-      name: dept.teamLeadName || 'Unassigned',
-      email: dept.teamLeadEmail || '',
-      phone: dept.teamLeadPhone || '',
-    } : null,
-    employees: dept.teamLeadId ? (employeesMap[dept.teamLeadId] || []) : [],
+    location: dept.location || "Not specified",
+    teamLead: dept.teamLeadId
+      ? {
+          role: roleMap[dept.teamLeadId] || "No role assigned",
+          name: dept.teamLeadName || "Unassigned",
+          email: dept.teamLeadEmail || "",
+          phone: dept.teamLeadPhone || "",
+        }
+      : null,
+    employees: dept.teamLeadId ? employeesMap[dept.teamLeadId] || [] : [],
   }));
 };

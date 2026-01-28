@@ -20,11 +20,12 @@ import {
 
 export const getMileageLogsHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is required - can be provided in query params
+    const organizationId = req.query.organizationId as string | undefined;
     if (!organizationId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in query parameters",
       });
     }
 
@@ -33,14 +34,21 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
 
     const filters = {
-      employeeId: req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined,
+      employeeId: req.query.employeeId
+        ? parseInt(req.query.employeeId as string)
+        : undefined,
       expenseId: req.query.expenseId as string,
       jobId: req.query.jobId as string,
       bidId: req.query.bidId as string,
       mileageType: req.query.mileageType as string,
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
-      isVerified: req.query.isVerified === "true" ? true : req.query.isVerified === "false" ? false : undefined,
+      isVerified:
+        req.query.isVerified === "true"
+          ? true
+          : req.query.isVerified === "false"
+            ? false
+            : undefined,
       search: req.query.search as string,
       sortBy: req.query.sortBy as string,
       sortOrder: req.query.sortOrder as "asc" | "desc",
@@ -49,9 +57,14 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
 
     // Clean up undefined values from filters
     const cleanFilters = Object.fromEntries(
-      Object.entries(filters).filter(([_, value]) => value !== undefined)
+      Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
-    const result = await getMileageLogs(organizationId, offset, limit, cleanFilters as any);
+    const result = await getMileageLogs(
+      organizationId,
+      offset,
+      limit,
+      cleanFilters as any,
+    );
 
     logger.info("Mileage logs fetched successfully");
     return res.status(200).json({
@@ -72,13 +85,8 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
 
 export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Organization context required.",
-      });
-    }
+    // organizationId is optional - can be provided in query params or derived from mileage log
+    const organizationId = req.query.organizationId as string | undefined;
 
     const { id } = req.params;
     if (!id) {
@@ -113,13 +121,15 @@ export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
 
 export const createMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is required in request body
+    const organizationId = req.body.organizationId;
     const employeeId = req.user?.employeeId;
 
     if (!organizationId || !employeeId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Employee context required.",
+        message:
+          "organizationId is required in request body and employee context required",
       });
     }
 
@@ -152,14 +162,6 @@ export const createMileageLogHandler = async (req: Request, res: Response) => {
 
 export const updateMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Organization context required.",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -167,6 +169,25 @@ export const updateMileageLogHandler = async (req: Request, res: Response) => {
         message: "Mileage log ID is required",
       });
     }
+
+    // Get mileage log first to derive organizationId
+    const existingLog = await getMileageLogById(undefined, id);
+    if (!existingLog) {
+      return res.status(404).json({
+        success: false,
+        message: "Mileage log not found",
+      });
+    }
+
+    const organizationId =
+      existingLog.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for mileage log",
+      });
+    }
+
     const log = await updateMileageLog(organizationId, id, req.body);
 
     if (!log) {
@@ -193,14 +214,6 @@ export const updateMileageLogHandler = async (req: Request, res: Response) => {
 
 export const deleteMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Organization context required.",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -208,6 +221,25 @@ export const deleteMileageLogHandler = async (req: Request, res: Response) => {
         message: "Mileage log ID is required",
       });
     }
+
+    // Get mileage log first to derive organizationId
+    const existingLog = await getMileageLogById(undefined, id);
+    if (!existingLog) {
+      return res.status(404).json({
+        success: false,
+        message: "Mileage log not found",
+      });
+    }
+
+    const organizationId =
+      existingLog.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for mileage log",
+      });
+    }
+
     const log = await deleteMileageLog(organizationId, id);
 
     if (!log) {
@@ -233,13 +265,12 @@ export const deleteMileageLogHandler = async (req: Request, res: Response) => {
 
 export const verifyMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
     const userId = req.user?.id;
 
-    if (!organizationId || !userId) {
-      return res.status(403).json({
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "User authentication required",
       });
     }
 
@@ -250,6 +281,25 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
         message: "Mileage log ID is required",
       });
     }
+
+    // Get mileage log first to derive organizationId
+    const existingLog = await getMileageLogById(undefined, id);
+    if (!existingLog) {
+      return res.status(404).json({
+        success: false,
+        message: "Mileage log not found",
+      });
+    }
+
+    const organizationId =
+      existingLog.organizationId || (req.query.organizationId as string);
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization context for mileage log",
+      });
+    }
+
     const log = await verifyMileageLog(organizationId, id, userId);
 
     if (!log) {
@@ -276,16 +326,19 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
 
 export const getMileageSummaryHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
+    // organizationId is required - can be provided in query params
+    const organizationId = req.query.organizationId as string | undefined;
     if (!organizationId) {
-      return res.status(403).json({
+      return res.status(400).json({
         success: false,
-        message: "Access denied. Organization context required.",
+        message: "organizationId is required in query parameters",
       });
     }
 
     const filters = {
-      employeeId: req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined,
+      employeeId: req.query.employeeId
+        ? parseInt(req.query.employeeId as string)
+        : undefined,
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
       mileageType: req.query.mileageType as string,
@@ -293,9 +346,12 @@ export const getMileageSummaryHandler = async (req: Request, res: Response) => {
 
     // Clean up undefined values from filters
     const cleanFilters = Object.fromEntries(
-      Object.entries(filters).filter(([_, value]) => value !== undefined)
+      Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
-    const summary = await getMileageSummary(organizationId, cleanFilters as any);
+    const summary = await getMileageSummary(
+      organizationId,
+      cleanFilters as any,
+    );
 
     logger.info("Mileage summary fetched successfully");
     return res.status(200).json({

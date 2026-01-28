@@ -7,12 +7,12 @@ import { logger } from "../utils/logger.js";
 const withTimeout = <T>(
   promise: Promise<T>,
   timeoutMs: number,
-  errorMessage: string
+  errorMessage: string,
 ): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs),
     ),
   ]);
 };
@@ -255,7 +255,7 @@ if (CACHE_ENABLED) {
   if (process.env.NODE_ENV === "development") {
     setInterval(() => {
       logger.debug(
-        `Auth cache stats: ${authCache.getSize()}/${MAX_CACHE_SIZE} entries`
+        `Auth cache stats: ${authCache.getSize()}/${MAX_CACHE_SIZE} entries`,
       );
     }, 300000); // Every 5 minutes
   }
@@ -264,7 +264,7 @@ if (CACHE_ENABLED) {
 export const authenticate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   // Check if we've already processed this request - prevent duplicate processing
   if ((req as any).__authProcessed) {
@@ -316,11 +316,12 @@ export const authenticate = async (
     }
 
     // Basic UUID format validation to prevent unnecessary database queries
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
-      logger.warn(`Invalid UUID format in token: ${userId}`, { 
-        method: req.method, 
-        url: req.originalUrl 
+      logger.warn(`Invalid UUID format in token: ${userId}`, {
+        method: req.method,
+        url: req.originalUrl,
       });
       return res.status(401).json({
         success: false,
@@ -343,7 +344,7 @@ export const authenticate = async (
         console.log(
           `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
             req.originalUrl || req.url
-          }]`
+          }]`,
         );
       } else {
         // Fetch user from database with timeout
@@ -352,7 +353,7 @@ export const authenticate = async (
           user = await withTimeout(
             getUserByIdForAuth(userId),
             DB_QUERY_TIMEOUT,
-            "Database query timeout"
+            "Database query timeout",
           );
           dbTime = Date.now() - dbStart;
 
@@ -367,34 +368,34 @@ export const authenticate = async (
           console.log(
             `✅ Auth: from db (${dbTime}ms) [${req.method} ${
               req.originalUrl || req.url
-            }]`
+            }]`,
           );
-      } catch (dbError: any) {
-        dbTime = Date.now() - dbStart;
-        logger.error(
-          `Database query failed or timed out after ${dbTime}ms:`,
-          {
-            ...dbError,
-            userId,
-            method: req.method,
-            url: req.originalUrl,
-            userAgent: req.headers['user-agent'],
-            cacheEnabled: CACHE_ENABLED,
-            queryTimeout: DB_QUERY_TIMEOUT,
-            poolStatus: {
-              total: (req as any).__dbPoolTotal,
-              idle: (req as any).__dbPoolIdle,
-              waiting: (req as any).__dbPoolWaiting,
-            }
-          }
-        );
-        // Re-throw to be caught by outer catch block
-        throw new Error(
-          dbError.message?.includes("timeout")
-            ? "Database connection timeout. Please try again."
-            : "Database error during authentication"
-        );
-      }
+        } catch (dbError: any) {
+          dbTime = Date.now() - dbStart;
+          logger.error(
+            `Database query failed or timed out after ${dbTime}ms:`,
+            {
+              ...dbError,
+              userId,
+              method: req.method,
+              url: req.originalUrl,
+              userAgent: req.headers["user-agent"],
+              cacheEnabled: CACHE_ENABLED,
+              queryTimeout: DB_QUERY_TIMEOUT,
+              poolStatus: {
+                total: (req as any).__dbPoolTotal,
+                idle: (req as any).__dbPoolIdle,
+                waiting: (req as any).__dbPoolWaiting,
+              },
+            },
+          );
+          // Re-throw to be caught by outer catch block
+          throw new Error(
+            dbError.message?.includes("timeout")
+              ? "Database connection timeout. Please try again."
+              : "Database error during authentication",
+          );
+        }
       }
     } else {
       // Cache disabled - always fetch from DB with timeout
@@ -403,33 +404,30 @@ export const authenticate = async (
         user = await withTimeout(
           getUserByIdForAuth(userId),
           DB_QUERY_TIMEOUT,
-          `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`
+          `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`,
         );
         dbTime = Date.now() - dbStart;
         console.log(
           `✅ Auth: from db (${dbTime}ms) [${req.method} ${
             req.originalUrl || req.url
-          }]`
+          }]`,
         );
       } catch (dbError: any) {
         dbTime = Date.now() - dbStart;
-        logger.error(
-          `Database query failed or timed out after ${dbTime}ms:`,
-          {
-            ...dbError,
-            userId,
-            method: req.method,
-            url: req.originalUrl,
-            userAgent: req.headers['user-agent'],
-            cacheEnabled: CACHE_ENABLED,
-            queryTimeout: DB_QUERY_TIMEOUT,
-          }
-        );
+        logger.error(`Database query failed or timed out after ${dbTime}ms:`, {
+          ...dbError,
+          userId,
+          method: req.method,
+          url: req.originalUrl,
+          userAgent: req.headers["user-agent"],
+          cacheEnabled: CACHE_ENABLED,
+          queryTimeout: DB_QUERY_TIMEOUT,
+        });
         // Re-throw to be caught by outer catch block
         throw new Error(
           dbError.message?.includes("timeout")
             ? "Database connection timeout. Please try again."
-            : "Database error during authentication"
+            : "Database error during authentication",
         );
       }
     }
@@ -464,8 +462,6 @@ export const authenticate = async (
     req.user = {
       id: user.id,
       ...(user.email && { email: user.email }),
-      // For T3 internal operations - use a default org ID or the user's employee context
-      organizationId: process.env.T3_ORGANIZATION_ID || "t3-org-default",
       ...(user.employeeId && { employeeId: user.employeeId }),
     };
 
@@ -473,19 +469,19 @@ export const authenticate = async (
     next();
   } catch (error: any) {
     logger.logApiError("Authentication error", error, req);
-    
+
     // Provide more specific error messages
     const errorMessage = error?.message || String(error);
     const isTimeout = errorMessage.includes("timeout");
     const isDatabaseError = errorMessage.includes("Database");
-    
+
     return res.status(isTimeout || isDatabaseError ? 503 : 500).json({
       success: false,
       message: isTimeout
         ? "Authentication service temporarily unavailable. Please try again."
         : isDatabaseError
-        ? errorMessage
-        : "Authentication failed",
+          ? errorMessage
+          : "Authentication failed",
     });
   }
 };

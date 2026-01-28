@@ -11,13 +11,8 @@ import {
   ilike,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
-import {
-  mileageLogs,
-  expenses,
-} from "../drizzle/schema/expenses.schema.js";
-import {
-  employees,
-} from "../drizzle/schema/org.schema.js";
+import { mileageLogs, expenses } from "../drizzle/schema/expenses.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 
@@ -42,7 +37,7 @@ export const getMileageLogs = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
     includeDeleted?: boolean;
-  }
+  },
 ) => {
   let whereConditions = [eq(mileageLogs.organizationId, organizationId)];
 
@@ -69,7 +64,9 @@ export const getMileageLogs = async (
   }
 
   if (filters?.mileageType) {
-    whereConditions.push(eq(mileageLogs.mileageType, filters.mileageType as any));
+    whereConditions.push(
+      eq(mileageLogs.mileageType, filters.mileageType as any),
+    );
   }
 
   if (filters?.startDate) {
@@ -89,8 +86,8 @@ export const getMileageLogs = async (
       or(
         ilike(mileageLogs.purpose, `%${filters.search}%`),
         ilike(mileageLogs.startLocation, `%${filters.search}%`),
-        ilike(mileageLogs.endLocation, `%${filters.search}%`)
-      )!
+        ilike(mileageLogs.endLocation, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -210,7 +207,10 @@ export const getMileageLogs = async (
   };
 };
 
-export const getMileageLogById = async (organizationId: string, id: string) => {
+export const getMileageLogById = async (
+  organizationId: string | undefined,
+  id: string,
+) => {
   const result = await db
     .select({
       // All mileage log fields
@@ -254,13 +254,17 @@ export const getMileageLogById = async (organizationId: string, id: string) => {
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(jobs, eq(mileageLogs.jobId, jobs.id))
     .leftJoin(expenses, eq(mileageLogs.expenseId, expenses.id))
-    .where(
-      and(
+    .where(() => {
+      const conditions = [
         eq(mileageLogs.id, id),
-        eq(mileageLogs.organizationId, organizationId),
-        eq(mileageLogs.isDeleted, false)
-      )
-    )
+        organizationId
+          ? eq(mileageLogs.organizationId, organizationId)
+          : undefined,
+        eq(mileageLogs.isDeleted, false),
+      ].filter(Boolean) as any[];
+
+      return conditions.length > 0 ? and(...conditions) : undefined;
+    })
     .limit(1);
 
   if (!result[0]) {
@@ -297,7 +301,7 @@ export const getMileageLogById = async (organizationId: string, id: string) => {
 export const createMileageLog = async (
   organizationId: string,
   employeeId: number,
-  logData: any
+  logData: any,
 ) => {
   // Calculate amount
   const miles = parseFloat(logData.miles);
@@ -324,7 +328,7 @@ export const createMileageLog = async (
 export const updateMileageLog = async (
   organizationId: string,
   id: string,
-  updateData: any
+  updateData: any,
 ) => {
   // Recalculate amount if miles or rate changed
   if (updateData.miles || updateData.rate) {
@@ -346,8 +350,8 @@ export const updateMileageLog = async (
       and(
         eq(mileageLogs.id, id),
         eq(mileageLogs.organizationId, organizationId),
-        eq(mileageLogs.isDeleted, false)
-      )
+        eq(mileageLogs.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -364,8 +368,8 @@ export const deleteMileageLog = async (organizationId: string, id: string) => {
     .where(
       and(
         eq(mileageLogs.id, id),
-        eq(mileageLogs.organizationId, organizationId)
-      )
+        eq(mileageLogs.organizationId, organizationId),
+      ),
     )
     .returning();
 
@@ -375,7 +379,7 @@ export const deleteMileageLog = async (organizationId: string, id: string) => {
 export const verifyMileageLog = async (
   organizationId: string,
   id: string,
-  verifiedBy: string
+  verifiedBy: string,
 ) => {
   const updated = await db
     .update(mileageLogs)
@@ -389,8 +393,8 @@ export const verifyMileageLog = async (
       and(
         eq(mileageLogs.id, id),
         eq(mileageLogs.organizationId, organizationId),
-        eq(mileageLogs.isDeleted, false)
-      )
+        eq(mileageLogs.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -408,7 +412,7 @@ export const getMileageSummary = async (
     startDate?: string;
     endDate?: string;
     mileageType?: string;
-  }
+  },
 ) => {
   let whereConditions = [
     eq(mileageLogs.organizationId, organizationId),
@@ -429,7 +433,9 @@ export const getMileageSummary = async (
   }
 
   if (filters?.mileageType) {
-    whereConditions.push(eq(mileageLogs.mileageType, filters.mileageType as any));
+    whereConditions.push(
+      eq(mileageLogs.mileageType, filters.mileageType as any),
+    );
   }
 
   const summaryResult = await db
@@ -480,10 +486,3 @@ export const getMileageSummary = async (
     byMonth: monthlyBreakdown,
   };
 };
-
-
-
-
-
-
-

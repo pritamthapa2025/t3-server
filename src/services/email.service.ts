@@ -15,7 +15,7 @@ if (!process.env.BREVO_API_KEY) {
 const apiInstance = new brevo.TransactionalEmailsApi();
 apiInstance.setApiKey(
   brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
+  process.env.BREVO_API_KEY,
 );
 
 export const send2FACode = async (email: string, code: string) => {
@@ -100,7 +100,7 @@ export const sendChangePasswordOTP = async (email: string, otp: string) => {
 export const sendNewUserPasswordSetupEmail = async (
   email: string,
   fullName: string,
-  setupToken: string
+  setupToken: string,
 ) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
   const setupLink = `${getClientUrl()}/auth/newpassword-creation?token=${setupToken}`;
@@ -173,7 +173,7 @@ export const sendNewUserPasswordSetupEmail = async (
 
 export const sendPasswordResetEmail = async (
   email: string,
-  resetToken: string
+  resetToken: string,
 ) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
   const resetLink = `${getClientUrl()}/reset-password?token=${resetToken}`;
@@ -201,6 +201,54 @@ export const sendPasswordResetEmail = async (
     await apiInstance.sendTransacEmail(sendSmtpEmail);
   } catch (err: any) {
     console.error("Error sending password reset email:", err.message);
+    throw err;
+  }
+};
+
+export const sendInvoiceEmail = async (
+  email: string,
+  invoiceHtml: string,
+  subject?: string,
+  message?: string,
+  pdfAttachment?: { content: Buffer; filename: string },
+  cc?: string[],
+  bcc?: string[],
+) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  sendSmtpEmail.subject = subject || "Invoice from T3 Mechanical";
+  sendSmtpEmail.htmlContent = message
+    ? `<p>${message}</p><hr>${invoiceHtml}`
+    : invoiceHtml;
+  sendSmtpEmail.textContent =
+    "Please view this email in HTML format to see your invoice.";
+  sendSmtpEmail.sender = {
+    name: "T3 Mechanical",
+    email: process.env.BREVO_SENDER_EMAIL || "noreply@example.com",
+  };
+  sendSmtpEmail.to = [{ email }];
+
+  if (cc && cc.length > 0) {
+    sendSmtpEmail.cc = cc.map((email) => ({ email }));
+  }
+
+  if (bcc && bcc.length > 0) {
+    sendSmtpEmail.bcc = bcc.map((email) => ({ email }));
+  }
+
+  if (pdfAttachment) {
+    sendSmtpEmail.attachment = [
+      {
+        content: pdfAttachment.content.toString("base64"),
+        name: pdfAttachment.filename,
+      },
+    ];
+  }
+
+  try {
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+  } catch (err: any) {
+    console.error("Error sending invoice email:", err.message);
     throw err;
   }
 };

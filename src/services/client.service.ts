@@ -1,4 +1,15 @@
-import { count, eq, and, desc, asc, max, sql, or, ilike, inArray } from "drizzle-orm";
+import {
+  count,
+  eq,
+  and,
+  desc,
+  asc,
+  max,
+  sql,
+  or,
+  ilike,
+  inArray,
+} from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   organizations,
@@ -38,7 +49,7 @@ import type {
 export const getClients = async (
   offset: number,
   limit: number,
-  filters?: ClientFilters
+  filters?: ClientFilters,
 ): Promise<ClientListResult> => {
   try {
     let whereCondition = eq(organizations.isDeleted, false);
@@ -47,24 +58,31 @@ export const getClients = async (
     if (filters?.type) {
       const typeId = parseInt(filters.type);
       if (isNaN(typeId)) {
-        throw new Error(`Invalid client type filter: '${filters.type}' is not a valid number`);
+        throw new Error(
+          `Invalid client type filter: '${filters.type}' is not a valid number`,
+        );
       }
-      whereCondition = and(whereCondition, eq(organizations.clientTypeId, typeId)) ?? whereCondition;
+      whereCondition =
+        and(whereCondition, eq(organizations.clientTypeId, typeId)) ??
+        whereCondition;
     }
 
     if (filters?.status) {
-      whereCondition = and(whereCondition, eq(organizations.status, filters.status as any)) ?? whereCondition;
+      whereCondition =
+        and(whereCondition, eq(organizations.status, filters.status as any)) ??
+        whereCondition;
     }
 
     if (filters?.search) {
-      whereCondition = and(
-        whereCondition,
-        or(
-          ilike(organizations.name, `%${filters.search}%`),
-          ilike(organizations.website, `%${filters.search}%`),
-          ilike(organizations.streetAddress, `%${filters.search}%`)
-        )
-      ) ?? whereCondition;
+      whereCondition =
+        and(
+          whereCondition,
+          or(
+            ilike(organizations.name, `%${filters.search}%`),
+            ilike(organizations.website, `%${filters.search}%`),
+            ilike(organizations.streetAddress, `%${filters.search}%`),
+          ),
+        ) ?? whereCondition;
     }
 
     const orgsData = await db
@@ -84,7 +102,7 @@ export const getClients = async (
       .select({ count: count() })
       .from(organizations)
       .where(whereCondition);
-    
+
     const totalCount = totalCountResult[0]?.count || 0;
 
     return {
@@ -93,17 +111,20 @@ export const getClients = async (
       pagination: {
         offset,
         limit,
-        totalPages: Math.ceil(totalCount / limit)
-      }
+        totalPages: Math.ceil(totalCount / limit),
+      },
     };
   } catch (error: any) {
     // Provide more detailed error message for database query errors
-    if (error?.message?.includes("Failed query") || error?.message?.includes("syntax")) {
-      const errorMessage = error.message || 'Unknown database query error';
+    if (
+      error?.message?.includes("Failed query") ||
+      error?.message?.includes("syntax")
+    ) {
+      const errorMessage = error.message || "Unknown database query error";
       throw new Error(
         `Database query error while fetching clients: ${errorMessage}. ` +
-        `This may indicate a problem with the database query structure or invalid filter parameters. ` +
-        `Please check your filter values and try again.`
+          `This may indicate a problem with the database query structure or invalid filter parameters. ` +
+          `Please check your filter values and try again.`,
       );
     }
     // Re-throw the error if it's already a well-formed error
@@ -132,7 +153,11 @@ export const getOrganizationById = getClientById;
 
 export const getOrganizationDashboard = async (organizationId: string) => {
   // Validate organizationId
-  if (!organizationId || typeof organizationId !== 'string' || organizationId.trim() === '') {
+  if (
+    !organizationId ||
+    typeof organizationId !== "string" ||
+    organizationId.trim() === ""
+  ) {
     throw new Error("Invalid organization ID provided");
   }
 
@@ -153,8 +178,8 @@ export const getOrganizationDashboard = async (organizationId: string) => {
       .where(
         and(
           eq(bidsTable.organizationId, organizationId),
-          eq(jobs.isDeleted, false)
-        )
+          eq(jobs.isDeleted, false),
+        ),
       );
 
     const summary = jobsSummary[0] || {
@@ -176,8 +201,8 @@ export const getOrganizationDashboard = async (organizationId: string) => {
             "scheduled",
             "in_progress",
             "on_hold",
-          ])
-        )
+          ]),
+        ),
       );
 
     // Get recent jobs
@@ -191,8 +216,8 @@ export const getOrganizationDashboard = async (organizationId: string) => {
       .where(
         and(
           eq(bidsTable.organizationId, organizationId),
-          eq(jobs.isDeleted, false)
-        )
+          eq(jobs.isDeleted, false),
+        ),
       )
       .orderBy(desc(jobs.createdAt))
       .limit(5);
@@ -204,8 +229,8 @@ export const getOrganizationDashboard = async (organizationId: string) => {
       .where(
         and(
           eq(properties.organizationId, organizationId),
-          eq(properties.isDeleted, false)
-        )
+          eq(properties.isDeleted, false),
+        ),
       );
 
     return {
@@ -217,28 +242,33 @@ export const getOrganizationDashboard = async (organizationId: string) => {
         activeJobs: activeJobsCount[0]?.count || 0,
         totalProperties: propertiesCount[0]?.count || 0,
       },
-      recentJobs: recentJobs.map(item => ({
+      recentJobs: recentJobs.map((item) => ({
         ...item.job,
         bid: item.bid,
       })),
     };
   } catch (error: any) {
     console.error("Error fetching organization dashboard:", error);
-    
+
     // Provide more detailed error message
-    if (error?.message?.includes("Failed query") || error?.message?.includes("syntax")) {
+    if (
+      error?.message?.includes("Failed query") ||
+      error?.message?.includes("syntax")
+    ) {
       throw new Error(
         `Database query error while fetching organization dashboard: ${error.message}. ` +
-        `This may indicate a problem with the database query structure. ` +
-        `Please verify that the organization ID '${organizationId}' is valid and try again.`
+          `This may indicate a problem with the database query structure. ` +
+          `Please verify that the organization ID '${organizationId}' is valid and try again.`,
       );
     }
-    
+
     if (error?.message) {
       throw error;
     }
-    
-    throw new Error(`Failed to fetch organization dashboard: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    throw new Error(
+      `Failed to fetch organization dashboard: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   }
 };
 
@@ -247,18 +277,18 @@ export const generateClientId = async (): Promise<string> => {
   try {
     // Try to use PostgreSQL sequence for atomic ID generation (thread-safe)
     const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.client_id_seq')::text as nextval`)
+      sql.raw(`SELECT nextval('org.client_id_seq')::text as nextval`),
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    
+
     // Format: CL-000001 to CL-999999 (6 digits)
     return `CL-${String(nextNumber).padStart(6, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet or has issues
     console.warn(
       "Client ID sequence not found or error occurred, using fallback method:",
-      error
+      error,
     );
 
     // Find the maximum numeric value from existing client IDs using SQL
@@ -281,36 +311,36 @@ export const generateClientId = async (): Promise<string> => {
           )
           SELECT COALESCE(MAX(num_value), 0) as max_num
           FROM client_numbers
-        `)
+        `),
       );
 
       const maxNum = maxNumResult.rows[0]?.max_num;
       const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
-      
+
       // Format: CL-000001 to CL-999999 (6 digits)
       return `CL-${nextIdNumber.toString().padStart(6, "0")}`;
     } catch (sqlError) {
       // If SQL extraction fails, fall back to simple string comparison
       console.warn("SQL extraction failed, using simple fallback:", sqlError);
-      
+
       const clientIdResult = await db
         .select({ maxId: max(organizations.clientId) })
         .from(organizations)
         .where(eq(organizations.isDeleted, false));
-      
+
       const maxId = clientIdResult[0]?.maxId;
       let nextIdNumber = 1;
-      
+
       // Handle both CL- and CLT- formats for backward compatibility
       if (maxId && typeof maxId === "string") {
         let numericPart: string | null = null;
-        
+
         if (maxId.startsWith("CL-")) {
           numericPart = maxId.replace("CL-", "");
         } else if (maxId.startsWith("CLT-")) {
           numericPart = maxId.replace("CLT-", "");
         }
-        
+
         if (numericPart) {
           const parsedNumber = parseInt(numericPart, 10);
           if (!isNaN(parsedNumber)) {
@@ -318,14 +348,16 @@ export const generateClientId = async (): Promise<string> => {
           }
         }
       }
-      
+
       // Format: CL-000001 to CL-999999 (6 digits)
       return `CL-${nextIdNumber.toString().padStart(6, "0")}`;
     }
   }
 };
 
-export const createClient = async (data: CreateClientRequest & { createdBy: string }): Promise<Client | null> => {
+export const createClient = async (
+  data: CreateClientRequest & { createdBy: string },
+): Promise<Client | null> => {
   // Generate unique client ID using thread-safe method
   const clientId = await generateClientId();
 
@@ -348,11 +380,11 @@ export const createClient = async (data: CreateClientRequest & { createdBy: stri
       updatedAt: new Date(),
     })
     .returning();
-  
+
   if (!Array.isArray(result) || result.length === 0) return null;
-  
+
   const client = result[0] as any;
-  
+
   // Get createdBy user name
   let createdByName: string | null = null;
   if (client.createdBy) {
@@ -363,19 +395,19 @@ export const createClient = async (data: CreateClientRequest & { createdBy: stri
       .limit(1);
     createdByName = creator?.fullName || null;
   }
-  
+
   return {
     ...client,
     createdByName,
   };
 };
 
-// Keep original function for backward compatibility  
+// Keep original function for backward compatibility
 export const createOrganization = createClient;
 
 export const updateClient = async (
   id: string,
-  data: UpdateClientRequest
+  data: UpdateClientRequest,
 ): Promise<Client | null> => {
   const result = await db
     .update(organizations)
@@ -385,7 +417,7 @@ export const updateClient = async (
     })
     .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // Keep original function for backward compatibility
@@ -400,7 +432,7 @@ export const deleteClient = async (id: string) => {
     })
     .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // Keep original function for backward compatibility
@@ -458,7 +490,7 @@ export const createClientType = async (data: {
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const createIndustryClassification = async (data: {
@@ -476,7 +508,7 @@ export const createIndustryClassification = async (data: {
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateClientType = async (
@@ -486,7 +518,7 @@ export const updateClientType = async (
     description: string;
     sortOrder: number;
     isActive: boolean;
-  }>
+  }>,
 ) => {
   const result = await db
     .update(clientTypes)
@@ -496,7 +528,7 @@ export const updateClientType = async (
     })
     .where(eq(clientTypes.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateIndustryClassification = async (
@@ -507,7 +539,7 @@ export const updateIndustryClassification = async (
     description: string;
     sortOrder: number;
     isActive: boolean;
-  }>
+  }>,
 ) => {
   const result = await db
     .update(industryClassifications)
@@ -517,7 +549,7 @@ export const updateIndustryClassification = async (
     })
     .where(eq(industryClassifications.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteClientType = async (id: number) => {
@@ -529,7 +561,7 @@ export const deleteClientType = async (id: number) => {
     })
     .where(eq(clientTypes.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteIndustryClassification = async (id: number) => {
@@ -541,7 +573,7 @@ export const deleteIndustryClassification = async (id: number) => {
     })
     .where(eq(industryClassifications.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // Keep original function for backward compatibility
@@ -559,29 +591,34 @@ export const getOrganizationProperties = async (
     type?: string;
     status?: string;
     search?: string;
-  }
+  },
 ) => {
   let whereCondition = and(
     eq(properties.organizationId, organizationId),
-    eq(properties.isDeleted, false)
+    eq(properties.isDeleted, false),
   );
 
   if (filters?.type) {
-    whereCondition = and(whereCondition, eq(properties.propertyType, filters.type)) ?? whereCondition;
+    whereCondition =
+      and(whereCondition, eq(properties.propertyType, filters.type)) ??
+      whereCondition;
   }
 
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(properties.status, filters.status as any)) ?? whereCondition;
+    whereCondition =
+      and(whereCondition, eq(properties.status, filters.status as any)) ??
+      whereCondition;
   }
 
   if (filters?.search) {
-    whereCondition = and(
-      whereCondition,
-      or(
-        ilike(properties.propertyName, `%${filters.search}%`),
-        ilike(properties.addressLine1, `%${filters.search}%`)
-      )
-    ) ?? whereCondition;
+    whereCondition =
+      and(
+        whereCondition,
+        or(
+          ilike(properties.propertyName, `%${filters.search}%`),
+          ilike(properties.addressLine1, `%${filters.search}%`),
+        ),
+      ) ?? whereCondition;
   }
 
   const propertiesData = await db
@@ -607,7 +644,7 @@ export const getOrganizationProperties = async (
 };
 
 // ============================
-// Contacts Operations  
+// Contacts Operations
 // ============================
 
 export const getClientContacts = async (
@@ -617,11 +654,11 @@ export const getClientContacts = async (
   filters?: {
     type?: string;
     search?: string;
-  }
+  },
 ) => {
   let whereCondition = and(
     eq(clientContacts.organizationId, organizationId),
-    eq(clientContacts.isDeleted, false)
+    eq(clientContacts.isDeleted, false),
   );
 
   if (filters?.search) {
@@ -629,8 +666,8 @@ export const getClientContacts = async (
       whereCondition,
       or(
         ilike(clientContacts.fullName, `%${filters.search}%`),
-        ilike(clientContacts.email, `%${filters.search}%`)
-      )
+        ilike(clientContacts.email, `%${filters.search}%`),
+      ),
     );
   }
 
@@ -664,19 +701,21 @@ export const getClientContactById = async (id: string) => {
   return result[0] || null;
 };
 
-export const createClientContact = async (data: CreateContactRequest & { organizationId: string }): Promise<ClientContact | null> => {
+export const createClientContact = async (
+  data: CreateContactRequest & { organizationId: string },
+): Promise<ClientContact | null> => {
   const result = await db
     .insert(clientContacts)
     .values({
       ...data,
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateClientContact = async (
   id: string,
-  data: UpdateContactRequest
+  data: UpdateContactRequest,
 ): Promise<ClientContact | null> => {
   const result = await db
     .update(clientContacts)
@@ -686,7 +725,7 @@ export const updateClientContact = async (
     })
     .where(and(eq(clientContacts.id, id), eq(clientContacts.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteClientContact = async (id: string) => {
@@ -698,25 +737,30 @@ export const deleteClientContact = async (id: string) => {
     })
     .where(and(eq(clientContacts.id, id), eq(clientContacts.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // Keep original function for backward compatibility
 export const getOrganizationContacts = getClientContacts;
 
 // ============================
-// Client Notes Operations  
+// Client Notes Operations
 // ============================
 
 export const getClientNotes = async (
   organizationId: string,
   offset: number = 0,
-  limit: number = 50
+  limit: number = 50,
 ): Promise<NoteListResult> => {
   const notesData = await db
     .select()
     .from(clientNotes)
-    .where(and(eq(clientNotes.organizationId, organizationId), eq(clientNotes.isDeleted, false)))
+    .where(
+      and(
+        eq(clientNotes.organizationId, organizationId),
+        eq(clientNotes.isDeleted, false),
+      ),
+    )
     .orderBy(desc(clientNotes.createdAt))
     .limit(limit)
     .offset(offset);
@@ -724,7 +768,12 @@ export const getClientNotes = async (
   const totalCountResult = await db
     .select({ count: count() })
     .from(clientNotes)
-    .where(and(eq(clientNotes.organizationId, organizationId), eq(clientNotes.isDeleted, false)));
+    .where(
+      and(
+        eq(clientNotes.organizationId, organizationId),
+        eq(clientNotes.isDeleted, false),
+      ),
+    );
 
   return {
     notes: notesData as any[],
@@ -756,7 +805,7 @@ export const createClientNote = async (data: {
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateClientNote = async (
@@ -765,7 +814,7 @@ export const updateClientNote = async (
     title: string;
     content: string;
     type: string;
-  }>
+  }>,
 ) => {
   const result = await db
     .update(clientNotes)
@@ -775,7 +824,7 @@ export const updateClientNote = async (
     })
     .where(and(eq(clientNotes.id, id), eq(clientNotes.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteClientNote = async (id: string) => {
@@ -787,32 +836,34 @@ export const deleteClientNote = async (id: string) => {
     })
     .where(and(eq(clientNotes.id, id), eq(clientNotes.isDeleted, false)))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // ============================
-// Client Documents Operations  
+// Client Documents Operations
 // ============================
 
 export const getClientDocuments = async (
   organizationId: string,
   offset: number = 0,
-  limit: number = 50
+  limit: number = 50,
 ): Promise<DocumentListResult> => {
   const whereCondition = and(
     eq(clientDocuments.organizationId, organizationId),
-    eq(clientDocuments.isDeleted, false)
+    eq(clientDocuments.isDeleted, false),
   );
 
   const documentsData = await db
-    .select()
+    .select({
+      document: clientDocuments,
+      uploadedByName: users.fullName,
+    })
     .from(clientDocuments)
+    .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
     .where(whereCondition)
     .orderBy(desc(clientDocuments.createdAt))
     .limit(limit)
     .offset(offset);
-
-    console.log('documentsData', documentsData);
 
   const totalCountResult = await db
     .select({ count: count() })
@@ -820,18 +871,32 @@ export const getClientDocuments = async (
     .where(whereCondition);
 
   return {
-    documents: documentsData as any,
+    documents: documentsData.map((doc) => ({
+      ...doc.document,
+      uploadedByName: doc.uploadedByName || null,
+    })) as any,
     totalCount: Number(totalCountResult[0]?.count || 0),
   };
 };
 
 export const getClientDocumentById = async (id: string) => {
-  const result = await db
-    .select()
+  const [result] = await db
+    .select({
+      document: clientDocuments,
+      uploadedByName: users.fullName,
+    })
     .from(clientDocuments)
-    .where(and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)));
+    .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
+    .where(
+      and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)),
+    );
 
-  return result[0] || null;
+  if (!result) return null;
+
+  return {
+    ...result.document,
+    uploadedByName: result.uploadedByName || null,
+  };
 };
 
 export const createClientDocument = async (data: {
@@ -851,7 +916,7 @@ export const createClientDocument = async (data: {
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateClientDocument = async (
@@ -862,7 +927,7 @@ export const updateClientDocument = async (
     filePath: string;
     fileSize: number;
     mimeType: string;
-  }>
+  }>,
 ) => {
   const result = await db
     .update(clientDocuments)
@@ -870,9 +935,11 @@ export const updateClientDocument = async (
       ...data,
       updatedAt: new Date(),
     })
-    .where(and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)))
+    .where(
+      and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)),
+    )
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteClientDocument = async (id: string) => {
@@ -882,13 +949,15 @@ export const deleteClientDocument = async (id: string) => {
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)))
+    .where(
+      and(eq(clientDocuments.id, id), eq(clientDocuments.isDeleted, false)),
+    )
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 // ============================
-// Document Categories Operations  
+// Document Categories Operations
 // ============================
 
 export const getDocumentCategories = async () => {
@@ -931,7 +1000,7 @@ export const createDocumentCategory = async (data: {
       updatedAt: new Date(),
     })
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const updateDocumentCategory = async (
@@ -942,7 +1011,7 @@ export const updateDocumentCategory = async (
     color: string;
     sortOrder: number;
     isActive: boolean;
-  }>
+  }>,
 ) => {
   const result = await db
     .update(documentCategories)
@@ -952,7 +1021,7 @@ export const updateDocumentCategory = async (
     })
     .where(eq(documentCategories.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const deleteDocumentCategory = async (id: number) => {
@@ -964,12 +1033,12 @@ export const deleteDocumentCategory = async (id: number) => {
     })
     .where(eq(documentCategories.id, id))
     .returning();
-  return Array.isArray(result) && result.length > 0 ? result[0] as any : null;
+  return Array.isArray(result) && result.length > 0 ? (result[0] as any) : null;
 };
 
 export const assignDocumentCategories = async (
   documentId: string,
-  categoryIds: number[]
+  categoryIds: number[],
 ) => {
   // First remove existing assignments
   await db
@@ -977,16 +1046,14 @@ export const assignDocumentCategories = async (
     .where(eq(clientDocumentCategories.documentId, documentId));
 
   // Then add new assignments
-  const assignments = categoryIds.map(categoryId => ({
+  const assignments = categoryIds.map((categoryId) => ({
     documentId,
     categoryId,
     createdAt: new Date(),
   }));
 
   if (assignments.length > 0) {
-    await db
-      .insert(clientDocumentCategories)
-      .values(assignments);
+    await db.insert(clientDocumentCategories).values(assignments);
   }
 
   return { success: true };
@@ -998,7 +1065,7 @@ export const createCategoryAndAssignToDocument = async (
     name: string;
     description?: string;
     color?: string;
-  }
+  },
 ) => {
   const category = await createDocumentCategory(categoryData);
   await assignDocumentCategories(documentId, [category?.id as number]);
@@ -1007,15 +1074,15 @@ export const createCategoryAndAssignToDocument = async (
 
 export const removeDocumentCategoryLink = async (
   documentId: string,
-  categoryId: number
+  categoryId: number,
 ) => {
   await db
     .delete(clientDocumentCategories)
     .where(
       and(
         eq(clientDocumentCategories.documentId, documentId),
-        eq(clientDocumentCategories.categoryId, categoryId)
-      )
+        eq(clientDocumentCategories.categoryId, categoryId),
+      ),
     );
   return { success: true };
 };
@@ -1024,7 +1091,9 @@ export const removeDocumentCategoryLink = async (
 // Client KPIs and Settings
 // ============================
 
-export const getClientKPIs = async (_organizationId: string): Promise<ClientKPIs> => {
+export const getClientKPIs = async (
+  _organizationId: string,
+): Promise<ClientKPIs> => {
   // This would aggregate various metrics for the client
   // For now, return basic structure
   return {
@@ -1035,7 +1104,9 @@ export const getClientKPIs = async (_organizationId: string): Promise<ClientKPIs
   };
 };
 
-export const getClientSettings = async (organizationId: string): Promise<ClientSettings | null> => {
+export const getClientSettings = async (
+  organizationId: string,
+): Promise<ClientSettings | null> => {
   try {
     const result = await db
       .select({
@@ -1051,8 +1122,8 @@ export const getClientSettings = async (organizationId: string): Promise<ClientS
       .where(
         and(
           eq(organizations.id, organizationId),
-          eq(organizations.isDeleted, false)
-        )
+          eq(organizations.isDeleted, false),
+        ),
       )
       .limit(1);
 
@@ -1064,7 +1135,7 @@ export const getClientSettings = async (organizationId: string): Promise<ClientS
     if (!client) {
       return null;
     }
-    
+
     return {
       id: client.id,
       creditLimit: client.creditLimit?.toString() || null,
@@ -1082,7 +1153,7 @@ export const getClientSettings = async (organizationId: string): Promise<ClientS
 
 export const updateClientSettings = async (
   organizationId: string,
-  settings: Partial<ClientSettings>
+  settings: Partial<ClientSettings>,
 ): Promise<ClientSettings | null> => {
   try {
     // Prepare update data, filtering out undefined values
@@ -1091,7 +1162,9 @@ export const updateClientSettings = async (
     };
 
     if (settings.creditLimit !== undefined) {
-      updateData.creditLimit = settings.creditLimit ? settings.creditLimit : null;
+      updateData.creditLimit = settings.creditLimit
+        ? settings.creditLimit
+        : null;
     }
     if (settings.paymentTerms !== undefined) {
       updateData.paymentTerms = settings.paymentTerms;
@@ -1115,8 +1188,8 @@ export const updateClientSettings = async (
       .where(
         and(
           eq(organizations.id, organizationId),
-          eq(organizations.isDeleted, false)
-        )
+          eq(organizations.isDeleted, false),
+        ),
       )
       .returning({
         id: organizations.id,
@@ -1136,7 +1209,7 @@ export const updateClientSettings = async (
     if (!client) {
       return null;
     }
-    
+
     return {
       id: client.id,
       creditLimit: client.creditLimit?.toString() || null,

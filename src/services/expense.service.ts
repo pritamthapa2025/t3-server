@@ -21,9 +21,7 @@ import {
   mileageLogs,
   expenseHistory,
 } from "../drizzle/schema/expenses.schema.js";
-import {
-  employees,
-} from "../drizzle/schema/org.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 
@@ -45,7 +43,7 @@ export const getExpenseCategories = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
     includeDeleted?: boolean;
-  }
+  },
 ) => {
   let whereConditions = [eq(expenseCategories.organizationId, organizationId)];
 
@@ -60,17 +58,21 @@ export const getExpenseCategories = async (
       or(
         ilike(expenseCategories.name, `%${filters.search}%`),
         ilike(expenseCategories.description, `%${filters.search}%`),
-        ilike(expenseCategories.code, `%${filters.search}%`)
-      )!
+        ilike(expenseCategories.code, `%${filters.search}%`),
+      )!,
     );
   }
 
   if (filters?.expenseType) {
-    whereConditions.push(eq(expenseCategories.expenseType, filters.expenseType as any));
+    whereConditions.push(
+      eq(expenseCategories.expenseType, filters.expenseType as any),
+    );
   }
 
   if (filters?.parentCategoryId) {
-    whereConditions.push(eq(expenseCategories.parentCategoryId, filters.parentCategoryId));
+    whereConditions.push(
+      eq(expenseCategories.parentCategoryId, filters.parentCategoryId),
+    );
   }
 
   if (filters?.isActive !== undefined) {
@@ -78,11 +80,15 @@ export const getExpenseCategories = async (
   }
 
   if (filters?.requiresReceipt !== undefined) {
-    whereConditions.push(eq(expenseCategories.requiresReceipt, filters.requiresReceipt));
+    whereConditions.push(
+      eq(expenseCategories.requiresReceipt, filters.requiresReceipt),
+    );
   }
 
   if (filters?.requiresApproval !== undefined) {
-    whereConditions.push(eq(expenseCategories.requiresApproval, filters.requiresApproval));
+    whereConditions.push(
+      eq(expenseCategories.requiresApproval, filters.requiresApproval),
+    );
   }
 
   // Determine sort order
@@ -138,7 +144,7 @@ export const getExpenseCategories = async (
     .from(expenseCategories)
     .leftJoin(
       sql`${expenseCategories} as parent_cat`,
-      sql`parent_cat.id = ${expenseCategories.parentCategoryId}`
+      sql`parent_cat.id = ${expenseCategories.parentCategoryId}`,
     )
     .where(and(...whereConditions))
     .orderBy(orderBy)
@@ -162,8 +168,8 @@ export const getExpenseCategories = async (
         .where(
           and(
             eq(expenseCategories.parentCategoryId, category.id),
-            eq(expenseCategories.isDeleted, false)
-          )
+            eq(expenseCategories.isDeleted, false),
+          ),
         );
 
       return {
@@ -177,7 +183,7 @@ export const getExpenseCategories = async (
           : undefined,
         subcategoriesCount: subcategoriesResult[0]?.count || 0,
       };
-    })
+    }),
   );
 
   return {
@@ -192,7 +198,10 @@ export const getExpenseCategories = async (
   };
 };
 
-export const getExpenseCategoryById = async (organizationId: string, id: string) => {
+export const getExpenseCategoryById = async (
+  organizationId: string,
+  id: string,
+) => {
   const result = await db
     .select()
     .from(expenseCategories)
@@ -200,8 +209,8 @@ export const getExpenseCategoryById = async (organizationId: string, id: string)
       and(
         eq(expenseCategories.id, id),
         eq(expenseCategories.organizationId, organizationId),
-        eq(expenseCategories.isDeleted, false)
-      )
+        eq(expenseCategories.isDeleted, false),
+      ),
     )
     .limit(1);
 
@@ -211,7 +220,7 @@ export const getExpenseCategoryById = async (organizationId: string, id: string)
 export const createExpenseCategory = async (
   organizationId: string,
   categoryData: any,
-  _createdBy: string
+  _createdBy: string,
 ) => {
   const newCategory = await db
     .insert(expenseCategories)
@@ -229,7 +238,7 @@ export const createExpenseCategory = async (
 export const updateExpenseCategory = async (
   organizationId: string,
   id: string,
-  updateData: any
+  updateData: any,
 ) => {
   const updated = await db
     .update(expenseCategories)
@@ -241,15 +250,18 @@ export const updateExpenseCategory = async (
       and(
         eq(expenseCategories.id, id),
         eq(expenseCategories.organizationId, organizationId),
-        eq(expenseCategories.isDeleted, false)
-      )
+        eq(expenseCategories.isDeleted, false),
+      ),
     )
     .returning();
 
   return updated[0] || null;
 };
 
-export const deleteExpenseCategory = async (organizationId: string, id: string) => {
+export const deleteExpenseCategory = async (
+  organizationId: string,
+  id: string,
+) => {
   const deleted = await db
     .update(expenseCategories)
     .set({
@@ -259,8 +271,8 @@ export const deleteExpenseCategory = async (organizationId: string, id: string) 
     .where(
       and(
         eq(expenseCategories.id, id),
-        eq(expenseCategories.organizationId, organizationId)
-      )
+        eq(expenseCategories.organizationId, organizationId),
+      ),
     )
     .returning();
 
@@ -295,7 +307,7 @@ export const getExpenses = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
     includeDeleted?: boolean;
-  }
+  },
 ) => {
   let whereConditions = [eq(expenses.organizationId, organizationId)];
 
@@ -314,7 +326,9 @@ export const getExpenses = async (
   }
 
   if (filters?.paymentMethod) {
-    whereConditions.push(eq(expenses.paymentMethod, filters.paymentMethod as any));
+    whereConditions.push(
+      eq(expenses.paymentMethod, filters.paymentMethod as any),
+    );
   }
 
   if (filters?.employeeId) {
@@ -342,11 +356,15 @@ export const getExpenses = async (
   }
 
   if (filters?.submittedStartDate) {
-    whereConditions.push(gte(expenses.submittedDate, new Date(filters.submittedStartDate)));
+    whereConditions.push(
+      gte(expenses.submittedDate, new Date(filters.submittedStartDate)),
+    );
   }
 
   if (filters?.submittedEndDate) {
-    whereConditions.push(lte(expenses.submittedDate, new Date(filters.submittedEndDate)));
+    whereConditions.push(
+      lte(expenses.submittedDate, new Date(filters.submittedEndDate)),
+    );
   }
 
   if (filters?.approvedBy) {
@@ -354,7 +372,9 @@ export const getExpenses = async (
   }
 
   if (filters?.reimbursementStatus) {
-    whereConditions.push(eq(expenses.reimbursementStatus, filters.reimbursementStatus as any));
+    whereConditions.push(
+      eq(expenses.reimbursementStatus, filters.reimbursementStatus as any),
+    );
   }
 
   if (filters?.hasReceipt !== undefined) {
@@ -371,8 +391,8 @@ export const getExpenses = async (
         ilike(expenses.title, `%${filters.search}%`),
         ilike(expenses.description, `%${filters.search}%`),
         ilike(expenses.vendor, `%${filters.search}%`),
-        ilike(expenses.expenseNumber, `%${filters.search}%`)
-      )!
+        ilike(expenses.expenseNumber, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -481,17 +501,52 @@ export const getExpenses = async (
   const total = totalResult[0]?.count || 0;
 
   // Get unique creator IDs and fetch their names in batch
-  const creatorIds = Array.from(new Set(result.map(e => e.createdBy).filter((id): id is string => !!id)));
-  const creators = creatorIds.length > 0
-    ? await db
-        .select({
-          id: users.id,
-          fullName: users.fullName,
-        })
-        .from(users)
-        .where(inArray(users.id, creatorIds))
-    : [];
-  const creatorMap = new Map(creators.map(c => [c.id, c.fullName]));
+  const creatorIds = Array.from(
+    new Set(result.map((e) => e.createdBy).filter((id): id is string => !!id)),
+  );
+  const creators =
+    creatorIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+          })
+          .from(users)
+          .where(inArray(users.id, creatorIds))
+      : [];
+  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
+
+  // Get unique approver IDs and fetch their names in batch
+  const approverIds = Array.from(
+    new Set(result.map((e) => e.approvedBy).filter((id): id is string => !!id)),
+  );
+  const approvers =
+    approverIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+          })
+          .from(users)
+          .where(inArray(users.id, approverIds))
+      : [];
+  const approverMap = new Map(approvers.map((a) => [a.id, a.fullName]));
+
+  // Get unique rejector IDs and fetch their names in batch
+  const rejectorIds = Array.from(
+    new Set(result.map((e) => e.rejectedBy).filter((id): id is string => !!id)),
+  );
+  const rejectors =
+    rejectorIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            fullName: users.fullName,
+          })
+          .from(users)
+          .where(inArray(users.id, rejectorIds))
+      : [];
+  const rejectorMap = new Map(rejectors.map((r) => [r.id, r.fullName]));
 
   // Get receipts and allocations count for each expense
   const expensesWithCounts = await Promise.all(
@@ -503,8 +558,8 @@ export const getExpenses = async (
           .where(
             and(
               eq(expenseReceipts.expenseId, expense.id),
-              eq(expenseReceipts.isDeleted, false)
-            )
+              eq(expenseReceipts.isDeleted, false),
+            ),
           ),
         db
           .select({ count: count() })
@@ -512,14 +567,22 @@ export const getExpenses = async (
           .where(
             and(
               eq(expenseAllocations.expenseId, expense.id),
-              eq(expenseAllocations.isDeleted, false)
-            )
+              eq(expenseAllocations.isDeleted, false),
+            ),
           ),
       ]);
 
       return {
         ...expense,
-        createdByName: expense.createdBy ? (creatorMap.get(expense.createdBy) || null) : null,
+        createdByName: expense.createdBy
+          ? creatorMap.get(expense.createdBy) || null
+          : null,
+        approvedByName: expense.approvedBy
+          ? approverMap.get(expense.approvedBy) || null
+          : null,
+        rejectedByName: expense.rejectedBy
+          ? rejectorMap.get(expense.rejectedBy) || null
+          : null,
         employee: expense.employeeFullName
           ? {
               id: expense.employeeId,
@@ -545,7 +608,7 @@ export const getExpenses = async (
         receiptsCount: receiptsResult[0]?.count || 0,
         allocationsCount: allocationsResult[0]?.count || 0,
       };
-    })
+    }),
   );
 
   return {
@@ -561,14 +624,14 @@ export const getExpenses = async (
 };
 
 export const getExpenseById = async (
-  organizationId: string,
+  organizationId: string | undefined,
   id: string,
   options?: {
     includeReceipts?: boolean;
     includeAllocations?: boolean;
     includeApprovals?: boolean;
     includeHistory?: boolean;
-  }
+  },
 ) => {
   // Get main expense data
   const expenseResult = await db
@@ -637,13 +700,17 @@ export const getExpenseById = async (
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .leftJoin(jobs, eq(expenses.jobId, jobs.id))
-    .where(
-      and(
+    .where(() => {
+      const conditions = [
         eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId),
-        eq(expenses.isDeleted, false)
-      )
-    )
+        organizationId
+          ? eq(expenses.organizationId, organizationId)
+          : undefined,
+        eq(expenses.isDeleted, false),
+      ].filter(Boolean) as any[];
+
+      return conditions.length > 0 ? and(...conditions) : undefined;
+    })
     .limit(1);
 
   if (!expenseResult[0]) {
@@ -651,7 +718,7 @@ export const getExpenseById = async (
   }
 
   const expense = expenseResult[0];
-  
+
   // Get createdBy user name
   let createdByName: string | null = null;
   if (expense.createdBy) {
@@ -663,9 +730,33 @@ export const getExpenseById = async (
     createdByName = creator?.fullName || null;
   }
 
+  // Get approvedBy user name
+  let approvedByName: string | null = null;
+  if (expense.approvedBy) {
+    const [approver] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, expense.approvedBy))
+      .limit(1);
+    approvedByName = approver?.fullName || null;
+  }
+
+  // Get rejectedBy user name
+  let rejectedByName: string | null = null;
+  if (expense.rejectedBy) {
+    const [rejector] = await db
+      .select({ fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, expense.rejectedBy))
+      .limit(1);
+    rejectedByName = rejector?.fullName || null;
+  }
+
   const result: any = {
     ...expense,
     createdByName,
+    approvedByName,
+    rejectedByName,
     employee: expense.employeeFullName
       ? {
           id: expense.employeeId,
@@ -691,24 +782,24 @@ export const getExpenseById = async (
   };
 
   // Include optional related data
-  if (options?.includeReceipts !== false) {
+  if (options?.includeReceipts !== false && organizationId) {
     result.receipts = await getExpenseReceipts(organizationId, id);
   }
 
-  if (options?.includeAllocations !== false) {
+  if (options?.includeAllocations !== false && organizationId) {
     result.allocations = await getExpenseAllocations(organizationId, id);
   }
 
-  if (options?.includeApprovals !== false) {
+  if (options?.includeApprovals !== false && organizationId) {
     result.approvals = await getExpenseApprovals(organizationId, id);
   }
 
-  if (options?.includeHistory) {
+  if (options?.includeHistory && organizationId) {
     result.history = await getExpenseHistory(organizationId, id);
   }
 
   // Include mileage log if it's a mileage expense
-  if (expense.isMileageExpense) {
+  if (expense.isMileageExpense && organizationId) {
     const mileageResult = await db
       .select()
       .from(mileageLogs)
@@ -716,8 +807,8 @@ export const getExpenseById = async (
         and(
           eq(mileageLogs.expenseId, id),
           eq(mileageLogs.organizationId, organizationId),
-          eq(mileageLogs.isDeleted, false)
-        )
+          eq(mileageLogs.isDeleted, false),
+        ),
       )
       .limit(1);
 
@@ -731,7 +822,7 @@ export const createExpense = async (
   organizationId: string,
   employeeId: number,
   expenseData: any,
-  createdBy: string
+  createdBy: string,
 ) => {
   // Generate expense number
   const expenseNumber = await generateExpenseNumber(organizationId);
@@ -767,8 +858,8 @@ export const createExpense = async (
   if (expenseData.allocations && expenseData.allocations.length > 0) {
     const allocations = await Promise.all(
       expenseData.allocations.map((allocation: any) =>
-        createExpenseAllocation(organizationId, expense!.id, allocation)
-      )
+        createExpenseAllocation(organizationId, expense!.id, allocation),
+      ),
     );
     return { expense, allocations };
   }
@@ -780,7 +871,7 @@ export const updateExpense = async (
   organizationId: string,
   id: string,
   updateData: any,
-  updatedBy: string
+  updatedBy: string,
 ) => {
   // Recalculate amounts if amount or exchange rate changed
   if (updateData.amount || updateData.exchangeRate) {
@@ -788,10 +879,15 @@ export const updateExpense = async (
     if (!currentExpense) return null;
 
     const amount = parseFloat(updateData.amount || currentExpense.amount);
-    const exchangeRate = parseFloat(updateData.exchangeRate || currentExpense.exchangeRate);
+    const exchangeRate = parseFloat(
+      updateData.exchangeRate || currentExpense.exchangeRate,
+    );
     updateData.amountInBaseCurrency = (amount * exchangeRate).toString();
 
-    if (updateData.isReimbursable !== false && currentExpense.isReimbursable !== false) {
+    if (
+      updateData.isReimbursable !== false &&
+      currentExpense.isReimbursable !== false
+    ) {
       updateData.reimbursementAmount = amount.toString();
     }
   }
@@ -806,8 +902,8 @@ export const updateExpense = async (
       and(
         eq(expenses.id, id),
         eq(expenses.organizationId, organizationId),
-        eq(expenses.isDeleted, false)
-      )
+        eq(expenses.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -818,7 +914,7 @@ export const updateExpense = async (
       id,
       "updated",
       "Expense updated",
-      updatedBy
+      updatedBy,
     );
   }
 
@@ -833,10 +929,7 @@ export const deleteExpense = async (organizationId: string, id: string) => {
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId)
-      )
+      and(eq(expenses.id, id), eq(expenses.organizationId, organizationId)),
     )
     .returning();
 
@@ -847,7 +940,7 @@ export const submitExpense = async (
   organizationId: string,
   id: string,
   submittedBy: string,
-  notes?: string
+  notes?: string,
 ) => {
   const updated = await db
     .update(expenses)
@@ -861,8 +954,8 @@ export const submitExpense = async (
         eq(expenses.id, id),
         eq(expenses.organizationId, organizationId),
         eq(expenses.status, "draft"),
-        eq(expenses.isDeleted, false)
-      )
+        eq(expenses.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -873,7 +966,7 @@ export const submitExpense = async (
       id,
       "submitted",
       notes || "Expense submitted for approval",
-      submittedBy
+      submittedBy,
     );
 
     // Create approval workflow if required
@@ -881,7 +974,7 @@ export const submitExpense = async (
       const approvals = await createExpenseApprovalWorkflow(
         organizationId,
         id,
-        submittedBy
+        submittedBy,
       );
       return { expense: updated[0], approvals };
     }
@@ -894,7 +987,7 @@ export const approveExpense = async (
   organizationId: string,
   id: string,
   approvedBy: string,
-  comments?: string
+  comments?: string,
 ) => {
   const updated = await db
     .update(expenses)
@@ -909,8 +1002,8 @@ export const approveExpense = async (
         eq(expenses.id, id),
         eq(expenses.organizationId, organizationId),
         eq(expenses.status, "submitted"),
-        eq(expenses.isDeleted, false)
-      )
+        eq(expenses.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -921,7 +1014,7 @@ export const approveExpense = async (
       id,
       "approved",
       comments || "Expense approved",
-      approvedBy
+      approvedBy,
     );
 
     // Update approval record
@@ -930,7 +1023,7 @@ export const approveExpense = async (
       id,
       approvedBy,
       "approved",
-      comments
+      comments,
     );
 
     return { expense: updated[0], approval };
@@ -944,7 +1037,7 @@ export const rejectExpense = async (
   id: string,
   rejectedBy: string,
   rejectionReason: string,
-  comments?: string
+  comments?: string,
 ) => {
   const updated = await db
     .update(expenses)
@@ -959,8 +1052,8 @@ export const rejectExpense = async (
         eq(expenses.id, id),
         eq(expenses.organizationId, organizationId),
         eq(expenses.status, "submitted"),
-        eq(expenses.isDeleted, false)
-      )
+        eq(expenses.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -971,7 +1064,7 @@ export const rejectExpense = async (
       id,
       "rejected",
       rejectionReason,
-      rejectedBy
+      rejectedBy,
     );
 
     // Update approval record
@@ -981,7 +1074,7 @@ export const rejectExpense = async (
       rejectedBy,
       "rejected",
       comments,
-      rejectionReason
+      rejectionReason,
     );
 
     return { expense: updated[0], approval };
@@ -994,7 +1087,9 @@ export const rejectExpense = async (
 // Helper Functions
 // ============================
 
-const generateExpenseNumber = async (organizationId: string): Promise<string> => {
+const generateExpenseNumber = async (
+  organizationId: string,
+): Promise<string> => {
   const year = new Date().getFullYear();
   const prefix = `EXP-${year}-`;
 
@@ -1004,22 +1099,26 @@ const generateExpenseNumber = async (organizationId: string): Promise<string> =>
     .where(
       and(
         eq(expenses.organizationId, organizationId),
-        ilike(expenses.expenseNumber, `${prefix}%`)
-      )
+        ilike(expenses.expenseNumber, `${prefix}%`),
+      ),
     )
     .orderBy(desc(expenses.expenseNumber))
     .limit(1);
 
   let nextNumber = 1;
   if (lastExpense[0]) {
-    const lastNumber = parseInt(lastExpense[0]?.expenseNumber?.split("-")[2] || "0") || 0;
+    const lastNumber =
+      parseInt(lastExpense[0]?.expenseNumber?.split("-")[2] || "0") || 0;
     nextNumber = lastNumber + 1;
   }
 
   return `${prefix}${nextNumber.toString().padStart(6, "0")}`;
 };
 
-const getExpenseReceipts = async (organizationId: string, expenseId: string) => {
+const getExpenseReceipts = async (
+  organizationId: string,
+  expenseId: string,
+) => {
   return await db
     .select()
     .from(expenseReceipts)
@@ -1027,13 +1126,16 @@ const getExpenseReceipts = async (organizationId: string, expenseId: string) => 
       and(
         eq(expenseReceipts.expenseId, expenseId),
         eq(expenseReceipts.organizationId, organizationId),
-        eq(expenseReceipts.isDeleted, false)
-      )
+        eq(expenseReceipts.isDeleted, false),
+      ),
     )
     .orderBy(desc(expenseReceipts.createdAt));
 };
 
-const getExpenseAllocations = async (organizationId: string, expenseId: string) => {
+const getExpenseAllocations = async (
+  organizationId: string,
+  expenseId: string,
+) => {
   return await db
     .select()
     .from(expenseAllocations)
@@ -1041,12 +1143,15 @@ const getExpenseAllocations = async (organizationId: string, expenseId: string) 
       and(
         eq(expenseAllocations.expenseId, expenseId),
         eq(expenseAllocations.organizationId, organizationId),
-        eq(expenseAllocations.isDeleted, false)
-      )
+        eq(expenseAllocations.isDeleted, false),
+      ),
     );
 };
 
-const getExpenseApprovals = async (organizationId: string, expenseId: string) => {
+const getExpenseApprovals = async (
+  organizationId: string,
+  expenseId: string,
+) => {
   return await db
     .select()
     .from(expenseApprovals)
@@ -1054,8 +1159,8 @@ const getExpenseApprovals = async (organizationId: string, expenseId: string) =>
       and(
         eq(expenseApprovals.expenseId, expenseId),
         eq(expenseApprovals.organizationId, organizationId),
-        eq(expenseApprovals.isDeleted, false)
-      )
+        eq(expenseApprovals.isDeleted, false),
+      ),
     )
     .orderBy(asc(expenseApprovals.approvalLevel));
 };
@@ -1067,8 +1172,8 @@ const getExpenseHistory = async (organizationId: string, expenseId: string) => {
     .where(
       and(
         eq(expenseHistory.expenseId, expenseId),
-        eq(expenseHistory.organizationId, organizationId)
-      )
+        eq(expenseHistory.organizationId, organizationId),
+      ),
     )
     .orderBy(desc(expenseHistory.createdAt));
 };
@@ -1076,7 +1181,7 @@ const getExpenseHistory = async (organizationId: string, expenseId: string) => {
 const createExpenseAllocation = async (
   organizationId: string,
   expenseId: string,
-  allocationData: any
+  allocationData: any,
 ) => {
   const percentage = parseFloat(allocationData.percentage || "100");
   const expense = await db
@@ -1085,7 +1190,9 @@ const createExpenseAllocation = async (
     .where(eq(expenses.id, expenseId))
     .limit(1);
 
-  const allocatedAmount = expense[0] ? (parseFloat(expense[0].amount) * percentage) / 100 : 0;
+  const allocatedAmount = expense[0]
+    ? (parseFloat(expense[0].amount) * percentage) / 100
+    : 0;
 
   return await db
     .insert(expenseAllocations)
@@ -1103,7 +1210,7 @@ const createExpenseAllocation = async (
 const createExpenseApprovalWorkflow = async (
   organizationId: string,
   expenseId: string,
-  requestedBy: string
+  requestedBy: string,
 ) => {
   // This would implement the approval workflow logic
   // For now, create a basic manager approval
@@ -1129,7 +1236,7 @@ const updateExpenseApprovalStatus = async (
   approverId: string,
   status: "approved" | "rejected",
   comments?: string,
-  rejectionReason?: string
+  rejectionReason?: string,
 ) => {
   return await db
     .update(expenseApprovals)
@@ -1145,8 +1252,8 @@ const updateExpenseApprovalStatus = async (
         eq(expenseApprovals.expenseId, expenseId),
         eq(expenseApprovals.organizationId, organizationId),
         eq(expenseApprovals.approverId, approverId),
-        eq(expenseApprovals.status, "pending")
-      )
+        eq(expenseApprovals.status, "pending"),
+      ),
     )
     .returning();
 };
@@ -1158,20 +1265,18 @@ const logExpenseHistory = async (
   description: string,
   performedBy: string,
   oldValue?: string,
-  newValue?: string
+  newValue?: string,
 ) => {
-  return await db
-    .insert(expenseHistory)
-    .values({
-      organizationId,
-      expenseId,
-      action,
-      description,
-      oldValue,
-      newValue,
-      performedBy,
-      createdAt: new Date(),
-    });
+  return await db.insert(expenseHistory).values({
+    organizationId,
+    expenseId,
+    action,
+    description,
+    oldValue,
+    newValue,
+    performedBy,
+    createdAt: new Date(),
+  });
 };
 
 // Export additional functions that will be used by other services
