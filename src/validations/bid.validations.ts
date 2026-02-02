@@ -27,7 +27,7 @@ const bidStatusEnum = z.enum(
   {
     message:
       "Status must be one of: draft, in_progress, pending, submitted, accepted, won, rejected, lost, expired, or cancelled",
-  }
+  },
 );
 
 const bidPriorityEnum = z.enum(["low", "medium", "high", "urgent"], {
@@ -46,7 +46,7 @@ const bidJobTypeEnum = z.enum(
   {
     message:
       "Job type must be one of: general, plan_spec, design_build, service, preventative_maintenance, or survey",
-  }
+  },
 );
 
 const timelineStatusEnum = z.enum(
@@ -54,7 +54,7 @@ const timelineStatusEnum = z.enum(
   {
     message:
       "Timeline status must be one of: completed, pending, in_progress, or cancelled",
-  }
+  },
 );
 
 // ============================
@@ -78,7 +78,7 @@ export const getBidsQuerySchema = z.object({
           .number()
           .int()
           .positive("Limit must be a positive number")
-          .max(100, "Maximum 100 items per page")
+          .max(100, "Maximum 100 items per page"),
       ),
     status: bidStatusEnum.optional(),
     jobType: bidJobTypeEnum.optional(),
@@ -125,42 +125,42 @@ export const createBidSchema = z.object({
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     endDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     plannedStartDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     estimatedCompletion: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     expiresDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     removalDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     bidAmount: numericStringSchema.optional(),
@@ -254,7 +254,7 @@ export const createBidSchema = z.object({
           unitCost: z.string(),
           markup: z.string().optional(),
           totalCost: z.string(),
-        })
+        }),
       )
       .optional(),
 
@@ -262,7 +262,7 @@ export const createBidSchema = z.object({
       .object({
         labor: z.array(
           z.object({
-            employeeId: z.number().int().positive(),
+            positionId: z.number().int().positive(),
             quantity: z.number().int().positive(),
             days: z.number().int().positive(),
             hoursPerDay: z.string(),
@@ -271,7 +271,7 @@ export const createBidSchema = z.object({
             billableRate: z.string(),
             totalCost: z.string(),
             totalPrice: z.string(),
-          })
+          }),
         ),
         travel: z.array(
           z.object({
@@ -285,7 +285,7 @@ export const createBidSchema = z.object({
             markup: z.string().optional(),
             totalCost: z.string(),
             totalPrice: z.string(),
-          })
+          }),
         ),
       })
       .optional(),
@@ -406,42 +406,42 @@ export const updateBidSchema = z.object({
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     endDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     plannedStartDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     estimatedCompletion: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     expiresDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     removalDate: z
       .string()
       .regex(
         /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)"
+        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
     bidAmount: numericStringSchema.optional(),
@@ -510,7 +510,7 @@ export const updateBidSchema = z.object({
         z.object({
           fileName: z.string().max(255).optional(),
           documentType: z.string().max(50).optional(),
-        })
+        }),
       )
       .optional(),
 
@@ -835,10 +835,10 @@ export const createBulkLaborAndTravelSchema = z.object({
       labor: z
         .array(
           z.object({
-            employeeId: z
+            positionId: z
               .number()
-              .int("Employee ID must be a whole number")
-              .positive("Employee ID must be a positive number"),
+              .int("Position ID must be a whole number")
+              .positive("Position ID must be a positive number"),
             quantity: z
               .number()
               .int("Quantity must be a whole number")
@@ -853,7 +853,7 @@ export const createBulkLaborAndTravelSchema = z.object({
             billableRate: numericStringSchema,
             totalCost: numericStringSchema,
             totalPrice: numericStringSchema,
-          })
+          }),
         )
         .min(1, "At least one labor entry is required"),
       travel: z
@@ -879,7 +879,7 @@ export const createBulkLaborAndTravelSchema = z.object({
             markup: numericStringSchema.optional().default("0"),
             totalCost: numericStringSchema,
             totalPrice: numericStringSchema,
-          })
+          }),
         )
         .min(1, "At least one travel entry is required"),
     })
@@ -1003,7 +1003,7 @@ export const createBidTimelineEventSchema = z.object({
     eventDate: z
       .string()
       .datetime(
-        "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)"
+        "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)",
       ),
     status: timelineStatusEnum.optional().default("pending"),
     description: z.string().optional(),
@@ -1030,7 +1030,7 @@ export const updateBidTimelineEventSchema = z.object({
     eventDate: z
       .string()
       .datetime(
-        "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)"
+        "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)",
       )
       .optional(),
     status: timelineStatusEnum.optional(),

@@ -842,7 +842,7 @@ export const createBidTravel = async (data: {
 export const createBulkLaborAndTravel = async (
   bidId: string,
   laborEntries: Array<{
-    employeeId: number;
+    positionId: number;
     quantity: number;
     days: number;
     hoursPerDay: string;
@@ -882,7 +882,7 @@ export const createBulkLaborAndTravel = async (
       .insert(bidLabor)
       .values({
         bidId,
-        positionId: 1, // Default position since positionId is not provided in laborData
+        positionId: laborData.positionId,
         days: laborData.days,
         hoursPerDay: laborData.hoursPerDay,
         totalHours: laborData.totalHours,
