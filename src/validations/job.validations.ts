@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
+const uuidSchema = z
+  .string()
+  .uuid({ message: "Invalid ID format - must be a valid UUID" });
 const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
   message: "Must be a valid number (e.g., 100 or 99.99)",
 });
@@ -9,33 +11,37 @@ const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
 // Base Schemas
 // ============================
 
-const jobStatusEnum = z.enum([
-  "planned",
-  "scheduled",
-  "in_progress",
-  "on_hold",
-  "completed",
-  "cancelled",
-  "invoiced",
-  "closed",
-], {
-  message: "Status must be one of: planned, scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed"
-});
+const jobStatusEnum = z.enum(
+  [
+    "planned",
+    "scheduled",
+    "in_progress",
+    "on_hold",
+    "completed",
+    "cancelled",
+    "invoiced",
+    "closed",
+  ],
+  {
+    message:
+      "Status must be one of: planned, scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed",
+  },
+);
 
 // Note: Priority updates the associated bid's priority, not the job's priority
 // Jobs now use bid priority instead of their own priority field
 const jobPriorityEnum = z.enum(["low", "medium", "high", "urgent"], {
-  message: "Priority must be one of: low, medium, high, or urgent (updates the associated bid's priority)"
+  message:
+    "Priority must be one of: low, medium, high, or urgent (updates the associated bid's priority)",
 });
 
-const timelineStatusEnum = z.enum([
-  "completed",
-  "pending",
-  "in_progress",
-  "cancelled",
-], {
-  message: "Timeline status must be one of: completed, pending, in_progress, or cancelled"
-});
+const timelineStatusEnum = z.enum(
+  ["completed", "pending", "in_progress", "cancelled"],
+  {
+    message:
+      "Timeline status must be one of: completed, pending, in_progress, or cancelled",
+  },
+);
 
 // ============================
 // Main Job Validations
@@ -52,7 +58,13 @@ export const getJobsQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive("Limit must be a positive number").max(100, "Maximum 100 items per page")),
+      .pipe(
+        z
+          .number()
+          .int()
+          .positive("Limit must be a positive number")
+          .max(100, "Maximum 100 items per page"),
+      ),
     status: jobStatusEnum.optional(),
     jobType: z.string().max(100).optional(),
     priority: jobPriorityEnum.optional(),
@@ -78,19 +90,32 @@ export const createJobSchema = z.object({
     serviceType: z.string().max(100).optional(),
     bidId: uuidSchema, // Now required - organization and property can be derived from bid
     description: z.string().optional(),
-    scheduledStartDate: z.string().date("Invalid date format. Must be in YYYY-MM-DD format"),
-    scheduledEndDate: z.string().date("Invalid date format. Must be in YYYY-MM-DD format"),
+    scheduledStartDate: z
+      .string()
+      .date("Invalid date format. Must be in YYYY-MM-DD format"),
+    scheduledEndDate: z
+      .string()
+      .date("Invalid date format. Must be in YYYY-MM-DD format"),
     siteAddress: z.string().optional(),
     siteContactName: z.string().max(150).optional(),
     siteContactPhone: z.string().max(20).optional(),
     accessInstructions: z.string().optional(),
     contractValue: numericStringSchema.optional(),
-    assignedTeamMembers: z.array(
-      z.object({
-        employeeId: z.number().int().positive("Employee ID must be a positive number"),
-        positionId: z.number().int().positive("Position ID must be a positive number").optional(),
-      })
-    ).optional(),
+    assignedTeamMembers: z
+      .array(
+        z.object({
+          employeeId: z
+            .number()
+            .int()
+            .positive("Employee ID must be a positive number"),
+          positionId: z
+            .number()
+            .int()
+            .positive("Position ID must be a positive number")
+            .optional(),
+        }),
+      )
+      .optional(),
   }),
 });
 
@@ -140,7 +165,10 @@ export const addJobTeamMemberSchema = z.object({
     jobId: uuidSchema,
   }),
   body: z.object({
-    employeeId: z.number().int().positive("Employee ID must be a positive number"),
+    employeeId: z
+      .number()
+      .int()
+      .positive("Employee ID must be a positive number"),
     role: z.string().max(100).optional(),
   }),
 });
@@ -590,12 +618,14 @@ export const createJobExpenseSchema = z.object({
   }),
   body: z.object({
     expenseType: z.string().min(1, "Expense type is required").max(100),
+    expenseCategoryId: uuidSchema.optional(), // optional; service defaults if omitted
     description: z.string().min(1, "Description is required"),
+    quantity: z.coerce.number().int().min(1).optional(),
     amount: numericStringSchema,
     expenseDate: z.string().date("Invalid date format"),
     vendorName: z.string().max(255).optional(),
     invoiceNumber: z.string().max(100).optional(),
-    receiptPath: z.string().max(500).optional(),
+    receiptPath: z.string().max(500).optional(), // set server-side after upload
     approvedBy: uuidSchema.optional(),
   }),
 });
@@ -612,16 +642,22 @@ export const updateJobExpenseSchema = z.object({
     jobId: uuidSchema,
     expenseId: uuidSchema,
   }),
-  body: z.object({
-    expenseType: z.string().max(100).optional(),
-    description: z.string().min(1).optional(),
-    amount: numericStringSchema.optional(),
-    expenseDate: z.string().date().optional(),
-    vendorName: z.string().max(255).optional(),
-    invoiceNumber: z.string().max(100).optional(),
-    receiptPath: z.string().max(500).optional(),
-    approvedBy: uuidSchema.optional(),
-  }),
+  body: z
+    .object({
+      expenseType: z.string().max(100).optional(),
+      expenseCategoryId: uuidSchema.optional(),
+      description: z.string().min(1).optional(),
+      quantity: z.coerce.number().int().min(1).optional(),
+      amount: numericStringSchema.optional(),
+      expenseDate: z.string().date().optional(),
+      vendorName: z.string().max(255).optional(),
+      invoiceNumber: z.string().max(100).optional(),
+      receiptPath: z.string().max(500).optional(),
+      approvedBy: uuidSchema.optional(),
+    })
+    .refine((b) => Object.keys(b).length > 0, {
+      message: "At least one field is required to update",
+    }),
 });
 
 export const deleteJobExpenseSchema = z.object({
@@ -688,8 +724,3 @@ export const getJobWithAllDataSchema = z.object({
     id: uuidSchema,
   }),
 });
-
-
-
-
-

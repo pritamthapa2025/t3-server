@@ -1,0 +1,1 @@
+ALTER TABLE "org"."safety_inspections" ALTER COLUMN "is_team_member" DROP DEFAULT;

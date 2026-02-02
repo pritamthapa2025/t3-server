@@ -27,6 +27,7 @@ import {
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 
 // ============================
 // Helper Functions
@@ -305,13 +306,23 @@ export const getInvoices = async (
 
   const whereClause = and(...whereConditions);
 
-  // Select invoices - wrap table in object to handle 'any' typing (pattern used in other services)
+  // Aliases for joining users table multiple times
+  const createdByUser = alias(users, "created_by_user");
+  const approvedByUser = alias(users, "approved_by_user");
+
+  // Select invoices with user names
   const [invoicesResult, totalResult] = await Promise.all([
     db
       .select({
-        invoice: invoices,
+        invoice: {
+          ...invoices,
+          createdByName: createdByUser.fullName,
+          approvedByName: approvedByUser.fullName,
+        },
       })
       .from(invoices)
+      .leftJoin(createdByUser, eq(invoices.createdBy, createdByUser.id))
+      .leftJoin(approvedByUser, eq(invoices.approvedBy, approvedByUser.id))
       .where(whereClause)
       .orderBy(desc(invoices.createdAt))
       .limit(limit)
@@ -320,27 +331,14 @@ export const getInvoices = async (
   ]);
 
   // Extract invoices from wrapped result
-  const invoicesList = invoicesResult.map((item) => item.invoice);
-
-  // Get unique creator IDs and fetch their names in batch
-  const creatorIds = Array.from(
-    new Set(
-      invoicesList
-        .map((inv) => inv.createdBy)
-        .filter((id): id is string => !!id),
-    ),
-  );
-  const creators =
-    creatorIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-          })
-          .from(users)
-          .where(inArray(users.id, creatorIds))
-      : [];
-  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
+  const invoicesList = invoicesResult.map((item) => {
+    const { createdByName, approvedByName, ...invoice } = item.invoice;
+    return {
+      ...invoice,
+      createdByName: createdByName ?? null,
+      approvedByName: approvedByName ?? null,
+    };
+  });
 
   // Get line items for each invoice
   const invoicesWithLineItems = await Promise.all(
@@ -358,9 +356,6 @@ export const getInvoices = async (
 
       return {
         ...invoice,
-        createdByName: invoice.createdBy
-          ? creatorMap.get(invoice.createdBy) || null
-          : null,
         lineItems,
       };
     }),
@@ -414,23 +409,36 @@ export const getInvoiceById = async (
     return null;
   }
 
-  const invoice = invoiceWithOrg[0].invoice;
+  const _invoice = invoiceWithOrg[0].invoice;
   const invoiceOrganizationId = invoiceWithOrg[0].organizationId;
 
-  // Get createdBy user name
-  let createdByName: string | null = null;
-  if (invoice.createdBy) {
-    const [creator] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, invoice.createdBy))
-      .limit(1);
-    createdByName = creator?.fullName || null;
+  // Aliases for joining users table multiple times
+  const createdByUser = alias(users, "created_by_user");
+  const approvedByUser = alias(users, "approved_by_user");
+
+  // Get invoice with user names
+  const [invoiceWithNames] = await db
+    .select({
+      ...invoices,
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
+    })
+    .from(invoices)
+    .leftJoin(createdByUser, eq(invoices.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(invoices.approvedBy, approvedByUser.id))
+    .where(and(eq(invoices.id, invoiceId), eq(invoices.isDeleted, false)))
+    .limit(1);
+
+  if (!invoiceWithNames) {
+    return null;
   }
 
+  const { createdByName, approvedByName, ...invoiceData } = invoiceWithNames;
+
   const result: any = {
-    ...invoice,
-    createdByName,
+    ...invoiceData,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
     organizationId: invoiceOrganizationId,
   };
 

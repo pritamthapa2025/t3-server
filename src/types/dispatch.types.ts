@@ -36,6 +36,7 @@ export interface CreateDispatchTaskData {
   notes?: string;
   attachments?: string[];
   assignedVehicleId?: string;
+  createdBy?: string;
 }
 
 export interface UpdateDispatchTaskData {
@@ -126,6 +127,3 @@ export interface UpdateTechnicianAvailabilityData {
   role?: string;
   notes?: string;
 }
-
-
-

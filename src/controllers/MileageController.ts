@@ -20,15 +20,6 @@ import {
 
 export const getMileageLogsHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
@@ -60,7 +51,7 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
     const result = await getMileageLogs(
-      organizationId,
+      undefined,
       offset,
       limit,
       cleanFilters as any,
@@ -85,9 +76,6 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
 
 export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is optional - can be provided in query params or derived from mileage log
-    const organizationId = req.query.organizationId as string | undefined;
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -95,7 +83,7 @@ export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
         message: "Mileage log ID is required",
       });
     }
-    const log = await getMileageLogById(organizationId, id);
+    const log = await getMileageLogById(undefined, id);
 
     if (!log) {
       return res.status(404).json({
@@ -121,19 +109,16 @@ export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
 
 export const createMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is required in request body
-    const organizationId = req.body.organizationId;
     const employeeId = req.user?.employeeId;
 
-    if (!organizationId || !employeeId) {
+    if (!employeeId) {
       return res.status(400).json({
         success: false,
-        message:
-          "organizationId is required in request body and employee context required",
+        message: "Employee context required",
       });
     }
 
-    const log = await createMileageLog(organizationId, employeeId, req.body);
+    const log = await createMileageLog(undefined, employeeId, req.body);
 
     logger.info("Mileage log created successfully");
     return res.status(201).json({
@@ -170,7 +155,6 @@ export const updateMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get mileage log first to derive organizationId
     const existingLog = await getMileageLogById(undefined, id);
     if (!existingLog) {
       return res.status(404).json({
@@ -179,16 +163,7 @@ export const updateMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const organizationId =
-      existingLog.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for mileage log",
-      });
-    }
-
-    const log = await updateMileageLog(organizationId, id, req.body);
+    const log = await updateMileageLog(undefined, id, req.body);
 
     if (!log) {
       return res.status(404).json({
@@ -222,7 +197,6 @@ export const deleteMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get mileage log first to derive organizationId
     const existingLog = await getMileageLogById(undefined, id);
     if (!existingLog) {
       return res.status(404).json({
@@ -231,16 +205,7 @@ export const deleteMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const organizationId =
-      existingLog.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for mileage log",
-      });
-    }
-
-    const log = await deleteMileageLog(organizationId, id);
+    const log = await deleteMileageLog(undefined, id);
 
     if (!log) {
       return res.status(404).json({
@@ -282,7 +247,6 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get mileage log first to derive organizationId
     const existingLog = await getMileageLogById(undefined, id);
     if (!existingLog) {
       return res.status(404).json({
@@ -291,16 +255,7 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const organizationId =
-      existingLog.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for mileage log",
-      });
-    }
-
-    const log = await verifyMileageLog(organizationId, id, userId);
+    const log = await verifyMileageLog(undefined, id, userId);
 
     if (!log) {
       return res.status(404).json({
@@ -326,15 +281,6 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
 
 export const getMileageSummaryHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const filters = {
       employeeId: req.query.employeeId
         ? parseInt(req.query.employeeId as string)
@@ -348,10 +294,7 @@ export const getMileageSummaryHandler = async (req: Request, res: Response) => {
     const cleanFilters = Object.fromEntries(
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
-    const summary = await getMileageSummary(
-      organizationId,
-      cleanFilters as any,
-    );
+    const summary = await getMileageSummary(undefined, cleanFilters as any);
 
     logger.info("Mileage summary fetched successfully");
     return res.status(200).json({

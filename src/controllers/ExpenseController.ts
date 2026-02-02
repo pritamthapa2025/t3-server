@@ -13,6 +13,11 @@ import {
   submitExpense,
   approveExpense,
   rejectExpense,
+  getExpenseReceipts,
+  getExpenseReceiptById,
+  createExpenseReceipt,
+  updateExpenseReceipt,
+  deleteExpenseReceipt,
 } from "../services/expense.service.js";
 import {
   getExpenseSummary,
@@ -33,14 +38,6 @@ export const getExpenseCategoriesHandler = async (
   res: Response,
 ) => {
   try {
-    const organizationId = req.query.organizationId as string;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters.",
-      });
-    }
-
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
@@ -77,7 +74,7 @@ export const getExpenseCategoriesHandler = async (
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
     const result = await getExpenseCategories(
-      organizationId,
+      undefined,
       offset,
       limit,
       cleanFilters as any,
@@ -105,15 +102,6 @@ export const getExpenseCategoryByIdHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is optional - can be provided in query params or derived from category
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -121,7 +109,7 @@ export const getExpenseCategoryByIdHandler = async (
         message: "Category ID is required",
       });
     }
-    const category = await getExpenseCategoryById(organizationId, id);
+    const category = await getExpenseCategoryById(undefined, id);
 
     if (!category) {
       return res.status(404).json({
@@ -150,22 +138,16 @@ export const createExpenseCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
 
-    if (!organizationId || !userId) {
+    if (!userId) {
       return res.status(400).json({
         success: false,
-        message:
-          "organizationId is required in request body and user authentication required.",
+        message: "User authentication required.",
       });
     }
 
-    const category = await createExpenseCategory(
-      organizationId,
-      req.body,
-      userId,
-    );
+    const category = await createExpenseCategory(undefined, req.body, userId);
 
     logger.info("Expense category created successfully");
     return res.status(201).json({
@@ -197,17 +179,6 @@ export const updateExpenseCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is required - can be provided in query params or request body
-    const organizationId = (req.query.organizationId ||
-      req.body.organizationId) as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "organizationId is required in query parameters or request body",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -215,7 +186,7 @@ export const updateExpenseCategoryHandler = async (
         message: "Category ID is required",
       });
     }
-    const category = await updateExpenseCategory(organizationId, id, req.body);
+    const category = await updateExpenseCategory(undefined, id, req.body);
 
     if (!category) {
       return res.status(404).json({
@@ -254,15 +225,6 @@ export const deleteExpenseCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -270,7 +232,7 @@ export const deleteExpenseCategoryHandler = async (
         message: "Category ID is required",
       });
     }
-    const category = await deleteExpenseCategory(organizationId, id);
+    const category = await deleteExpenseCategory(undefined, id);
 
     if (!category) {
       return res.status(404).json({
@@ -299,14 +261,6 @@ export const deleteExpenseCategoryHandler = async (
 
 export const getExpensesHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.query.organizationId as string;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters.",
-      });
-    }
-
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
@@ -350,7 +304,7 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
     const result = await getExpenses(
-      organizationId,
+      undefined,
       offset,
       limit,
       cleanFilters as any,
@@ -375,9 +329,6 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
 
 export const getExpenseByIdHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is optional - can be provided in query params or derived from expense
-    const organizationId = req.query.organizationId as string | undefined;
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -393,7 +344,7 @@ export const getExpenseByIdHandler = async (req: Request, res: Response) => {
       includeHistory: req.query.includeHistory === "true",
     };
 
-    const expense = await getExpenseById(organizationId, id, options);
+    const expense = await getExpenseById(undefined, id, options);
 
     if (!expense) {
       return res.status(404).json({
@@ -419,24 +370,16 @@ export const getExpenseByIdHandler = async (req: Request, res: Response) => {
 
 export const createExpenseHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
-    const employeeId = req.user?.employeeId;
 
-    if (!organizationId || !userId || !employeeId) {
+    if (!userId) {
       return res.status(400).json({
         success: false,
-        message:
-          "organizationId is required in request body and employee context required.",
+        message: "User context required.",
       });
     }
 
-    const result = await createExpense(
-      organizationId,
-      employeeId,
-      req.body,
-      userId,
-    );
+    const result = await createExpense(undefined, req.body, userId);
 
     logger.info("Expense created successfully");
     return res.status(201).json({
@@ -468,9 +411,9 @@ export const updateExpenseHandler = async (req: Request, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -481,26 +424,7 @@ export const updateExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-
-    // Get expense first to derive organizationId
-    const existingExpense = await getExpenseById(undefined, id);
-    if (!existingExpense) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found",
-      });
-    }
-
-    const organizationId =
-      existingExpense.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense",
-      });
-    }
-
-    const expense = await updateExpense(organizationId, id, req.body, userId);
+    const expense = await updateExpense(undefined, id, req.body, userId);
 
     if (!expense) {
       return res.status(404).json({
@@ -533,26 +457,7 @@ export const deleteExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-
-    // Get expense first to derive organizationId
-    const existingExpense = await getExpenseById(undefined, id);
-    if (!existingExpense) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found",
-      });
-    }
-
-    const organizationId =
-      existingExpense.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense",
-      });
-    }
-
-    const expense = await deleteExpense(organizationId, id);
+    const expense = await deleteExpense(undefined, id);
 
     if (!expense) {
       return res.status(404).json({
@@ -580,9 +485,9 @@ export const submitExpenseHandler = async (req: Request, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -593,30 +498,11 @@ export const submitExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-
-    // Get expense first to derive organizationId
-    const existingExpense = await getExpenseById(undefined, id);
-    if (!existingExpense) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found",
-      });
-    }
-
-    const organizationId =
-      existingExpense.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense",
-      });
-    }
-
     const { notes } = req.body;
 
-    const result = await submitExpense(organizationId, id, userId, notes);
+    const result = await submitExpense(undefined, id, userId, notes);
 
-    if (!result.expense) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Expense not found or cannot be submitted",
@@ -643,9 +529,9 @@ export const approveExpenseHandler = async (req: Request, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -656,30 +542,11 @@ export const approveExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-
-    // Get expense first to derive organizationId
-    const existingExpense = await getExpenseById(undefined, id);
-    if (!existingExpense) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found",
-      });
-    }
-
-    const organizationId =
-      existingExpense.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense",
-      });
-    }
-
     const { comments } = req.body;
 
-    const result = await approveExpense(organizationId, id, userId, comments);
+    const result = await approveExpense(undefined, id, userId, comments);
 
-    if (!result.expense) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Expense not found or cannot be approved",
@@ -706,9 +573,9 @@ export const rejectExpenseHandler = async (req: Request, res: Response) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -719,36 +586,16 @@ export const rejectExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-
-    // Get expense first to derive organizationId
-    const existingExpense = await getExpenseById(undefined, id);
-    if (!existingExpense) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found",
-      });
-    }
-
-    const organizationId =
-      existingExpense.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense",
-      });
-    }
-
     const { comments, rejectionReason } = req.body;
 
     const result = await rejectExpense(
-      organizationId,
+      undefined,
       id,
       userId,
-      rejectionReason,
-      comments,
+      rejectionReason ?? comments,
     );
 
-    if (!result.expense) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Expense not found or cannot be rejected",
@@ -776,15 +623,6 @@ export const rejectExpenseHandler = async (req: Request, res: Response) => {
 
 export const getExpenseSummaryHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const filters = {
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
@@ -803,10 +641,7 @@ export const getExpenseSummaryHandler = async (req: Request, res: Response) => {
     const cleanFilters = Object.fromEntries(
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
-    const summary = await getExpenseSummary(
-      organizationId,
-      cleanFilters as any,
-    );
+    const summary = await getExpenseSummary(undefined, cleanFilters as any);
 
     logger.info("Expense summary fetched successfully");
     return res.status(200).json({
@@ -828,15 +663,6 @@ export const getEmployeeExpenseSummaryHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const employeeIdParam = req.params.employeeId;
     if (!employeeIdParam) {
       return res.status(400).json({
@@ -859,7 +685,7 @@ export const getEmployeeExpenseSummaryHandler = async (
     };
 
     const summary = await getEmployeeExpenseSummary(
-      organizationId,
+      undefined,
       employeeId,
       filters,
     );
@@ -882,6 +708,267 @@ export const getEmployeeExpenseSummaryHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve employee expense summary",
+    });
+  }
+};
+
+// ============================
+// Expense Receipts
+// ============================
+
+export const getExpenseReceiptsHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const expenseId = req.params.expenseId as string;
+    const expense = await getExpenseById(undefined, expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+    const receipts = await getExpenseReceipts(expenseId);
+    return res.status(200).json({
+      success: true,
+      message: "Receipts retrieved successfully",
+      data: receipts,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching expense receipts", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve receipts",
+    });
+  }
+};
+
+export const getExpenseReceiptByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const expenseId = req.params.expenseId as string;
+    const receiptId = req.params.receiptId as string;
+    const expense = await getExpenseById(undefined, expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+    const receipt = await getExpenseReceiptById(expenseId!, receiptId!);
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: "Receipt not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Receipt retrieved successfully",
+      data: receipt,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching expense receipt", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve receipt",
+    });
+  }
+};
+
+export const createExpenseReceiptHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const expenseId = req.params.expenseId as string;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    const expense = await getExpenseById(undefined, expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Receipt file is required",
+      });
+    }
+    const opts: {
+      description?: string;
+      receiptDate?: string;
+      receiptNumber?: string;
+      receiptTotal?: string;
+      vendor?: string;
+    } = {};
+    if (req.body?.description != null)
+      opts.description = req.body.description as string;
+    if (req.body?.receiptDate != null)
+      opts.receiptDate = req.body.receiptDate as string;
+    if (req.body?.receiptNumber != null)
+      opts.receiptNumber = req.body.receiptNumber as string;
+    if (req.body?.receiptTotal != null)
+      opts.receiptTotal = req.body.receiptTotal as string;
+    if (req.body?.vendor != null) opts.vendor = req.body.vendor as string;
+
+    const receipt = await createExpenseReceipt(
+      expenseId!,
+      {
+        buffer: req.file.buffer,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+      userId,
+      Object.keys(opts).length > 0 ? opts : undefined,
+    );
+    if (!receipt) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload receipt",
+      });
+    }
+    logger.info("Expense receipt uploaded successfully");
+    return res.status(201).json({
+      success: true,
+      message: "Receipt uploaded successfully",
+      data: receipt,
+    });
+  } catch (error) {
+    logger.logApiError("Error uploading expense receipt", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload receipt",
+    });
+  }
+};
+
+export const updateExpenseReceiptHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const expenseId = req.params.expenseId as string;
+    const receiptId = req.params.receiptId as string;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    const expense = await getExpenseById(undefined, expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+    const existingReceipt = await getExpenseReceiptById(expenseId, receiptId);
+    if (!existingReceipt) {
+      return res.status(404).json({
+        success: false,
+        message: "Receipt not found",
+      });
+    }
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Receipt file is required to update",
+      });
+    }
+    const opts: {
+      description?: string;
+      receiptDate?: string;
+      receiptNumber?: string;
+      receiptTotal?: string;
+      vendor?: string;
+    } = {};
+    if (req.body?.description != null)
+      opts.description = req.body.description as string;
+    if (req.body?.receiptDate != null)
+      opts.receiptDate = req.body.receiptDate as string;
+    if (req.body?.receiptNumber != null)
+      opts.receiptNumber = req.body.receiptNumber as string;
+    if (req.body?.receiptTotal != null)
+      opts.receiptTotal = req.body.receiptTotal as string;
+    if (req.body?.vendor != null) opts.vendor = req.body.vendor as string;
+
+    const receipt = await updateExpenseReceipt(
+      expenseId!,
+      receiptId!,
+      {
+        buffer: req.file.buffer,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+      Object.keys(opts).length > 0 ? opts : undefined,
+    );
+    if (!receipt) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update receipt",
+      });
+    }
+    logger.info("Expense receipt updated successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Receipt updated successfully",
+      data: receipt,
+    });
+  } catch (error) {
+    logger.logApiError("Error updating expense receipt", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update receipt",
+    });
+  }
+};
+
+export const deleteExpenseReceiptHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const expenseId = req.params.expenseId as string;
+    const receiptId = req.params.receiptId as string;
+    const expense = await getExpenseById(undefined, expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+    const receipt = await deleteExpenseReceipt(expenseId!, receiptId!);
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message: "Receipt not found",
+      });
+    }
+    logger.info("Expense receipt deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Receipt deleted successfully",
+      data: receipt,
+    });
+  } catch (error) {
+    logger.logApiError("Error deleting expense receipt", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete receipt",
     });
   }
 };

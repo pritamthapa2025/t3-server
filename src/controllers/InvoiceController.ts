@@ -1298,72 +1298,7 @@ export const voidInvoice = async (req: Request, res: Response) => {
 };
 
 /**
- * Get single invoice line item
- * GET /invoices/:invoiceId/line-items/:lineItemId
- */
-export const getInvoiceLineItem = async (req: Request, res: Response) => {
-  try {
-    // organizationId is optional - can be provided in query params or derived from invoice
-    const organizationId = req.query.organizationId as string | undefined;
-
-    const { invoiceId, lineItemId } = req.params;
-    if (!invoiceId || !lineItemId) {
-      return res.status(400).json({
-        success: false,
-        message: "Invoice ID and line item ID are required",
-      });
-    }
-
-    const invoice = await invoicingService.getInvoiceById(
-      invoiceId,
-      organizationId, // Optional - if not provided, service will derive it from invoice
-      {
-        includeLineItems: true,
-        includePayments: false,
-        includeDocuments: false,
-        includeHistory: false,
-      },
-    );
-
-    if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: "Invoice not found",
-      });
-    }
-
-    const lineItem = (invoice.lineItems || []).find(
-      (item: any) => item.id === lineItemId,
-    );
-
-    if (!lineItem) {
-      return res.status(404).json({
-        success: false,
-        message: "Line item not found",
-      });
-    }
-
-    logger.info(
-      `Invoice line item ${lineItemId} for invoice ${invoiceId} fetched successfully`,
-    );
-    res.json({
-      success: true,
-      data: {
-        lineItem,
-      },
-    });
-  } catch (error: any) {
-    logger.logApiError("Error fetching invoice line item", error, req);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch line item",
-      error: error.message,
-    });
-  }
-};
-
-/**
- * Get invoice line items (all for an invoice)
+ * Get invoice line items
  * GET /invoices/:invoiceId/line-items
  */
 export const getInvoiceLineItems = async (req: Request, res: Response) => {
@@ -1410,6 +1345,54 @@ export const getInvoiceLineItems = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch line items",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get single invoice line item
+ * GET /invoices/:invoiceId/line-items/:lineItemId
+ */
+export const getInvoiceLineItem = async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.query.organizationId as string | undefined;
+    const { invoiceId, lineItemId } = req.params;
+    if (!invoiceId || !lineItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID and line item ID are required",
+      });
+    }
+    const invoice = await invoicingService.getInvoiceById(
+      invoiceId,
+      organizationId,
+      { includeLineItems: true },
+    );
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+    const lineItem = invoice.lineItems?.find(
+      (li: { id: string }) => li.id === lineItemId,
+    );
+    if (!lineItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Line item not found",
+      });
+    }
+    res.json({
+      success: true,
+      data: { lineItem },
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching invoice line item", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch line item",
       error: error.message,
     });
   }

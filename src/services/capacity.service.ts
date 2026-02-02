@@ -21,6 +21,7 @@ import {
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 
 // Dashboard KPIs - Status cards
 export const getDashboardKPIs = async (
@@ -474,6 +475,10 @@ export const getResourceAllocations = async (
 
   const total = totalResult[0]?.total || 0;
 
+  // Aliases for joining users table multiple times
+  const createdByUser = alias(users, "created_by_user");
+  const assignedByUser = alias(users, "assigned_by_user");
+
   // Get paginated data
   const allocationsList = await db
     .select({
@@ -492,6 +497,8 @@ export const getResourceAllocations = async (
       status: resourceAllocations.status,
       priority: resourceAllocations.priority,
       notes: resourceAllocations.notes,
+      createdByName: createdByUser.fullName,
+      assignedByName: assignedByUser.fullName,
       createdAt: resourceAllocations.createdAt,
       updatedAt: resourceAllocations.updatedAt,
     })
@@ -499,12 +506,21 @@ export const getResourceAllocations = async (
     .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .leftJoin(jobs, eq(resourceAllocations.jobId, jobs.id))
+    .leftJoin(createdByUser, eq(resourceAllocations.createdBy, createdByUser.id))
+    .leftJoin(assignedByUser, eq(resourceAllocations.assignedBy, assignedByUser.id))
     .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
     .limit(limit)
     .offset((offset - 1) * limit)
     .orderBy(desc(resourceAllocations.createdAt));
 
-  return { allocations: allocationsList, total };
+  return {
+    allocations: allocationsList.map((allocation) => ({
+      ...allocation,
+      createdByName: allocation.createdByName ?? null,
+      assignedByName: allocation.assignedByName ?? null,
+    })),
+    total,
+  };
 };
 
 // Create resource allocation

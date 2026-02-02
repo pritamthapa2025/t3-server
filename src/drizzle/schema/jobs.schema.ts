@@ -19,9 +19,8 @@ import { employees, positions } from "./org.schema.js";
 import { bidsTable } from "./bids.schema.js";
 
 // Import enums from centralized location
-import {
-  jobStatusEnum,
-} from "../enums/org.enums.js";
+import { jobStatusEnum } from "../enums/org.enums.js";
+import { expenseCategories } from "./expenses.schema.js";
 
 const org = pgSchema("org");
 
@@ -83,7 +82,7 @@ export const jobs: any = org.table(
     index("idx_jobs_status").on(table.status),
     index("idx_jobs_scheduled_start").on(table.scheduledStartDate),
     index("idx_jobs_is_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 /**
@@ -114,7 +113,7 @@ export const jobTeamMembers = org.table(
     index("idx_job_team_employee").on(table.employeeId),
     index("idx_job_team_active").on(table.isActive),
     index("idx_job_team_position").on(table.positionId),
-  ]
+  ],
 );
 
 // jobFinancialSummary REMOVED - use bidFinancialBreakdown via job.bidId
@@ -179,7 +178,7 @@ export const jobTasks = org.table(
     index("idx_job_tasks_status").on(table.status),
     index("idx_job_tasks_assigned_to").on(table.assignedTo),
     index("idx_job_tasks_due_date").on(table.dueDate),
-  ]
+  ],
 );
 
 /**
@@ -190,15 +189,16 @@ export const jobExpenses = org.table(
   "job_expenses",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     jobId: uuid("job_id")
       .notNull()
       .references(() => jobs.id),
-
-    expenseType: varchar("expense_type", { length: 100 }).notNull(), // equipment_rental, permit, subcontractor, etc.
+    // High-level type of expense (labor, material, travel, etc.)
+    expenseType: varchar("expense_type", { length: 100 }),
+    expenseCategoryId: uuid("expense_category_id")
+      .notNull()
+      .references(() => expenseCategories.id),
     description: text("description").notNull(),
+    quantity: integer("quantity").default(1),
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
     expenseDate: date("expense_date").notNull(),
 
@@ -218,10 +218,9 @@ export const jobExpenses = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_job_expenses_org").on(table.organizationId),
     index("idx_job_expenses_job_id").on(table.jobId),
     index("idx_job_expenses_type").on(table.expenseType),
     index("idx_job_expenses_date").on(table.expenseDate),
     index("idx_job_expenses_approved_by").on(table.approvedBy),
-  ]
+  ],
 );

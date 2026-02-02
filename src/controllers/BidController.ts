@@ -1,8 +1,7 @@
 import type { Request, Response } from "express";
 
-// Helper function to validate organization access
-// Note: organizationId in bids refers to CLIENT organizations (not T3)
-// Bids are created FOR client organizations BY T3 employees
+// Access control: use USER data (req.user.id), not organization.
+// Organization = CLIENT data (see .cursorrules). For bid handlers, get client org from the bid (bid.organizationId) when needed.
 const validateUserAccess = (req: Request, res: Response): string | null => {
   const userId = req.user?.id;
 
@@ -17,14 +16,11 @@ const validateUserAccess = (req: Request, res: Response): string | null => {
   return userId;
 };
 
-// Legacy function for backward compatibility
-const validateOrganizationAccess = validateUserAccess;
-
 // Helper function to validate required params
 const validateParams = (
   req: Request,
   res: Response,
-  paramNames: string[]
+  paramNames: string[],
 ): boolean => {
   for (const paramName of paramNames) {
     if (!req.params[paramName]) {
@@ -109,12 +105,11 @@ export const getBidsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    // Validate user access
-    const userId = validateOrganizationAccess(req, res);
+    // Validate user access (user data, not org)
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    // Get client organizationId from query parameter (optional)
-    // Note: organizationId in bids refers to CLIENT organizations (not T3)
+    // Optional filter: client organizationId from query (client data, not user)
     // If not provided, returns all bids
     const organizationId = req.query.organizationId as string | undefined;
 
@@ -131,10 +126,16 @@ export const getBidsHandler = async (req: Request, res: Response) => {
     if (req.query.status) filters.status = req.query.status as string;
     if (req.query.jobType) filters.jobType = req.query.jobType as string;
     if (req.query.priority) filters.priority = req.query.priority as string;
-    if (req.query.assignedTo) filters.assignedTo = req.query.assignedTo as string;
+    if (req.query.assignedTo)
+      filters.assignedTo = req.query.assignedTo as string;
     if (req.query.search) filters.search = req.query.search as string;
 
-    const bids = await getBids(organizationId, offset, limit, Object.keys(filters).length > 0 ? filters : undefined);
+    const bids = await getBids(
+      organizationId,
+      offset,
+      limit,
+      Object.keys(filters).length > 0 ? filters : undefined,
+    );
 
     logger.info("Bids fetched successfully");
     return res.status(200).json({
@@ -158,7 +159,7 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // Validate user access
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const bid = await getBidByIdSimple(id!);
@@ -204,7 +205,8 @@ export const createBidHandler = async (req: Request, res: Response) => {
     if (!organizationId) {
       return res.status(400).json({
         success: false,
-        message: "organizationId is required. This should be the client organization ID.",
+        message:
+          "organizationId is required. This should be the client organization ID.",
       });
     }
 
@@ -263,7 +265,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
       createdRecords.financialBreakdown = await updateBidFinancialBreakdown(
         bid.id,
         organizationId,
-        financialBreakdown
+        financialBreakdown,
       );
     }
 
@@ -272,7 +274,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
       createdRecords.operatingExpenses = await updateBidOperatingExpenses(
         bid.id,
         organizationId,
-        operatingExpenses
+        operatingExpenses,
       );
     }
 
@@ -296,7 +298,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
           const bulkResult = await createBulkLaborAndTravel(
             bid.id,
             labor,
-            travel
+            travel,
           );
           createdRecords.labor = bulkResult.labor;
           createdRecords.travel = bulkResult.travel;
@@ -309,26 +311,26 @@ export const createBidHandler = async (req: Request, res: Response) => {
       createdRecords.surveyData = await updateBidSurveyData(
         bid.id,
         organizationId,
-        surveyData
+        surveyData,
       );
     } else if (planSpecData && bid.jobType === "plan_spec") {
       createdRecords.planSpecData = await updateBidPlanSpecData(
         bid.id,
         organizationId,
-        planSpecData
+        planSpecData,
       );
     } else if (designBuildData && bid.jobType === "design_build") {
       createdRecords.designBuildData = await updateBidDesignBuildData(
         bid.id,
         organizationId,
-        designBuildData
+        designBuildData,
       );
     }
 
     // Handle document uploads if provided (document_0, document_1, etc.)
     const files = (req.files as Express.Multer.File[]) || [];
     const documentFiles = files.filter((file) =>
-      file.fieldname.startsWith("document_")
+      file.fieldname.startsWith("document_"),
     );
 
     if (documentFiles.length > 0) {
@@ -341,7 +343,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
           const uploadResult = await uploadToSpaces(
             file.buffer,
             file.originalname,
-            "bid-documents"
+            "bid-documents",
           );
 
           const document = await createBidDocument({
@@ -355,7 +357,10 @@ export const createBidHandler = async (req: Request, res: Response) => {
 
           uploadedDocuments.push(document);
         } catch (uploadError: any) {
-          logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+          logger.error(
+            `Error uploading document ${file.originalname}:`,
+            uploadError,
+          );
         }
       }
 
@@ -416,13 +421,13 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
     const { bidNumber } = req.body;
 
-    // Get original bid for history tracking
+    // Get original bid for history tracking; client org comes from the bid
     const originalBid = await getBidById(id!);
     if (!originalBid) {
       return res.status(404).json({
@@ -430,6 +435,8 @@ export const updateBidHandler = async (req: Request, res: Response) => {
         message: "Bid not found",
       });
     }
+
+    const clientOrgId = originalBid.organizationId;
 
     // Pre-validate unique fields before attempting to update
     const uniqueFieldChecks = [];
@@ -439,7 +446,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       uniqueFieldChecks.push({
         field: "bidNumber",
         value: bidNumber,
-        checkFunction: () => checkBidNumberExists(bidNumber, organizationId, id),
+        checkFunction: () => checkBidNumberExists(bidNumber, clientOrgId, id),
         message: `A bid with number '${bidNumber}' already exists in this organization`,
       });
     }
@@ -450,7 +457,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
-    const updatedBid = await updateBid(id!, organizationId, req.body);
+    const updatedBid = await updateBid(id!, clientOrgId, req.body);
 
     if (!updatedBid) {
       return res.status(404).json({
@@ -465,7 +472,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     // Handle new document uploads (document_0, document_1, etc.)
     const files = (req.files as Express.Multer.File[]) || [];
     const documentFiles = files.filter((file) =>
-      file.fieldname.startsWith("document_")
+      file.fieldname.startsWith("document_"),
     );
 
     if (documentFiles.length > 0) {
@@ -478,7 +485,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
           const uploadResult = await uploadToSpaces(
             file.buffer,
             file.originalname,
-            "bid-documents"
+            "bid-documents",
           );
 
           const document = await createBidDocument({
@@ -492,7 +499,10 @@ export const updateBidHandler = async (req: Request, res: Response) => {
 
           uploadedDocuments.push(document);
         } catch (uploadError: any) {
-          logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+          logger.error(
+            `Error uploading document ${file.originalname}:`,
+            uploadError,
+          );
         }
       }
 
@@ -502,7 +512,10 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     }
 
     // Handle document updates (if documentIdsToUpdate is provided)
-    if (req.body.documentIdsToUpdate && Array.isArray(req.body.documentIdsToUpdate)) {
+    if (
+      req.body.documentIdsToUpdate &&
+      Array.isArray(req.body.documentIdsToUpdate)
+    ) {
       const documentUpdatesList = req.body.documentUpdates || [];
       const updatedDocuments = [];
 
@@ -530,7 +543,10 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     }
 
     // Handle document deletions (if documentIdsToDelete is provided)
-    if (req.body.documentIdsToDelete && Array.isArray(req.body.documentIdsToDelete)) {
+    if (
+      req.body.documentIdsToDelete &&
+      Array.isArray(req.body.documentIdsToDelete)
+    ) {
       const deletedDocuments = [];
 
       for (const documentId of req.body.documentIdsToDelete) {
@@ -553,14 +569,18 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     // Create history entries for changed fields
     for (const [key, value] of Object.entries(req.body)) {
       // Skip document-related fields
-      if (key === "documentIdsToUpdate" || key === "documentUpdates" || key === "documentIdsToDelete") {
+      if (
+        key === "documentIdsToUpdate" ||
+        key === "documentUpdates" ||
+        key === "documentIdsToDelete"
+      ) {
         continue;
       }
       const oldValue = (originalBid as any)[key];
       if (oldValue !== value) {
         await createBidHistoryEntry({
           bidId: id!,
-          organizationId: organizationId,
+          organizationId: clientOrgId,
           action: `field_updated_${key}`,
           oldValue: String(oldValue || ""),
           newValue: String(value || ""),
@@ -574,7 +594,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     if (Object.keys(documentUpdates).length > 0) {
       await createBidHistoryEntry({
         bidId: id!,
-        organizationId: organizationId,
+        organizationId: clientOrgId,
         action: "documents_updated",
         description: `Documents updated: ${documentUpdates.added?.length || 0} added, ${documentUpdates.updated?.length || 0} updated, ${documentUpdates.deleted?.length || 0} deleted`,
         performedBy: performedBy,
@@ -623,12 +643,21 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const deletedBid = await deleteBid(id!, organizationId);
+    // Get the bid first so we have its organizationId (bids.organizationId = client org, not user id)
+    const existingBid = await getBidByIdSimple(id!);
+    if (!existingBid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const deletedBid = await deleteBid(id!, existingBid.organizationId);
 
     if (!deletedBid) {
       return res.status(404).json({
@@ -650,7 +679,7 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: id!,
-      organizationId: organizationId,
+      organizationId: existingBid.organizationId,
       action: "bid_deleted",
       description: `Bid "${deletedBid.title}" was deleted`,
       performedBy: performedBy,
@@ -676,16 +705,22 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
 
 export const getBidFinancialBreakdownHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const breakdown = await getBidFinancialBreakdown(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const breakdown = await getBidFinancialBreakdown(bidId!, clientOrgId);
 
     logger.info("Bid financial breakdown fetched successfully");
     return res.status(200).json({
@@ -703,21 +738,27 @@ export const getBidFinancialBreakdownHandler = async (
 
 export const updateBidFinancialBreakdownHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
     const breakdown = await updateBidFinancialBreakdown(
       bidId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!breakdown) {
@@ -730,7 +771,7 @@ export const updateBidFinancialBreakdownHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "financial_breakdown_updated",
       description: "Financial breakdown was updated",
       performedBy: performedBy,
@@ -760,10 +801,16 @@ export const getBidMaterialsHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const materials = await getBidMaterials(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const materials = await getBidMaterials(bidId!, clientOrgId);
 
     logger.info("Bid materials fetched successfully");
     return res.status(200).json({
@@ -779,15 +826,24 @@ export const getBidMaterialsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getBidMaterialByIdHandler = async (req: Request, res: Response) => {
+export const getBidMaterialByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["bidId", "materialId"])) return;
     const { bidId, materialId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const material = await getBidMaterialById(materialId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const material = await getBidMaterialById(materialId!, clientOrgId);
 
     if (!material) {
       return res.status(404).json({
@@ -823,10 +879,16 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const materialData = {
       ...req.body,
@@ -845,7 +907,7 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "material_added",
       newValue: material.description || "Material",
       description: `Material "${material.description}" was added`,
@@ -872,12 +934,11 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["materialId", "bidId"])) return;
     const { materialId, bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    // Get the bid to retrieve its organizationId
     const bid = await getBidById(bidId!);
     if (!bid) {
       return res.status(404).json({
@@ -885,11 +946,12 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
         message: "Bid not found",
       });
     }
+    const clientOrgId = bid.organizationId;
 
     const material = await updateBidMaterial(
       materialId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!material) {
@@ -928,12 +990,11 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["materialId", "bidId"])) return;
     const { materialId, bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    // Get the bid to retrieve its organizationId
     const bid = await getBidById(bidId!);
     if (!bid) {
       return res.status(404).json({
@@ -941,8 +1002,9 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
         message: "Bid not found",
       });
     }
+    const clientOrgId = bid.organizationId;
 
-    const material = await deleteBidMaterial(materialId!, organizationId);
+    const material = await deleteBidMaterial(materialId!, clientOrgId);
 
     if (!material) {
       return res.status(404).json({
@@ -982,8 +1044,8 @@ export const getBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const labor = await getBidLabor(bidId!);
 
@@ -1006,8 +1068,8 @@ export const getBidLaborByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
     const { bidId, laborId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const labor = await getBidLaborById(laborId!);
 
@@ -1044,10 +1106,16 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const laborData = {
       ...req.body,
@@ -1066,7 +1134,7 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_added",
       newValue: `Position ID: ${labor.positionId}`,
       description: `Labor entry for position ID ${labor.positionId} was added`,
@@ -1093,10 +1161,16 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["laborId", "bidId"])) return;
     const { laborId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const labor = await updateBidLabor(laborId!, req.body);
 
@@ -1110,7 +1184,7 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_updated",
       description: `Labor entry for position ID ${labor?.positionId || "Unknown"} was updated`,
       performedBy: performedBy,
@@ -1136,10 +1210,16 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["laborId", "bidId"])) return;
     const { laborId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const labor = await deleteBidLabor(laborId!);
 
@@ -1153,7 +1233,7 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_deleted",
       description: `Labor entry for position ID ${labor?.positionId || "Unknown"} was deleted`,
       performedBy: performedBy,
@@ -1180,8 +1260,8 @@ export const getBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
     const { bidId, laborId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     // Verify labor belongs to the specified bid
     const laborEntry = await getBidLaborById(laborId!);
@@ -1220,8 +1300,8 @@ export const getAllBidTravelHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const travel = await getAllBidTravel(bidId!);
 
@@ -1244,8 +1324,8 @@ export const getBidTravelByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
     const { bidId, travelId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const travel = await getBidTravelById(travelId!);
 
@@ -1279,15 +1359,24 @@ export const getBidTravelByIdHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const createBidTravelDirectHandler = async (req: Request, res: Response) => {
+export const createBidTravelDirectHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify the labor entry exists and belongs to the bid
     const { laborId, ...travelData } = req.body;
@@ -1321,7 +1410,7 @@ export const createBidTravelDirectHandler = async (req: Request, res: Response) 
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_added",
       newValue: `Travel: ${travel.roundTripMiles} miles`,
       description: "Travel entry was added",
@@ -1343,15 +1432,24 @@ export const createBidTravelDirectHandler = async (req: Request, res: Response) 
   }
 };
 
-export const updateBidTravelDirectHandler = async (req: Request, res: Response) => {
+export const updateBidTravelDirectHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
     const { bidId, travelId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify the travel entry exists and belongs to the bid
     const existingTravel = await getBidTravelById(travelId!);
@@ -1383,7 +1481,7 @@ export const updateBidTravelDirectHandler = async (req: Request, res: Response) 
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_updated",
       description: "Travel entry was updated",
       performedBy: performedBy,
@@ -1404,15 +1502,24 @@ export const updateBidTravelDirectHandler = async (req: Request, res: Response) 
   }
 };
 
-export const deleteBidTravelDirectHandler = async (req: Request, res: Response) => {
+export const deleteBidTravelDirectHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
     const { bidId, travelId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify the travel entry exists and belongs to the bid
     const existingTravel = await getBidTravelById(travelId!);
@@ -1444,7 +1551,7 @@ export const deleteBidTravelDirectHandler = async (req: Request, res: Response) 
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_deleted",
       description: "Travel entry was deleted",
       performedBy: performedBy,
@@ -1468,10 +1575,16 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
     const { bidId, laborId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify labor belongs to the specified bid
     const laborEntry = await getBidLaborById(laborId!);
@@ -1506,7 +1619,7 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_added",
       newValue: `Travel: ${travel.roundTripMiles} miles`,
       description: "Travel entry was added",
@@ -1532,10 +1645,16 @@ export const updateBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId", "travelId"])) return;
     const { bidId, laborId, travelId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify labor belongs to the specified bid
     const laborEntry = await getBidLaborById(laborId!);
@@ -1565,7 +1684,7 @@ export const updateBidTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_updated",
       description: "Travel entry was updated",
       performedBy: performedBy,
@@ -1590,10 +1709,16 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId", "travelId"])) return;
     const { bidId, laborId, travelId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Verify labor belongs to the specified bid
     const laborEntry = await getBidLaborById(laborId!);
@@ -1623,7 +1748,7 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_deleted",
       description: "Travel entry was deleted",
       performedBy: performedBy,
@@ -1649,16 +1774,22 @@ export const deleteBidTravelHandler = async (req: Request, res: Response) => {
 
 export const createBulkLaborAndTravelHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
     const { labor, travel } = req.body;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     // Validate arrays have same length
     if (!Array.isArray(labor) || !Array.isArray(travel)) {
@@ -1671,8 +1802,7 @@ export const createBulkLaborAndTravelHandler = async (
     if (labor.length !== travel.length) {
       return res.status(400).json({
         success: false,
-        message:
-          "Number of labor entries must equal number of travel entries",
+        message: "Number of labor entries must equal number of travel entries",
       });
     }
 
@@ -1688,7 +1818,7 @@ export const createBulkLaborAndTravelHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "bulk_labor_travel_added",
       newValue: `${result.labor.length} labor entries and ${result.travel.length} travel entries`,
       description: `Bulk created ${result.labor.length} labor entries with corresponding travel entries`,
@@ -1728,10 +1858,16 @@ export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const surveyData = await getBidSurveyData(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const surveyData = await getBidSurveyData(bidId!, clientOrgId);
 
     logger.info("Bid survey data fetched successfully");
     return res.status(200).json({
@@ -1749,21 +1885,23 @@ export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
 
 export const updateBidSurveyDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const surveyData = await updateBidSurveyData(
-      bidId!,
-      organizationId,
-      req.body
-    );
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const surveyData = await updateBidSurveyData(bidId!, clientOrgId, req.body);
 
     if (!surveyData) {
       return res.status(404).json({
@@ -1775,7 +1913,7 @@ export const updateBidSurveyDataHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "survey_data_updated",
       description: "Survey data was updated",
       performedBy: performedBy,
@@ -1798,15 +1936,21 @@ export const updateBidSurveyDataHandler = async (
 
 export const getBidPlanSpecDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const planSpecData = await getBidPlanSpecData(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const planSpecData = await getBidPlanSpecData(bidId!, clientOrgId);
 
     logger.info("Bid plan spec data fetched successfully");
     return res.status(200).json({
@@ -1824,20 +1968,26 @@ export const getBidPlanSpecDataHandler = async (
 
 export const updateBidPlanSpecDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
     const planSpecData = await updateBidPlanSpecData(
       bidId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!planSpecData) {
@@ -1850,7 +2000,7 @@ export const updateBidPlanSpecDataHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "plan_spec_data_updated",
       description: "Plan & Spec data was updated",
       performedBy: performedBy,
@@ -1873,15 +2023,21 @@ export const updateBidPlanSpecDataHandler = async (
 
 export const getBidDesignBuildDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const designBuildData = await getBidDesignBuildData(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const designBuildData = await getBidDesignBuildData(bidId!, clientOrgId);
 
     logger.info("Bid design build data fetched successfully");
     return res.status(200).json({
@@ -1899,20 +2055,26 @@ export const getBidDesignBuildDataHandler = async (
 
 export const updateBidDesignBuildDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
     const designBuildData = await updateBidDesignBuildData(
       bidId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!designBuildData) {
@@ -1925,7 +2087,7 @@ export const updateBidDesignBuildDataHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "design_build_data_updated",
       description: "Design Build data was updated",
       performedBy: performedBy,
@@ -1954,10 +2116,16 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const timeline = await getBidTimeline(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const timeline = await getBidTimeline(bidId!, clientOrgId);
 
     logger.info("Bid timeline fetched successfully");
     return res.status(200).json({
@@ -1975,20 +2143,26 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
 
 export const createBidTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const eventData = {
       ...req.body,
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -2004,7 +2178,7 @@ export const createBidTimelineEventHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_added",
       newValue: event.event || "Unknown",
       description: `Timeline event "${event.event}" was added`,
@@ -2028,22 +2202,24 @@ export const createBidTimelineEventHandler = async (
 
 export const updateBidTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "bidId"])) return;
     const { eventId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const event = await updateBidTimelineEvent(
-      eventId!,
-      organizationId,
-      req.body
-    );
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const event = await updateBidTimelineEvent(eventId!, clientOrgId, req.body);
 
     if (!event) {
       return res.status(404).json({
@@ -2055,7 +2231,7 @@ export const updateBidTimelineEventHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_updated",
       description: `Timeline event "${event?.event || "Unknown"}" was updated`,
       performedBy: performedBy,
@@ -2078,18 +2254,24 @@ export const updateBidTimelineEventHandler = async (
 
 export const deleteBidTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "bidId"])) return;
     const { eventId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const event = await deleteBidTimelineEvent(eventId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const event = await deleteBidTimelineEvent(eventId!, clientOrgId);
 
     if (!event) {
       return res.status(404).json({
@@ -2101,7 +2283,7 @@ export const deleteBidTimelineEventHandler = async (
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_deleted",
       description: `Timeline event "${event?.event || "Unknown"}" was deleted`,
       performedBy: performedBy,
@@ -2129,10 +2311,16 @@ export const getBidNotesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const notes = await getBidNotes(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const notes = await getBidNotes(bidId!, clientOrgId);
 
     logger.info("Bid notes fetched successfully");
     return res.status(200).json({
@@ -2152,15 +2340,21 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
 
     const noteData = {
       ...req.body,
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -2176,7 +2370,7 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_added",
       description: "Note was added to bid",
       performedBy: performedBy,
@@ -2202,12 +2396,18 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["noteId", "bidId"])) return;
     const { noteId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const note = await updateBidNote(noteId!, organizationId, req.body);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const note = await updateBidNote(noteId!, clientOrgId, req.body);
 
     if (!note) {
       return res.status(404).json({
@@ -2219,7 +2419,7 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_updated",
       description: "Note was updated",
       performedBy: performedBy,
@@ -2245,12 +2445,18 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["noteId", "bidId"])) return;
     const { noteId } = req.params;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const note = await deleteBidNote(noteId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const note = await deleteBidNote(noteId!, clientOrgId);
 
     if (!note) {
       return res.status(404).json({
@@ -2262,7 +2468,7 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createBidHistoryEntry({
       bidId: bidId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_deleted",
       description: "Note was deleted",
       performedBy: performedBy,
@@ -2290,10 +2496,16 @@ export const getBidHistoryHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const { bidId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const history = await getBidHistory(bidId!, organizationId);
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const history = await getBidHistory(bidId!, clientOrgId);
 
     logger.info("Bid history fetched successfully");
     return res.status(200).json({
@@ -2317,7 +2529,7 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const bidData = await getBidWithAllData(id!);
@@ -2349,7 +2561,7 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
 
 export const createBidDocumentsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
@@ -2370,13 +2582,14 @@ export const createBidDocumentsHandler = async (
     // Extract files with pattern document_0, document_1, etc.
     const files = (req.files as Express.Multer.File[]) || [];
     const documentFiles = files.filter((file) =>
-      file.fieldname.startsWith("document_")
+      file.fieldname.startsWith("document_"),
     );
 
     if (documentFiles.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "No files provided. Files must be uploaded with field names like 'document_0', 'document_1', etc.",
+        message:
+          "No files provided. Files must be uploaded with field names like 'document_0', 'document_1', etc.",
       });
     }
 
@@ -2393,7 +2606,7 @@ export const createBidDocumentsHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "bid-documents"
+          "bid-documents",
         );
 
         // Create document record
@@ -2408,9 +2621,12 @@ export const createBidDocumentsHandler = async (
 
         uploadedDocuments.push(document);
       } catch (uploadError: any) {
-        logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        logger.error(
+          `Error uploading document ${file.originalname}:`,
+          uploadError,
+        );
         errors.push(
-          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`
+          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`,
         );
       }
     }
@@ -2424,7 +2640,7 @@ export const createBidDocumentsHandler = async (
     }
 
     logger.info(
-      `Successfully uploaded ${uploadedDocuments.length} document(s) for bid ${bidId}`
+      `Successfully uploaded ${uploadedDocuments.length} document(s) for bid ${bidId}`,
     );
 
     return res.status(201).json({
@@ -2480,7 +2696,7 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
 
 export const getBidDocumentByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
@@ -2527,10 +2743,7 @@ export const getBidDocumentByIdHandler = async (
   }
 };
 
-export const updateBidDocumentHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const updateBidDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
 
@@ -2564,7 +2777,7 @@ export const updateBidDocumentHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "bid-documents"
+          "bid-documents",
         );
         uploadedFileUrl = uploadResult.url;
       } catch (uploadError: any) {
@@ -2622,10 +2835,7 @@ export const updateBidDocumentHandler = async (
   }
 };
 
-export const deleteBidDocumentHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
 

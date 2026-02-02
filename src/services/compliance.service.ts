@@ -5,6 +5,7 @@ import {
 } from "../drizzle/schema/compliance.schema.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
   and,
@@ -18,6 +19,7 @@ import {
   lte,
   like,
   or,
+  getTableColumns,
 } from "drizzle-orm";
 import type {
   CreateComplianceCaseData,
@@ -29,17 +31,20 @@ import type {
 
 // Helper function to validate organizationId (client ID) - returns UUID or null
 // organizationId is optional and only used to track which client the compliance case relates to
-const validateOrganizationId = (organizationId: string | undefined): string | null => {
+const validateOrganizationId = (
+  organizationId: string | undefined,
+): string | null => {
   if (!organizationId) {
     return null; // No client association - T3 internal case
   }
-  
+
   // Check if it's a valid UUID format (client ID)
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(organizationId)) {
     return organizationId; // Valid client UUID
   }
-  
+
   // If not a valid UUID (e.g., "t3-org-default"), return null (no client association)
   return null;
 };
@@ -71,9 +76,9 @@ export const getDashboardKPIs = async (filters: {
         ...conditions,
         or(
           eq(employeeComplianceCases.status, "open"),
-          eq(employeeComplianceCases.status, "investigating")
-        )
-      )
+          eq(employeeComplianceCases.status, "investigating"),
+        ),
+      ),
     );
 
   // High Severity Cases
@@ -85,9 +90,9 @@ export const getDashboardKPIs = async (filters: {
         ...conditions,
         or(
           eq(employeeComplianceCases.severity, "high"),
-          eq(employeeComplianceCases.severity, "critical")
-        )
-      )
+          eq(employeeComplianceCases.severity, "critical"),
+        ),
+      ),
     );
 
   // Suspended Staff (employees with critical violations)
@@ -99,8 +104,8 @@ export const getDashboardKPIs = async (filters: {
       and(
         eq(employeeViolationHistory.isDeleted, false),
         eq(employeeViolationHistory.severity, "critical"),
-        eq(employeeViolationHistory.isResolved, false)
-      )
+        eq(employeeViolationHistory.isResolved, false),
+      ),
     );
 
   // Average Resolution Time (in days)
@@ -113,8 +118,8 @@ export const getDashboardKPIs = async (filters: {
       and(
         ...conditions,
         eq(employeeComplianceCases.status, "resolved"),
-        isNotNull(employeeComplianceCases.resolvedDate)
-      )
+        isNotNull(employeeComplianceCases.resolvedDate),
+      ),
     );
 
   return {
@@ -124,6 +129,11 @@ export const getDashboardKPIs = async (filters: {
     avgResolutionDays: Math.round(avgResolutionResult[0]?.avgDays || 0),
   };
 };
+
+// Aliases for joining users table multiple times (reportedBy, assignedTo, resolvedBy)
+const reportedByUser = alias(users, "reported_by_user");
+const assignedToUser = alias(users, "assigned_to_user");
+const resolvedByUser = alias(users, "resolved_by_user");
 
 // Get Compliance Cases with Pagination
 export const getComplianceCases = async (
@@ -142,7 +152,7 @@ export const getComplianceCases = async (
     dueTo?: string;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
-  }
+  },
 ) => {
   const {
     search,
@@ -162,7 +172,9 @@ export const getComplianceCases = async (
   // Build conditions
   const conditions = [
     eq(employeeComplianceCases.isDeleted, false),
-    ...(organizationId ? [eq(employeeComplianceCases.organizationId, organizationId)] : []),
+    ...(organizationId
+      ? [eq(employeeComplianceCases.organizationId, organizationId)]
+      : []),
     ...(jobId ? [eq(employeeComplianceCases.jobId, jobId)] : []),
     ...(employeeId ? [eq(employeeComplianceCases.employeeId, employeeId)] : []),
     ...(type ? [eq(employeeComplianceCases.type, type as any)] : []),
@@ -171,9 +183,7 @@ export const getComplianceCases = async (
       : []),
     ...(status ? [eq(employeeComplianceCases.status, status as any)] : []),
     ...(assignedTo ? [eq(employeeComplianceCases.assignedTo, assignedTo)] : []),
-    ...(dueFrom
-      ? [gte(employeeComplianceCases.dueDate, dueFrom)]
-      : []),
+    ...(dueFrom ? [gte(employeeComplianceCases.dueDate, dueFrom)] : []),
     ...(dueTo ? [lte(employeeComplianceCases.dueDate, dueTo)] : []),
   ];
 
@@ -183,21 +193,33 @@ export const getComplianceCases = async (
       or(
         like(employeeComplianceCases.caseNumber, `%${search}%`),
         like(employeeComplianceCases.title, `%${search}%`),
-        like(employeeComplianceCases.description, `%${search}%`)
-      )!
+        like(employeeComplianceCases.description, `%${search}%`),
+      )!,
     );
   }
 
   // Build sort order
   let orderBy: any;
   if (sortBy === "createdAt") {
-    orderBy = sortOrder === "asc" ? asc(employeeComplianceCases.createdAt) : desc(employeeComplianceCases.createdAt);
+    orderBy =
+      sortOrder === "asc"
+        ? asc(employeeComplianceCases.createdAt)
+        : desc(employeeComplianceCases.createdAt);
   } else if (sortBy === "dueDate") {
-    orderBy = sortOrder === "asc" ? asc(employeeComplianceCases.dueDate) : desc(employeeComplianceCases.dueDate);
+    orderBy =
+      sortOrder === "asc"
+        ? asc(employeeComplianceCases.dueDate)
+        : desc(employeeComplianceCases.dueDate);
   } else if (sortBy === "severity") {
-    orderBy = sortOrder === "asc" ? asc(employeeComplianceCases.severity) : desc(employeeComplianceCases.severity);
+    orderBy =
+      sortOrder === "asc"
+        ? asc(employeeComplianceCases.severity)
+        : desc(employeeComplianceCases.severity);
   } else if (sortBy === "status") {
-    orderBy = sortOrder === "asc" ? asc(employeeComplianceCases.status) : desc(employeeComplianceCases.status);
+    orderBy =
+      sortOrder === "asc"
+        ? asc(employeeComplianceCases.status)
+        : desc(employeeComplianceCases.status);
   } else {
     orderBy = desc(employeeComplianceCases.createdAt);
   }
@@ -213,47 +235,54 @@ export const getComplianceCases = async (
   const total = totalResult[0]?.count || 0;
 
   // Get paginated results with joins
-  const cases = await db
+  const casesResult = await db
     .select({
-      id: employeeComplianceCases.id,
-      caseNumber: employeeComplianceCases.caseNumber,
-      type: employeeComplianceCases.type,
-      severity: employeeComplianceCases.severity,
-      status: employeeComplianceCases.status,
-      title: employeeComplianceCases.title,
-      description: employeeComplianceCases.description,
-      notes: employeeComplianceCases.notes,
-      openedOn: employeeComplianceCases.openedOn,
-      dueDate: employeeComplianceCases.dueDate,
-      resolvedDate: employeeComplianceCases.resolvedDate,
-      impactLevel: employeeComplianceCases.impactLevel,
-      correctiveAction: employeeComplianceCases.correctiveAction,
-      preventiveAction: employeeComplianceCases.preventiveAction,
-      // Disciplinary Action fields
-      disciplinaryAction: employeeComplianceCases.disciplinaryAction,
-      actionDate: employeeComplianceCases.actionDate,
-      actionNotes: employeeComplianceCases.actionNotes,
-      performanceImpact: employeeComplianceCases.performanceImpact,
-      attachments: employeeComplianceCases.attachments,
-      evidencePhotos: employeeComplianceCases.evidencePhotos,
-      createdAt: employeeComplianceCases.createdAt,
-      updatedAt: employeeComplianceCases.updatedAt,
-      // Employee info
-      employeeId: employees.id,
+      ...getTableColumns(employeeComplianceCases),
       employeeName: users.fullName,
       employeeEmail: users.email,
-      // Assignment info
-      assignedTo: employeeComplianceCases.assignedTo,
-      reportedBy: employeeComplianceCases.reportedBy,
-      resolvedBy: employeeComplianceCases.resolvedBy,
+      reportedByName: reportedByUser.fullName,
+      assignedToName: assignedToUser.fullName,
+      resolvedByName: resolvedByUser.fullName,
     })
     .from(employeeComplianceCases)
     .leftJoin(employees, eq(employeeComplianceCases.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(
+      reportedByUser,
+      eq(employeeComplianceCases.reportedBy, reportedByUser.id),
+    )
+    .leftJoin(
+      assignedToUser,
+      eq(employeeComplianceCases.assignedTo, assignedToUser.id),
+    )
+    .leftJoin(
+      resolvedByUser,
+      eq(employeeComplianceCases.resolvedBy, resolvedByUser.id),
+    )
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
+
+  // Map results to include name fields with null fallback
+  const cases = casesResult.map((row) => {
+    const {
+      reportedByName,
+      assignedToName,
+      resolvedByName,
+      employeeName,
+      employeeEmail,
+      ...record
+    } = row;
+    return {
+      ...record,
+      employeeName: employeeName ?? null,
+      employeeEmail: employeeEmail ?? null,
+      reportedByName: reportedByName ?? null,
+      assignedToName: assignedToName ?? null,
+      resolvedByName: resolvedByName ?? null,
+    };
+  });
 
   return {
     data: cases,
@@ -266,50 +295,57 @@ export const getComplianceCases = async (
   };
 };
 
-// Get Compliance Case by ID
+// Get Compliance Case by ID (with reportedByName, assignedToName, resolvedByName)
 export const getComplianceCaseById = async (id: string) => {
-  const caseResult = await db
+  const [row] = await db
     .select({
-      id: employeeComplianceCases.id,
-      organizationId: employeeComplianceCases.organizationId,
-      jobId: employeeComplianceCases.jobId,
-      employeeId: employeeComplianceCases.employeeId,
-      caseNumber: employeeComplianceCases.caseNumber,
-      type: employeeComplianceCases.type,
-      severity: employeeComplianceCases.severity,
-      status: employeeComplianceCases.status,
-      title: employeeComplianceCases.title,
-      description: employeeComplianceCases.description,
-      notes: employeeComplianceCases.notes,
-      openedOn: employeeComplianceCases.openedOn,
-      dueDate: employeeComplianceCases.dueDate,
-      resolvedDate: employeeComplianceCases.resolvedDate,
-      reportedBy: employeeComplianceCases.reportedBy,
-      assignedTo: employeeComplianceCases.assignedTo,
-      resolvedBy: employeeComplianceCases.resolvedBy,
-      impactLevel: employeeComplianceCases.impactLevel,
-      correctiveAction: employeeComplianceCases.correctiveAction,
-      preventiveAction: employeeComplianceCases.preventiveAction,
-      attachments: employeeComplianceCases.attachments,
-      evidencePhotos: employeeComplianceCases.evidencePhotos,
-      isDeleted: employeeComplianceCases.isDeleted,
-      createdAt: employeeComplianceCases.createdAt,
-      updatedAt: employeeComplianceCases.updatedAt,
-      // Employee info
+      ...getTableColumns(employeeComplianceCases),
       employeeName: users.fullName,
       employeeEmail: users.email,
+      reportedByName: reportedByUser.fullName,
+      assignedToName: assignedToUser.fullName,
+      resolvedByName: resolvedByUser.fullName,
     })
     .from(employeeComplianceCases)
     .leftJoin(employees, eq(employeeComplianceCases.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(
+      reportedByUser,
+      eq(employeeComplianceCases.reportedBy, reportedByUser.id),
+    )
+    .leftJoin(
+      assignedToUser,
+      eq(employeeComplianceCases.assignedTo, assignedToUser.id),
+    )
+    .leftJoin(
+      resolvedByUser,
+      eq(employeeComplianceCases.resolvedBy, resolvedByUser.id),
+    )
     .where(
       and(
         eq(employeeComplianceCases.id, id),
-        eq(employeeComplianceCases.isDeleted, false)
-      )
+        eq(employeeComplianceCases.isDeleted, false),
+      ),
     );
 
-  return caseResult[0] || null;
+  if (!row) return null;
+
+  const {
+    reportedByName,
+    assignedToName,
+    resolvedByName,
+    employeeName,
+    employeeEmail,
+    ...record
+  } = row;
+  return {
+    ...record,
+    employeeName: employeeName ?? null,
+    employeeEmail: employeeEmail ?? null,
+    reportedByName: reportedByName ?? null,
+    assignedToName: assignedToName ?? null,
+    resolvedByName: resolvedByName ?? null,
+  };
 };
 
 // Generate Case Number using PostgreSQL sequence (thread-safe)
@@ -317,11 +353,11 @@ export const generateCaseNumber = async (): Promise<string> => {
   try {
     // Use PostgreSQL sequence for atomic ID generation
     const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.case_number_seq')::text as nextval`)
+      sql.raw(`SELECT nextval('org.case_number_seq')::text as nextval`),
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    
+
     // Format: CASE-0001 to CASE-9999 (4 digits), then CASE-10001 (5 digits), CASE-100001 (6 digits), etc.
     // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
     const numDigits = String(nextNumber).length;
@@ -329,7 +365,10 @@ export const generateCaseNumber = async (): Promise<string> => {
     return `CASE-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
-    console.warn("Case number sequence not found, using fallback method:", error);
+    console.warn(
+      "Case number sequence not found, using fallback method:",
+      error,
+    );
 
     const result = await db
       .select({ caseNumber: employeeComplianceCases.caseNumber })
@@ -337,8 +376,8 @@ export const generateCaseNumber = async (): Promise<string> => {
       .where(
         and(
           eq(employeeComplianceCases.isDeleted, false),
-          sql`${employeeComplianceCases.caseNumber} ~ '^CASE-\\d+$'`
-        )
+          sql`${employeeComplianceCases.caseNumber} ~ '^CASE-\\d+$'`,
+        ),
       )
       .orderBy(desc(employeeComplianceCases.caseNumber))
       .limit(1);
@@ -364,10 +403,10 @@ export const generateCaseNumber = async (): Promise<string> => {
 export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   // Validate organizationId (client ID) - only include if it's a valid UUID
   const validatedOrgId = validateOrganizationId(data.organizationId);
-  
+
   // Auto-generate case number if not provided
   const caseNumber = data.caseNumber || (await generateCaseNumber());
-  
+
   const insertData: any = {
     employeeId: data.employeeId,
     caseNumber: caseNumber,
@@ -376,7 +415,10 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
     status: data.status || "open",
     title: data.title,
     description: data.description,
-    openedOn: data.openedOn instanceof Date ? data.openedOn.toISOString().split('T')[0] : data.openedOn,
+    openedOn:
+      data.openedOn instanceof Date
+        ? data.openedOn.toISOString().split("T")[0]
+        : data.openedOn,
   };
 
   // Only include organizationId if it's a valid client UUID
@@ -386,59 +428,84 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
 
   if (data.jobId) insertData.jobId = data.jobId;
   if (data.notes) insertData.notes = data.notes;
-  if (data.dueDate) insertData.dueDate = data.dueDate instanceof Date ? data.dueDate.toISOString().split('T')[0] : data.dueDate;
+  if (data.dueDate)
+    insertData.dueDate =
+      data.dueDate instanceof Date
+        ? data.dueDate.toISOString().split("T")[0]
+        : data.dueDate;
   if (data.reportedBy) insertData.reportedBy = data.reportedBy;
   if (data.assignedTo) insertData.assignedTo = data.assignedTo;
   if (data.impactLevel) insertData.impactLevel = data.impactLevel;
-  if (data.correctiveAction) insertData.correctiveAction = data.correctiveAction;
-  if (data.preventiveAction) insertData.preventiveAction = data.preventiveAction;
+  if (data.correctiveAction)
+    insertData.correctiveAction = data.correctiveAction;
+  if (data.preventiveAction)
+    insertData.preventiveAction = data.preventiveAction;
   // Disciplinary Action fields
-  if (data.disciplinaryAction) insertData.disciplinaryAction = data.disciplinaryAction;
-  if (data.actionDate) insertData.actionDate = data.actionDate instanceof Date ? data.actionDate.toISOString().split('T')[0] : data.actionDate;
+  if (data.disciplinaryAction)
+    insertData.disciplinaryAction = data.disciplinaryAction;
+  if (data.actionDate)
+    insertData.actionDate =
+      data.actionDate instanceof Date
+        ? data.actionDate.toISOString().split("T")[0]
+        : data.actionDate;
   if (data.actionNotes) insertData.actionNotes = data.actionNotes;
-  if (data.performanceImpact !== undefined) insertData.performanceImpact = data.performanceImpact.toString();
+  if (data.performanceImpact !== undefined)
+    insertData.performanceImpact = data.performanceImpact.toString();
   if (data.attachments) insertData.attachments = data.attachments;
   if (data.evidencePhotos) insertData.evidencePhotos = data.evidencePhotos;
+  if (data.createdBy) insertData.createdBy = data.createdBy;
 
   const result = await db
     .insert(employeeComplianceCases)
     .values(insertData)
     .returning();
 
-  return result[0];
+  // Return enriched data with names (following cursor rule)
+  const inserted = result[0];
+  if (!inserted) throw new Error("Failed to create compliance case");
+  return await getComplianceCaseById(inserted.id);
 };
 
 // Update Compliance Case
 export const updateComplianceCase = async (
   id: string,
-  data: UpdateComplianceCaseData
+  data: UpdateComplianceCaseData,
 ) => {
   const updateData: any = { ...data };
-  
+
   // Handle date conversions
   if (data.dueDate) {
-    updateData.dueDate = data.dueDate instanceof Date ? data.dueDate.toISOString().split('T')[0] : data.dueDate;
+    updateData.dueDate =
+      data.dueDate instanceof Date
+        ? data.dueDate.toISOString().split("T")[0]
+        : data.dueDate;
   }
   if (data.resolvedDate) {
-    updateData.resolvedDate = data.resolvedDate instanceof Date ? data.resolvedDate.toISOString().split('T')[0] : data.resolvedDate;
+    updateData.resolvedDate =
+      data.resolvedDate instanceof Date
+        ? data.resolvedDate.toISOString().split("T")[0]
+        : data.resolvedDate;
   }
   if (data.actionDate) {
-    updateData.actionDate = data.actionDate instanceof Date ? data.actionDate.toISOString().split('T')[0] : data.actionDate;
+    updateData.actionDate =
+      data.actionDate instanceof Date
+        ? data.actionDate.toISOString().split("T")[0]
+        : data.actionDate;
   }
-  
+
   // Handle performance impact conversion
   if (data.performanceImpact !== undefined) {
     updateData.performanceImpact = data.performanceImpact.toString();
   }
-  
+
   const result = await db
     .update(employeeComplianceCases)
     .set(updateData)
     .where(
       and(
         eq(employeeComplianceCases.id, id),
-        eq(employeeComplianceCases.isDeleted, false)
-      )
+        eq(employeeComplianceCases.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -456,8 +523,8 @@ export const deleteComplianceCase = async (id: string) => {
     .where(
       and(
         eq(employeeComplianceCases.id, id),
-        eq(employeeComplianceCases.isDeleted, false)
-      )
+        eq(employeeComplianceCases.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -470,7 +537,7 @@ export const updateCaseStatus = async (
   status: string,
   notes?: string,
   resolvedBy?: string,
-  resolvedDate?: Date
+  resolvedDate?: Date,
 ) => {
   const updateData: any = {
     status,
@@ -479,7 +546,11 @@ export const updateCaseStatus = async (
 
   if (notes) updateData.notes = notes;
   if (resolvedBy) updateData.resolvedBy = resolvedBy;
-  if (resolvedDate) updateData.resolvedDate = resolvedDate instanceof Date ? resolvedDate.toISOString().split('T')[0] : resolvedDate;
+  if (resolvedDate)
+    updateData.resolvedDate =
+      resolvedDate instanceof Date
+        ? resolvedDate.toISOString().split("T")[0]
+        : resolvedDate;
 
   const result = await db
     .update(employeeComplianceCases)
@@ -487,8 +558,8 @@ export const updateCaseStatus = async (
     .where(
       and(
         eq(employeeComplianceCases.id, id),
-        eq(employeeComplianceCases.isDeleted, false)
-      )
+        eq(employeeComplianceCases.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -504,7 +575,7 @@ export const getViolationWatchlist = async (
     minViolations?: number;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
-  }
+  },
 ): Promise<{
   data: ViolationWatchlistItem[];
   total: number;
@@ -524,7 +595,7 @@ export const getViolationWatchlist = async (
     eq(employeeComplianceCases.employeeId, employees.id),
     eq(employeeComplianceCases.isDeleted, false),
   ];
-  
+
   // Only filter by organizationId if explicitly provided
   // If not provided, show all cases regardless of organizationId
   if (organizationId) {
@@ -532,8 +603,8 @@ export const getViolationWatchlist = async (
     caseJoinConditions.push(
       or(
         eq(employeeComplianceCases.organizationId, organizationId),
-        isNull(employeeComplianceCases.organizationId)
-      )!
+        isNull(employeeComplianceCases.organizationId),
+      )!,
     );
   }
   // If organizationId is not provided, don't add any org filter - show all cases
@@ -552,10 +623,7 @@ export const getViolationWatchlist = async (
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(
-      employeeComplianceCases,
-      and(...caseJoinConditions)
-    )
+    .leftJoin(employeeComplianceCases, and(...caseJoinConditions))
     .where(eq(employees.isDeleted, false))
     .groupBy(employees.id, users.id, departments.name)
     .having(sql`COUNT(${employeeComplianceCases.id}) >= ${minViolations}`);
@@ -568,10 +636,7 @@ export const getViolationWatchlist = async (
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(
-      employeeComplianceCases,
-      and(...caseJoinConditions)
-    )
+    .leftJoin(employeeComplianceCases, and(...caseJoinConditions))
     .where(eq(employees.isDeleted, false))
     .groupBy(employees.id, users.id, departments.name)
     .having(sql`COUNT(${employeeComplianceCases.id}) >= ${minViolations}`);
@@ -585,8 +650,8 @@ export const getViolationWatchlist = async (
     sortBy === "employeeName"
       ? users.fullName
       : sortBy === "department"
-      ? departments.name
-      : count(employeeComplianceCases.id);
+        ? departments.name
+        : count(employeeComplianceCases.id);
 
   const orderBy = sortOrder === "asc" ? asc(orderColumn) : desc(orderColumn);
 
@@ -627,7 +692,9 @@ export const getViolationCounts = async (filters: {
   // Base conditions
   const conditions = [
     eq(employeeViolationHistory.isDeleted, false),
-    ...(organizationId ? [eq(employeeViolationHistory.organizationId, organizationId)] : []),
+    ...(organizationId
+      ? [eq(employeeViolationHistory.organizationId, organizationId)]
+      : []),
     ...(jobId ? [eq(employeeComplianceCases.jobId, jobId)] : []),
     ...(employeeId
       ? [eq(employeeViolationHistory.employeeId, employeeId)]
@@ -635,9 +702,7 @@ export const getViolationCounts = async (filters: {
     ...(dateFrom
       ? [gte(employeeViolationHistory.violationDate, dateFrom)]
       : []),
-    ...(dateTo
-      ? [lte(employeeViolationHistory.violationDate, dateTo)]
-      : []),
+    ...(dateTo ? [lte(employeeViolationHistory.violationDate, dateTo)] : []),
   ];
 
   // Build query based on groupBy
@@ -676,7 +741,7 @@ export const getViolationCounts = async (filters: {
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(
       employeeComplianceCases,
-      eq(employeeViolationHistory.complianceCaseId, employeeComplianceCases.id)
+      eq(employeeViolationHistory.complianceCaseId, employeeComplianceCases.id),
     )
     .where(and(...conditions))
     .groupBy(...groupByFields)
@@ -696,10 +761,16 @@ export const getViolationCounts = async (filters: {
 
 // Create Employee Violation History
 export const createEmployeeViolation = async (data: {
-  organizationId: string;
+  organizationId?: string;
   employeeId: number;
   complianceCaseId?: string;
-  violationType: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
+  violationType:
+    | "safety"
+    | "timesheet"
+    | "conduct"
+    | "training"
+    | "certification"
+    | "other";
   violationDate: string; // YYYY-MM-DD format
   description: string;
   severity: "low" | "medium" | "high" | "critical";
@@ -712,6 +783,11 @@ export const createEmployeeViolation = async (data: {
   resolutionNotes?: string;
   createdBy?: string;
 }) => {
+  if (data.organizationId == null) {
+    throw new Error(
+      "organizationId (client id) is required in body to create a violation",
+    );
+  }
   const [violation] = await db
     .insert(employeeViolationHistory)
     .values({
@@ -725,7 +801,9 @@ export const createEmployeeViolation = async (data: {
       disciplinaryAction: data.disciplinaryAction || null,
       actionDate: data.actionDate || null,
       actionNotes: data.actionNotes || null,
-      performanceImpact: data.performanceImpact ? data.performanceImpact.toString() : null,
+      performanceImpact: data.performanceImpact
+        ? data.performanceImpact.toString()
+        : null,
       isResolved: data.isResolved || false,
       resolutionDate: data.resolutionDate || null,
       resolutionNotes: data.resolutionNotes || null,

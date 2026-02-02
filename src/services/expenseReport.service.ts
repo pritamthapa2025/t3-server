@@ -9,8 +9,8 @@ import {
   gte,
   lte,
   ilike,
-  inArray,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
   expenseReports,
@@ -26,8 +26,13 @@ import { logExpenseHistory } from "./expense.service.js";
 // Expense Reports
 // ============================
 
+// Aliases for joining users table multiple times (createdBy, approvedBy, rejectedBy)
+const createdByUser = alias(users, "created_by_user");
+const approvedByUser = alias(users, "approved_by_user");
+const rejectedByUser = alias(users, "rejected_by_user");
+
 export const getExpenseReports = async (
-  organizationId: string,
+  organizationId: string | undefined,
   offset: number,
   limit: number,
   filters?: {
@@ -44,7 +49,10 @@ export const getExpenseReports = async (
     includeDeleted?: boolean;
   },
 ) => {
-  let whereConditions = [eq(expenseReports.organizationId, organizationId)];
+  const whereConditions = [];
+  if (organizationId != null) {
+    whereConditions.push(eq(expenseReports.organizationId, organizationId));
+  }
 
   // Include deleted filter
   if (!filters?.includeDeleted) {
@@ -168,38 +176,9 @@ export const getExpenseReports = async (
 
   const total = totalResult[0]?.count || 0;
 
-  // Get unique user IDs and fetch their names in batch
-  const userIds = Array.from(
-    new Set([
-      ...result.map((r) => r.createdBy).filter((id): id is string => !!id),
-      ...result.map((r) => r.approvedBy).filter((id): id is string => !!id),
-      ...result.map((r) => r.rejectedBy).filter((id): id is string => !!id),
-    ]),
-  );
-  const userMap = new Map<string, string>();
-  if (userIds.length > 0) {
-    const usersResult = await db
-      .select({
-        id: users.id,
-        fullName: users.fullName,
-      })
-      .from(users)
-      .where(inArray(users.id, userIds));
-    usersResult.forEach((u) => userMap.set(u.id, u.fullName));
-  }
-
-  // Add employee info and user names to results
+  // Add employee info to results
   const reportsWithEmployee = result.map((report) => ({
     ...report,
-    createdByName: report.createdBy
-      ? userMap.get(report.createdBy) || null
-      : null,
-    approvedByName: report.approvedBy
-      ? userMap.get(report.approvedBy) || null
-      : null,
-    rejectedByName: report.rejectedBy
-      ? userMap.get(report.rejectedBy) || null
-      : null,
     employee: report.employeeFullName
       ? {
           id: report.employeeId,
@@ -225,6 +204,16 @@ export const getExpenseReportById = async (
   organizationId: string | undefined,
   id: string,
 ) => {
+  const conditions = [
+    eq(expenseReports.id, id),
+    eq(expenseReports.isDeleted, false),
+  ];
+  if (organizationId != null) {
+    conditions.push(eq(expenseReports.organizationId, organizationId));
+  }
+  // Employee user alias (for employee data)
+  const employeeUser = alias(users, "employee_user");
+
   // Get main report data
   const reportResult = await db
     .select({
@@ -256,23 +245,20 @@ export const getExpenseReportById = async (
       createdAt: expenseReports.createdAt,
       updatedAt: expenseReports.updatedAt,
       // Employee data
-      employeeFullName: users.fullName,
-      employeeEmail: users.email,
+      employeeFullName: employeeUser.fullName,
+      employeeEmail: employeeUser.email,
+      // User name fields
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
+      rejectedByName: rejectedByUser.fullName,
     })
     .from(expenseReports)
     .leftJoin(employees, eq(expenseReports.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(() => {
-      const conditions = [
-        eq(expenseReports.id, id),
-        organizationId
-          ? eq(expenseReports.organizationId, organizationId)
-          : undefined,
-        eq(expenseReports.isDeleted, false),
-      ].filter(Boolean) as any[];
-
-      return conditions.length > 0 ? and(...conditions) : undefined;
-    })
+    .leftJoin(employeeUser, eq(employees.userId, employeeUser.id))
+    .leftJoin(createdByUser, eq(expenseReports.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(expenseReports.approvedBy, approvedByUser.id))
+    .leftJoin(rejectedByUser, eq(expenseReports.rejectedBy, rejectedByUser.id))
+    .where(and(...conditions))
     .limit(1);
 
   if (!reportResult[0]) {
@@ -281,25 +267,13 @@ export const getExpenseReportById = async (
 
   const report = reportResult[0];
 
-  // Get user names for createdBy, approvedBy, rejectedBy
-  const userIds = [
-    report.createdBy,
-    report.approvedBy,
-    report.rejectedBy,
-  ].filter((id): id is string => !!id);
-
-  const userMap = new Map<string, string>();
-  if (userIds.length > 0) {
-    const usersResult = await db
-      .select({
-        id: users.id,
-        fullName: users.fullName,
-      })
-      .from(users)
-      .where(inArray(users.id, userIds));
-    usersResult.forEach((u) => userMap.set(u.id, u.fullName));
+  const itemConditions = [
+    eq(expenseReportItems.reportId, id),
+    eq(expenseReportItems.isDeleted, false),
+  ];
+  if (organizationId != null) {
+    itemConditions.push(eq(expenseReportItems.organizationId, organizationId));
   }
-
   // Get report items (expenses)
   const itemsResult = await db
     .select({
@@ -325,36 +299,31 @@ export const getExpenseReportById = async (
     .from(expenseReportItems)
     .leftJoin(expenses, eq(expenseReportItems.expenseId, expenses.id))
     .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-    .where(
-      and(
-        eq(expenseReportItems.reportId, id),
-        organizationId
-          ? eq(expenseReportItems.organizationId, organizationId)
-          : undefined,
-        eq(expenseReportItems.isDeleted, false),
-      ),
-    )
+    .where(and(...itemConditions))
     .orderBy(
       asc(expenseReportItems.sortOrder),
       asc(expenseReportItems.addedAt),
     );
 
+  const {
+    createdByName,
+    approvedByName,
+    rejectedByName,
+    employeeFullName,
+    employeeEmail,
+    ...reportData
+  } = report;
+
   return {
-    ...report,
-    createdByName: report.createdBy
-      ? userMap.get(report.createdBy) || null
-      : null,
-    approvedByName: report.approvedBy
-      ? userMap.get(report.approvedBy) || null
-      : null,
-    rejectedByName: report.rejectedBy
-      ? userMap.get(report.rejectedBy) || null
-      : null,
-    employee: report.employeeFullName
+    ...reportData,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
+    employee: employeeFullName
       ? {
           id: report.employeeId,
-          fullName: report.employeeFullName,
-          email: report.employeeEmail,
+          fullName: employeeFullName,
+          email: employeeEmail,
         }
       : undefined,
     items: itemsResult.map((item) => ({
@@ -385,19 +354,26 @@ export const getExpenseReportById = async (
 };
 
 export const createExpenseReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   employeeId: number,
   reportData: any,
   createdBy: string,
 ) => {
-  // Generate report number
-  const reportNumber = await generateReportNumber(organizationId);
+  // organization_id is not on org.expenses; caller must pass organizationId when creating a report
+  const resolvedOrgId = organizationId;
+  if (resolvedOrgId == null) {
+    throw new Error(
+      "Organization ID is required when creating an expense report.",
+    );
+  }
 
-  // Validate that all expenses belong to the employee and are in draft/submitted status
+  // Generate report number
+  const reportNumber = await generateReportNumber(resolvedOrgId);
+
+  // Validate that all expenses exist and are in draft/submitted status
   const expenseValidation = await db
     .select({
       id: expenses.id,
-      employeeId: expenses.employeeId,
       status: expenses.status,
       amount: expenses.amount,
       isReimbursable: expenses.isReimbursable,
@@ -409,19 +385,15 @@ export const createExpenseReport = async (
     .where(
       and(
         sql`${expenses.id} = ANY(${reportData.expenseIds})`,
-        eq(expenses.organizationId, organizationId),
         eq(expenses.isDeleted, false),
       ),
     );
 
-  // Validate expenses
-  const invalidExpenses = expenseValidation.filter(
-    (exp) =>
-      exp.employeeId !== employeeId ||
-      !["draft", "submitted"].includes(exp.status),
+  // Filter to expenses that are draft/submitted
+  const validForReport = expenseValidation.filter((exp) =>
+    ["draft", "submitted"].includes(exp.status),
   );
-
-  if (invalidExpenses.length > 0) {
+  if (validForReport.length !== expenseValidation.length) {
     throw new Error("Some expenses are not valid for this report");
   }
 
@@ -433,7 +405,7 @@ export const createExpenseReport = async (
     .insert(expenseReports)
     .values({
       reportNumber,
-      organizationId,
+      organizationId: resolvedOrgId,
       employeeId,
       ...reportData,
       ...totals,
@@ -451,7 +423,7 @@ export const createExpenseReport = async (
       db
         .insert(expenseReportItems)
         .values({
-          organizationId,
+          organizationId: resolvedOrgId,
           reportId: report!.id,
           expenseId,
           sortOrder: index,
@@ -466,13 +438,32 @@ export const createExpenseReport = async (
 };
 
 export const updateExpenseReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   id: string,
   updateData: any,
   _updatedBy: string,
 ) => {
+  const reportConditions = [
+    eq(expenseReports.id, id),
+    eq(expenseReports.isDeleted, false),
+  ];
+  if (organizationId != null) {
+    reportConditions.push(eq(expenseReports.organizationId, organizationId));
+  }
+
+  // When organizationId undefined and expenseIds are being updated, derive from existing report
+  let resolvedOrgId = organizationId;
+  if (updateData.expenseIds && resolvedOrgId == null) {
+    const [existing] = await db
+      .select({ organizationId: expenseReports.organizationId })
+      .from(expenseReports)
+      .where(and(...reportConditions))
+      .limit(1);
+    resolvedOrgId = existing?.organizationId ?? undefined;
+  }
+
   // If expenseIds are being updated, recalculate totals
-  if (updateData.expenseIds) {
+  if (updateData.expenseIds && resolvedOrgId != null) {
     const expenseValidation = await db
       .select({
         id: expenses.id,
@@ -486,7 +477,6 @@ export const updateExpenseReport = async (
       .where(
         and(
           sql`${expenses.id} = ANY(${updateData.expenseIds})`,
-          eq(expenses.organizationId, organizationId),
           eq(expenses.isDeleted, false),
         ),
       );
@@ -494,22 +484,21 @@ export const updateExpenseReport = async (
     const totals = calculateReportTotals(expenseValidation);
     Object.assign(updateData, totals);
 
+    const itemConditions = [eq(expenseReportItems.reportId, id)];
+    if (resolvedOrgId != null) {
+      itemConditions.push(eq(expenseReportItems.organizationId, resolvedOrgId));
+    }
     // Update report items
     await db
       .update(expenseReportItems)
       .set({ isDeleted: true })
-      .where(
-        and(
-          eq(expenseReportItems.reportId, id),
-          eq(expenseReportItems.organizationId, organizationId),
-        ),
-      );
+      .where(and(...itemConditions));
 
     // Create new items
     await Promise.all(
       updateData.expenseIds.map((expenseId: string, index: number) =>
         db.insert(expenseReportItems).values({
-          organizationId,
+          organizationId: resolvedOrgId,
           reportId: id,
           expenseId,
           sortOrder: index,
@@ -526,45 +515,46 @@ export const updateExpenseReport = async (
       ...updateData,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenseReports.id, id),
-        eq(expenseReports.organizationId, organizationId),
-        eq(expenseReports.isDeleted, false),
-      ),
-    )
+    .where(and(...reportConditions))
     .returning();
 
   return updated[0] || null;
 };
 
 export const deleteExpenseReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   id: string,
 ) => {
+  const conditions = [eq(expenseReports.id, id)];
+  if (organizationId != null) {
+    conditions.push(eq(expenseReports.organizationId, organizationId));
+  }
   const deleted = await db
     .update(expenseReports)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenseReports.id, id),
-        eq(expenseReports.organizationId, organizationId),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
 
   return deleted[0] || null;
 };
 
 export const submitExpenseReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   id: string,
   submittedBy: string,
   notes?: string,
 ) => {
+  const conditions = [
+    eq(expenseReports.id, id),
+    eq(expenseReports.status, "draft"),
+    eq(expenseReports.isDeleted, false),
+  ];
+  if (organizationId != null) {
+    conditions.push(eq(expenseReports.organizationId, organizationId));
+  }
   const updated = await db
     .update(expenseReports)
     .set({
@@ -573,28 +563,21 @@ export const submitExpenseReport = async (
       notes: notes || undefined,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenseReports.id, id),
-        eq(expenseReports.organizationId, organizationId),
-        eq(expenseReports.status, "draft"),
-        eq(expenseReports.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
 
-  if (updated[0]) {
+  const resolvedOrgId = organizationId ?? updated[0]?.organizationId;
+  if (updated[0] && resolvedOrgId != null) {
+    const itemConditions = [
+      eq(expenseReportItems.reportId, id),
+      eq(expenseReportItems.isDeleted, false),
+    ];
+    itemConditions.push(eq(expenseReportItems.organizationId, resolvedOrgId));
     // Update all expenses in the report to submitted status
     const reportItems = await db
       .select({ expenseId: expenseReportItems.expenseId })
       .from(expenseReportItems)
-      .where(
-        and(
-          eq(expenseReportItems.reportId, id),
-          eq(expenseReportItems.organizationId, organizationId),
-          eq(expenseReportItems.isDeleted, false),
-        ),
-      );
+      .where(and(...itemConditions));
 
     await Promise.all(
       reportItems.map((item) =>
@@ -606,11 +589,7 @@ export const submitExpenseReport = async (
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(expenses.id, item.expenseId),
-              eq(expenses.organizationId, organizationId),
-              eq(expenses.status, "draft"),
-            ),
+            and(eq(expenses.id, item.expenseId), eq(expenses.status, "draft")),
           ),
       ),
     );
@@ -619,7 +598,7 @@ export const submitExpenseReport = async (
     await Promise.all(
       reportItems.map((item) =>
         logExpenseHistory(
-          organizationId,
+          resolvedOrgId,
           item.expenseId,
           "submitted_via_report",
           `Expense submitted via report ${updated[0]?.reportNumber}`,

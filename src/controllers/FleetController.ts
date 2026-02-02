@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import {
   getVehicles,
   getVehicleById,
+  getVehicleSettings,
+  updateVehicleSettings,
   createVehicle,
   updateVehicle,
   deleteVehicle,
@@ -32,8 +34,24 @@ import {
   createCheckInOutRecord,
   updateCheckInOutRecord,
   deleteCheckInOutRecord,
+  getAssignmentHistoryByVehicleId,
+  getVehicleMetrics,
+  getVehicleMedia,
+  getVehicleMediaById,
+  createVehicleMedia,
+  updateVehicleMedia,
+  deleteVehicleMedia,
+  getVehicleDocuments,
+  getVehicleDocumentById,
+  createVehicleDocument,
+  updateVehicleDocument,
+  deleteVehicleDocument,
   getFleetDashboardKPIs,
 } from "../services/fleet.service.js";
+import {
+  uploadToSpaces,
+  deleteFromSpaces,
+} from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 
 // ============================
@@ -42,7 +60,7 @@ import { logger } from "../utils/logger.js";
 
 export const getFleetDashboardKPIsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const kpis = await getFleetDashboardKPIs();
@@ -69,14 +87,8 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const {
-      search,
-      status,
-      type,
-      assignedToEmployeeId,
-      sortBy,
-      sortOrder,
-    } = req.query;
+    const { search, status, type, assignedToEmployeeId, sortBy, sortOrder } =
+      req.query;
 
     const offset = (page - 1) * limit;
 
@@ -143,7 +155,25 @@ export const getVehicleByIdHandler = async (req: Request, res: Response) => {
 
 export const createVehicleHandler = async (req: Request, res: Response) => {
   try {
-    const vehicleData = req.body;
+    const vehicleData = { ...req.body };
+
+    // Upload vehicle image to Digital Ocean Spaces if file provided (field: "vehicle")
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "vehicle-images",
+        );
+        vehicleData.image = uploadResult.url;
+      } catch (uploadError: unknown) {
+        logger.logApiError("Vehicle image upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload vehicle image. Please try again.",
+        });
+      }
+    }
 
     const newVehicle = await createVehicle(vehicleData);
 
@@ -178,7 +208,38 @@ export const updateVehicleHandler = async (req: Request, res: Response) => {
         message: "Vehicle ID is required",
       });
     }
-    const updateData = req.body;
+    const updateData = { ...req.body };
+
+    // Upload vehicle image to Digital Ocean Spaces if file provided (field: "vehicle")
+    if (req.file) {
+      const currentVehicle = await getVehicleById(id);
+      if (currentVehicle?.image) {
+        try {
+          await deleteFromSpaces(currentVehicle.image);
+          logger.info("Old vehicle image deleted from DigitalOcean Spaces");
+        } catch (error) {
+          logger.logApiError(
+            "Error deleting old vehicle image from storage",
+            error,
+            req,
+          );
+        }
+      }
+      try {
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "vehicle-images",
+        );
+        updateData.image = uploadResult.url;
+      } catch (uploadError: unknown) {
+        logger.logApiError("Vehicle image upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload vehicle image. Please try again.",
+        });
+      }
+    }
 
     const updatedVehicle = await updateVehicle(id, updateData);
 
@@ -238,12 +299,80 @@ export const deleteVehicleHandler = async (req: Request, res: Response) => {
 };
 
 // ============================
+// VEHICLE SETTINGS HANDLERS
+// ============================
+
+export const getVehicleSettingsHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
+    const settings = await getVehicleSettings(id);
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle settings", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateVehicleSettingsHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
+    const settings = await updateVehicleSettings(id, req.body);
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    logger.logApiError("Error updating vehicle settings", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
 // MAINTENANCE RECORDS HANDLERS
 // ============================
 
 export const getMaintenanceRecordsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -260,8 +389,9 @@ export const getMaintenanceRecordsHandler = async (
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-
-    if (vehicleId) filters.vehicleId = vehicleId as string;
+    const vehicleIdFromPath = req.params.vehicleId;
+    if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
+    else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (status) filters.status = status as string;
     if (priority) filters.priority = priority as string;
     if (sortBy) filters.sortBy = sortBy as string;
@@ -287,10 +417,10 @@ export const getMaintenanceRecordsHandler = async (
 
 export const getMaintenanceRecordByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -304,6 +434,13 @@ export const getMaintenanceRecordByIdHandler = async (
       return res.status(404).json({
         success: false,
         message: "Maintenance record not found",
+      });
+    }
+
+    if (vehicleIdParam && record.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Maintenance record not found for this vehicle",
       });
     }
 
@@ -323,10 +460,15 @@ export const getMaintenanceRecordByIdHandler = async (
 
 export const createMaintenanceRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const recordData = req.body;
+    const vehicleIdFromPath = req.params.vehicleId;
+    const recordData = vehicleIdFromPath
+      ? { ...req.body, vehicleId: vehicleIdFromPath }
+      : req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (recordData as any).createdBy = createdBy;
 
     const newRecord = await createMaintenanceRecord(recordData);
 
@@ -354,10 +496,10 @@ export const createMaintenanceRecordHandler = async (
 
 export const updateMaintenanceRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -372,6 +514,12 @@ export const updateMaintenanceRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Maintenance record not found",
+      });
+    }
+    if (vehicleIdParam && updatedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Maintenance record not found for this vehicle",
       });
     }
 
@@ -392,10 +540,10 @@ export const updateMaintenanceRecordHandler = async (
 
 export const deleteMaintenanceRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -409,6 +557,12 @@ export const deleteMaintenanceRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Maintenance record not found",
+      });
+    }
+    if (vehicleIdParam && deletedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Maintenance record not found for this vehicle",
       });
     }
 
@@ -446,8 +600,9 @@ export const getRepairRecordsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-
-    if (vehicleId) filters.vehicleId = vehicleId as string;
+    const vehicleIdFromPath = req.params.vehicleId;
+    if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
+    else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (status) filters.status = status as string;
     if (priority) filters.priority = priority as string;
     if (sortBy) filters.sortBy = sortBy as string;
@@ -473,10 +628,10 @@ export const getRepairRecordsHandler = async (req: Request, res: Response) => {
 
 export const getRepairRecordByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -490,6 +645,12 @@ export const getRepairRecordByIdHandler = async (
       return res.status(404).json({
         success: false,
         message: "Repair record not found",
+      });
+    }
+    if (vehicleIdParam && record.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Repair record not found for this vehicle",
       });
     }
 
@@ -509,10 +670,15 @@ export const getRepairRecordByIdHandler = async (
 
 export const createRepairRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const recordData = req.body;
+    const vehicleIdFromPath = req.params.vehicleId;
+    const recordData = vehicleIdFromPath
+      ? { ...req.body, vehicleId: vehicleIdFromPath }
+      : req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (recordData as any).createdBy = createdBy;
 
     const newRecord = await createRepairRecord(recordData);
 
@@ -540,10 +706,10 @@ export const createRepairRecordHandler = async (
 
 export const updateRepairRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -558,6 +724,12 @@ export const updateRepairRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Repair record not found",
+      });
+    }
+    if (vehicleIdParam && updatedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Repair record not found for this vehicle",
       });
     }
 
@@ -578,10 +750,10 @@ export const updateRepairRecordHandler = async (
 
 export const deleteRepairRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -595,6 +767,12 @@ export const deleteRepairRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Repair record not found",
+      });
+    }
+    if (vehicleIdParam && deletedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Repair record not found for this vehicle",
       });
     }
 
@@ -618,19 +796,19 @@ export const deleteRepairRecordHandler = async (
 
 export const getSafetyInspectionsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const { vehicleId, overallStatus, sortBy, sortOrder } =
-      req.query;
+    const { vehicleId, overallStatus, sortBy, sortOrder } = req.query;
 
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-
-    if (vehicleId) filters.vehicleId = vehicleId as string;
+    const vehicleIdFromPath = req.params.vehicleId;
+    if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
+    else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (overallStatus) filters.overallStatus = overallStatus as string;
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
@@ -655,10 +833,10 @@ export const getSafetyInspectionsHandler = async (
 
 export const getSafetyInspectionByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -672,6 +850,12 @@ export const getSafetyInspectionByIdHandler = async (
       return res.status(404).json({
         success: false,
         message: "Safety inspection not found",
+      });
+    }
+    if (vehicleIdParam && inspection.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Safety inspection not found for this vehicle",
       });
     }
 
@@ -691,10 +875,52 @@ export const getSafetyInspectionByIdHandler = async (
 
 export const createSafetyInspectionHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const inspectionData = req.body;
+    const vehicleIdFromPath = req.params.vehicleId;
+    const inspectionData = vehicleIdFromPath
+      ? { ...req.body, vehicleId: vehicleIdFromPath }
+      : req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (inspectionData as any).createdBy = createdBy;
+
+    // Handle multiple image uploads (exterior_0, exterior_1, interior_0, interior_1, etc.)
+    const exteriorPhotos: string[] = [];
+    const interiorPhotos: string[] = [];
+
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "inspection-photos",
+          );
+
+          // Determine if it's exterior or interior based on fieldname
+          if (file.fieldname.startsWith("exterior_")) {
+            exteriorPhotos.push(uploadResult.url);
+          } else if (file.fieldname.startsWith("interior_")) {
+            interiorPhotos.push(uploadResult.url);
+          }
+        } catch (uploadError: unknown) {
+          logger.logApiError("Inspection photo upload error", uploadError, req);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload inspection photos. Please try again.",
+          });
+        }
+      }
+    }
+
+    // Add uploaded photo URLs to inspection data
+    if (exteriorPhotos.length > 0) {
+      inspectionData.exteriorPhotos = exteriorPhotos;
+    }
+    if (interiorPhotos.length > 0) {
+      inspectionData.interiorPhotos = interiorPhotos;
+    }
 
     const newInspection = await createSafetyInspection(inspectionData);
 
@@ -722,10 +948,10 @@ export const createSafetyInspectionHandler = async (
 
 export const updateSafetyInspectionHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -734,12 +960,55 @@ export const updateSafetyInspectionHandler = async (
     }
     const updateData = req.body;
 
+    // Handle multiple image uploads (exterior_0, exterior_1, interior_0, interior_1, etc.)
+    const exteriorPhotos: string[] = [];
+    const interiorPhotos: string[] = [];
+
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "inspection-photos",
+          );
+
+          // Determine if it's exterior or interior based on fieldname
+          if (file.fieldname.startsWith("exterior_")) {
+            exteriorPhotos.push(uploadResult.url);
+          } else if (file.fieldname.startsWith("interior_")) {
+            interiorPhotos.push(uploadResult.url);
+          }
+        } catch (uploadError: unknown) {
+          logger.logApiError("Inspection photo upload error", uploadError, req);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload inspection photos. Please try again.",
+          });
+        }
+      }
+    }
+
+    // Add uploaded photo URLs to update data (merge with existing if any)
+    if (exteriorPhotos.length > 0) {
+      updateData.exteriorPhotos = exteriorPhotos;
+    }
+    if (interiorPhotos.length > 0) {
+      updateData.interiorPhotos = interiorPhotos;
+    }
+
     const updatedInspection = await updateSafetyInspection(id, updateData);
 
     if (!updatedInspection) {
       return res.status(404).json({
         success: false,
         message: "Safety inspection not found",
+      });
+    }
+    if (vehicleIdParam && updatedInspection.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Safety inspection not found for this vehicle",
       });
     }
 
@@ -760,10 +1029,10 @@ export const updateSafetyInspectionHandler = async (
 
 export const deleteSafetyInspectionHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -777,6 +1046,12 @@ export const deleteSafetyInspectionHandler = async (
       return res.status(404).json({
         success: false,
         message: "Safety inspection not found",
+      });
+    }
+    if (vehicleIdParam && deletedInspection.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Safety inspection not found for this vehicle",
       });
     }
 
@@ -800,10 +1075,10 @@ export const deleteSafetyInspectionHandler = async (
 
 export const getSafetyInspectionItemsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { inspectionId } = req.params;
+    const { inspectionId } = req.params; // works for both /inspections/:inspectionId/items and /vehicles/:vehicleId/inspections/:inspectionId/items
     if (!inspectionId) {
       return res.status(400).json({
         success: false,
@@ -814,7 +1089,7 @@ export const getSafetyInspectionItemsHandler = async (
     const items = await getSafetyInspectionItems(inspectionId);
 
     logger.info(
-      `Safety inspection items for ${inspectionId} fetched successfully`
+      `Safety inspection items for ${inspectionId} fetched successfully`,
     );
     return res.status(200).json({
       success: true,
@@ -831,7 +1106,7 @@ export const getSafetyInspectionItemsHandler = async (
 
 export const createSafetyInspectionItemHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const itemData = req.body;
@@ -868,14 +1143,14 @@ export const getFuelRecordsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const { vehicleId, fuelType, sortBy, sortOrder } =
-      req.query;
+    const { vehicleId, fuelType, sortBy, sortOrder } = req.query;
 
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-
-    if (vehicleId) filters.vehicleId = vehicleId as string;
+    const vehicleIdFromPath = req.params.vehicleId;
+    if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
+    else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (fuelType) filters.fuelType = fuelType as string;
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
@@ -898,12 +1173,9 @@ export const getFuelRecordsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getFuelRecordByIdHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const getFuelRecordByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -917,6 +1189,12 @@ export const getFuelRecordByIdHandler = async (
       return res.status(404).json({
         success: false,
         message: "Fuel record not found",
+      });
+    }
+    if (vehicleIdParam && record.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Fuel record not found for this vehicle",
       });
     }
 
@@ -936,7 +1214,12 @@ export const getFuelRecordByIdHandler = async (
 
 export const createFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const recordData = req.body;
+    const vehicleIdFromPath = req.params.vehicleId;
+    const recordData = vehicleIdFromPath
+      ? { ...req.body, vehicleId: vehicleIdFromPath }
+      : req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (recordData as any).createdBy = createdBy;
 
     const newRecord = await createFuelRecord(recordData);
 
@@ -964,7 +1247,7 @@ export const createFuelRecordHandler = async (req: Request, res: Response) => {
 
 export const updateFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -979,6 +1262,12 @@ export const updateFuelRecordHandler = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: "Fuel record not found",
+      });
+    }
+    if (vehicleIdParam && updatedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Fuel record not found for this vehicle",
       });
     }
 
@@ -999,7 +1288,7 @@ export const updateFuelRecordHandler = async (req: Request, res: Response) => {
 
 export const deleteFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1013,6 +1302,12 @@ export const deleteFuelRecordHandler = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: "Fuel record not found",
+      });
+    }
+    if (vehicleIdParam && deletedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Fuel record not found for this vehicle",
       });
     }
 
@@ -1036,21 +1331,20 @@ export const deleteFuelRecordHandler = async (req: Request, res: Response) => {
 
 export const getCheckInOutRecordsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const { vehicleId, type, driverId, sortBy, sortOrder } =
-      req.query;
+    const { vehicleId, type, sortBy, sortOrder } = req.query;
 
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-
-    if (vehicleId) filters.vehicleId = vehicleId as string;
+    const vehicleIdFromPath = req.params.vehicleId;
+    if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
+    else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (type) filters.type = type as string;
-    if (driverId) filters.driverId = parseInt(driverId as string);
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
 
@@ -1074,10 +1368,10 @@ export const getCheckInOutRecordsHandler = async (
 
 export const getCheckInOutRecordByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1091,6 +1385,12 @@ export const getCheckInOutRecordByIdHandler = async (
       return res.status(404).json({
         success: false,
         message: "Check-in/out record not found",
+      });
+    }
+    if (vehicleIdParam && record.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Check-in/out record not found for this vehicle",
       });
     }
 
@@ -1110,10 +1410,15 @@ export const getCheckInOutRecordByIdHandler = async (
 
 export const createCheckInOutRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const recordData = req.body;
+    const vehicleIdFromPath = req.params.vehicleId;
+    const recordData = vehicleIdFromPath
+      ? { ...req.body, vehicleId: vehicleIdFromPath }
+      : req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (recordData as any).createdBy = createdBy;
 
     const newRecord = await createCheckInOutRecord(recordData);
 
@@ -1141,10 +1446,10 @@ export const createCheckInOutRecordHandler = async (
 
 export const updateCheckInOutRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1159,6 +1464,12 @@ export const updateCheckInOutRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Check-in/out record not found",
+      });
+    }
+    if (vehicleIdParam && updatedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Check-in/out record not found for this vehicle",
       });
     }
 
@@ -1179,10 +1490,10 @@ export const updateCheckInOutRecordHandler = async (
 
 export const deleteCheckInOutRecordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const { id, vehicleId: vehicleIdParam } = req.params;
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1196,6 +1507,12 @@ export const deleteCheckInOutRecordHandler = async (
       return res.status(404).json({
         success: false,
         message: "Check-in/out record not found",
+      });
+    }
+    if (vehicleIdParam && deletedRecord.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Check-in/out record not found for this vehicle",
       });
     }
 
@@ -1213,3 +1530,542 @@ export const deleteCheckInOutRecordHandler = async (
   }
 };
 
+// ============================
+// ASSIGNMENT HISTORY HANDLERS
+// ============================
+
+export const getAssignmentHistoryHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status as string | undefined;
+    const sortBy = (req.query.sortBy as string) || "startDate";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
+
+    const result = await getAssignmentHistoryByVehicleId(
+      vehicleId,
+      offset,
+      limit,
+      {
+        ...(status ? { status } : {}),
+        sortBy,
+        sortOrder,
+      },
+    );
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching assignment history", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// VEHICLE METRICS HANDLERS
+// ============================
+
+export const getVehicleMetricsHandler = async (req: Request, res: Response) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const metrics = await getVehicleMetrics(vehicleId);
+    if (!metrics) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: metrics,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle metrics", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// VEHICLE MEDIA HANDLERS
+// ============================
+
+export const getVehicleMediaHandler = async (req: Request, res: Response) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+    const sortBy = (req.query.sortBy as string) || "createdAt";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
+
+    const result = await getVehicleMedia(vehicleId, offset, limit, {
+      sortBy,
+      sortOrder,
+    });
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle media", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getVehicleMediaByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const media = await getVehicleMediaById(id!);
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found",
+      });
+    }
+    if (vehicleIdParam && media.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found for this vehicle",
+      });
+    }
+    return res.status(200).json({ success: true, data: media });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle media", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createVehicleMediaHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const uploadedBy = req.user?.id;
+    if (!uploadedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    const body = req.body as {
+      name?: string;
+      type?: string;
+      size?: string;
+      url?: string;
+      thumbnailUrl?: string;
+      tags?: unknown;
+    };
+    const mediaData: any = {
+      vehicleId,
+      name: body.name || (req.file?.originalname ?? "Unnamed"),
+      uploadedBy,
+    };
+    if (body.type) mediaData.type = body.type;
+    if (body.size) mediaData.size = body.size;
+    if (body.thumbnailUrl) mediaData.thumbnailUrl = body.thumbnailUrl;
+    if (body.tags !== undefined) mediaData.tags = body.tags;
+
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "vehicle-media",
+        );
+        mediaData.url = uploadResult.url;
+        mediaData.type = mediaData.type || req.file.mimetype;
+        mediaData.size = String((req.file.size / (1024 * 1024)).toFixed(2));
+      } catch (uploadError: unknown) {
+        logger.logApiError("Vehicle media upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload file",
+        });
+      }
+    } else if (body.url) {
+      mediaData.url = body.url;
+    }
+
+    const newMedia = await createVehicleMedia(mediaData);
+    return res.status(201).json({
+      success: true,
+      data: newMedia,
+      message: "Vehicle media created successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error creating vehicle media", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+export const updateVehicleMediaHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const media = await getVehicleMediaById(id!);
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found",
+      });
+    }
+    if (vehicleIdParam && media.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found for this vehicle",
+      });
+    }
+    const updateData = req.body;
+    if (req.file) {
+      if (media.url) {
+        try {
+          await deleteFromSpaces(media.url);
+        } catch {
+          // ignore
+        }
+      }
+      const uploadResult = await uploadToSpaces(
+        req.file.buffer,
+        req.file.originalname,
+        "vehicle-media",
+      );
+      (updateData as any).url = uploadResult.url;
+      (updateData as any).type = req.file.mimetype;
+      (updateData as any).size = String(
+        (req.file.size / (1024 * 1024)).toFixed(2),
+      );
+    }
+    const updated = await updateVehicleMedia(id!, updateData);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: updated,
+      message: "Vehicle media updated successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating vehicle media", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+export const deleteVehicleMediaHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const media = await getVehicleMediaById(id!);
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found",
+      });
+    }
+    if (vehicleIdParam && media.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle media not found for this vehicle",
+      });
+    }
+    await deleteVehicleMedia(id!);
+    if (media.url) {
+      try {
+        await deleteFromSpaces(media.url);
+      } catch {
+        // ignore
+      }
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle media deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting vehicle media", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+// ============================
+// VEHICLE DOCUMENTS HANDLERS
+// ============================
+
+export const getVehicleDocumentsHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+    const documentType = req.query.documentType as string | undefined;
+    const sortBy = (req.query.sortBy as string) || "createdAt";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
+
+    const filters: {
+      documentType?: string;
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+    } = { sortBy, sortOrder };
+    if (documentType) filters.documentType = documentType;
+
+    const result = await getVehicleDocuments(vehicleId, offset, limit, filters);
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle documents", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getVehicleDocumentByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const doc = await getVehicleDocumentById(id!);
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found",
+      });
+    }
+    if (vehicleIdParam && doc.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found for this vehicle",
+      });
+    }
+    return res.status(200).json({ success: true, data: doc });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createVehicleDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const vehicleId = req.params.vehicleId!;
+    const uploadedBy = req.user?.id;
+    if (!uploadedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    const body = req.body as {
+      fileName?: string;
+      filePath?: string;
+      fileType?: string;
+      fileSize?: number;
+      documentType?: string;
+      description?: string;
+      expirationDate?: string;
+    };
+    const docData: any = {
+      vehicleId,
+      fileName: body.fileName ?? req.file?.originalname ?? "document",
+      filePath: "",
+      uploadedBy,
+    };
+    if (body.fileType) docData.fileType = body.fileType;
+    if (body.fileSize !== undefined) docData.fileSize = body.fileSize;
+    if (body.documentType) docData.documentType = body.documentType;
+    if (body.description !== undefined) docData.description = body.description;
+    if (body.expirationDate) docData.expirationDate = body.expirationDate;
+
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "vehicle-documents",
+        );
+        docData.filePath = uploadResult.url;
+        docData.fileType = docData.fileType || req.file.mimetype;
+        docData.fileSize = req.file.size;
+      } catch (uploadError: unknown) {
+        logger.logApiError("Vehicle document upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload file",
+        });
+      }
+    } else if (body.filePath) {
+      docData.filePath = body.filePath;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "File or filePath is required",
+      });
+    }
+
+    const newDoc = await createVehicleDocument(docData);
+    return res.status(201).json({
+      success: true,
+      data: newDoc,
+      message: "Vehicle document created successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error creating vehicle document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+export const updateVehicleDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const doc = await getVehicleDocumentById(id!);
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found",
+      });
+    }
+    if (vehicleIdParam && doc.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found for this vehicle",
+      });
+    }
+    const updateData = req.body;
+    if (req.file) {
+      if (doc.filePath) {
+        try {
+          await deleteFromSpaces(doc.filePath);
+        } catch {
+          // ignore
+        }
+      }
+      const uploadResult = await uploadToSpaces(
+        req.file.buffer,
+        req.file.originalname,
+        "vehicle-documents",
+      );
+      (updateData as any).filePath = uploadResult.url;
+      (updateData as any).fileName = req.file.originalname;
+      (updateData as any).fileType = req.file.mimetype;
+      (updateData as any).fileSize = req.file.size;
+    }
+    const updated = await updateVehicleDocument(id!, updateData);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: updated,
+      message: "Vehicle document updated successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating vehicle document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+export const deleteVehicleDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id, vehicleId: vehicleIdParam } = req.params;
+    const doc = await getVehicleDocumentById(id!);
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found",
+      });
+    }
+    if (vehicleIdParam && doc.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found for this vehicle",
+      });
+    }
+    await deleteVehicleDocument(id!);
+    if (doc.filePath) {
+      try {
+        await deleteFromSpaces(doc.filePath);
+      } catch {
+        // ignore
+      }
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle document deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting vehicle document", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};

@@ -1,0 +1,31 @@
+---
+description: Always read existing cursor rules before making API changes
+alwaysApply: true
+---
+
+# API Development Workflow
+
+## Before Making Any API Changes
+
+**MANDATORY STEP:** Always read all existing cursor rules first:
+
+1. 🔍 **Read `.cursor/rules/user-fk-names.mdc`** - for FK name patterns
+2. 🔍 **Check other relevant rules in `.cursor/rules/`**
+3. ✅ **Follow all applicable patterns**
+
+## When Creating/Updating APIs
+
+- **Create functions** must return enriched data (with `*Name` fields)
+- **Update functions** must return enriched data (with `*Name` fields)
+- **List functions** must include user/employee names
+- **GetById functions** must include user/employee names
+
+## Quick Rule Check
+
+Before any service changes, ask yourself:
+
+- Does this return records with `createdBy`, `approvedBy`, `assignedTo`, etc.?
+- Am I returning enriched data with `*Name` fields?
+- Did I call the `getById` function after create/update?
+
+If unsure, **always read the cursor rules first!**

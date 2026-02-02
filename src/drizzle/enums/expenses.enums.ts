@@ -16,7 +16,7 @@ export const expenseStatusEnum = pgEnum("expense_status_enum", [
 
 /**
  * Expense Type Enum
- * Categories of business expenses
+ * Categories of business expenses + source-based types
  */
 export const expenseTypeEnum = pgEnum("expense_type_enum", [
   "travel",
@@ -39,6 +39,16 @@ export const expenseTypeEnum = pgEnum("expense_type_enum", [
   "software",
   "subscriptions",
   "other",
+  "job_labor",
+  "job_material",
+  "job_service",
+  "job_travel",
+  "fleet_repair",
+  "fleet_maintenance",
+  "fleet_fuel",
+  "fleet_purchase",
+  "inventory_purchase",
+  "manual",
 ]);
 
 /**
@@ -136,10 +146,3 @@ export const budgetPeriodEnum = pgEnum("budget_period_enum", [
   "project",
   "custom",
 ]);
-
-
-
-
-
-
-

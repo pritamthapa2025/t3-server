@@ -19,6 +19,7 @@ import {
 } from "../drizzle/schema/payroll.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 
 interface PayrollDashboardFilters {
   payPeriodId?: string | undefined;
@@ -128,6 +129,10 @@ export const getPayrollDashboard = async (
 };
 
 // Payroll Entries Service (T3 internal - no organizationId filter)
+// Aliases for joining users table multiple times
+const createdByUser = alias(users, "created_by_user");
+const approvedByUser = alias(users, "approved_by_user");
+
 export const getPayrollEntries = async (
   offset: number,
   limit: number,
@@ -221,6 +226,10 @@ export const getPayrollEntries = async (
       payDate: payPeriods.payDate,
       frequency: payPeriods.frequency,
 
+      // Run Data (for createdByName and approvedByName)
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
+
       // Audit fields
       createdAt: payrollEntries.createdAt,
       updatedAt: payrollEntries.updatedAt,
@@ -230,13 +239,19 @@ export const getPayrollEntries = async (
     .leftJoin(payPeriods, eq(payrollRuns.payPeriodId, payPeriods.id))
     .leftJoin(employees, eq(payrollEntries.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(createdByUser, eq(payrollRuns.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(payrollRuns.approvedBy, approvedByUser.id))
     .where(and(...whereConditions))
     .orderBy(desc(payrollEntries.createdAt))
     .limit(limit)
     .offset(offset);
 
   return {
-    data,
+    data: data.map((entry) => ({
+      ...entry,
+      createdByName: entry.createdByName ?? null,
+      approvedByName: entry.approvedByName ?? null,
+    })),
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -247,7 +262,7 @@ export const getPayrollEntries = async (
 };
 
 export const getPayrollEntryById = async (id: string) => {
-  const result = await db
+  const [row] = await db
     .select({
       // Payroll Entry Data
       id: payrollEntries.id,
@@ -312,6 +327,8 @@ export const getPayrollEntryById = async (id: string) => {
       runNumber: payrollRuns.runNumber,
       runType: payrollRuns.runType,
       runStatus: payrollRuns.status,
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
 
       // Notes and timestamps
       notes: payrollEntries.notes,
@@ -323,10 +340,19 @@ export const getPayrollEntryById = async (id: string) => {
     .leftJoin(payPeriods, eq(payrollRuns.payPeriodId, payPeriods.id))
     .leftJoin(employees, eq(payrollEntries.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(createdByUser, eq(payrollRuns.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(payrollRuns.approvedBy, approvedByUser.id))
     .where(eq(payrollEntries.id, id))
     .limit(1);
 
-  return result[0] || null;
+  if (!row) return null;
+
+  const { createdByName, approvedByName, ...record } = row;
+  return {
+    ...record,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
+  };
 };
 
 export const createPayrollEntry = async (data: any) => {
@@ -648,18 +674,26 @@ export const getPayrollRuns = async (
       payPeriodEnd: payPeriods.endDate,
       payDate: payPeriods.payDate,
       frequency: payPeriods.frequency,
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
       createdAt: payrollRuns.createdAt,
       updatedAt: payrollRuns.updatedAt,
     })
     .from(payrollRuns)
     .leftJoin(payPeriods, eq(payrollRuns.payPeriodId, payPeriods.id))
+    .leftJoin(createdByUser, eq(payrollRuns.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(payrollRuns.approvedBy, approvedByUser.id))
     .where(and(...whereConditions))
     .orderBy(desc(payrollRuns.createdAt))
     .limit(limit)
     .offset(offset);
 
   return {
-    data,
+    data: data.map((run) => ({
+      ...run,
+      createdByName: run.createdByName ?? null,
+      approvedByName: run.approvedByName ?? null,
+    })),
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -670,7 +704,7 @@ export const getPayrollRuns = async (
 };
 
 export const getPayrollRunById = async (id: string) => {
-  const result = await db
+  const [row] = await db
     .select({
       id: payrollRuns.id,
       runNumber: payrollRuns.runNumber,
@@ -694,15 +728,26 @@ export const getPayrollRunById = async (id: string) => {
       payPeriodEnd: payPeriods.endDate,
       payDate: payPeriods.payDate,
       frequency: payPeriods.frequency,
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
       createdAt: payrollRuns.createdAt,
       updatedAt: payrollRuns.updatedAt,
     })
     .from(payrollRuns)
     .leftJoin(payPeriods, eq(payrollRuns.payPeriodId, payPeriods.id))
+    .leftJoin(createdByUser, eq(payrollRuns.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(payrollRuns.approvedBy, approvedByUser.id))
     .where(eq(payrollRuns.id, id))
     .limit(1);
 
-  return result[0] || null;
+  if (!row) return null;
+
+  const { createdByName, approvedByName, ...record } = row;
+  return {
+    ...record,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
+  };
 };
 
 export const createPayrollRun = async (data: any) => {

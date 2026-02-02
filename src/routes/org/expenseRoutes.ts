@@ -16,6 +16,11 @@ import {
   rejectExpenseHandler,
   getExpenseSummaryHandler,
   getEmployeeExpenseSummaryHandler,
+  getExpenseReceiptsHandler,
+  getExpenseReceiptByIdHandler,
+  createExpenseReceiptHandler,
+  updateExpenseReceiptHandler,
+  deleteExpenseReceiptHandler,
 } from "../../controllers/ExpenseController.js";
 import {
   getExpenseReportsHandler,
@@ -69,6 +74,12 @@ import {
   // Analytics
   getExpenseSummarySchema,
   getEmployeeExpenseSummarySchema,
+  // Expense Receipts
+  getExpenseReceiptsSchema,
+  getExpenseReceiptByIdSchema,
+  createExpenseReceiptSchema,
+  updateExpenseReceiptSchema,
+  deleteExpenseReceiptSchema,
 } from "../../validations/expenses.validations.js";
 
 const router = Router();
@@ -81,7 +92,10 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     // Accept image files and PDFs
-    if (file.mimetype.startsWith("image/") || file.mimetype === "application/pdf") {
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/pdf"
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files and PDFs are allowed"));
@@ -123,12 +137,12 @@ router.use(generalTransformer);
 // ============================
 
 router
-  .route("/expense-categories")
+  .route("/expense/category")
   .get(validate(getExpenseCategoriesQuerySchema), getExpenseCategoriesHandler)
   .post(validate(createExpenseCategorySchema), createExpenseCategoryHandler);
 
 router
-  .route("/expense-categories/:id")
+  .route("/expense/category/:id")
   .get(validate(getExpenseCategoryByIdSchema), getExpenseCategoryByIdHandler)
   .put(validate(updateExpenseCategorySchema), updateExpenseCategoryHandler)
   .delete(validate(deleteExpenseCategorySchema), deleteExpenseCategoryHandler);
@@ -152,19 +166,19 @@ router
 router.post(
   "/expenses/:id/submit",
   validate(submitExpenseSchema),
-  submitExpenseHandler
+  submitExpenseHandler,
 );
 
 router.post(
   "/expenses/:id/approve",
   validate(approveExpenseSchema),
-  approveExpenseHandler
+  approveExpenseHandler,
 );
 
 router.post(
   "/expenses/:id/reject",
   validate(rejectExpenseSchema),
-  rejectExpenseHandler
+  rejectExpenseHandler,
 );
 
 // ============================
@@ -186,7 +200,7 @@ router
 router.post(
   "/expense-reports/:id/submit",
   validate(submitExpenseReportSchema),
-  submitExpenseReportHandler
+  submitExpenseReportHandler,
 );
 
 // ============================
@@ -215,7 +229,7 @@ router.post("/mileage-logs/:id/verify", verifyMileageLogHandler);
 router.get(
   "/expenses/summary",
   validate(getExpenseSummarySchema),
-  getExpenseSummaryHandler
+  getExpenseSummaryHandler,
 );
 
 // Mileage summary
@@ -225,58 +239,53 @@ router.get("/mileage-logs/summary", getMileageSummaryHandler);
 router.get(
   "/employees/:employeeId/expense-summary",
   validate(getEmployeeExpenseSummarySchema),
-  getEmployeeExpenseSummaryHandler
+  getEmployeeExpenseSummaryHandler,
 );
 
 // ============================
-// RECEIPT UPLOAD ROUTES
+// EXPENSE RECEIPT ROUTES (CRUD)
 // ============================
 
-// Upload receipt for expense (will be implemented when storage service is ready)
-router.post("/expenses/:expenseId/receipts", (req, res, next) => {
-  upload(req, res, (err) => {
-    if (err) {
-      return handleMulterError(err, req, res, next);
-    }
-    // TODO: Implement receipt upload handler
-    res.status(501).json({
-      success: false,
-      message: "Receipt upload functionality not yet implemented",
+router.get(
+  "/expenses/:expenseId/receipts",
+  validate(getExpenseReceiptsSchema),
+  getExpenseReceiptsHandler,
+);
+
+router.get(
+  "/expenses/:expenseId/receipts/:receiptId",
+  validate(getExpenseReceiptByIdSchema),
+  getExpenseReceiptByIdHandler,
+);
+
+router.post(
+  "/expenses/:expenseId/receipts",
+  (req, res, next) => {
+    upload(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      next();
     });
-  });
-});
+  },
+  validate(createExpenseReceiptSchema),
+  createExpenseReceiptHandler,
+);
 
-// Get receipts for expense
-router.get("/expenses/:expenseId/receipts", (req, res) => {
-  // TODO: Implement get receipts handler
-  res.status(501).json({
-    success: false,
-    message: "Receipt retrieval functionality not yet implemented",
-  });
-});
+router.put(
+  "/expenses/:expenseId/receipts/:receiptId",
+  (req, res, next) => {
+    upload(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      next();
+    });
+  },
+  validate(updateExpenseReceiptSchema),
+  updateExpenseReceiptHandler,
+);
 
-// Delete receipt
-router.delete("/expenses/:expenseId/receipts/:receiptId", (req, res) => {
-  // TODO: Implement delete receipt handler
-  res.status(501).json({
-    success: false,
-    message: "Receipt deletion functionality not yet implemented",
-  });
-});
+router.delete(
+  "/expenses/:expenseId/receipts/:receiptId",
+  validate(deleteExpenseReceiptSchema),
+  deleteExpenseReceiptHandler,
+);
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -5,6 +5,8 @@ import {
   technicianAvailability,
 } from "../drizzle/schema/dispatch.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
   and,
@@ -15,6 +17,7 @@ import {
   lte,
   like,
   or,
+  getTableColumns,
 } from "drizzle-orm";
 import type {
   CreateDispatchTaskData,
@@ -28,6 +31,9 @@ import type {
 // ============================
 // DISPATCH TASKS SERVICE
 // ============================
+
+// Alias for joining users table
+const createdByUser = alias(users, "created_by_user");
 
 // Get Dispatch Tasks with Pagination
 export const getDispatchTasks = async (
@@ -44,7 +50,7 @@ export const getDispatchTasks = async (
     endDate?: string;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
-  }
+  },
 ) => {
   const {
     search,
@@ -78,8 +84,8 @@ export const getDispatchTasks = async (
     conditions.push(
       or(
         like(dispatchTasks.title, `%${search}%`),
-        like(dispatchTasks.description, `%${search}%`)
-      )!
+        like(dispatchTasks.description, `%${search}%`),
+      )!,
     );
   }
 
@@ -119,15 +125,25 @@ export const getDispatchTasks = async (
 
   // Get paginated results
   const tasks = await db
-    .select()
+    .select({
+      ...getTableColumns(dispatchTasks),
+      createdByName: createdByUser.fullName,
+    })
     .from(dispatchTasks)
+    .leftJoin(createdByUser, eq(dispatchTasks.createdBy, createdByUser.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
   return {
-    data: tasks,
+    data: tasks.map((task) => {
+      const { createdByName, ...record } = task;
+      return {
+        ...record,
+        createdByName: createdByName ?? null,
+      };
+    }),
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -139,12 +155,22 @@ export const getDispatchTasks = async (
 
 // Get Dispatch Task by ID
 export const getDispatchTaskById = async (id: string) => {
-  const result = await db
-    .select()
+  const [row] = await db
+    .select({
+      ...getTableColumns(dispatchTasks),
+      createdByName: createdByUser.fullName,
+    })
     .from(dispatchTasks)
+    .leftJoin(createdByUser, eq(dispatchTasks.createdBy, createdByUser.id))
     .where(and(eq(dispatchTasks.id, id), eq(dispatchTasks.isDeleted, false)));
 
-  return result[0] || null;
+  if (!row) return null;
+
+  const { createdByName, ...record } = row;
+  return {
+    ...record,
+    createdByName: createdByName ?? null,
+  };
 };
 
 // Create Dispatch Task
@@ -155,31 +181,37 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
     taskType: data.taskType,
     priority: data.priority || "medium",
     status: data.status || "pending",
-    startTime: data.startTime instanceof Date
-      ? data.startTime
-      : new Date(data.startTime),
-    endTime: data.endTime instanceof Date
-      ? data.endTime
-      : new Date(data.endTime),
+    startTime:
+      data.startTime instanceof Date
+        ? data.startTime
+        : new Date(data.startTime),
+    endTime:
+      data.endTime instanceof Date ? data.endTime : new Date(data.endTime),
   };
 
   if (data.description) insertData.description = data.description;
   if (data.estimatedDuration !== undefined)
     insertData.estimatedDuration = data.estimatedDuration;
-  if (data.linkedJobTaskIds) insertData.linkedJobTaskIds = data.linkedJobTaskIds;
+  if (data.linkedJobTaskIds)
+    insertData.linkedJobTaskIds = data.linkedJobTaskIds;
   if (data.notes) insertData.notes = data.notes;
   if (data.attachments) insertData.attachments = data.attachments;
-  if (data.assignedVehicleId) insertData.assignedVehicleId = data.assignedVehicleId;
+  if (data.assignedVehicleId)
+    insertData.assignedVehicleId = data.assignedVehicleId;
+  if (data.createdBy) insertData.createdBy = data.createdBy;
 
   const result = await db.insert(dispatchTasks).values(insertData).returning();
 
-  return result[0];
+  // Return enriched data with names (following cursor rule)
+  const inserted = result[0];
+  if (!inserted) throw new Error("Failed to create dispatch task");
+  return await getDispatchTaskById(inserted.id);
 };
 
 // Update Dispatch Task
 export const updateDispatchTask = async (
   id: string,
-  data: UpdateDispatchTaskData
+  data: UpdateDispatchTaskData,
 ) => {
   const updateData: any = {
     updatedAt: new Date(),
@@ -193,7 +225,9 @@ export const updateDispatchTask = async (
   if (data.status !== undefined) updateData.status = data.status;
   if (data.startTime !== undefined)
     updateData.startTime =
-      data.startTime instanceof Date ? data.startTime : new Date(data.startTime);
+      data.startTime instanceof Date
+        ? data.startTime
+        : new Date(data.startTime);
   if (data.endTime !== undefined)
     updateData.endTime =
       data.endTime instanceof Date ? data.endTime : new Date(data.endTime);
@@ -243,7 +277,7 @@ export const getDispatchAssignments = async (
     status?: string;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
-  }
+  },
 ) => {
   const {
     taskId,
@@ -256,7 +290,9 @@ export const getDispatchAssignments = async (
   const conditions = [
     eq(dispatchAssignments.isDeleted, false),
     ...(taskId ? [eq(dispatchAssignments.taskId, taskId)] : []),
-    ...(technicianId ? [eq(dispatchAssignments.technicianId, technicianId)] : []),
+    ...(technicianId
+      ? [eq(dispatchAssignments.technicianId, technicianId)]
+      : []),
     ...(status ? [eq(dispatchAssignments.status, status as any)] : []),
   ];
 
@@ -309,8 +345,8 @@ export const getDispatchAssignmentById = async (id: string) => {
     .where(
       and(
         eq(dispatchAssignments.id, id),
-        eq(dispatchAssignments.isDeleted, false)
-      )
+        eq(dispatchAssignments.isDeleted, false),
+      ),
     );
 
   return result[0] || null;
@@ -318,7 +354,7 @@ export const getDispatchAssignmentById = async (id: string) => {
 
 // Create Dispatch Assignment
 export const createDispatchAssignment = async (
-  data: CreateDispatchAssignmentData
+  data: CreateDispatchAssignmentData,
 ) => {
   const insertData: any = {
     taskId: data.taskId,
@@ -347,14 +383,15 @@ export const createDispatchAssignment = async (
 // Update Dispatch Assignment
 export const updateDispatchAssignment = async (
   id: string,
-  data: UpdateDispatchAssignmentData
+  data: UpdateDispatchAssignmentData,
 ) => {
   const updateData: any = {
     updatedAt: new Date(),
   };
 
   if (data.taskId !== undefined) updateData.taskId = data.taskId;
-  if (data.technicianId !== undefined) updateData.technicianId = data.technicianId;
+  if (data.technicianId !== undefined)
+    updateData.technicianId = data.technicianId;
   if (data.status !== undefined) updateData.status = data.status;
   if (data.clockIn !== undefined)
     updateData.clockIn =
@@ -372,8 +409,8 @@ export const updateDispatchAssignment = async (
     .where(
       and(
         eq(dispatchAssignments.id, id),
-        eq(dispatchAssignments.isDeleted, false)
-      )
+        eq(dispatchAssignments.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -391,8 +428,8 @@ export const deleteDispatchAssignment = async (id: string) => {
     .where(
       and(
         eq(dispatchAssignments.id, id),
-        eq(dispatchAssignments.isDeleted, false)
-      )
+        eq(dispatchAssignments.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -407,8 +444,8 @@ export const getAssignmentsByTaskId = async (taskId: string) => {
     .where(
       and(
         eq(dispatchAssignments.taskId, taskId),
-        eq(dispatchAssignments.isDeleted, false)
-      )
+        eq(dispatchAssignments.isDeleted, false),
+      ),
     )
     .orderBy(asc(dispatchAssignments.createdAt));
 
@@ -423,7 +460,7 @@ export const getAssignmentsByTechnicianId = async (
     startDate?: string;
     endDate?: string;
     status?: string;
-  }
+  },
 ) => {
   const conditions = [
     eq(dispatchAssignments.technicianId, technicianId),
@@ -513,7 +550,7 @@ export const getTechnicianAvailability = async (
     endDate?: string;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
-  }
+  },
 ) => {
   const {
     employeeId,
@@ -533,15 +570,17 @@ export const getTechnicianAvailability = async (
       ? [
           gte(
             technicianAvailability.date,
-            new Date(new Date(date).setHours(0, 0, 0, 0))
+            new Date(new Date(date).setHours(0, 0, 0, 0)),
           ),
           lte(
             technicianAvailability.date,
-            new Date(new Date(date).setHours(23, 59, 59, 999))
+            new Date(new Date(date).setHours(23, 59, 59, 999)),
           ),
         ]
       : []),
-    ...(startDate ? [gte(technicianAvailability.date, new Date(startDate))] : []),
+    ...(startDate
+      ? [gte(technicianAvailability.date, new Date(startDate))]
+      : []),
     ...(endDate ? [lte(technicianAvailability.date, new Date(endDate))] : []),
   ];
 
@@ -594,8 +633,8 @@ export const getTechnicianAvailabilityById = async (id: string) => {
     .where(
       and(
         eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false)
-      )
+        eq(technicianAvailability.isDeleted, false),
+      ),
     );
 
   return result[0] || null;
@@ -603,12 +642,11 @@ export const getTechnicianAvailabilityById = async (id: string) => {
 
 // Create Technician Availability
 export const createTechnicianAvailability = async (
-  data: CreateTechnicianAvailabilityData
+  data: CreateTechnicianAvailabilityData,
 ) => {
   const insertData: any = {
     employeeId: data.employeeId,
-    date:
-      data.date instanceof Date ? data.date : new Date(data.date),
+    date: data.date instanceof Date ? data.date : new Date(data.date),
     status: data.status || "available",
   };
 
@@ -629,7 +667,7 @@ export const createTechnicianAvailability = async (
 // Update Technician Availability
 export const updateTechnicianAvailability = async (
   id: string,
-  data: UpdateTechnicianAvailabilityData
+  data: UpdateTechnicianAvailabilityData,
 ) => {
   const updateData: any = {
     updatedAt: new Date(),
@@ -637,7 +675,8 @@ export const updateTechnicianAvailability = async (
 
   if (data.employeeId !== undefined) updateData.employeeId = data.employeeId;
   if (data.date !== undefined)
-    updateData.date = data.date instanceof Date ? data.date : new Date(data.date);
+    updateData.date =
+      data.date instanceof Date ? data.date : new Date(data.date);
   if (data.status !== undefined) updateData.status = data.status;
   if (data.shiftStart !== undefined) updateData.shiftStart = data.shiftStart;
   if (data.shiftEnd !== undefined) updateData.shiftEnd = data.shiftEnd;
@@ -652,8 +691,8 @@ export const updateTechnicianAvailability = async (
     .where(
       and(
         eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false)
-      )
+        eq(technicianAvailability.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -671,8 +710,8 @@ export const deleteTechnicianAvailability = async (id: string) => {
     .where(
       and(
         eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false)
-      )
+        eq(technicianAvailability.isDeleted, false),
+      ),
     )
     .returning();
 
@@ -683,7 +722,7 @@ export const deleteTechnicianAvailability = async (id: string) => {
 export const getAvailabilityByEmployeeId = async (
   employeeId: number,
   startDate: string,
-  endDate: string
+  endDate: string,
 ) => {
   const availability = await db
     .select()
@@ -693,11 +732,10 @@ export const getAvailabilityByEmployeeId = async (
         eq(technicianAvailability.employeeId, employeeId),
         eq(technicianAvailability.isDeleted, false),
         gte(technicianAvailability.date, new Date(startDate)),
-        lte(technicianAvailability.date, new Date(endDate))
-      )
+        lte(technicianAvailability.date, new Date(endDate)),
+      ),
     )
     .orderBy(asc(technicianAvailability.date));
 
   return availability;
 };
-

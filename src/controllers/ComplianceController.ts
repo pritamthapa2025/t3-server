@@ -139,6 +139,8 @@ export const createComplianceCaseHandler = async (
 ) => {
   try {
     const caseData = req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (caseData as any).createdBy = createdBy;
 
     // organizationId is optional - only include if provided in body and is a valid client UUID
     // Don't use req.user.organizationId as it may be "t3-org-default" which is not a valid UUID
@@ -331,22 +333,12 @@ export const createEmployeeViolationHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is optional - only include if provided in body and is a valid client UUID
-    // Don't use req.user.organizationId as it may be "t3-org-default" which is not a valid UUID
-    const organizationId = req.body.organizationId; // Get from request body, not from user context
+    const organizationId = req.body.organizationId as string | undefined;
     const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "User authentication required",
-      });
-    }
 
     const violationData = {
       ...req.body,
-      // Only include organizationId if it's provided in the body (service will validate it)
-      ...(organizationId && { organizationId }),
+      ...(organizationId != null && { organizationId }),
       createdBy: userId,
     };
 

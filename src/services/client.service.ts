@@ -25,6 +25,7 @@ import {
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 
 // Import types
 import type {
@@ -135,17 +136,31 @@ export const getClients = async (
 // Keep original function for backward compatibility
 export const getOrganizations = getClients;
 
+// Alias for joining users table
+const createdByUser = alias(users, "created_by_user");
+
 export const getClientById = async (id: string) => {
-  const result = await db
+  const [row] = await db
     .select({
       organization: organizations,
       clientType: clientTypes,
+      createdByName: createdByUser.fullName,
     })
     .from(organizations)
     .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
+    .leftJoin(createdByUser, eq(organizations.createdBy, createdByUser.id))
     .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)));
 
-  return result[0] || null;
+  if (!row) return null;
+
+  const { createdByName, organization, clientType } = row;
+  return {
+    organization: {
+      ...organization,
+      createdByName: createdByName ?? null,
+    },
+    clientType,
+  };
 };
 
 // Keep original function for backward compatibility
@@ -1091,9 +1106,7 @@ export const removeDocumentCategoryLink = async (
 // Client KPIs and Settings
 // ============================
 
-export const getClientKPIs = async (
-  _organizationId: string,
-): Promise<ClientKPIs> => {
+export const getClientKPIs = async (): Promise<ClientKPIs> => {
   // This would aggregate various metrics for the client
   // For now, return basic structure
   return {

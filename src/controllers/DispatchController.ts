@@ -51,7 +51,8 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
     if (status) filters.status = status as string;
     if (taskType) filters.taskType = taskType as string;
     if (priority) filters.priority = priority as string;
-    if (assignedVehicleId) filters.assignedVehicleId = assignedVehicleId as string;
+    if (assignedVehicleId)
+      filters.assignedVehicleId = assignedVehicleId as string;
     if (startDate) filters.startDate = startDate as string;
     if (endDate) filters.endDate = endDate as string;
     if (sortBy) filters.sortBy = sortBy as string;
@@ -77,7 +78,7 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
 
 export const getDispatchTaskByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -113,10 +114,12 @@ export const getDispatchTaskByIdHandler = async (
 
 export const createDispatchTaskHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const taskData = req.body;
+    const createdBy = req.user?.id;
+    if (createdBy) (taskData as any).createdBy = createdBy;
 
     const newTask = await createDispatchTask(taskData);
 
@@ -144,7 +147,7 @@ export const createDispatchTaskHandler = async (
 
 export const updateDispatchTaskHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -182,7 +185,7 @@ export const updateDispatchTaskHandler = async (
 
 export const deleteDispatchTaskHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -222,26 +225,19 @@ export const deleteDispatchTaskHandler = async (
 
 export const getDispatchAssignmentsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const {
-      taskId,
-      technicianId,
-      status,
-      sortBy,
-      sortOrder,
-    } = req.query;
+    const { taskId, technicianId, status, sortBy, sortOrder } = req.query;
 
     const offset = (page - 1) * limit;
 
     const filters: any = {};
 
     if (taskId) filters.taskId = taskId as string;
-    if (technicianId)
-      filters.technicianId = parseInt(technicianId as string);
+    if (technicianId) filters.technicianId = parseInt(technicianId as string);
     if (status) filters.status = status as string;
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
@@ -266,7 +262,7 @@ export const getDispatchAssignmentsHandler = async (
 
 export const getDispatchAssignmentByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -302,7 +298,7 @@ export const getDispatchAssignmentByIdHandler = async (
 
 export const createDispatchAssignmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const assignmentData = req.body;
@@ -333,7 +329,7 @@ export const createDispatchAssignmentHandler = async (
 
 export const updateDispatchAssignmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -371,7 +367,7 @@ export const updateDispatchAssignmentHandler = async (
 
 export const deleteDispatchAssignmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -407,7 +403,7 @@ export const deleteDispatchAssignmentHandler = async (
 
 export const getAssignmentsByTaskIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { taskId } = req.params;
@@ -436,7 +432,7 @@ export const getAssignmentsByTaskIdHandler = async (
 
 export const getAssignmentsByTechnicianIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { technicianId } = req.params;
@@ -457,11 +453,11 @@ export const getAssignmentsByTechnicianIdHandler = async (
 
     const assignments = await getAssignmentsByTechnicianId(
       parseInt(technicianId),
-      filters
+      filters,
     );
 
     logger.info(
-      `Assignments for technician ${technicianId} fetched successfully`
+      `Assignments for technician ${technicianId} fetched successfully`,
     );
     return res.status(200).json({
       success: true,
@@ -471,7 +467,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
     logger.logApiError(
       "Error fetching assignments by technician ID",
       error,
-      req
+      req,
     );
     return res.status(500).json({
       success: false,
@@ -486,20 +482,13 @@ export const getAssignmentsByTechnicianIdHandler = async (
 
 export const getTechnicianAvailabilityHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const {
-      employeeId,
-      date,
-      status,
-      startDate,
-      endDate,
-      sortBy,
-      sortOrder,
-    } = req.query;
+    const { employeeId, date, status, startDate, endDate, sortBy, sortOrder } =
+      req.query;
 
     const offset = (page - 1) * limit;
 
@@ -533,7 +522,7 @@ export const getTechnicianAvailabilityHandler = async (
 
 export const getTechnicianAvailabilityByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -569,14 +558,13 @@ export const getTechnicianAvailabilityByIdHandler = async (
 
 export const createTechnicianAvailabilityHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const availabilityData = req.body;
 
-    const newAvailability = await createTechnicianAvailability(
-      availabilityData
-    );
+    const newAvailability =
+      await createTechnicianAvailability(availabilityData);
 
     if (!newAvailability) {
       return res.status(500).json({
@@ -586,7 +574,7 @@ export const createTechnicianAvailabilityHandler = async (
     }
 
     logger.info(
-      `Technician availability ${newAvailability.id} created successfully`
+      `Technician availability ${newAvailability.id} created successfully`,
     );
     return res.status(201).json({
       success: true,
@@ -604,7 +592,7 @@ export const createTechnicianAvailabilityHandler = async (
 
 export const updateTechnicianAvailabilityHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -618,7 +606,7 @@ export const updateTechnicianAvailabilityHandler = async (
 
     const updatedAvailability = await updateTechnicianAvailability(
       id,
-      updateData
+      updateData,
     );
 
     if (!updatedAvailability) {
@@ -645,7 +633,7 @@ export const updateTechnicianAvailabilityHandler = async (
 
 export const deleteTechnicianAvailabilityHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -681,7 +669,7 @@ export const deleteTechnicianAvailabilityHandler = async (
 
 export const getAvailabilityByEmployeeIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { employeeId } = req.params;
@@ -704,12 +692,10 @@ export const getAvailabilityByEmployeeIdHandler = async (
     const availability = await getAvailabilityByEmployeeId(
       parseInt(employeeId),
       startDate as string,
-      endDate as string
+      endDate as string,
     );
 
-    logger.info(
-      `Availability for employee ${employeeId} fetched successfully`
-    );
+    logger.info(`Availability for employee ${employeeId} fetched successfully`);
     return res.status(200).json({
       success: true,
       data: availability,
@@ -718,7 +704,7 @@ export const getAvailabilityByEmployeeIdHandler = async (
     logger.logApiError(
       "Error fetching availability by employee ID",
       error,
-      req
+      req,
     );
     return res.status(500).json({
       success: false,
@@ -726,8 +712,3 @@ export const getAvailabilityByEmployeeIdHandler = async (
     });
   }
 };
-
-
-
-
-

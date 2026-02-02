@@ -15,15 +15,6 @@ import { logger } from "../utils/logger.js";
 
 export const getExpenseReportsHandler = async (req: Request, res: Response) => {
   try {
-    // organizationId is required - can be provided in query params
-    const organizationId = req.query.organizationId as string | undefined;
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "organizationId is required in query parameters",
-      });
-    }
-
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
@@ -49,7 +40,7 @@ export const getExpenseReportsHandler = async (req: Request, res: Response) => {
       Object.entries(filters).filter(([_, value]) => value !== undefined),
     );
     const result = await getExpenseReports(
-      organizationId,
+      undefined,
       offset,
       limit,
       cleanFilters as any,
@@ -77,9 +68,6 @@ export const getExpenseReportByIdHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is optional - can be provided in query params or derived from report
-    const organizationId = req.query.organizationId as string | undefined;
-
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({
@@ -87,7 +75,7 @@ export const getExpenseReportByIdHandler = async (
         message: "Report ID is required",
       });
     }
-    const report = await getExpenseReportById(organizationId, id);
+    const report = await getExpenseReportById(undefined, id);
 
     if (!report) {
       return res.status(404).json({
@@ -116,19 +104,18 @@ export const createExpenseReportHandler = async (
   res: Response,
 ) => {
   try {
-    // organizationId is required in request body
-    const organizationId = req.body.organizationId;
     const userId = req.user?.id;
     const employeeId = req.user?.employeeId;
 
-    if (!organizationId || !userId || !employeeId) {
-      return res.status(400).json({
+    if (!userId || !employeeId) {
+      return res.status(403).json({
         success: false,
-        message:
-          "organizationId is required in request body and employee context required",
+        message: "Access denied. User and employee context required.",
       });
     }
 
+    // organization_id is not on org.expenses; pass organizationId in body when creating a report
+    const organizationId = req.body?.organizationId as string | undefined;
     const result = await createExpenseReport(
       organizationId,
       employeeId,
@@ -169,9 +156,9 @@ export const updateExpenseReportHandler = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -182,31 +169,7 @@ export const updateExpenseReportHandler = async (
         message: "Report ID is required",
       });
     }
-
-    // Get report first to derive organizationId
-    const existingReport = await getExpenseReportById(undefined, id);
-    if (!existingReport) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense report not found",
-      });
-    }
-
-    const organizationId =
-      existingReport.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense report",
-      });
-    }
-
-    const report = await updateExpenseReport(
-      organizationId,
-      id,
-      req.body,
-      userId,
-    );
+    const report = await updateExpenseReport(undefined, id, req.body, userId);
 
     if (!report) {
       return res.status(404).json({
@@ -242,26 +205,7 @@ export const deleteExpenseReportHandler = async (
         message: "Report ID is required",
       });
     }
-
-    // Get report first to derive organizationId
-    const existingReport = await getExpenseReportById(undefined, id);
-    if (!existingReport) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense report not found",
-      });
-    }
-
-    const organizationId =
-      existingReport.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense report",
-      });
-    }
-
-    const report = await deleteExpenseReport(organizationId, id);
+    const report = await deleteExpenseReport(undefined, id);
 
     if (!report) {
       return res.status(404).json({
@@ -292,9 +236,9 @@ export const submitExpenseReportHandler = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: "User authentication required",
+        message: "Access denied. Authentication required.",
       });
     }
 
@@ -305,28 +249,9 @@ export const submitExpenseReportHandler = async (
         message: "Report ID is required",
       });
     }
-
-    // Get report first to derive organizationId
-    const existingReport = await getExpenseReportById(undefined, id);
-    if (!existingReport) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense report not found",
-      });
-    }
-
-    const organizationId =
-      existingReport.organizationId || (req.query.organizationId as string);
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Could not determine organization context for expense report",
-      });
-    }
-
     const { notes } = req.body;
 
-    const result = await submitExpenseReport(organizationId, id, userId, notes);
+    const result = await submitExpenseReport(undefined, id, userId, notes);
 
     if (!result.report) {
       return res.status(404).json({

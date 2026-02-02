@@ -1,0 +1,120 @@
+---
+description: Always include human-readable names for user and employee FK references in API responses
+globs: src/services/**/*.ts
+alwaysApply: true
+---
+
+# User and Employee FK Name Pattern
+
+## Rule
+
+**When a service returns records with user or employee FK references, ALWAYS include the corresponding `*Name` field in the response.**
+
+## FK → Name Mapping
+
+| FK Field               | FK Type                | Name Field               | Resolved From                   |
+| ---------------------- | ---------------------- | ------------------------ | ------------------------------- |
+| `createdBy`            | uuid (users.id)        | `createdByName`          | `auth.users.full_name`          |
+| `approvedBy`           | uuid (users.id)        | `approvedByName`         | `auth.users.full_name`          |
+| `rejectedBy`           | uuid (users.id)        | `rejectedByName`         | `auth.users.full_name`          |
+| `assignedTo`           | uuid (users.id)        | `assignedToName`         | `auth.users.full_name`          |
+| `uploadedBy`           | uuid (users.id)        | `uploadedByName`         | `auth.users.full_name`          |
+| `assignedToEmployeeId` | integer (employees.id) | `assignedToEmployeeName` | `employees` → `users.full_name` |
+| `employeeId`           | integer (employees.id) | `employeeName`           | `employees` → `users.full_name` |
+| `driverId`             | integer (employees.id) | `driverName`             | `employees` → `users.full_name` |
+
+**For free-text name fields** (varchar, no FK):
+
+- `performedBy`, `reportedBy`, etc. → also expose as `performedByName`, `reportedByName` for API consistency
+
+## Implementation Pattern
+
+### 1. Imports
+
+```typescript
+import { users } from "../drizzle/schema/auth.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
+import { alias } from "drizzle-orm/pg-core";
+```
+
+### 2. Create Aliases (top of service file, outside functions)
+
+```typescript
+// For multiple user joins
+const createdByUser = alias(users, "created_by_user");
+const approvedByUser = alias(users, "approved_by_user");
+const rejectedByUser = alias(users, "rejected_by_user");
+const assignedToUser = alias(users, "assigned_to_user");
+```
+
+### 3. Update getById Functions
+
+```typescript
+export const getRecordById = async (id: string) => {
+  const [row] = await db
+    .select({
+      ...recordsTable,
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
+      rejectedByName: rejectedByUser.fullName,
+      assignedToEmployeeName: assignedToUser.fullName, // for employee FKs
+    })
+    .from(recordsTable)
+    .leftJoin(createdByUser, eq(recordsTable.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(recordsTable.approvedBy, approvedByUser.id))
+    .leftJoin(rejectedByUser, eq(recordsTable.rejectedBy, rejectedByUser.id))
+    .leftJoin(employees, eq(recordsTable.assignedToEmployeeId, employees.id))
+    .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
+    .where(and(eq(recordsTable.id, id), eq(recordsTable.isDeleted, false)));
+
+  if (!row) return null;
+
+  const {
+    createdByName,
+    approvedByName,
+    rejectedByName,
+    assignedToEmployeeName,
+    ...record
+  } = row;
+  return {
+    ...record,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
+    assignedToEmployeeName: assignedToEmployeeName ?? null,
+  };
+};
+```
+
+### 4. For List Functions
+
+Apply the same pattern — add left joins and include `*Name` fields in the select, then map results.
+
+## When to Apply
+
+- ✅ **Always** for `getById` functions that return records with user/employee FKs
+- ✅ **Always** for list functions that return arrays of records with user/employee FKs
+- ✅ **Always** for `create` functions that return records with user/employee FKs
+- ✅ **Always** for `update` functions that return records with user/employee FKs
+- ✅ When adding **new tables with user/employee FKs**, include the name pattern from the start
+
+### For Create/Update Functions
+
+Create and update functions must return enriched data with names, not raw insert/update results:
+
+```typescript
+// ❌ BAD - returns raw insert result
+const result = await db.insert(table).values(insertData).returning();
+return result[0];
+
+// ✅ GOOD - returns enriched data with names
+const result = await db.insert(table).values(insertData).returning();
+return await getRecordById(result[0].id);
+```
+
+## Notes
+
+- Use **left joins** (not inner) to preserve records when the FK is null
+- Return `name ?? null` for consistent null handling
+- For **employee FKs** (integer), join: `recordsTable` → `employees` (on FK) → `users` (on `employees.userId`) → select `users.fullName`
+- For **user FKs** (uuid), join directly: `recordsTable` → `users` (on FK) → select `users.fullName`

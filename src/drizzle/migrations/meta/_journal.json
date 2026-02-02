@@ -288,6 +288,90 @@
       "when": 1769578264169,
       "tag": "0040_acoustic_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1769601490803,
+      "tag": "0041_last_firelord",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1769770756867,
+      "tag": "0042_charming_shard",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1769773480252,
+      "tag": "0043_overrated_robin_chapel",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1769773500000,
+      "tag": "0044_add_vehicle_id_sequence",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1769773600000,
+      "tag": "0045_drop_maintenance_assigned_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1769773700000,
+      "tag": "0046_drop_repair_assigned_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1769773800000,
+      "tag": "0047_update_safety_inspections",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1770020740420,
+      "tag": "0048_spooky_darwin",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1770020800000,
+      "tag": "0049_make_performed_by_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1770020900000,
+      "tag": "0050_vehicle_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1770021000000,
+      "tag": "0051_assignment_history_remove_driver_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1770021100000,
+      "tag": "0052_check_in_out_remove_driver_job",
+      "breakpoints": true
     }
   ]
 }

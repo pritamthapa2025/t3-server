@@ -1,22 +1,11 @@
-import {
-  count,
-  eq,
-  desc,
-  and,
-  sql,
-  gte,
-  lte,
-} from "drizzle-orm";
+import { count, eq, desc, and, sql, gte, lte } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   expenses,
   expenseCategories,
   expenseBudgets,
 } from "../drizzle/schema/expenses.schema.js";
-import {
-  employees,
-  departments,
-} from "../drizzle/schema/org.schema.js";
+import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 // ============================
@@ -24,7 +13,7 @@ import { users } from "../drizzle/schema/auth.schema.js";
 // ============================
 
 export const getExpenseSummary = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: {
     startDate?: string;
     endDate?: string;
@@ -33,12 +22,10 @@ export const getExpenseSummary = async (
     jobId?: string;
     departmentId?: number;
     status?: string;
-  }
+  },
 ) => {
-  let whereConditions = [
-    eq(expenses.organizationId, organizationId),
-    eq(expenses.isDeleted, false),
-  ];
+  const whereConditions = [eq(expenses.isDeleted, false)];
+  // organization_id not on org.expenses; scope via other filters if needed
 
   // Apply filters
   if (filters?.startDate) {
@@ -49,10 +36,7 @@ export const getExpenseSummary = async (
     whereConditions.push(lte(expenses.expenseDate, filters.endDate));
   }
 
-  if (filters?.employeeId) {
-    whereConditions.push(eq(expenses.employeeId, filters.employeeId));
-  }
-
+  // employee_id removed from expenses; filter by jobId/sourceId/categoryId instead
   if (filters?.categoryId) {
     whereConditions.push(eq(expenses.categoryId, filters.categoryId));
   }
@@ -140,21 +124,21 @@ export const getExpenseSummary = async (
     .orderBy(desc(sql`SUM(CAST(${expenses.amount} AS DECIMAL))`))
     .limit(10);
 
-  // Get top employees (if not filtering by specific employee)
+  // Get top employees by createdBy -> user -> employee (expenses no longer have employeeId)
   let topEmployees: any[] = [];
   if (!filters?.employeeId) {
     topEmployees = await db
       .select({
-        employeeId: expenses.employeeId,
+        employeeId: employees.id,
         employeeName: users.fullName,
         count: count(),
         totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS DECIMAL)), 0)`,
       })
       .from(expenses)
-      .leftJoin(employees, eq(expenses.employeeId, employees.id))
-      .leftJoin(users, eq(employees.userId, users.id))
+      .leftJoin(users, eq(expenses.createdBy, users.id))
+      .leftJoin(employees, eq(employees.userId, users.id))
       .where(and(...whereConditions))
-      .groupBy(expenses.employeeId, users.fullName)
+      .groupBy(employees.id, users.fullName)
       .orderBy(desc(sql`SUM(CAST(${expenses.amount} AS DECIMAL))`))
       .limit(10);
   }
@@ -167,18 +151,27 @@ export const getExpenseSummary = async (
     totalPending: summaryResult[0]?.totalPending || "0",
     totalMileage: summaryResult[0]?.totalMileage || "0",
     totalMileageAmount: summaryResult[0]?.totalMileageAmount || "0",
-    byStatus: statusBreakdown.reduce((acc, item) => {
-      acc[item.status] = { count: item.count, amount: item.amount };
-      return acc;
-    }, {} as Record<string, { count: number; amount: string }>),
-    byType: typeBreakdown.reduce((acc, item) => {
-      acc[item.expenseType] = { count: item.count, amount: item.amount };
-      return acc;
-    }, {} as Record<string, { count: number; amount: string }>),
-    byPaymentMethod: paymentMethodBreakdown.reduce((acc, item) => {
-      acc[item.paymentMethod] = { count: item.count, amount: item.amount };
-      return acc;
-    }, {} as Record<string, { count: number; amount: string }>),
+    byStatus: statusBreakdown.reduce(
+      (acc, item) => {
+        acc[item.status] = { count: item.count, amount: item.amount };
+        return acc;
+      },
+      {} as Record<string, { count: number; amount: string }>,
+    ),
+    byType: typeBreakdown.reduce(
+      (acc, item) => {
+        acc[item.expenseType] = { count: item.count, amount: item.amount };
+        return acc;
+      },
+      {} as Record<string, { count: number; amount: string }>,
+    ),
+    byPaymentMethod: paymentMethodBreakdown.reduce(
+      (acc, item) => {
+        acc[item.paymentMethod] = { count: item.count, amount: item.amount };
+        return acc;
+      },
+      {} as Record<string, { count: number; amount: string }>,
+    ),
     byMonth: monthlyBreakdown,
     topCategories: topCategories.map((cat) => ({
       categoryId: cat.categoryId,
@@ -202,7 +195,7 @@ export const getExpenseBudgetSummary = async (
     periodStart?: string;
     periodEnd?: string;
     includeInactive?: boolean;
-  }
+  },
 ) => {
   let whereConditions = [
     eq(expenseBudgets.organizationId, organizationId),
@@ -241,9 +234,14 @@ export const getExpenseBudgetSummary = async (
 
   // Calculate budget utilization
   const summary = summaryResult[0];
-  const budgetUtilization = summary?.totalBudgetAmount && parseFloat(summary.totalBudgetAmount) > 0
-    ? ((parseFloat(summary.totalSpentAmount) / parseFloat(summary.totalBudgetAmount)) * 100).toFixed(2)
-    : "0";
+  const budgetUtilization =
+    summary?.totalBudgetAmount && parseFloat(summary.totalBudgetAmount) > 0
+      ? (
+          (parseFloat(summary.totalSpentAmount) /
+            parseFloat(summary.totalBudgetAmount)) *
+          100
+        ).toFixed(2)
+      : "0";
 
   // Get breakdown by budget type
   const typeBreakdown = await db
@@ -272,10 +270,14 @@ export const getExpenseBudgetSummary = async (
     .where(
       and(
         ...whereConditions,
-        sql`CAST(${expenseBudgets.spentAmount} AS DECIMAL) > CAST(${expenseBudgets.budgetAmount} AS DECIMAL)`
-      )
+        sql`CAST(${expenseBudgets.spentAmount} AS DECIMAL) > CAST(${expenseBudgets.budgetAmount} AS DECIMAL)`,
+      ),
     )
-    .orderBy(desc(sql`CAST(${expenseBudgets.spentAmount} AS DECIMAL) - CAST(${expenseBudgets.budgetAmount} AS DECIMAL)`))
+    .orderBy(
+      desc(
+        sql`CAST(${expenseBudgets.spentAmount} AS DECIMAL) - CAST(${expenseBudgets.budgetAmount} AS DECIMAL)`,
+      ),
+    )
     .limit(10);
 
   return {
@@ -286,14 +288,20 @@ export const getExpenseBudgetSummary = async (
     overBudgetCount: summary?.overBudgetCount || 0,
     nearLimitCount: summary?.nearLimitCount || 0,
     budgetUtilization,
-    byType: typeBreakdown.reduce((acc, item) => {
-      acc[item.budgetType] = {
-        count: item.count,
-        budgetAmount: item.budgetAmount,
-        spentAmount: item.spentAmount,
-      };
-      return acc;
-    }, {} as Record<string, { count: number; budgetAmount: string; spentAmount: string }>),
+    byType: typeBreakdown.reduce(
+      (acc, item) => {
+        acc[item.budgetType] = {
+          count: item.count,
+          budgetAmount: item.budgetAmount,
+          spentAmount: item.spentAmount,
+        };
+        return acc;
+      },
+      {} as Record<
+        string,
+        { count: number; budgetAmount: string; spentAmount: string }
+      >,
+    ),
     topOverBudget: topOverBudget.map((budget) => ({
       budgetId: budget.budgetId,
       name: budget.name,
@@ -307,21 +315,41 @@ export const getExpenseBudgetSummary = async (
 };
 
 export const getEmployeeExpenseSummary = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   employeeId: number,
   filters?: {
     startDate?: string;
     endDate?: string;
     status?: string;
-  }
+  },
 ) => {
-  let whereConditions = [
-    eq(expenses.organizationId, organizationId),
-    eq(expenses.employeeId, employeeId),
+  // Get employee's userId (expenses no longer have employeeId; link via createdBy -> user -> employee)
+  const employeeResult = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      fullName: users.fullName,
+      email: users.email,
+      departmentName: departments.name,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .where(and(eq(employees.id, employeeId), eq(employees.isDeleted, false)))
+    .limit(1);
+
+  if (!employeeResult[0] || employeeResult[0].userId == null) {
+    return null;
+  }
+
+  const employee = employeeResult[0];
+  const userId = employee.userId as string;
+
+  const whereConditions = [
+    eq(expenses.createdBy, userId),
     eq(expenses.isDeleted, false),
   ];
 
-  // Apply filters
   if (filters?.startDate) {
     whereConditions.push(gte(expenses.expenseDate, filters.startDate));
   }
@@ -334,32 +362,7 @@ export const getEmployeeExpenseSummary = async (
     whereConditions.push(eq(expenses.status, filters.status as any));
   }
 
-  // Get employee info
-  const employeeResult = await db
-    .select({
-      id: employees.id,
-      fullName: users.fullName,
-      email: users.email,
-      departmentName: departments.name,
-    })
-    .from(employees)
-    .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .where(
-      and(
-        eq(employees.id, employeeId),
-        eq(employees.isDeleted, false)
-      )
-    )
-    .limit(1);
-
-  if (!employeeResult[0]) {
-    return null;
-  }
-
-  const employee = employeeResult[0];
-
-  // Get expense summary
+  // Get expense summary (expenses created by this employee's user)
   const summaryResult = await db
     .select({
       totalExpenses: count(),
@@ -418,12 +421,7 @@ export const getEmployeeExpenseSummary = async (
     })
     .from(expenses)
     .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-    .where(
-      and(
-        ...whereConditions,
-        eq(expenses.status, "submitted")
-      )
-    )
+    .where(and(...whereConditions, eq(expenses.status, "submitted")))
     .orderBy(desc(expenses.submittedDate));
 
   const summary = summaryResult[0];
@@ -471,18 +469,3 @@ export const getEmployeeExpenseSummary = async (
     })),
   };
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -134,18 +134,65 @@ const uploadJobDocuments = multer({
   },
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
 
+// Multer for single receipt upload (job expenses)
+const uploadReceipt = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB for receipts
+  },
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/pdf"
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files and PDFs are allowed for receipts"));
+    }
+  },
+}).single("receipt");
+
+// Middleware to parse JSON "data" field from multipart/form-data
+const parseFormData = (req: any, res: any, next: any) => {
+  if (
+    req.headers["content-type"]?.includes("multipart/form-data") &&
+    req.body?.data
+  ) {
+    try {
+      const parsedData =
+        typeof req.body.data === "string"
+          ? JSON.parse(req.body.data)
+          : req.body.data;
+      req.body = { ...parsedData, ...req.body };
+      delete req.body.data;
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid JSON in 'data' field",
+      });
+    }
+  }
+  next();
+};
+
 // Multer error handler middleware
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
         success: false,
-        message: "File size too large. Maximum size is 5MB per file.",
+        message: "File size too large.",
       });
     }
     return res.status(400).json({
       success: false,
       message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err instanceof Error) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
     });
   }
   if (err) {
@@ -198,7 +245,7 @@ router
   .get(validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
   .put(
     validate(updateJobFinancialSummarySchema),
-    updateJobFinancialSummaryHandler
+    updateJobFinancialSummaryHandler,
   );
 
 // Financial Breakdown Routes
@@ -208,7 +255,7 @@ router
   .get(getJobFinancialBreakdownHandler)
   .put(
     validate(updateJobFinancialBreakdownSchema),
-    updateJobFinancialBreakdownHandler
+    updateJobFinancialBreakdownHandler,
   );
 
 // Materials Routes
@@ -257,7 +304,7 @@ router
   .get(validate(getJobOperatingExpensesSchema), getJobOperatingExpensesHandler)
   .put(
     validate(updateJobOperatingExpensesSchema),
-    updateJobOperatingExpensesHandler
+    updateJobOperatingExpensesHandler,
   );
 
 // Timeline Routes
@@ -273,7 +320,7 @@ router
   .put(validate(updateJobTimelineEventSchema), updateJobTimelineEventHandler)
   .delete(
     validate(deleteJobTimelineEventSchema),
-    deleteJobTimelineEventHandler
+    deleteJobTimelineEventHandler,
   );
 
 // Notes Routes
@@ -308,17 +355,44 @@ router
   .put(validate(updateJobTaskSchema), updateJobTaskHandler)
   .delete(validate(deleteJobTaskSchema), deleteJobTaskHandler);
 
-// Expenses Routes
-
+// Expenses Routes (POST/PUT support form-data: receipt file + data JSON)
 router
   .route("/jobs/:jobId/expenses")
   .get(validate(getJobExpensesSchema), getJobExpensesHandler)
-  .post(validate(createJobExpenseSchema), createJobExpenseHandler);
+  .post(
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadReceipt(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    validate(createJobExpenseSchema),
+    createJobExpenseHandler,
+  );
 
 router
   .route("/jobs/:jobId/expenses/:expenseId")
   .get(validate(getJobExpenseByIdSchema), getJobExpenseByIdHandler)
-  .put(validate(updateJobExpenseSchema), updateJobExpenseHandler)
+  .put(
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadReceipt(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    validate(updateJobExpenseSchema),
+    updateJobExpenseHandler,
+  )
   .delete(validate(deleteJobExpenseSchema), deleteJobExpenseHandler);
 
 // Documents Routes
@@ -330,7 +404,7 @@ router
     uploadJobDocuments,
     handleMulterError,
     validate(createJobDocumentsSchema),
-    createJobDocumentsHandler
+    createJobDocumentsHandler,
   );
 
 router
@@ -340,14 +414,8 @@ router
     uploadJobDocuments,
     handleMulterError,
     validate(updateJobDocumentSchema),
-    updateJobDocumentHandler
+    updateJobDocumentHandler,
   )
   .delete(validate(deleteJobDocumentSchema), deleteJobDocumentHandler);
 
 export default router;
-
-
-
-
-
-

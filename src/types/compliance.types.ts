@@ -5,7 +5,13 @@ export interface ComplianceCase {
   jobId?: string;
   employeeId: number;
   caseNumber: string;
-  type: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
+  type:
+    | "safety"
+    | "timesheet"
+    | "conduct"
+    | "training"
+    | "certification"
+    | "other";
   severity: "low" | "medium" | "high" | "critical";
   status: "open" | "investigating" | "resolved" | "closed" | "escalated";
   title: string;
@@ -40,7 +46,13 @@ export interface CreateComplianceCaseData {
   jobId?: string;
   employeeId: number;
   caseNumber?: string; // Auto-generated if not provided
-  type: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
+  type:
+    | "safety"
+    | "timesheet"
+    | "conduct"
+    | "training"
+    | "certification"
+    | "other";
   severity: "low" | "medium" | "high" | "critical";
   status?: "open" | "investigating" | "resolved" | "closed" | "escalated";
   title: string;
@@ -60,13 +72,20 @@ export interface CreateComplianceCaseData {
   performanceImpact?: number; // -5.0 to -10.0 points
   attachments?: string[];
   evidencePhotos?: string[];
+  createdBy?: string;
 }
 
 export interface UpdateComplianceCaseData {
   jobId?: string;
   employeeId?: number;
   caseNumber?: string;
-  type?: "safety" | "timesheet" | "conduct" | "training" | "certification" | "other";
+  type?:
+    | "safety"
+    | "timesheet"
+    | "conduct"
+    | "training"
+    | "certification"
+    | "other";
   severity?: "low" | "medium" | "high" | "critical";
   status?: "open" | "investigating" | "resolved" | "closed" | "escalated";
   title?: string;
@@ -117,9 +136,3 @@ export interface ViolationCounts {
   department?: string;
   jobId?: string;
 }
-
-
-
-
-
-

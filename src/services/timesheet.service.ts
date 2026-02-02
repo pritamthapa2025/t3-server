@@ -1,14 +1,28 @@
-import { count, eq, and, or, ilike, sql, sum, desc, inArray } from "drizzle-orm";
+import {
+  count,
+  eq,
+  and,
+  or,
+  ilike,
+  sql,
+  sum,
+  desc,
+  inArray,
+  getTableColumns,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
-import { timesheets, timesheetApprovals } from "../drizzle/schema/timesheet.schema.js";
+import {
+  timesheets,
+  timesheetApprovals,
+} from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
 export const getTimesheets = async (
   offset: number,
   limit: number,
-  search?: string
+  search?: string,
 ) => {
   let whereConditions: any[] = [];
 
@@ -19,8 +33,8 @@ export const getTimesheets = async (
         ilike(timesheets.notes, `%${search}%`),
         ilike(timesheets.status, `%${search}%`),
         ilike(employees.employeeId, `%${search}%`),
-        ilike(users.fullName, `%${search}%`)
-      )!
+        ilike(users.fullName, `%${search}%`),
+      )!,
     );
   }
 
@@ -29,19 +43,31 @@ export const getTimesheets = async (
 
   const result = await db
     .select({
-      timesheet: timesheets,
+      timesheet: {
+        ...getTableColumns(timesheets),
+        approvedByName: approverUser.fullName,
+        rejectedByName: rejectorUser.fullName,
+      },
     })
     .from(timesheets)
     .leftJoin(employees, eq(timesheets.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
+    .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
     .where(whereClause)
     .limit(limit)
     .offset(offset);
 
   // Extract timesheet data from result and format
-  const timesheetData = result.map((row) =>
-    formatTimesheetResponse(row.timesheet)
-  );
+  const timesheetData = result.map((row) => {
+    const { approvedByName, rejectedByName, ...timesheet } = row.timesheet;
+    const formatted = formatTimesheetResponse(timesheet);
+    return {
+      ...formatted,
+      approvedByName: approvedByName ?? null,
+      rejectedByName: rejectedByName ?? null,
+    };
+  });
 
   const total = await db
     .select({ count: count() })
@@ -63,16 +89,27 @@ export const getTimesheets = async (
   };
 };
 
+// Aliases for joining users table multiple times
+const approverUser = alias(users, "approver_user");
+const rejectorUser = alias(users, "rejector_user");
+
 export const getTimesheetById = async (id: number) => {
-  const [timesheet] = await db
-    .select()
+  const [row] = await db
+    .select({
+      ...getTableColumns(timesheets),
+      approvedByName: approverUser.fullName,
+      rejectedByName: rejectorUser.fullName,
+    })
     .from(timesheets)
+    .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
+    .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
     .where(eq(timesheets.id, id));
-  
-  if (!timesheet) return null;
-  
+
+  if (!row) return null;
+
+  const { approvedByName, rejectedByName, ...timesheet } = row;
   const formatted = formatTimesheetResponse(timesheet);
-  
+
   // Get latest rejection reason from approval history (if rejected)
   if (timesheet.status === "rejected") {
     const [rejectionRecord] = await db
@@ -83,29 +120,36 @@ export const getTimesheetById = async (id: number) => {
       .where(
         and(
           eq(timesheetApprovals.timesheetId, id),
-          eq(timesheetApprovals.action, "rejected")
-        )
+          eq(timesheetApprovals.action, "rejected"),
+        ),
       )
       .orderBy(desc(timesheetApprovals.createdAt))
       .limit(1);
-    
+
     if (rejectionRecord?.remarks) {
       // Extract rejection reason (before "Manager Notes:" if present)
       const remarks = rejectionRecord.remarks;
       const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
-      const rejectionReason = managerNotesIndex > 0
-        ? remarks.substring(0, managerNotesIndex)
-        : remarks;
-      
+      const rejectionReason =
+        managerNotesIndex > 0
+          ? remarks.substring(0, managerNotesIndex)
+          : remarks;
+
       return {
         ...formatted,
+        approvedByName: approvedByName ?? null,
+        rejectedByName: rejectedByName ?? null,
         rejectionReason: rejectionReason, // Latest rejection reason from manager
         // notes field contains employee's notes (preserved)
       };
     }
   }
-  
-  return formatted;
+
+  return {
+    ...formatted,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
+  };
 };
 
 // Helper function to format timesheet response (clockIn/clockOut are already strings, just return as-is)
@@ -130,8 +174,8 @@ export const createTimesheet = async (data: {
     data.sheetDate instanceof Date
       ? data.sheetDate.toISOString().split("T")[0]!
       : typeof data.sheetDate === "string"
-      ? data.sheetDate
-      : new Date(data.sheetDate).toISOString().split("T")[0]!;
+        ? data.sheetDate
+        : new Date(data.sheetDate).toISOString().split("T")[0]!;
 
   // Store clockIn and clockOut as time strings directly (HH:MM format)
   const clockInTime = data.clockIn; // Already in HH:MM format
@@ -159,7 +203,7 @@ export const createTimesheet = async (data: {
     const regularHours = 8;
     calculatedOvertimeHours = Math.max(
       0,
-      parseFloat(calculatedTotalHours) - regularHours
+      parseFloat(calculatedTotalHours) - regularHours,
     ).toFixed(2);
   }
 
@@ -197,7 +241,7 @@ export const updateTimesheet = async (
     status?: "pending" | "submitted" | "approved" | "rejected";
     rejectedBy?: string;
     approvedBy?: string;
-  }
+  },
 ) => {
   // Get existing timesheet to use sheetDate if clockIn/clockOut are provided
   const [existingTimesheet] = await db
@@ -229,7 +273,6 @@ export const updateTimesheet = async (
   if (data.employeeId !== undefined) {
     updateData.employeeId = data.employeeId;
   }
-
 
   if (data.sheetDate !== undefined) {
     // Convert sheetDate to YYYY-MM-DD string format for date column
@@ -270,7 +313,7 @@ export const updateTimesheet = async (
       const regularHours = 8;
       const calculatedOvertimeHours = Math.max(
         0,
-        parseFloat(calculatedTotalHours) - regularHours
+        parseFloat(calculatedTotalHours) - regularHours,
       ).toFixed(2);
 
       updateData.totalHours = calculatedTotalHours;
@@ -337,8 +380,8 @@ export const clockIn = async (data: {
     .where(
       and(
         eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string)
-      )
+        eq(timesheets.sheetDate, sheetDateStr as string),
+      ),
     );
 
   if (existingTimesheet.length > 0) {
@@ -389,13 +432,13 @@ export const clockOut = async (data: {
     .where(
       and(
         eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string)
-      )
+        eq(timesheets.sheetDate, sheetDateStr as string),
+      ),
     );
 
   if (!existingTimesheet) {
     throw new Error(
-      "No clock-in record found for today. Please clock in first."
+      "No clock-in record found for today. Please clock in first.",
     );
   }
 
@@ -419,7 +462,7 @@ export const clockOut = async (data: {
   const regularHours = 8;
   const overtimeHours = Math.max(
     0,
-    parseFloat(totalHours) - regularHours
+    parseFloat(totalHours) - regularHours,
   ).toFixed(2);
 
   // Update the timesheet with clock-out information
@@ -463,8 +506,8 @@ export const createTimesheetWithClockData = async (data: {
     .where(
       and(
         eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string)
-      )
+        eq(timesheets.sheetDate, sheetDateStr as string),
+      ),
     );
 
   if (existingTimesheet) {
@@ -494,7 +537,7 @@ export const createTimesheetWithClockData = async (data: {
     const regularHours = 8;
     const overtimeHours = Math.max(
       0,
-      parseFloat(totalHours) - regularHours
+      parseFloat(totalHours) - regularHours,
     ).toFixed(2);
 
     // Create new timesheet with both clock-in and clock-out
@@ -545,7 +588,7 @@ export const getWeeklyTimesheetsByEmployee = async (
   departmentId?: number,
   status?: string,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
 ) => {
   // Calculate week end date (6 days after start)
   const startDate = new Date(weekStartDate);
@@ -562,7 +605,7 @@ export const getWeeklyTimesheetsByEmployee = async (
 
   // Add date range filter for the week
   whereConditions.push(
-    sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`
+    sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
   );
 
   // Add employee ID filter if provided (array of employee IDs)
@@ -646,7 +689,7 @@ export const getWeeklyTimesheetsByEmployee = async (
   // Get approval history for all timesheets to track rejections and resubmissions
   const timesheetIds = result.map((row) => row.timesheet.id).filter((id) => id);
   let approvalHistoryMap = new Map<number, any[]>();
-  
+
   if (timesheetIds.length > 0) {
     const approvalHistory = await db
       .select({
@@ -657,7 +700,10 @@ export const getWeeklyTimesheetsByEmployee = async (
       })
       .from(timesheetApprovals)
       .where(inArray(timesheetApprovals.timesheetId, timesheetIds))
-      .orderBy(timesheetApprovals.timesheetId, desc(timesheetApprovals.createdAt));
+      .orderBy(
+        timesheetApprovals.timesheetId,
+        desc(timesheetApprovals.createdAt),
+      );
 
     // Group by timesheet ID
     approvalHistory.forEach((record) => {
@@ -786,7 +832,7 @@ export const getWeeklyTimesheetsByEmployee = async (
 
     if (employeeData && row.timesheet.sheetDate) {
       const dayIndex = employeeData.weekDays.findIndex(
-        (day: any) => day.date === row.timesheet.sheetDate
+        (day: any) => day.date === row.timesheet.sheetDate,
       );
 
       if (dayIndex >= 0) {
@@ -847,28 +893,33 @@ export const getWeeklyTimesheetsByEmployee = async (
           }
 
           // Get rejection and resubmission history from approval records
-          const approvalHistory = approvalHistoryMap.get(row.timesheet.id) || [];
-          
+          const approvalHistory =
+            approvalHistoryMap.get(row.timesheet.id) || [];
+
           // Find rejection records (sorted by most recent first)
           const rejectionRecords = approvalHistory
             .filter((record) => record.action === "rejected")
             .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-          
+
           const mostRecentRejection = rejectionRecords[0];
-          
+
           // Include rejection reason from approval history remarks (not from notes)
           // Extract rejection reason (before "Manager Notes:" if present)
-          if (row.timesheet.status === "rejected" && mostRecentRejection?.remarks) {
+          if (
+            row.timesheet.status === "rejected" &&
+            mostRecentRejection?.remarks
+          ) {
             const remarks = mostRecentRejection.remarks;
             const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
-            dayData.rejectionReason = managerNotesIndex > 0
-              ? remarks.substring(0, managerNotesIndex)
-              : remarks;
+            dayData.rejectionReason =
+              managerNotesIndex > 0
+                ? remarks.substring(0, managerNotesIndex)
+                : remarks;
           }
 
           // Check if timesheet was resubmitted (status is not "rejected" but rejectedBy is not null)
-          const isResubmitted = 
-            row.timesheet.rejectedBy !== null && 
+          const isResubmitted =
+            row.timesheet.rejectedBy !== null &&
             row.timesheet.rejectedBy !== undefined &&
             row.timesheet.status !== "rejected";
 
@@ -891,9 +942,10 @@ export const getWeeklyTimesheetsByEmployee = async (
             if (mostRecentRejection?.remarks) {
               const remarks = mostRecentRejection.remarks;
               const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
-              dayData.rejectionReason = managerNotesIndex > 0
-                ? remarks.substring(0, managerNotesIndex)
-                : remarks;
+              dayData.rejectionReason =
+                managerNotesIndex > 0
+                  ? remarks.substring(0, managerNotesIndex)
+                  : remarks;
             }
 
             // Find resubmission timestamp
@@ -904,13 +956,19 @@ export const getWeeklyTimesheetsByEmployee = async (
                 .filter(
                   (record) =>
                     record.createdAt > mostRecentRejection.createdAt &&
-                    record.action !== "rejected"
+                    record.action !== "rejected",
                 )
-                .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+                .sort(
+                  (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+                )[0];
 
               if (resubmissionRecord) {
-                dayData.resubmittedAt = resubmissionRecord.createdAt.toISOString();
-              } else if (row.timesheet.updatedAt && row.timesheet.updatedAt > mostRecentRejection.createdAt) {
+                dayData.resubmittedAt =
+                  resubmissionRecord.createdAt.toISOString();
+              } else if (
+                row.timesheet.updatedAt &&
+                row.timesheet.updatedAt > mostRecentRejection.createdAt
+              ) {
                 // Use updatedAt if it's after rejection and no explicit resubmission record
                 dayData.resubmittedAt = row.timesheet.updatedAt.toISOString();
               }
@@ -918,13 +976,11 @@ export const getWeeklyTimesheetsByEmployee = async (
               // Calculate resubmission count
               // Count how many times status changed from rejected to non-rejected
               // We count status transitions: each time it goes from rejected to something else
-              const statusTransitions = approvalHistory
-                .filter(
-                  (record) =>
-                    record.createdAt > mostRecentRejection.createdAt &&
-                    record.action !== "rejected"
-                )
-                .length;
+              const statusTransitions = approvalHistory.filter(
+                (record) =>
+                  record.createdAt > mostRecentRejection.createdAt &&
+                  record.action !== "rejected",
+              ).length;
 
               // At minimum, if it's resubmitted, count is at least 1
               const resubmissionCount = Math.max(1, statusTransitions);
@@ -1010,14 +1066,16 @@ export const getWeeklyTimesheetsByEmployee = async (
 export const getMyWeeklyTimesheets = async (
   employeeId: number,
   weekStartDate: string,
-  _search?: string
+  _search?: string,
 ) => {
   // Get weekly data for this specific employee
-  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [employeeId]);
+  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [
+    employeeId,
+  ]);
 
   // Filter to only include the current employee's data
   const myEmployeeData = weeklyData.employees.find(
-    (emp) => emp.employeeInfo.id === employeeId
+    (emp) => emp.employeeInfo.id === employeeId,
   );
 
   if (!myEmployeeData) {
@@ -1080,7 +1138,7 @@ export const getTimesheetsByEmployee = async (
   search?: string,
   employeeId?: string,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
 ) => {
   let whereConditions: any[] = [];
 
@@ -1091,8 +1149,8 @@ export const getTimesheetsByEmployee = async (
         ilike(timesheets.notes, `%${search}%`),
         ilike(timesheets.status, `%${search}%`),
         ilike(employees.employeeId, `%${search}%`),
-        ilike(users.fullName, `%${search}%`)
-      )!
+        ilike(users.fullName, `%${search}%`),
+      )!,
     );
   }
 
@@ -1205,7 +1263,7 @@ export const getTimesheetsByEmployee = async (
 export const approveTimesheet = async (
   timesheetId: number,
   approvedBy: string,
-  notes?: string
+  notes?: string,
 ) => {
   // Get existing timesheet to preserve employee notes
   const [existingTimesheet] = await db
@@ -1256,7 +1314,7 @@ export const rejectTimesheet = async (
   timesheetId: number,
   rejectedBy: string,
   rejectionReason: string,
-  notes?: string
+  notes?: string,
 ) => {
   // Get existing timesheet to preserve employee notes
   const [existingTimesheet] = await db
@@ -1329,8 +1387,8 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
     .where(
       and(
         eq(employees.isDeleted, false),
-        eq(employees.status, "available") // Only count available employees
-      )
+        eq(employees.status, "available"), // Only count available employees
+      ),
     );
 
   const totalEmployees = totalEmployeesResult?.count || 0;
@@ -1343,13 +1401,13 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
     .where(
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false)
-      )
+        eq(employees.isDeleted, false),
+      ),
     );
 
   // Get unique employee IDs
   const uniqueEmployeeIds = new Set(
-    employeesWithTimesheetsData.map((row) => row.employeeId)
+    employeesWithTimesheetsData.map((row) => row.employeeId),
   );
   const employeesWithTimesheets = uniqueEmployeeIds.size;
 
@@ -1364,8 +1422,8 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
     .where(
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false)
-      )
+        eq(employees.isDeleted, false),
+      ),
     );
 
   const totalHours = parseFloat(hoursResult[0]?.totalHours || "0");
@@ -1383,9 +1441,9 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
         eq(employees.isDeleted, false),
         or(
           eq(timesheets.status, "pending"),
-          eq(timesheets.status, "submitted")
-        )!
-      )
+          eq(timesheets.status, "submitted"),
+        )!,
+      ),
     );
 
   const pendingApprovals = pendingApprovalsResult?.count || 0;
@@ -1399,8 +1457,8 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
         eq(employees.isDeleted, false),
-        eq(timesheets.status, "rejected")
-      )
+        eq(timesheets.status, "rejected"),
+      ),
     );
 
   const rejectedEntries = rejectedEntriesResult?.count || 0;

@@ -28,10 +28,15 @@ import {
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 
 // ============================
 // Main Bid Operations
 // ============================
+
+// Aliases for joining users table multiple times (createdBy, assignedTo)
+const createdByUser = alias(users, "created_by_user");
+const assignedToUser = alias(users, "assigned_to_user");
 
 export const getBids = async (
   organizationId: string | undefined,
@@ -82,10 +87,12 @@ export const getBids = async (
   const result = await db
     .select({
       bid: bidsTable,
-      createdByName: users.fullName,
+      createdByName: createdByUser.fullName,
+      assignedToName: assignedToUser.fullName,
     })
     .from(bidsTable)
-    .leftJoin(users, eq(bidsTable.createdBy, users.id))
+    .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
+    .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
@@ -98,10 +105,11 @@ export const getBids = async (
 
   const total = totalCount[0]?.count ?? 0;
 
-  // Map results to include createdByName
+  // Map results to include createdByName and assignedToName
   const enrichedBids = result.map((item) => ({
     ...item.bid,
-    createdByName: item.createdByName || null,
+    createdByName: item.createdByName ?? null,
+    assignedToName: item.assignedToName ?? null,
   }));
 
   return {
@@ -119,15 +127,18 @@ export const getBidById = async (id: string) => {
   const [result] = await db
     .select({
       bid: bidsTable,
-      createdByName: users.fullName,
+      createdByName: createdByUser.fullName,
+      assignedToName: assignedToUser.fullName,
     })
     .from(bidsTable)
-    .leftJoin(users, eq(bidsTable.createdBy, users.id))
+    .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
+    .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
   return {
     ...result.bid,
-    createdByName: result.createdByName || null,
+    createdByName: result.createdByName ?? null,
+    assignedToName: result.assignedToName ?? null,
   };
 };
 
@@ -136,15 +147,18 @@ export const getBidByIdSimple = async (id: string) => {
   const [result] = await db
     .select({
       bid: bidsTable,
-      createdByName: users.fullName,
+      createdByName: createdByUser.fullName,
+      assignedToName: assignedToUser.fullName,
     })
     .from(bidsTable)
-    .leftJoin(users, eq(bidsTable.createdBy, users.id))
+    .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
+    .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
   return {
     ...result.bid,
-    createdByName: result.createdByName || null,
+    createdByName: result.createdByName ?? null,
+    assignedToName: result.assignedToName ?? null,
   };
 };
 

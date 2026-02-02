@@ -18,7 +18,7 @@ const validateUserAccess = (req: Request, res: Response): string | null => {
 };
 
 // Legacy function for backward compatibility
-const validateOrganizationAccess = validateUserAccess;
+// Use validateUserAccess for access; org = client data (from resource or query).
 import {
   getClients,
   getClientById,
@@ -63,7 +63,10 @@ import {
   getClientSettings,
   updateClientSettings,
 } from "../services/client.service.js";
-import { uploadToSpaces, deleteFromSpaces } from "../services/storage.service.js";
+import {
+  uploadToSpaces,
+  deleteFromSpaces,
+} from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 import {
   checkOrganizationNameExists,
@@ -107,7 +110,9 @@ export const getClientsHandler = async (req: Request, res: Response) => {
 
     // Map status from array to string if needed
     if (statusFilter !== undefined) {
-      const statusValue = Array.isArray(statusFilter) ? statusFilter[0] : statusFilter;
+      const statusValue = Array.isArray(statusFilter)
+        ? statusFilter[0]
+        : statusFilter;
       if (statusValue) {
         filters.status = statusValue;
       }
@@ -120,7 +125,7 @@ export const getClientsHandler = async (req: Request, res: Response) => {
     const result = await getClients(
       offset,
       limit,
-      Object.keys(filters).length > 0 ? filters : undefined
+      Object.keys(filters).length > 0 ? filters : undefined,
     );
 
     logger.info("Clients fetched successfully");
@@ -132,7 +137,7 @@ export const getClientsHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Error fetching clients", error, req);
-    
+
     // Use database error parser for consistent, human-readable error messages
     if (isDatabaseError(error)) {
       const parsedError = parseDatabaseError(error);
@@ -147,13 +152,13 @@ export const getClientsHandler = async (req: Request, res: Response) => {
             : undefined,
       });
     }
-    
+
     // For other errors, provide a more helpful message
     const errorMessage = error?.message || "Failed to fetch clients";
     return res.status(500).json({
       success: false,
-      message: errorMessage.includes("Database query error") 
-        ? errorMessage 
+      message: errorMessage.includes("Database query error")
+        ? errorMessage
         : "Failed to fetch clients. Please try again or contact support if the issue persists.",
       detail: process.env.NODE_ENV === "development" ? errorMessage : undefined,
     });
@@ -232,7 +237,7 @@ export const createClientHandler = async (req: Request, res: Response) => {
           const uploadResult = await uploadToSpaces(
             companyLogoFile.buffer,
             companyLogoFile.originalname,
-            "client-logos"
+            "client-logos",
           );
           uploadedLogoUrl = uploadResult.url;
           clientData.companyLogo = uploadedLogoUrl;
@@ -249,7 +254,7 @@ export const createClientHandler = async (req: Request, res: Response) => {
       // Pattern: contactPicture_0, contactPicture_1, etc.
       if (clientData.contacts && Array.isArray(clientData.contacts)) {
         const contactPictureFiles = files.filter((f) =>
-          f.fieldname.startsWith("contactPicture_")
+          f.fieldname.startsWith("contactPicture_"),
         );
 
         for (const pictureFile of contactPictureFiles) {
@@ -262,14 +267,14 @@ export const createClientHandler = async (req: Request, res: Response) => {
                 const uploadResult = await uploadToSpaces(
                   pictureFile.buffer,
                   pictureFile.originalname,
-                  "contact-pictures"
+                  "contact-pictures",
                 );
                 clientData.contacts[index].picture = uploadResult.url;
               } catch (uploadError: any) {
                 logger.logApiError(
                   `Contact picture ${index} upload error`,
                   uploadError,
-                  req
+                  req,
                 );
                 return res.status(500).json({
                   success: false,
@@ -396,7 +401,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
           const uploadResult = await uploadToSpaces(
             companyLogoFile.buffer,
             companyLogoFile.originalname,
-            "client-logos"
+            "client-logos",
           );
           uploadedLogoUrl = uploadResult.url;
           updateData.companyLogo = uploadedLogoUrl;
@@ -427,7 +432,11 @@ export const updateClientHandler = async (req: Request, res: Response) => {
           logger.info("Company logo deleted from DigitalOcean Spaces");
         }
       } catch (error) {
-        logger.logApiError("Error deleting company logo from storage", error, req);
+        logger.logApiError(
+          "Error deleting company logo from storage",
+          error,
+          req,
+        );
         // Continue with database update even if file deletion fails
       }
       updateData.logo = null;
@@ -441,7 +450,11 @@ export const updateClientHandler = async (req: Request, res: Response) => {
           await deleteFromSpaces(currentClient.organization.logo);
           logger.info("Old company logo deleted from DigitalOcean Spaces");
         } catch (error) {
-          logger.logApiError("Error deleting old company logo from storage", error, req);
+          logger.logApiError(
+            "Error deleting old company logo from storage",
+            error,
+            req,
+          );
         }
       }
       updateData.logo = updateData.companyLogo;
@@ -460,7 +473,10 @@ export const updateClientHandler = async (req: Request, res: Response) => {
     }
 
     // Check organization name uniqueness (if provided and different from current)
-    if (updateData.name && updateData.name !== existingClient.organization.name) {
+    if (
+      updateData.name &&
+      updateData.name !== existingClient.organization.name
+    ) {
       uniqueFieldChecks.push({
         field: "name",
         value: updateData.name,
@@ -591,7 +607,7 @@ export const getClientContactsHandler = async (req: Request, res: Response) => {
 // Get single client contact
 export const getClientContactByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { contactId } = req.params;
@@ -626,7 +642,7 @@ export const getClientContactByIdHandler = async (
 // Create client contact
 export const createClientContactHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   let uploadedPictureUrl: string | null = null;
   try {
@@ -664,7 +680,7 @@ export const createClientContactHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "contact-pictures"
+          "contact-pictures",
         );
         uploadedPictureUrl = uploadResult.url;
         contactData.picture = uploadedPictureUrl;
@@ -697,7 +713,7 @@ export const createClientContactHandler = async (
 // Update client contact
 export const updateClientContactHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   let uploadedPictureUrl: string | null = null;
   try {
@@ -748,7 +764,11 @@ export const updateClientContactHandler = async (
           logger.info("Contact picture deleted from DigitalOcean Spaces");
         }
       } catch (error) {
-        logger.logApiError("Error deleting contact picture from storage", error, req);
+        logger.logApiError(
+          "Error deleting contact picture from storage",
+          error,
+          req,
+        );
         // Continue with database update even if file deletion fails
       }
     }
@@ -762,7 +782,11 @@ export const updateClientContactHandler = async (
           await deleteFromSpaces(currentContact.picture);
           logger.info("Old contact picture deleted from DigitalOcean Spaces");
         } catch (error) {
-          logger.logApiError("Error deleting old contact picture from storage", error, req);
+          logger.logApiError(
+            "Error deleting old contact picture from storage",
+            error,
+            req,
+          );
         }
       }
     }
@@ -771,7 +795,7 @@ export const updateClientContactHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "contact-pictures"
+          "contact-pictures",
         );
         uploadedPictureUrl = uploadResult.url;
         contactData.picture = uploadedPictureUrl;
@@ -820,7 +844,7 @@ export const updateClientContactHandler = async (
 // Delete client contact
 export const deleteClientContactHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { contactId } = req.params;
@@ -1022,13 +1046,13 @@ export const deleteClientNoteHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Get Client KPIs for dashboard
+// Get Client KPIs for dashboard. No organizationId required.
 export const getClientKPIsHandler = async (req: Request, res: Response) => {
   try {
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
-    
-    const kpis = await getClientKPIs(organizationId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const kpis = await getClientKPIs();
 
     logger.info("Client KPIs fetched successfully");
     return res.status(200).json({
@@ -1314,7 +1338,7 @@ export const deleteClientTypeHandler = async (req: Request, res: Response) => {
 // Industry Classifications Management
 export const getIndustryClassificationsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const industries = await getIndustryClassifications();
@@ -1335,7 +1359,7 @@ export const getIndustryClassificationsHandler = async (
 
 export const getIndustryClassificationByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1381,7 +1405,7 @@ export const getIndustryClassificationByIdHandler = async (
 
 export const createIndustryClassificationHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { name, code } = req.body;
@@ -1454,7 +1478,7 @@ export const createIndustryClassificationHandler = async (
 
 export const updateIndustryClassificationHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1485,7 +1509,8 @@ export const updateIndustryClassificationHandler = async (
       uniqueFieldChecks.push({
         field: "name",
         value: name,
-        checkFunction: () => checkIndustryClassificationNameExists(name, industryId),
+        checkFunction: () =>
+          checkIndustryClassificationNameExists(name, industryId),
         message: `An industry classification with the name '${name}' already exists`,
       });
     }
@@ -1495,7 +1520,8 @@ export const updateIndustryClassificationHandler = async (
       uniqueFieldChecks.push({
         field: "code",
         value: code,
-        checkFunction: () => checkIndustryClassificationCodeExists(code, industryId),
+        checkFunction: () =>
+          checkIndustryClassificationCodeExists(code, industryId),
         message: `An industry classification with the code '${code}' already exists`,
       });
     }
@@ -1552,7 +1578,7 @@ export const updateIndustryClassificationHandler = async (
 
 export const deleteIndustryClassificationHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1619,7 +1645,7 @@ export const deleteIndustryClassificationHandler = async (
 // Document Categories Management
 export const getDocumentCategoriesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const categories = await getDocumentCategories();
@@ -1640,7 +1666,7 @@ export const getDocumentCategoriesHandler = async (
 
 export const getDocumentCategoryByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1686,7 +1712,7 @@ export const getDocumentCategoryByIdHandler = async (
 
 export const createDocumentCategoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const category = await createDocumentCategory(req.body);
@@ -1729,7 +1755,7 @@ export const createDocumentCategoryHandler = async (
 // Update document category
 export const updateDocumentCategoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1792,7 +1818,7 @@ export const updateDocumentCategoryHandler = async (
 // Delete document category
 export const deleteDocumentCategoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1853,7 +1879,7 @@ export const deleteDocumentCategoryHandler = async (
 
 export const assignDocumentCategoriesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { documentId } = req.params;
@@ -1885,7 +1911,7 @@ export const assignDocumentCategoriesHandler = async (
 // Client Documents Management
 export const createClientDocumentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   let uploadedFileUrl: string | null = null;
   try {
@@ -1930,7 +1956,7 @@ export const createClientDocumentHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "client-documents"
+          "client-documents",
         );
         uploadedFileUrl = uploadResult.url;
         documentData.filePath = uploadedFileUrl;
@@ -1994,7 +2020,7 @@ export const createClientDocumentHandler = async (
 
 export const getClientDocumentsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id: organizationId } = req.params;
@@ -2034,7 +2060,7 @@ export const getClientDocumentsHandler = async (
 
 export const getClientDocumentByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { documentId } = req.params;
@@ -2072,7 +2098,7 @@ export const getClientDocumentByIdHandler = async (
 // Update client document
 export const updateClientDocumentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   let uploadedFileUrl: string | null = null;
   try {
@@ -2125,7 +2151,11 @@ export const updateClientDocumentHandler = async (
           await deleteFromSpaces(currentDocument.filePath);
           logger.info("Old document file deleted from DigitalOcean Spaces");
         } catch (error) {
-          logger.logApiError("Error deleting old document file from storage", error, req);
+          logger.logApiError(
+            "Error deleting old document file from storage",
+            error,
+            req,
+          );
         }
       }
 
@@ -2134,7 +2164,7 @@ export const updateClientDocumentHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "client-documents"
+          "client-documents",
         );
         uploadedFileUrl = uploadResult.url;
         updateData.filePath = uploadedFileUrl;
@@ -2190,7 +2220,7 @@ export const updateClientDocumentHandler = async (
 
 export const deleteClientDocumentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { documentId } = req.params;
@@ -2219,7 +2249,11 @@ export const deleteClientDocumentHandler = async (
           logger.info("Document file deleted from DigitalOcean Spaces");
         }
       } catch (error) {
-        logger.logApiError("Error deleting document file from storage", error, req);
+        logger.logApiError(
+          "Error deleting document file from storage",
+          error,
+          req,
+        );
         // Continue with database deletion even if file deletion fails
       }
     }
@@ -2250,7 +2284,7 @@ export const deleteClientDocumentHandler = async (
 
 export const createCategoryAndAssignToDocumentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id, documentId } = req.params;
@@ -2279,7 +2313,7 @@ export const createCategoryAndAssignToDocumentHandler = async (
 
     const result = await createCategoryAndAssignToDocument(
       documentId,
-      categoryData
+      categoryData,
     );
 
     logger.info("Category created and assigned to document successfully");
@@ -2288,8 +2322,8 @@ export const createCategoryAndAssignToDocumentHandler = async (
       message: result.wasNewCategory
         ? "New category created and assigned to document"
         : result.wasAlreadyAssigned
-        ? "Document was already assigned to this existing category"
-        : "Document assigned to existing category",
+          ? "Document was already assigned to this existing category"
+          : "Document assigned to existing category",
       data: {
         category: result.category,
         wasNewCategory: result.wasNewCategory,
@@ -2300,7 +2334,7 @@ export const createCategoryAndAssignToDocumentHandler = async (
     logger.logApiError(
       "Error creating category and assigning to document",
       error,
-      req
+      req,
     );
 
     if (error.message === "Document not found") {
@@ -2326,7 +2360,7 @@ export const createCategoryAndAssignToDocumentHandler = async (
 
 export const getClientDocumentCategoriesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id, documentId } = req.params;
@@ -2363,7 +2397,7 @@ export const getClientDocumentCategoriesHandler = async (
 
 export const removeDocumentCategoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id, documentId, categoryId } = req.params;
@@ -2474,7 +2508,7 @@ export const getClientSettingsHandler = async (req: Request, res: Response) => {
 // Update client settings
 export const updateClientSettingsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;

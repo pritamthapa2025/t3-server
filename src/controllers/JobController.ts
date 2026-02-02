@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
-// Helper function to validate organization access
+// Access control: use USER data (req.user.id), not organization.
+// Organization = CLIENT data (see .cursorrules). For job handlers, get client org from the job (job.organizationId from bid).
 const validateUserAccess = (req: Request, res: Response): string | null => {
   const userId = req.user?.id;
 
@@ -15,15 +16,11 @@ const validateUserAccess = (req: Request, res: Response): string | null => {
   return userId;
 };
 
-// Legacy function for backward compatibility
-const validateOrganizationAccess = validateUserAccess;
-
-
 // Helper function to validate required params
 const validateParams = (
   req: Request,
   res: Response,
-  paramNames: string[]
+  paramNames: string[],
 ): boolean => {
   for (const paramName of paramNames) {
     if (!req.params[paramName]) {
@@ -109,7 +106,7 @@ export const getJobsHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const offset = (page - 1) * limit;
@@ -127,7 +124,7 @@ export const getJobsHandler = async (req: Request, res: Response) => {
     const jobs = await getJobs(
       offset,
       limit,
-      Object.keys(filters).length > 0 ? filters : undefined
+      Object.keys(filters).length > 0 ? filters : undefined,
     );
 
     logger.info("Jobs fetched successfully");
@@ -151,7 +148,7 @@ export const getJobByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const job = await getJobById(id!);
@@ -224,7 +221,7 @@ export const createJobHandler = async (req: Request, res: Response) => {
     }
 
     const { assignedTeamMembers, ...jobFields } = req.body;
-    
+
     const jobData = {
       ...jobFields,
       bidId, // Ensure bidId is included
@@ -292,7 +289,7 @@ export const updateJobHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const performedBy = req.user!.id;
@@ -315,7 +312,8 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       uniqueFieldChecks.push({
         field: "jobNumber",
         value: jobNumber,
-        checkFunction: () => checkJobNumberExists(jobNumber, originalJob.organizationId, id),
+        checkFunction: () =>
+          checkJobNumberExists(jobNumber, originalJob.organizationId, id),
         message: `A job with number '${jobNumber}' already exists in this organization`,
       });
     }
@@ -387,7 +385,7 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const _performedBy = req.user!.id;
@@ -407,7 +405,7 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
     // await createJobHistoryEntry({
     //   jobId: id!,
     //   organizationId: deletedJob.organizationId,
-    //   action: "job_deleted", 
+    //   action: "job_deleted",
     //   description: `Job "${deletedJob.name}" was deleted`,
     //   createdBy: performedBy,
     // });
@@ -430,15 +428,12 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
 // Team Members Operations
 // ============================
 
-export const getJobTeamMembersHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const teamMembers = await getJobTeamMembers(jobId!);
@@ -457,18 +452,21 @@ export const getJobTeamMembersHandler = async (
   }
 };
 
-export const addJobTeamMemberHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const addJobTeamMemberHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const memberData = {
       ...req.body,
@@ -487,7 +485,7 @@ export const addJobTeamMemberHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "team_member_added",
       description: "Team member was added",
       createdBy: performedBy,
@@ -510,14 +508,14 @@ export const addJobTeamMemberHandler = async (
 
 export const removeJobTeamMemberHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId", "employeeId"])) return;
     const { jobId, employeeId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
-    if (!userId) return;
+    const _userId = validateUserAccess(req, res);
+    if (!_userId) return;
 
     const _performedBy = req.user!.id;
 
@@ -536,7 +534,7 @@ export const removeJobTeamMemberHandler = async (
     //   jobId: jobId!,
     //   organizationId: jobOrganizationId,
     //   action: "team_member_removed",
-    //   description: "Team member was removed", 
+    //   description: "Team member was removed",
     //   createdBy: performedBy,
     // });
 
@@ -560,13 +558,13 @@ export const removeJobTeamMemberHandler = async (
 
 export const getJobFinancialSummaryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const summary = await getJobFinancialSummary(jobId!);
@@ -594,21 +592,27 @@ export const getJobFinancialSummaryHandler = async (
 
 export const updateJobFinancialSummaryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
     const summary = await updateJobFinancialSummary(
       jobId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!summary) {
@@ -621,7 +625,7 @@ export const updateJobFinancialSummaryHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "financial_summary_updated",
       description: "Financial summary was updated",
       createdBy: performedBy,
@@ -648,17 +652,26 @@ export const updateJobFinancialSummaryHandler = async (
 
 export const getJobFinancialBreakdownHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     // Get planned financial breakdown from the associated bid
-    const breakdown = await getJobPlannedFinancialBreakdown(jobId!, organizationId);
+    const breakdown = await getJobPlannedFinancialBreakdown(
+      jobId!,
+      clientOrgId,
+    );
 
     logger.info("Job planned financial breakdown fetched successfully");
     return res.status(200).json({
@@ -677,14 +690,15 @@ export const getJobFinancialBreakdownHandler = async (
 
 export const updateJobFinancialBreakdownHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     // Financial breakdown updates should be done on the associated bid
     // This endpoint is deprecated - use bid financial breakdown endpoints instead
     return res.status(400).json({
       success: false,
-      message: "Financial breakdown updates should be done on the associated bid. Use PUT /bids/:bidId/financial-breakdown instead.",
+      message:
+        "Financial breakdown updates should be done on the associated bid. Use PUT /bids/:bidId/financial-breakdown instead.",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -704,7 +718,7 @@ export const getJobMaterialsHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const materials = await getJobMaterials(jobId!);
@@ -730,12 +744,15 @@ export const getJobMaterialsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getJobMaterialByIdHandler = async (req: Request, res: Response) => {
+export const getJobMaterialByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["jobId", "materialId"])) return;
     const { jobId, materialId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const material = await getJobMaterialById(jobId!, materialId!);
@@ -831,11 +848,7 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const material = await updateJobMaterial(
-      materialId!,
-      jobId!,
-      req.body
-    );
+    const material = await updateJobMaterial(materialId!, jobId!, req.body);
 
     if (!material) {
       return res.status(404).json({
@@ -886,8 +899,11 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
 
     // Get the material before deleting to use in history
     const { getBidMaterialById } = await import("../services/bid.service.js");
-    const existingMaterial = await getBidMaterialById(materialId!, job.organizationId);
-    
+    const existingMaterial = await getBidMaterialById(
+      materialId!,
+      job.organizationId,
+    );
+
     const material = await deleteJobMaterial(materialId!, jobId!);
 
     if (!material) {
@@ -902,7 +918,7 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
       jobId: jobId!,
       organizationId: job.organizationId,
       action: "material_deleted",
-      description: `Material "${existingMaterial?.description || 'Unknown'}" was deleted`,
+      description: `Material "${existingMaterial?.description || "Unknown"}" was deleted`,
       createdBy: userId,
     });
 
@@ -929,7 +945,7 @@ export const getJobLaborHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const labor = await getJobLabor(jobId!);
@@ -960,7 +976,7 @@ export const getJobLaborByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId", "laborId"])) return;
     const { jobId, laborId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const labor = await getJobLaborById(jobId!, laborId!);
@@ -990,15 +1006,21 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const laborData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
     };
 
     const labor = await createJobLabor(laborData);
@@ -1006,14 +1028,15 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
     if (!labor) {
       return res.status(404).json({
         success: false,
-        message: "Job not found or the labor entry could not be created. Please verify the job ID and position ID.",
+        message:
+          "Job not found or the labor entry could not be created. Please verify the job ID and position ID.",
       });
     }
 
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_added",
       description: `Labor entry was added`,
       createdBy: performedBy,
@@ -1027,14 +1050,15 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Job error", error, req);
-    
+
     // Check for specific database errors
     if (error?.code === "23503") {
       // Foreign key constraint violation
       if (error?.constraint?.includes("position_id")) {
         return res.status(400).json({
           success: false,
-          message: "Invalid position ID. The specified position does not exist.",
+          message:
+            "Invalid position ID. The specified position does not exist.",
         });
       }
       if (error?.constraint?.includes("bid_id")) {
@@ -1057,12 +1081,18 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["laborId", "jobId"])) return;
     const { laborId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const labor = await updateJobLabor(laborId!, jobId!, organizationId, req.body);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const labor = await updateJobLabor(laborId!, jobId!, clientOrgId, req.body);
 
     if (!labor) {
       return res.status(404).json({
@@ -1074,7 +1104,7 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_updated",
       description: `Labor entry was updated`,
       createdBy: performedBy,
@@ -1100,12 +1130,18 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["laborId", "jobId"])) return;
     const { laborId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const labor = await deleteJobLabor(laborId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const labor = await deleteJobLabor(laborId!, jobId!, clientOrgId);
 
     if (!labor) {
       return res.status(404).json({
@@ -1117,7 +1153,7 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "labor_deleted",
       description: `Labor entry was deleted`,
       createdBy: performedBy,
@@ -1146,7 +1182,7 @@ export const getJobTravelHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const travel = await getJobTravel(jobId!);
@@ -1177,7 +1213,7 @@ export const getJobTravelByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId", "travelId"])) return;
     const { jobId, travelId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const travel = await getJobTravelById(jobId!, travelId!);
@@ -1207,15 +1243,21 @@ export const createJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const travelData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
     };
 
     const travel = await createJobTravel(travelData);
@@ -1230,7 +1272,7 @@ export const createJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_added",
       description: "Travel entry was added",
       createdBy: performedBy,
@@ -1256,12 +1298,23 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["travelId", "jobId"])) return;
     const { travelId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const travel = await updateJobTravel(travelId!, jobId!, organizationId, req.body);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const travel = await updateJobTravel(
+      travelId!,
+      jobId!,
+      clientOrgId,
+      req.body,
+    );
 
     if (!travel) {
       return res.status(404).json({
@@ -1273,7 +1326,7 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_updated",
       description: "Travel entry was updated",
       createdBy: performedBy,
@@ -1299,12 +1352,18 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["travelId", "jobId"])) return;
     const { travelId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const travel = await deleteJobTravel(travelId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const travel = await deleteJobTravel(travelId!, jobId!, clientOrgId);
 
     if (!travel) {
       return res.status(404).json({
@@ -1316,7 +1375,7 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "travel_deleted",
       description: "Travel entry was deleted",
       createdBy: performedBy,
@@ -1342,13 +1401,13 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
 
 export const getJobOperatingExpensesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     // Get operating expenses from the associated bid
@@ -1377,14 +1436,15 @@ export const getJobOperatingExpensesHandler = async (
 
 export const updateJobOperatingExpensesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     // Operating expenses updates should be done on the associated bid
     // This endpoint is deprecated - use bid operating expenses endpoints instead
     return res.status(400).json({
       success: false,
-      message: "Operating expenses updates should be done on the associated bid. Use PUT /bids/:bidId/operating-expenses instead.",
+      message:
+        "Operating expenses updates should be done on the associated bid. Use PUT /bids/:bidId/operating-expenses instead.",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -1404,7 +1464,7 @@ export const getJobTimelineHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const timeline = await getJobTimeline(jobId!);
@@ -1432,20 +1492,26 @@ export const getJobTimelineHandler = async (req: Request, res: Response) => {
 
 export const createJobTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const eventData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -1461,7 +1527,7 @@ export const createJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_added",
       description: `Timeline event "${event.event}" was added`,
       createdBy: performedBy,
@@ -1482,12 +1548,15 @@ export const createJobTimelineEventHandler = async (
   }
 };
 
-export const getJobTimelineEventByIdHandler = async (req: Request, res: Response) => {
+export const getJobTimelineEventByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["jobId", "eventId"])) return;
     const { jobId, eventId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const timelineEvent = await getJobTimelineEventById(jobId!, eventId!);
@@ -1515,22 +1584,28 @@ export const getJobTimelineEventByIdHandler = async (req: Request, res: Response
 
 export const updateJobTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "jobId"])) return;
     const { eventId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const event = await updateJobTimelineEvent(
       eventId!,
       jobId!,
-      organizationId,
-      req.body
+      clientOrgId,
+      req.body,
     );
 
     if (!event) {
@@ -1543,7 +1618,7 @@ export const updateJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_updated",
       description: `Timeline event "${event?.event || "Unknown"}" was updated`,
       createdBy: performedBy,
@@ -1566,18 +1641,24 @@ export const updateJobTimelineEventHandler = async (
 
 export const deleteJobTimelineEventHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "jobId"])) return;
     const { eventId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const event = await deleteJobTimelineEvent(eventId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const event = await deleteJobTimelineEvent(eventId!, jobId!, clientOrgId);
 
     if (!event) {
       return res.status(404).json({
@@ -1589,7 +1670,7 @@ export const deleteJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "timeline_event_deleted",
       description: `Timeline event was deleted`,
       createdBy: performedBy,
@@ -1618,7 +1699,7 @@ export const getJobNotesHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const notes = await getJobNotes(jobId!);
@@ -1648,15 +1729,21 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
 
     const noteData = {
       ...req.body,
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -1672,7 +1759,7 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_added",
       description: "Note was added to job",
       createdBy: performedBy,
@@ -1698,7 +1785,7 @@ export const getJobNoteByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId", "noteId"])) return;
     const { jobId, noteId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const note = await getJobNoteById(jobId!, noteId!);
@@ -1729,12 +1816,18 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["noteId", "jobId"])) return;
     const { noteId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const note = await updateJobNote(noteId!, jobId!, organizationId, req.body);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const note = await updateJobNote(noteId!, jobId!, clientOrgId, req.body);
 
     if (!note) {
       return res.status(404).json({
@@ -1746,7 +1839,7 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_updated",
       description: "Note was updated",
       createdBy: performedBy,
@@ -1772,12 +1865,18 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["noteId", "jobId"])) return;
     const { noteId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const note = await deleteJobNote(noteId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const note = await deleteJobNote(noteId!, jobId!, clientOrgId);
 
     if (!note) {
       return res.status(404).json({
@@ -1789,7 +1888,7 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "note_deleted",
       description: "Note was deleted",
       createdBy: performedBy,
@@ -1817,10 +1916,16 @@ export const getJobHistoryHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const history = await getJobHistory(jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const history = await getJobHistory(jobId!, clientOrgId);
 
     logger.info("Job history fetched successfully");
     return res.status(200).json({
@@ -1845,7 +1950,7 @@ export const getJobTasksHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const tasks = await getJobTasks(jobId!);
@@ -1876,7 +1981,7 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const performedBy = req.user!.id;
@@ -1925,7 +2030,7 @@ export const getJobTaskByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId", "taskId"])) return;
     const { jobId, taskId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const task = await getJobTaskById(jobId!, taskId!);
@@ -1956,12 +2061,18 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["taskId", "jobId"])) return;
     const { taskId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const task = await updateJobTask(taskId!, jobId!, organizationId, req.body);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const task = await updateJobTask(taskId!, jobId!, clientOrgId, req.body);
 
     if (!task) {
       return res.status(404).json({
@@ -1973,7 +2084,7 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "task_updated",
       description: `Task updated`,
       createdBy: performedBy,
@@ -1999,12 +2110,18 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["taskId", "jobId"])) return;
     const { taskId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const task = await deleteJobTask(taskId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const task = await deleteJobTask(taskId!, jobId!, clientOrgId);
 
     if (!task) {
       return res.status(404).json({
@@ -2016,7 +2133,7 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "task_deleted",
       description: `Task deleted`,
       createdBy: performedBy,
@@ -2044,10 +2161,16 @@ export const getJobExpensesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
-    const expenses = await getJobExpenses(jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const expenses = await getJobExpenses(jobId!, clientOrgId);
 
     logger.info("Job expenses fetched successfully");
     return res.status(200).json({
@@ -2068,7 +2191,7 @@ export const getJobExpenseByIdHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId", "expenseId"])) return;
     const { jobId, expenseId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const expense = await getJobExpenseById(jobId!, expenseId!);
@@ -2099,10 +2222,30 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
 
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const performedBy = req.user!.id;
+
+    // Upload receipt to Digital Ocean Spaces if file provided (form-data)
+    if (req.file) {
+      try {
+        const { uploadToSpaces } =
+          await import("../services/storage.service.js");
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "job-expense-receipts",
+        );
+        req.body.receiptPath = uploadResult.url;
+      } catch (uploadError: unknown) {
+        logger.logApiError("Receipt upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload receipt. Please try again.",
+        });
+      }
+    }
 
     const expenseData = {
       ...req.body,
@@ -2110,19 +2253,21 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
       createdBy: performedBy,
     };
 
-    const expense = await createJobExpense(expenseData);
+    const result = await createJobExpense(expenseData);
 
-    if (!expense) {
+    if (!result) {
       return res.status(500).json({
         success: false,
         message: "Failed to create expense",
       });
     }
 
-    // Create history entry
+    const { expense, organizationId } = result;
+
+    // Create history entry (organizationId from job's bid, not on expense row)
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: expense.organizationId,
+      organizationId,
       action: "expense_added",
       description: `Expense "${expense.expenseType}" was added`,
       createdBy: performedBy,
@@ -2148,12 +2293,43 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["expenseId", "jobId"])) return;
     const { expenseId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const expense = await updateJobExpense(expenseId!, jobId!, organizationId, req.body);
+    // Upload receipt to Digital Ocean Spaces if file provided (form-data)
+    if (req.file) {
+      try {
+        const { uploadToSpaces } =
+          await import("../services/storage.service.js");
+        const uploadResult = await uploadToSpaces(
+          req.file.buffer,
+          req.file.originalname,
+          "job-expense-receipts",
+        );
+        req.body.receiptPath = uploadResult.url;
+      } catch (uploadError: unknown) {
+        logger.logApiError("Receipt upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload receipt. Please try again.",
+        });
+      }
+    }
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const expense = await updateJobExpense(
+      expenseId!,
+      jobId!,
+      clientOrgId,
+      req.body,
+    );
 
     if (!expense) {
       return res.status(404).json({
@@ -2165,7 +2341,7 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "expense_updated",
       description: `Expense was updated`,
       createdBy: performedBy,
@@ -2191,12 +2367,18 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["expenseId", "jobId"])) return;
     const { expenseId } = req.params;
     const { jobId } = req.params;
-    const organizationId = validateOrganizationAccess(req, res);
-    if (!organizationId) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const performedBy = req.user!.id;
 
-    const expense = await deleteJobExpense(expenseId!, jobId!, organizationId);
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    const clientOrgId = job.organizationId;
+
+    const expense = await deleteJobExpense(expenseId!, jobId!, clientOrgId);
 
     if (!expense) {
       return res.status(404).json({
@@ -2208,7 +2390,7 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
+      organizationId: clientOrgId,
       action: "expense_deleted",
       description: `Expense deleted`,
       createdBy: performedBy,
@@ -2264,7 +2446,10 @@ export const getJobDocumentsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const createJobDocumentsHandler = async (req: Request, res: Response) => {
+export const createJobDocumentsHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
@@ -2285,7 +2470,7 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
     // Handle file uploads
     const files = (req.files as Express.Multer.File[]) || [];
     const documentFiles = files.filter((file) =>
-      file.fieldname.startsWith("document_")
+      file.fieldname.startsWith("document_"),
     );
 
     if (documentFiles.length === 0) {
@@ -2296,10 +2481,8 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
     }
 
     const { uploadToSpaces } = await import("../services/storage.service.js");
-    const {
-      createBidDocument,
-      getBidById,
-    } = await import("../services/bid.service.js");
+    const { createBidDocument, getBidById } =
+      await import("../services/bid.service.js");
 
     // Verify bid exists
     const bid = await getBidById(bidId);
@@ -2320,7 +2503,7 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "bid-documents"
+          "bid-documents",
         );
 
         const document = await createBidDocument({
@@ -2334,9 +2517,12 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
 
         uploadedDocuments.push(document);
       } catch (uploadError: any) {
-        logger.error(`Error uploading document ${file.originalname}:`, uploadError);
+        logger.error(
+          `Error uploading document ${file.originalname}:`,
+          uploadError,
+        );
         errors.push(
-          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`
+          `Failed to upload ${file.originalname}: ${uploadError.message || "Unknown error"}`,
         );
       }
     }
@@ -2350,7 +2536,8 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
     }
 
     // Create history entry using job's organizationId
-    const { createJobHistoryEntry } = await import("../services/job.service.js");
+    const { createJobHistoryEntry } =
+      await import("../services/job.service.js");
     await createJobHistoryEntry({
       jobId: jobId!,
       organizationId: job.organizationId,
@@ -2360,7 +2547,7 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
     });
 
     logger.info(
-      `Successfully uploaded ${uploadedDocuments.length} document(s) for job ${jobId}`
+      `Successfully uploaded ${uploadedDocuments.length} document(s) for job ${jobId}`,
     );
 
     return res.status(201).json({
@@ -2385,7 +2572,7 @@ export const createJobDocumentsHandler = async (req: Request, res: Response) => 
 
 export const getJobDocumentByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["jobId", "documentId"])) return;
@@ -2426,10 +2613,7 @@ export const getJobDocumentByIdHandler = async (
   }
 };
 
-export const updateJobDocumentHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const updateJobDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "documentId"])) return;
 
@@ -2447,9 +2631,8 @@ export const updateJobDocumentHandler = async (
     }
 
     // Verify document exists and belongs to the job's bid
-    const { getBidDocumentById, updateBidDocument } = await import(
-      "../services/bid.service.js"
-    );
+    const { getBidDocumentById, updateBidDocument } =
+      await import("../services/bid.service.js");
     const existingDocument = await getBidDocumentById(documentId!);
     if (!existingDocument || existingDocument.bidId !== job.bidId) {
       return res.status(404).json({
@@ -2463,11 +2646,12 @@ export const updateJobDocumentHandler = async (
     const file = req.file;
     if (file) {
       try {
-        const { uploadToSpaces } = await import("../services/storage.service.js");
+        const { uploadToSpaces } =
+          await import("../services/storage.service.js");
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "bid-documents"
+          "bid-documents",
         );
         uploadedFileUrl = uploadResult.url;
       } catch (uploadError: any) {
@@ -2542,9 +2726,8 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
     }
 
     // Verify document exists and belongs to the job's bid
-    const { getBidDocumentById, deleteBidDocument } = await import(
-      "../services/bid.service.js"
-    );
+    const { getBidDocumentById, deleteBidDocument } =
+      await import("../services/bid.service.js");
     const existingDocument = await getBidDocumentById(documentId!);
     if (!existingDocument || existingDocument.bidId !== job.bidId) {
       return res.status(404).json({
@@ -2563,7 +2746,8 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
     }
 
     // Create history entry using job's organizationId
-    const { createJobHistoryEntry } = await import("../services/job.service.js");
+    const { createJobHistoryEntry } =
+      await import("../services/job.service.js");
     await createJobHistoryEntry({
       jobId: jobId!,
       organizationId: job.organizationId,
@@ -2595,7 +2779,7 @@ export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
     const { id } = req.params;
-    const userId = validateOrganizationAccess(req, res);
+    const userId = validateUserAccess(req, res);
     if (!userId) return;
 
     const jobData = await getJobWithAllData(id!);
@@ -2620,7 +2804,3 @@ export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
     });
   }
 };
-
-
-
-

@@ -1,1290 +1,675 @@
 import {
   count,
   eq,
+  and,
   desc,
   asc,
-  and,
-  or,
-  sql,
   gte,
   lte,
   ilike,
-  inArray,
+  getTableColumns,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
   expenseCategories,
   expenses,
-  expenseReceipts,
-  expenseApprovals,
-  expenseAllocations,
-  mileageLogs,
   expenseHistory,
+  expenseReceipts,
 } from "../drizzle/schema/expenses.schema.js";
-import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 // ============================
 // Expense Categories
 // ============================
 
-export const getExpenseCategories = async (
-  organizationId: string,
+export async function getExpenseCategories(
+  _organizationId: string | undefined,
   offset: number,
   limit: number,
-  filters?: {
-    search?: string;
-    expenseType?: string;
-    parentCategoryId?: string;
-    isActive?: boolean;
-    requiresReceipt?: boolean;
-    requiresApproval?: boolean;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-    includeDeleted?: boolean;
-  },
-) => {
-  let whereConditions = [eq(expenseCategories.organizationId, organizationId)];
-
-  // Include deleted filter
-  if (!filters?.includeDeleted) {
-    whereConditions.push(eq(expenseCategories.isDeleted, false));
-  }
-
-  // Apply filters
+  filters?: Record<string, unknown>,
+) {
+  const whereConditions = [eq(expenseCategories.isDeleted, false)];
   if (filters?.search) {
     whereConditions.push(
-      or(
-        ilike(expenseCategories.name, `%${filters.search}%`),
-        ilike(expenseCategories.description, `%${filters.search}%`),
-        ilike(expenseCategories.code, `%${filters.search}%`),
-      )!,
+      ilike(expenseCategories.name, `%${String(filters.search)}%`),
     );
   }
-
   if (filters?.expenseType) {
     whereConditions.push(
-      eq(expenseCategories.expenseType, filters.expenseType as any),
+      eq(expenseCategories.expenseType, filters.expenseType as string),
     );
   }
-
-  if (filters?.parentCategoryId) {
-    whereConditions.push(
-      eq(expenseCategories.parentCategoryId, filters.parentCategoryId),
-    );
+  if (filters?.isActive === true) {
+    whereConditions.push(eq(expenseCategories.isActive, true));
+  }
+  if (filters?.isActive === false) {
+    whereConditions.push(eq(expenseCategories.isActive, false));
   }
 
-  if (filters?.isActive !== undefined) {
-    whereConditions.push(eq(expenseCategories.isActive, filters.isActive));
-  }
+  const orderBy =
+    filters?.sortBy === "name"
+      ? asc(expenseCategories.name)
+      : desc(expenseCategories.createdAt);
+  const sortOrder = filters?.sortOrder as "asc" | "desc" | undefined;
+  const finalOrder =
+    sortOrder === "asc" ? asc(expenseCategories.name) : orderBy;
 
-  if (filters?.requiresReceipt !== undefined) {
-    whereConditions.push(
-      eq(expenseCategories.requiresReceipt, filters.requiresReceipt),
-    );
-  }
-
-  if (filters?.requiresApproval !== undefined) {
-    whereConditions.push(
-      eq(expenseCategories.requiresApproval, filters.requiresApproval),
-    );
-  }
-
-  // Determine sort order
-  const sortField = filters?.sortBy || "name";
-  const sortDirection = filters?.sortOrder === "desc" ? desc : asc;
-  let orderBy;
-
-  switch (sortField) {
-    case "code":
-      orderBy = sortDirection(expenseCategories.code);
-      break;
-    case "expenseType":
-      orderBy = sortDirection(expenseCategories.expenseType);
-      break;
-    case "sortOrder":
-      orderBy = sortDirection(expenseCategories.sortOrder);
-      break;
-    case "createdAt":
-      orderBy = sortDirection(expenseCategories.createdAt);
-      break;
-    default:
-      orderBy = sortDirection(expenseCategories.name);
-  }
-
-  // Get categories with parent category info
-  const result = await db
-    .select({
-      id: expenseCategories.id,
-      organizationId: expenseCategories.organizationId,
-      name: expenseCategories.name,
-      description: expenseCategories.description,
-      code: expenseCategories.code,
-      expenseType: expenseCategories.expenseType,
-      parentCategoryId: expenseCategories.parentCategoryId,
-      requiresReceipt: expenseCategories.requiresReceipt,
-      requiresApproval: expenseCategories.requiresApproval,
-      isReimbursable: expenseCategories.isReimbursable,
-      isTaxDeductible: expenseCategories.isTaxDeductible,
-      dailyLimit: expenseCategories.dailyLimit,
-      monthlyLimit: expenseCategories.monthlyLimit,
-      yearlyLimit: expenseCategories.yearlyLimit,
-      approvalThreshold: expenseCategories.approvalThreshold,
-      requiresManagerApproval: expenseCategories.requiresManagerApproval,
-      requiresFinanceApproval: expenseCategories.requiresFinanceApproval,
-      isActive: expenseCategories.isActive,
-      sortOrder: expenseCategories.sortOrder,
-      createdAt: expenseCategories.createdAt,
-      updatedAt: expenseCategories.updatedAt,
-      // Parent category info
-      parentCategoryName: sql<string>`parent_cat.name`,
-      parentCategoryCode: sql<string>`parent_cat.code`,
-    })
-    .from(expenseCategories)
-    .leftJoin(
-      sql`${expenseCategories} as parent_cat`,
-      sql`parent_cat.id = ${expenseCategories.parentCategoryId}`,
-    )
-    .where(and(...whereConditions))
-    .orderBy(orderBy)
-    .limit(limit)
-    .offset(offset);
-
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
+  const [totalRow] = await db
+    .select({ total: count() })
     .from(expenseCategories)
     .where(and(...whereConditions));
 
-  const total = totalResult[0]?.count || 0;
+  const data = await db
+    .select()
+    .from(expenseCategories)
+    .where(and(...whereConditions))
+    .orderBy(finalOrder)
+    .limit(limit)
+    .offset(offset);
 
-  // Get subcategories count for each category
-  const categoriesWithCounts = await Promise.all(
-    result.map(async (category) => {
-      const subcategoriesResult = await db
-        .select({ count: count() })
-        .from(expenseCategories)
-        .where(
-          and(
-            eq(expenseCategories.parentCategoryId, category.id),
-            eq(expenseCategories.isDeleted, false),
-          ),
-        );
-
-      return {
-        ...category,
-        parentCategory: category.parentCategoryName
-          ? {
-              id: category.parentCategoryId!,
-              name: category.parentCategoryName,
-              code: category.parentCategoryCode,
-            }
-          : undefined,
-        subcategoriesCount: subcategoriesResult[0]?.count || 0,
-      };
-    }),
-  );
-
+  const total = totalRow?.total ?? 0;
   return {
-    data: categoriesWithCounts,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
       limit,
-      total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     },
   };
-};
+}
 
-export const getExpenseCategoryById = async (
-  organizationId: string,
+export async function getExpenseCategoryById(
+  _organizationId: string | undefined,
   id: string,
-) => {
-  const result = await db
+) {
+  const [row] = await db
     .select()
     .from(expenseCategories)
     .where(
-      and(
-        eq(expenseCategories.id, id),
-        eq(expenseCategories.organizationId, organizationId),
-        eq(expenseCategories.isDeleted, false),
-      ),
+      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
     )
     .limit(1);
+  return row ?? null;
+}
 
-  return result[0] || null;
-};
-
-export const createExpenseCategory = async (
-  organizationId: string,
-  categoryData: any,
-  _createdBy: string,
-) => {
-  const newCategory = await db
+export async function createExpenseCategory(
+  _organizationId: string | undefined,
+  body: Record<string, unknown>,
+  _userId: string,
+) {
+  const result = await db
     .insert(expenseCategories)
     .values({
-      organizationId,
-      ...categoryData,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      name: body.name as string,
+      description: (body.description as string) ?? null,
+      code: body.code as string,
+      expenseType: body.expenseType as string,
+      requiresReceipt: (body.requiresReceipt as boolean) ?? true,
+      requiresApproval: (body.requiresApproval as boolean) ?? true,
+      isTaxDeductible: (body.isTaxDeductible as boolean) ?? true,
+      isActive: (body.isActive as boolean) ?? true,
     })
     .returning();
+  const row = Array.isArray(result) ? result[0] : undefined;
+  return row ?? null;
+}
 
-  return (newCategory as any[])[0];
-};
-
-export const updateExpenseCategory = async (
-  organizationId: string,
+export async function updateExpenseCategory(
+  _organizationId: string | undefined,
   id: string,
-  updateData: any,
-) => {
-  const updated = await db
+  body: Record<string, unknown>,
+) {
+  const [row] = await db
     .update(expenseCategories)
     .set({
-      ...updateData,
+      ...(body.name != null && { name: body.name as string }),
+      ...(body.description !== undefined && {
+        description: body.description as string | null,
+      }),
+      ...(body.code != null && { code: body.code as string }),
+      ...(body.expenseType != null && {
+        expenseType: body.expenseType as string,
+      }),
+      ...(body.isActive !== undefined && {
+        isActive: body.isActive as boolean,
+      }),
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(expenseCategories.id, id),
-        eq(expenseCategories.organizationId, organizationId),
-        eq(expenseCategories.isDeleted, false),
-      ),
+      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
     )
     .returning();
+  return row ?? null;
+}
 
-  return updated[0] || null;
-};
-
-export const deleteExpenseCategory = async (
-  organizationId: string,
+export async function deleteExpenseCategory(
+  _organizationId: string | undefined,
   id: string,
-) => {
-  const deleted = await db
+) {
+  const [row] = await db
     .update(expenseCategories)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
-    })
+    .set({ isDeleted: true, updatedAt: new Date() })
     .where(
-      and(
-        eq(expenseCategories.id, id),
-        eq(expenseCategories.organizationId, organizationId),
-      ),
+      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
     )
     .returning();
-
-  return deleted[0] || null;
-};
+  return row ?? null;
+}
 
 // ============================
 // Expenses
 // ============================
 
-export const getExpenses = async (
-  organizationId: string,
+// Aliases for joining users table multiple times (createdBy, approvedBy, rejectedBy, uploadedBy)
+const createdByUser = alias(users, "created_by_user");
+const approvedByUser = alias(users, "approved_by_user");
+const rejectedByUser = alias(users, "rejected_by_user");
+const uploadedByUser = alias(users, "uploaded_by_user");
+
+export function generateExpenseNumber(): string {
+  const year = new Date().getFullYear();
+  const r = Math.floor(Math.random() * 99999) + 1;
+  return `EXP-${year}-${r.toString().padStart(5, "0")}`;
+}
+
+export async function getExpenses(
+  organizationId: string | undefined,
   offset: number,
   limit: number,
-  filters?: {
-    status?: string;
-    expenseType?: string;
-    paymentMethod?: string;
-    employeeId?: number;
-    categoryId?: string;
-    jobId?: string;
-    bidId?: string;
-    startDate?: string;
-    endDate?: string;
-    submittedStartDate?: string;
-    submittedEndDate?: string;
-    approvedBy?: string;
-    reimbursementStatus?: string;
-    hasReceipt?: boolean;
-    isReimbursable?: boolean;
-    search?: string;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-    includeDeleted?: boolean;
-  },
-) => {
-  let whereConditions = [eq(expenses.organizationId, organizationId)];
-
-  // Include deleted filter
-  if (!filters?.includeDeleted) {
-    whereConditions.push(eq(expenses.isDeleted, false));
-  }
-
-  // Apply filters
+  filters?: Record<string, unknown>,
+) {
+  const whereConditions = [eq(expenses.isDeleted, false)];
+  // organization_id not on org.expenses; scope via employee/category/job if needed
   if (filters?.status) {
-    whereConditions.push(eq(expenses.status, filters.status as any));
-  }
-
-  if (filters?.expenseType) {
-    whereConditions.push(eq(expenses.expenseType, filters.expenseType as any));
-  }
-
-  if (filters?.paymentMethod) {
     whereConditions.push(
-      eq(expenses.paymentMethod, filters.paymentMethod as any),
+      eq(
+        expenses.status,
+        filters.status as (typeof expenses.$inferSelect)["status"],
+      ),
     );
   }
-
-  if (filters?.employeeId) {
-    whereConditions.push(eq(expenses.employeeId, filters.employeeId));
-  }
-
   if (filters?.categoryId) {
-    whereConditions.push(eq(expenses.categoryId, filters.categoryId));
+    whereConditions.push(eq(expenses.categoryId, filters.categoryId as string));
   }
-
   if (filters?.jobId) {
-    whereConditions.push(eq(expenses.jobId, filters.jobId));
+    whereConditions.push(eq(expenses.jobId, filters.jobId as string));
   }
-
-  if (filters?.bidId) {
-    whereConditions.push(eq(expenses.bidId, filters.bidId));
+  if (filters?.sourceId) {
+    whereConditions.push(eq(expenses.sourceId, filters.sourceId as string));
   }
-
   if (filters?.startDate) {
-    whereConditions.push(gte(expenses.expenseDate, filters.startDate));
+    whereConditions.push(
+      gte(expenses.expenseDate, filters.startDate as string),
+    );
   }
-
   if (filters?.endDate) {
-    whereConditions.push(lte(expenses.expenseDate, filters.endDate));
+    whereConditions.push(lte(expenses.expenseDate, filters.endDate as string));
   }
 
-  if (filters?.submittedStartDate) {
-    whereConditions.push(
-      gte(expenses.submittedDate, new Date(filters.submittedStartDate)),
-    );
-  }
-
-  if (filters?.submittedEndDate) {
-    whereConditions.push(
-      lte(expenses.submittedDate, new Date(filters.submittedEndDate)),
-    );
-  }
-
-  if (filters?.approvedBy) {
-    whereConditions.push(eq(expenses.approvedBy, filters.approvedBy));
-  }
-
-  if (filters?.reimbursementStatus) {
-    whereConditions.push(
-      eq(expenses.reimbursementStatus, filters.reimbursementStatus as any),
-    );
-  }
-
-  if (filters?.hasReceipt !== undefined) {
-    whereConditions.push(eq(expenses.hasReceipt, filters.hasReceipt));
-  }
-
-  if (filters?.isReimbursable !== undefined) {
-    whereConditions.push(eq(expenses.isReimbursable, filters.isReimbursable));
-  }
-
-  if (filters?.search) {
-    whereConditions.push(
-      or(
-        ilike(expenses.title, `%${filters.search}%`),
-        ilike(expenses.description, `%${filters.search}%`),
-        ilike(expenses.vendor, `%${filters.search}%`),
-        ilike(expenses.expenseNumber, `%${filters.search}%`),
-      )!,
-    );
-  }
-
-  // Determine sort order
-  const sortField = filters?.sortBy || "createdAt";
-  const sortDirection = filters?.sortOrder === "asc" ? asc : desc;
-  let orderBy;
-
-  switch (sortField) {
-    case "expenseDate":
-      orderBy = sortDirection(expenses.expenseDate);
-      break;
-    case "submittedDate":
-      orderBy = sortDirection(expenses.submittedDate);
-      break;
-    case "amount":
-      orderBy = sortDirection(expenses.amount);
-      break;
-    case "status":
-      orderBy = sortDirection(expenses.status);
-      break;
-    default:
-      orderBy = sortDirection(expenses.createdAt);
-  }
-
-  // Get expenses with related data
-  const result = await db
-    .select({
-      // Expense data
-      id: expenses.id,
-      expenseNumber: expenses.expenseNumber,
-      organizationId: expenses.organizationId,
-      employeeId: expenses.employeeId,
-      categoryId: expenses.categoryId,
-      jobId: expenses.jobId,
-      bidId: expenses.bidId,
-      status: expenses.status,
-      expenseType: expenses.expenseType,
-      paymentMethod: expenses.paymentMethod,
-      title: expenses.title,
-      description: expenses.description,
-      vendor: expenses.vendor,
-      location: expenses.location,
-      amount: expenses.amount,
-      currency: expenses.currency,
-      exchangeRate: expenses.exchangeRate,
-      amountInBaseCurrency: expenses.amountInBaseCurrency,
-      taxStatus: expenses.taxStatus,
-      taxAmount: expenses.taxAmount,
-      taxRate: expenses.taxRate,
-      expenseDate: expenses.expenseDate,
-      submittedDate: expenses.submittedDate,
-      approvedDate: expenses.approvedDate,
-      paidDate: expenses.paidDate,
-      receiptStatus: expenses.receiptStatus,
-      receiptNumber: expenses.receiptNumber,
-      hasReceipt: expenses.hasReceipt,
-      receiptTotal: expenses.receiptTotal,
-      isMileageExpense: expenses.isMileageExpense,
-      mileageType: expenses.mileageType,
-      miles: expenses.miles,
-      mileageRate: expenses.mileageRate,
-      startLocation: expenses.startLocation,
-      endLocation: expenses.endLocation,
-      isReimbursable: expenses.isReimbursable,
-      reimbursementAmount: expenses.reimbursementAmount,
-      reimbursementStatus: expenses.reimbursementStatus,
-      reimbursedDate: expenses.reimbursedDate,
-      requiresApproval: expenses.requiresApproval,
-      approvedBy: expenses.approvedBy,
-      rejectedBy: expenses.rejectedBy,
-      rejectionReason: expenses.rejectionReason,
-      businessPurpose: expenses.businessPurpose,
-      attendees: expenses.attendees,
-      notes: expenses.notes,
-      internalNotes: expenses.internalNotes,
-      createdBy: expenses.createdBy,
-      createdAt: expenses.createdAt,
-      updatedAt: expenses.updatedAt,
-      // Employee data
-      employeeFullName: users.fullName,
-      employeeEmail: users.email,
-      // Category data
-      categoryName: expenseCategories.name,
-      categoryCode: expenseCategories.code,
-      // Job data
-      jobNumber: jobs.jobNumber,
-      jobName: jobs.name,
-    })
-    .from(expenses)
-    .leftJoin(employees, eq(expenses.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
-    .where(and(...whereConditions))
-    .orderBy(orderBy)
-    .limit(limit)
-    .offset(offset);
-
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
+  const [totalRow] = await db
+    .select({ total: count() })
     .from(expenses)
     .where(and(...whereConditions));
 
-  const total = totalResult[0]?.count || 0;
+  const data = await db
+    .select()
+    .from(expenses)
+    .where(and(...whereConditions))
+    .orderBy(desc(expenses.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  // Get unique creator IDs and fetch their names in batch
-  const creatorIds = Array.from(
-    new Set(result.map((e) => e.createdBy).filter((id): id is string => !!id)),
-  );
-  const creators =
-    creatorIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-          })
-          .from(users)
-          .where(inArray(users.id, creatorIds))
-      : [];
-  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
-
-  // Get unique approver IDs and fetch their names in batch
-  const approverIds = Array.from(
-    new Set(result.map((e) => e.approvedBy).filter((id): id is string => !!id)),
-  );
-  const approvers =
-    approverIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-          })
-          .from(users)
-          .where(inArray(users.id, approverIds))
-      : [];
-  const approverMap = new Map(approvers.map((a) => [a.id, a.fullName]));
-
-  // Get unique rejector IDs and fetch their names in batch
-  const rejectorIds = Array.from(
-    new Set(result.map((e) => e.rejectedBy).filter((id): id is string => !!id)),
-  );
-  const rejectors =
-    rejectorIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-          })
-          .from(users)
-          .where(inArray(users.id, rejectorIds))
-      : [];
-  const rejectorMap = new Map(rejectors.map((r) => [r.id, r.fullName]));
-
-  // Get receipts and allocations count for each expense
-  const expensesWithCounts = await Promise.all(
-    result.map(async (expense) => {
-      const [receiptsResult, allocationsResult] = await Promise.all([
-        db
-          .select({ count: count() })
-          .from(expenseReceipts)
-          .where(
-            and(
-              eq(expenseReceipts.expenseId, expense.id),
-              eq(expenseReceipts.isDeleted, false),
-            ),
-          ),
-        db
-          .select({ count: count() })
-          .from(expenseAllocations)
-          .where(
-            and(
-              eq(expenseAllocations.expenseId, expense.id),
-              eq(expenseAllocations.isDeleted, false),
-            ),
-          ),
-      ]);
-
-      return {
-        ...expense,
-        createdByName: expense.createdBy
-          ? creatorMap.get(expense.createdBy) || null
-          : null,
-        approvedByName: expense.approvedBy
-          ? approverMap.get(expense.approvedBy) || null
-          : null,
-        rejectedByName: expense.rejectedBy
-          ? rejectorMap.get(expense.rejectedBy) || null
-          : null,
-        employee: expense.employeeFullName
-          ? {
-              id: expense.employeeId,
-              fullName: expense.employeeFullName,
-              email: expense.employeeEmail,
-            }
-          : undefined,
-        category: expense.categoryName
-          ? {
-              id: expense.categoryId,
-              name: expense.categoryName,
-              code: expense.categoryCode,
-              expenseType: expense.expenseType,
-            }
-          : undefined,
-        job: expense.jobNumber
-          ? {
-              id: expense.jobId!,
-              jobNumber: expense.jobNumber,
-              name: expense.jobName,
-            }
-          : undefined,
-        receiptsCount: receiptsResult[0]?.count || 0,
-        allocationsCount: allocationsResult[0]?.count || 0,
-      };
-    }),
-  );
-
+  const total = totalRow?.total ?? 0;
   return {
-    data: expensesWithCounts,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
       limit,
-      total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     },
   };
-};
+}
 
-export const getExpenseById = async (
-  organizationId: string | undefined,
+export async function getExpenseById(
+  _organizationId: string | undefined,
   id: string,
-  options?: {
+  _options?: {
     includeReceipts?: boolean;
     includeAllocations?: boolean;
     includeApprovals?: boolean;
     includeHistory?: boolean;
   },
-) => {
-  // Get main expense data
-  const expenseResult = await db
+) {
+  const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
+  const [row] = await db
     .select({
-      // All expense fields
-      id: expenses.id,
-      expenseNumber: expenses.expenseNumber,
-      organizationId: expenses.organizationId,
-      employeeId: expenses.employeeId,
-      categoryId: expenses.categoryId,
-      jobId: expenses.jobId,
-      bidId: expenses.bidId,
-      status: expenses.status,
-      expenseType: expenses.expenseType,
-      paymentMethod: expenses.paymentMethod,
-      title: expenses.title,
-      description: expenses.description,
-      vendor: expenses.vendor,
-      location: expenses.location,
-      amount: expenses.amount,
-      currency: expenses.currency,
-      exchangeRate: expenses.exchangeRate,
-      amountInBaseCurrency: expenses.amountInBaseCurrency,
-      taxStatus: expenses.taxStatus,
-      taxAmount: expenses.taxAmount,
-      taxRate: expenses.taxRate,
-      expenseDate: expenses.expenseDate,
-      submittedDate: expenses.submittedDate,
-      approvedDate: expenses.approvedDate,
-      paidDate: expenses.paidDate,
-      receiptStatus: expenses.receiptStatus,
-      receiptNumber: expenses.receiptNumber,
-      hasReceipt: expenses.hasReceipt,
-      receiptTotal: expenses.receiptTotal,
-      isMileageExpense: expenses.isMileageExpense,
-      mileageType: expenses.mileageType,
-      miles: expenses.miles,
-      mileageRate: expenses.mileageRate,
-      startLocation: expenses.startLocation,
-      endLocation: expenses.endLocation,
-      isReimbursable: expenses.isReimbursable,
-      reimbursementAmount: expenses.reimbursementAmount,
-      reimbursementStatus: expenses.reimbursementStatus,
-      reimbursedDate: expenses.reimbursedDate,
-      requiresApproval: expenses.requiresApproval,
-      approvedBy: expenses.approvedBy,
-      rejectedBy: expenses.rejectedBy,
-      rejectionReason: expenses.rejectionReason,
-      businessPurpose: expenses.businessPurpose,
-      attendees: expenses.attendees,
-      notes: expenses.notes,
-      internalNotes: expenses.internalNotes,
-      createdBy: expenses.createdBy,
-      createdAt: expenses.createdAt,
-      updatedAt: expenses.updatedAt,
-      // Related data
-      employeeFullName: users.fullName,
-      employeeEmail: users.email,
-      categoryName: expenseCategories.name,
-      categoryCode: expenseCategories.code,
-      jobNumber: jobs.jobNumber,
-      jobName: jobs.name,
+      ...getTableColumns(expenses),
+      createdByName: createdByUser.fullName,
+      approvedByName: approvedByUser.fullName,
+      rejectedByName: rejectedByUser.fullName,
     })
     .from(expenses)
-    .leftJoin(employees, eq(expenses.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
-    .where(() => {
-      const conditions = [
-        eq(expenses.id, id),
-        organizationId
-          ? eq(expenses.organizationId, organizationId)
-          : undefined,
-        eq(expenses.isDeleted, false),
-      ].filter(Boolean) as any[];
-
-      return conditions.length > 0 ? and(...conditions) : undefined;
-    })
+    .leftJoin(createdByUser, eq(expenses.createdBy, createdByUser.id))
+    .leftJoin(approvedByUser, eq(expenses.approvedBy, approvedByUser.id))
+    .leftJoin(rejectedByUser, eq(expenses.rejectedBy, rejectedByUser.id))
+    .where(and(...conditions))
     .limit(1);
 
-  if (!expenseResult[0]) {
-    return null;
-  }
+  if (!row) return null;
 
-  const expense = expenseResult[0];
-
-  // Get createdBy user name
-  let createdByName: string | null = null;
-  if (expense.createdBy) {
-    const [creator] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, expense.createdBy))
-      .limit(1);
-    createdByName = creator?.fullName || null;
-  }
-
-  // Get approvedBy user name
-  let approvedByName: string | null = null;
-  if (expense.approvedBy) {
-    const [approver] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, expense.approvedBy))
-      .limit(1);
-    approvedByName = approver?.fullName || null;
-  }
-
-  // Get rejectedBy user name
-  let rejectedByName: string | null = null;
-  if (expense.rejectedBy) {
-    const [rejector] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, expense.rejectedBy))
-      .limit(1);
-    rejectedByName = rejector?.fullName || null;
-  }
-
-  const result: any = {
-    ...expense,
-    createdByName,
-    approvedByName,
-    rejectedByName,
-    employee: expense.employeeFullName
-      ? {
-          id: expense.employeeId,
-          fullName: expense.employeeFullName,
-          email: expense.employeeEmail,
-        }
-      : undefined,
-    category: expense.categoryName
-      ? {
-          id: expense.categoryId,
-          name: expense.categoryName,
-          code: expense.categoryCode,
-          expenseType: expense.expenseType,
-        }
-      : undefined,
-    job: expense.jobNumber
-      ? {
-          id: expense.jobId!,
-          jobNumber: expense.jobNumber,
-          name: expense.jobName,
-        }
-      : undefined,
+  const { createdByName, approvedByName, rejectedByName, ...record } = row;
+  return {
+    ...record,
+    createdByName: createdByName ?? null,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
   };
+}
 
-  // Include optional related data
-  if (options?.includeReceipts !== false && organizationId) {
-    result.receipts = await getExpenseReceipts(organizationId, id);
-  }
-
-  if (options?.includeAllocations !== false && organizationId) {
-    result.allocations = await getExpenseAllocations(organizationId, id);
-  }
-
-  if (options?.includeApprovals !== false && organizationId) {
-    result.approvals = await getExpenseApprovals(organizationId, id);
-  }
-
-  if (options?.includeHistory && organizationId) {
-    result.history = await getExpenseHistory(organizationId, id);
-  }
-
-  // Include mileage log if it's a mileage expense
-  if (expense.isMileageExpense && organizationId) {
-    const mileageResult = await db
-      .select()
-      .from(mileageLogs)
-      .where(
-        and(
-          eq(mileageLogs.expenseId, id),
-          eq(mileageLogs.organizationId, organizationId),
-          eq(mileageLogs.isDeleted, false),
-        ),
-      )
-      .limit(1);
-
-    result.mileageLog = mileageResult[0] || null;
-  }
-
-  return result;
-};
-
-export const createExpense = async (
-  organizationId: string,
-  employeeId: number,
-  expenseData: any,
-  createdBy: string,
-) => {
-  // Generate expense number
-  const expenseNumber = await generateExpenseNumber(organizationId);
-
-  // Calculate amounts
-  const amount = parseFloat(expenseData.amount);
-  const exchangeRate = parseFloat(expenseData.exchangeRate || "1");
-  const amountInBaseCurrency = amount * exchangeRate;
-  const taxAmount = parseFloat(expenseData.taxAmount || "0");
-  const reimbursementAmount = expenseData.isReimbursable !== false ? amount : 0;
-
-  const newExpense = await db
+export async function createExpense(
+  _organizationId: string | null | undefined,
+  body: Record<string, unknown>,
+  userId: string,
+) {
+  const amount = String(body.amount ?? "0");
+  const result = await db
     .insert(expenses)
     .values({
-      expenseNumber,
-      organizationId,
-      employeeId,
-      ...expenseData,
-      amount: amount.toString(),
-      exchangeRate: exchangeRate.toString(),
-      amountInBaseCurrency: amountInBaseCurrency.toString(),
-      taxAmount: taxAmount.toString(),
-      reimbursementAmount: reimbursementAmount.toString(),
-      createdBy,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+      expenseNumber: generateExpenseNumber(),
+      categoryId: body.categoryId as string,
+      jobId: (body.jobId as string) ?? null,
+      sourceId: (body.sourceId as string) ?? null,
+      title: (body.title as string) ?? "Untitled",
+      description: (body.description as string) ?? null,
+      expenseType: body.expenseType as string,
+      paymentMethod: (body.paymentMethod as string) ?? "other",
+      amount,
+      amountInBaseCurrency: amount,
+      expenseDate: body.expenseDate as string,
+      vendor: (body.vendor as string) ?? null,
+      createdBy: userId,
+    } as typeof expenses.$inferInsert)
     .returning();
+  const row = Array.isArray(result) ? result[0] : undefined;
+  return row ?? null;
+}
 
-  const expense = newExpense[0];
+/** Map job expense type string to org.expenses expense_type_enum (job_* for source tracking) */
+function mapJobExpenseTypeToExpenseType(jobExpenseType: string): string {
+  const lower = (jobExpenseType ?? "").toLowerCase();
+  const map: Record<string, string> = {
+    materials: "job_material",
+    material: "job_material",
+    labor: "job_labor",
+    labour: "job_labor",
+    travel: "job_travel",
+    service: "job_service",
+    equipment: "job_material",
+    tools: "job_material",
+    subcontractor: "job_service",
+  };
+  return map[lower] ?? "job_material";
+}
 
-  // Create allocations if provided
-  if (expenseData.allocations && expenseData.allocations.length > 0) {
-    const allocations = await Promise.all(
-      expenseData.allocations.map((allocation: any) =>
-        createExpenseAllocation(organizationId, expense!.id, allocation),
-      ),
-    );
-    return { expense, allocations };
-  }
+/**
+ * Create org.expenses record when a job expense is created (source_id = job_expense.id, expense_type = job_*).
+ * Used by job.service, fleet, inventory flows.
+ */
+export async function createExpenseFromSource(data: {
+  sourceId: string;
+  jobId?: string | null;
+  categoryId: string;
+  expenseType: string;
+  amount: string;
+  expenseDate: string;
+  description: string;
+  title?: string;
+  vendor?: string | null;
+  createdBy: string;
+  source: "job" | "fleet" | "inventory";
+}): Promise<{ id: string } | null> {
+  const expenseTypeMapped =
+    data.source === "job"
+      ? mapJobExpenseTypeToExpenseType(data.expenseType)
+      : data.expenseType;
+  const [row] = await db
+    .insert(expenses)
+    .values({
+      expenseNumber: generateExpenseNumber(),
+      categoryId: data.categoryId,
+      jobId: data.jobId ?? null,
+      sourceId: data.sourceId,
+      expenseType:
+        expenseTypeMapped as typeof expenses.$inferSelect.expenseType,
+      paymentMethod: "other",
+      status: "draft",
+      title: data.title ?? data.description?.slice(0, 255) ?? "Expense",
+      description: data.description ?? null,
+      vendor: data.vendor ?? null,
+      amount: data.amount,
+      amountInBaseCurrency: data.amount,
+      expenseDate: data.expenseDate,
+      createdBy: data.createdBy,
+    } as typeof expenses.$inferInsert)
+    .returning({ id: expenses.id });
+  return row ?? null;
+}
 
-  return { expense };
-};
-
-export const updateExpense = async (
-  organizationId: string,
+export async function updateExpense(
+  _organizationId: string | undefined,
   id: string,
-  updateData: any,
-  updatedBy: string,
-) => {
-  // Recalculate amounts if amount or exchange rate changed
-  if (updateData.amount || updateData.exchangeRate) {
-    const currentExpense = await getExpenseById(organizationId, id);
-    if (!currentExpense) return null;
-
-    const amount = parseFloat(updateData.amount || currentExpense.amount);
-    const exchangeRate = parseFloat(
-      updateData.exchangeRate || currentExpense.exchangeRate,
-    );
-    updateData.amountInBaseCurrency = (amount * exchangeRate).toString();
-
-    if (
-      updateData.isReimbursable !== false &&
-      currentExpense.isReimbursable !== false
-    ) {
-      updateData.reimbursementAmount = amount.toString();
-    }
-  }
-
-  const updated = await db
+  body: Record<string, unknown>,
+  _userId: string,
+) {
+  const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
+  type Status = (typeof expenses.$inferSelect)["status"];
+  const [row] = await db
     .update(expenses)
     .set({
-      ...updateData,
+      ...(body.title != null && { title: body.title as string }),
+      ...(body.description !== undefined && {
+        description: body.description as string | null,
+      }),
+      ...(body.amount != null && {
+        amount: String(body.amount),
+        amountInBaseCurrency: String(body.amount),
+      }),
+      ...(body.expenseDate != null && {
+        expenseDate: body.expenseDate as string,
+      }),
+      ...(body.status != null && { status: body.status as Status }),
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId),
-        eq(expenses.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
+  return row ?? null;
+}
 
-  if (updated[0]) {
-    // Log the update
-    await logExpenseHistory(
-      organizationId,
-      id,
-      "updated",
-      "Expense updated",
-      updatedBy,
-    );
-  }
-
-  return updated[0] || null;
-};
-
-export const deleteExpense = async (organizationId: string, id: string) => {
-  const deleted = await db
-    .update(expenses)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(eq(expenses.id, id), eq(expenses.organizationId, organizationId)),
-    )
-    .returning();
-
-  return deleted[0] || null;
-};
-
-export const submitExpense = async (
-  organizationId: string,
+export async function deleteExpense(
+  _organizationId: string | undefined,
   id: string,
-  submittedBy: string,
-  notes?: string,
-) => {
-  const updated = await db
+) {
+  const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
+  const [row] = await db
+    .update(expenses)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(...conditions))
+    .returning();
+  return row ?? null;
+}
+
+export async function submitExpense(
+  _organizationId: string | undefined,
+  id: string,
+  _userId: string,
+  _notes?: string,
+) {
+  const conditions = [
+    eq(expenses.id, id),
+    eq(expenses.status, "draft"),
+    eq(expenses.isDeleted, false),
+  ];
+  const [row] = await db
     .update(expenses)
     .set({
       status: "submitted",
       submittedDate: new Date(),
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId),
-        eq(expenses.status, "draft"),
-        eq(expenses.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
+  return row ?? null;
+}
 
-  if (updated[0]) {
-    // Log the submission
-    await logExpenseHistory(
-      organizationId,
-      id,
-      "submitted",
-      notes || "Expense submitted for approval",
-      submittedBy,
-    );
-
-    // Create approval workflow if required
-    if (updated[0].requiresApproval) {
-      const approvals = await createExpenseApprovalWorkflow(
-        organizationId,
-        id,
-        submittedBy,
-      );
-      return { expense: updated[0], approvals };
-    }
-  }
-
-  return { expense: updated[0] || null };
-};
-
-export const approveExpense = async (
-  organizationId: string,
+export async function approveExpense(
+  _organizationId: string | undefined,
   id: string,
-  approvedBy: string,
-  comments?: string,
-) => {
-  const updated = await db
+  userId: string,
+  _comments?: string,
+) {
+  const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
+  const [row] = await db
     .update(expenses)
     .set({
       status: "approved",
-      approvedBy,
+      approvedBy: userId,
       approvedDate: new Date(),
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId),
-        eq(expenses.status, "submitted"),
-        eq(expenses.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
+  return row ?? null;
+}
 
-  if (updated[0]) {
-    // Log the approval
-    await logExpenseHistory(
-      organizationId,
-      id,
-      "approved",
-      comments || "Expense approved",
-      approvedBy,
-    );
-
-    // Update approval record
-    const approval = await updateExpenseApprovalStatus(
-      organizationId,
-      id,
-      approvedBy,
-      "approved",
-      comments,
-    );
-
-    return { expense: updated[0], approval };
-  }
-
-  return { expense: null, approval: null };
-};
-
-export const rejectExpense = async (
-  organizationId: string,
+export async function rejectExpense(
+  _organizationId: string | undefined,
   id: string,
-  rejectedBy: string,
-  rejectionReason: string,
-  comments?: string,
-) => {
-  const updated = await db
+  userId: string,
+  reason?: string,
+) {
+  const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
+  const [row] = await db
     .update(expenses)
     .set({
       status: "rejected",
-      rejectedBy,
-      rejectionReason,
+      rejectedBy: userId,
+      rejectionReason: reason ?? null,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(expenses.id, id),
-        eq(expenses.organizationId, organizationId),
-        eq(expenses.status, "submitted"),
-        eq(expenses.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .returning();
+  return row ?? null;
+}
 
-  if (updated[0]) {
-    // Log the rejection
-    await logExpenseHistory(
-      organizationId,
-      id,
-      "rejected",
-      rejectionReason,
-      rejectedBy,
-    );
-
-    // Update approval record
-    const approval = await updateExpenseApprovalStatus(
-      organizationId,
-      id,
-      rejectedBy,
-      "rejected",
-      comments,
-      rejectionReason,
-    );
-
-    return { expense: updated[0], approval };
-  }
-
-  return { expense: null, approval: null };
-};
-
-// ============================
-// Helper Functions
-// ============================
-
-const generateExpenseNumber = async (
-  organizationId: string,
-): Promise<string> => {
-  const year = new Date().getFullYear();
-  const prefix = `EXP-${year}-`;
-
-  const lastExpense = await db
-    .select({ expenseNumber: expenses.expenseNumber })
-    .from(expenses)
-    .where(
-      and(
-        eq(expenses.organizationId, organizationId),
-        ilike(expenses.expenseNumber, `${prefix}%`),
-      ),
-    )
-    .orderBy(desc(expenses.expenseNumber))
-    .limit(1);
-
-  let nextNumber = 1;
-  if (lastExpense[0]) {
-    const lastNumber =
-      parseInt(lastExpense[0]?.expenseNumber?.split("-")[2] || "0") || 0;
-    nextNumber = lastNumber + 1;
-  }
-
-  return `${prefix}${nextNumber.toString().padStart(6, "0")}`;
-};
-
-const getExpenseReceipts = async (
-  organizationId: string,
+export async function logExpenseHistory(
+  _organizationId: string,
   expenseId: string,
-) => {
-  return await db
+  action: string,
+  description: string,
+  submittedBy: string,
+): Promise<void> {
+  await db.insert(expenseHistory).values({
+    expenseId,
+    action,
+    description,
+    performedBy: submittedBy,
+  });
+}
+
+// ============================
+// Expense Receipts
+// ============================
+
+export async function getExpenseReceipts(expenseId: string) {
+  const list = await db
     .select()
     .from(expenseReceipts)
     .where(
       and(
         eq(expenseReceipts.expenseId, expenseId),
-        eq(expenseReceipts.organizationId, organizationId),
         eq(expenseReceipts.isDeleted, false),
       ),
     )
     .orderBy(desc(expenseReceipts.createdAt));
-};
+  return list;
+}
 
-const getExpenseAllocations = async (
-  organizationId: string,
+export async function getExpenseReceiptById(
   expenseId: string,
-) => {
-  return await db
-    .select()
-    .from(expenseAllocations)
+  receiptId: string,
+) {
+  const [row] = await db
+    .select({
+      ...getTableColumns(expenseReceipts),
+      uploadedByName: uploadedByUser.fullName,
+    })
+    .from(expenseReceipts)
+    .leftJoin(uploadedByUser, eq(expenseReceipts.uploadedBy, uploadedByUser.id))
     .where(
       and(
-        eq(expenseAllocations.expenseId, expenseId),
-        eq(expenseAllocations.organizationId, organizationId),
-        eq(expenseAllocations.isDeleted, false),
-      ),
-    );
-};
-
-const getExpenseApprovals = async (
-  organizationId: string,
-  expenseId: string,
-) => {
-  return await db
-    .select()
-    .from(expenseApprovals)
-    .where(
-      and(
-        eq(expenseApprovals.expenseId, expenseId),
-        eq(expenseApprovals.organizationId, organizationId),
-        eq(expenseApprovals.isDeleted, false),
+        eq(expenseReceipts.expenseId, expenseId),
+        eq(expenseReceipts.id, receiptId),
+        eq(expenseReceipts.isDeleted, false),
       ),
     )
-    .orderBy(asc(expenseApprovals.approvalLevel));
-};
-
-const getExpenseHistory = async (organizationId: string, expenseId: string) => {
-  return await db
-    .select()
-    .from(expenseHistory)
-    .where(
-      and(
-        eq(expenseHistory.expenseId, expenseId),
-        eq(expenseHistory.organizationId, organizationId),
-      ),
-    )
-    .orderBy(desc(expenseHistory.createdAt));
-};
-
-const createExpenseAllocation = async (
-  organizationId: string,
-  expenseId: string,
-  allocationData: any,
-) => {
-  const percentage = parseFloat(allocationData.percentage || "100");
-  const expense = await db
-    .select({ amount: expenses.amount })
-    .from(expenses)
-    .where(eq(expenses.id, expenseId))
     .limit(1);
 
-  const allocatedAmount = expense[0]
-    ? (parseFloat(expense[0].amount) * percentage) / 100
-    : 0;
+  if (!row) return null;
 
-  return await db
-    .insert(expenseAllocations)
+  const { uploadedByName, ...record } = row;
+  return {
+    ...record,
+    uploadedByName: uploadedByName ?? null,
+  };
+}
+
+export async function createExpenseReceipt(
+  expenseId: string,
+  file: {
+    buffer: Buffer;
+    originalname: string;
+    mimetype: string;
+    size: number;
+  },
+  uploadedBy: string,
+  options?: {
+    description?: string;
+    receiptDate?: string;
+    receiptNumber?: string;
+    receiptTotal?: string;
+    vendor?: string;
+  },
+) {
+  const { uploadToSpaces } = await import("./storage.service.js");
+  const uploadResult = await uploadToSpaces(
+    file.buffer,
+    file.originalname,
+    "expense-receipts",
+  );
+  const [receipt] = await db
+    .insert(expenseReceipts)
     .values({
-      organizationId,
       expenseId,
-      ...allocationData,
-      percentage: percentage.toString(),
-      allocatedAmount: allocatedAmount.toString(),
-      createdAt: new Date(),
+      fileName: file.originalname,
+      filePath: uploadResult.url,
+      fileType: file.mimetype,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      uploadedBy,
+      description: options?.description ?? null,
+      receiptDate: options?.receiptDate ?? null,
+      receiptNumber: options?.receiptNumber ?? null,
+      receiptTotal: options?.receiptTotal ?? null,
+      vendor: options?.vendor ?? null,
     })
     .returning();
-};
+  if (receipt) {
+    await db
+      .update(expenses)
+      .set({ hasReceipt: true, updatedAt: new Date() })
+      .where(and(eq(expenses.id, expenseId), eq(expenses.isDeleted, false)));
+  }
+  return receipt ?? null;
+}
 
-const createExpenseApprovalWorkflow = async (
-  organizationId: string,
+export async function updateExpenseReceipt(
   expenseId: string,
-  requestedBy: string,
-) => {
-  // This would implement the approval workflow logic
-  // For now, create a basic manager approval
-  return await db
-    .insert(expenseApprovals)
-    .values({
-      organizationId,
-      expenseId,
-      approvalLevel: 1,
-      approverId: requestedBy, // Would be replaced with actual manager ID
-      approverRole: "manager",
-      status: "pending",
-      requestedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .returning();
-};
-
-const updateExpenseApprovalStatus = async (
-  organizationId: string,
-  expenseId: string,
-  approverId: string,
-  status: "approved" | "rejected",
-  comments?: string,
-  rejectionReason?: string,
-) => {
-  return await db
-    .update(expenseApprovals)
+  receiptId: string,
+  file: {
+    buffer: Buffer;
+    originalname: string;
+    mimetype: string;
+    size: number;
+  },
+  options?: {
+    description?: string;
+    receiptDate?: string;
+    receiptNumber?: string;
+    receiptTotal?: string;
+    vendor?: string;
+  },
+) {
+  const existing = await getExpenseReceiptById(expenseId, receiptId);
+  if (!existing) return null;
+  const { uploadToSpaces, deleteFromSpaces } =
+    await import("./storage.service.js");
+  await deleteFromSpaces(existing.filePath);
+  const uploadResult = await uploadToSpaces(
+    file.buffer,
+    file.originalname,
+    "expense-receipts",
+  );
+  const [receipt] = await db
+    .update(expenseReceipts)
     .set({
-      status,
-      respondedAt: new Date(),
-      comments,
-      rejectionReason,
-      updatedAt: new Date(),
+      fileName: file.originalname,
+      filePath: uploadResult.url,
+      fileType: file.mimetype,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      ...(options?.description !== undefined && {
+        description: options.description,
+      }),
+      ...(options?.receiptDate !== undefined && {
+        receiptDate: options.receiptDate,
+      }),
+      ...(options?.receiptNumber !== undefined && {
+        receiptNumber: options.receiptNumber,
+      }),
+      ...(options?.receiptTotal !== undefined && {
+        receiptTotal: options.receiptTotal,
+      }),
+      ...(options?.vendor !== undefined && { vendor: options.vendor }),
     })
     .where(
       and(
-        eq(expenseApprovals.expenseId, expenseId),
-        eq(expenseApprovals.organizationId, organizationId),
-        eq(expenseApprovals.approverId, approverId),
-        eq(expenseApprovals.status, "pending"),
+        eq(expenseReceipts.expenseId, expenseId),
+        eq(expenseReceipts.id, receiptId),
+        eq(expenseReceipts.isDeleted, false),
       ),
     )
     .returning();
-};
+  return receipt ?? null;
+}
 
-const logExpenseHistory = async (
-  organizationId: string,
+export async function deleteExpenseReceipt(
   expenseId: string,
-  action: string,
-  description: string,
-  performedBy: string,
-  oldValue?: string,
-  newValue?: string,
-) => {
-  return await db.insert(expenseHistory).values({
-    organizationId,
-    expenseId,
-    action,
-    description,
-    oldValue,
-    newValue,
-    performedBy,
-    createdAt: new Date(),
-  });
-};
-
-// Export additional functions that will be used by other services
-export {
-  getExpenseReceipts,
-  getExpenseAllocations,
-  getExpenseApprovals,
-  getExpenseHistory,
-  createExpenseAllocation,
-  logExpenseHistory,
-};
+  receiptId: string,
+) {
+  const existing = await getExpenseReceiptById(expenseId, receiptId);
+  if (!existing) return null;
+  const { deleteFromSpaces } = await import("./storage.service.js");
+  await deleteFromSpaces(existing.filePath);
+  const [receipt] = await db
+    .update(expenseReceipts)
+    .set({ isDeleted: true })
+    .where(
+      and(
+        eq(expenseReceipts.expenseId, expenseId),
+        eq(expenseReceipts.id, receiptId),
+        eq(expenseReceipts.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (receipt) {
+    const remaining = await db
+      .select({ id: expenseReceipts.id })
+      .from(expenseReceipts)
+      .where(
+        and(
+          eq(expenseReceipts.expenseId, expenseId),
+          eq(expenseReceipts.isDeleted, false),
+        ),
+      );
+    if (remaining.length === 0) {
+      await db
+        .update(expenses)
+        .set({ hasReceipt: false, updatedAt: new Date() })
+        .where(and(eq(expenses.id, expenseId), eq(expenses.isDeleted, false)));
+    }
+  }
+  return receipt ?? null;
+}
