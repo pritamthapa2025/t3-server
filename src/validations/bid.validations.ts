@@ -225,6 +225,8 @@ export const createBidSchema = z.object({
         travel: z.string().optional(),
         operatingExpenses: z.string().optional(),
         totalCost: z.string().optional(),
+        totalPrice: z.string().optional(),
+        grossProfit: z.string().optional(),
       })
       .optional(),
 
@@ -539,6 +541,8 @@ export const updateFinancialBreakdownSchema = z.object({
     travel: numericStringSchema,
     operatingExpenses: numericStringSchema,
     totalCost: numericStringSchema,
+    totalPrice: numericStringSchema.optional(),
+    grossProfit: numericStringSchema.optional(),
   }),
 });
 

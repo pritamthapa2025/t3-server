@@ -40,27 +40,22 @@ interface PayrollRunsFilters {
 }
 
 // T3 internal organization ID for audit logs
-const T3_ORGANIZATION_ID = process.env.T3_ORGANIZATION_ID || "00000000-0000-0000-0000-000000000000";
+const T3_ORGANIZATION_ID =
+  process.env.T3_ORGANIZATION_ID || "00000000-0000-0000-0000-000000000000";
 
 // Dashboard Service (T3 internal - no organizationId filter)
-export const getPayrollDashboard = async (
-  filters: PayrollDashboardFilters
-) => {
-  let whereConditions = [
-    eq(payrollEntries.isDeleted, false),
-  ];
+export const getPayrollDashboard = async (filters: PayrollDashboardFilters) => {
+  let whereConditions = [eq(payrollEntries.isDeleted, false)];
 
   // Add filters
   if (filters.payPeriodId) {
-    whereConditions.push(
-      eq(payrollRuns.payPeriodId, filters.payPeriodId)
-    );
+    whereConditions.push(eq(payrollRuns.payPeriodId, filters.payPeriodId));
   }
 
   if (filters.dateFrom && filters.dateTo) {
     whereConditions.push(
       gte(payrollEntries.scheduledDate, filters.dateFrom),
-      lte(payrollEntries.scheduledDate, filters.dateTo)
+      lte(payrollEntries.scheduledDate, filters.dateTo),
     );
   }
 
@@ -96,10 +91,13 @@ export const getPayrollDashboard = async (
     .groupBy(payrollEntries.status);
 
   // Count payroll entries by status
-  const statusCounts = paymentStatusResult.reduce((acc, item) => {
-    acc[item.status] = item.count;
-    return acc;
-  }, {} as Record<string, number>);
+  const statusCounts = paymentStatusResult.reduce(
+    (acc, item) => {
+      acc[item.status] = item.count;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
   return {
     summary: summaryResult[0] || {
@@ -136,11 +134,9 @@ const approvedByUser = alias(users, "approved_by_user");
 export const getPayrollEntries = async (
   offset: number,
   limit: number,
-  filters: PayrollEntriesFilters
+  filters: PayrollEntriesFilters,
 ) => {
-  let whereConditions = [
-    eq(payrollEntries.isDeleted, false),
-  ];
+  let whereConditions = [eq(payrollEntries.isDeleted, false)];
 
   // Add search filter
   if (filters.search) {
@@ -148,8 +144,8 @@ export const getPayrollEntries = async (
       or(
         ilike(users.fullName, `%${filters.search}%`),
         ilike(employees.employeeId, `%${filters.search}%`),
-        ilike(payrollEntries.entryNumber, `%${filters.search}%`)
-      )!
+        ilike(payrollEntries.entryNumber, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -163,7 +159,9 @@ export const getPayrollEntries = async (
   }
 
   if (filters.employeeId) {
-    whereConditions.push(eq(payrollEntries.employeeId, parseInt(filters.employeeId)));
+    whereConditions.push(
+      eq(payrollEntries.employeeId, parseInt(filters.employeeId)),
+    );
   }
 
   // Get total count
@@ -185,7 +183,7 @@ export const getPayrollEntries = async (
       entryNumber: payrollEntries.entryNumber,
       status: payrollEntries.status,
       sourceType: payrollEntries.sourceType,
-      
+
       // Hours Data
       regularHours: payrollEntries.regularHours,
       overtimeHours: payrollEntries.overtimeHours,
@@ -218,7 +216,7 @@ export const getPayrollEntries = async (
       employeeId: employees.id,
       employeeNumber: employees.employeeId,
       employeeName: users.fullName,
-      
+
       // Pay Period Data
       payPeriodId: payPeriods.id,
       payPeriodStart: payPeriods.startDate,
@@ -274,7 +272,7 @@ export const getPayrollEntryById = async (id: string) => {
       approvalWorkflow: payrollEntries.approvalWorkflow,
       isLocked: payrollEntries.isLocked,
       lockedReason: payrollEntries.lockedReason,
-      
+
       // Hours Data
       regularHours: payrollEntries.regularHours,
       overtimeHours: payrollEntries.overtimeHours,
@@ -314,7 +312,7 @@ export const getPayrollEntryById = async (id: string) => {
       employeeId: employees.id,
       employeeNumber: employees.employeeId,
       employeeName: users.fullName,
-      
+
       // Pay Period Data
       payPeriodId: payPeriods.id,
       payPeriodStart: payPeriods.startDate,
@@ -365,8 +363,8 @@ export const createPayrollEntry = async (data: any) => {
       and(
         eq(payrollEntries.employeeId, data.employeeId),
         eq(payrollRuns.payPeriodId, data.payPeriodId),
-        eq(payrollEntries.isDeleted, false)
-      )
+        eq(payrollEntries.isDeleted, false),
+      ),
     )
     .limit(1);
 
@@ -378,7 +376,7 @@ export const createPayrollEntry = async (data: any) => {
 
   // Calculate pay amounts
   const calculatedData = calculatePayAmounts(data);
-  
+
   // Generate entry number (T3 internal - no organizationId needed)
   const entryNumber = await generatePayrollEntryNumber();
 
@@ -471,7 +469,7 @@ export const updatePayrollEntry = async (id: string, data: any) => {
 export const deletePayrollEntry = async (id: string, deletedBy: string) => {
   // Check if entry is locked
   const entry = await db
-    .select({ 
+    .select({
       isLocked: payrollEntries.isLocked,
     })
     .from(payrollEntries)
@@ -506,8 +504,8 @@ export const deletePayrollEntry = async (id: string, deletedBy: string) => {
         referenceType: "payroll_entry",
         referenceId: id,
         action: "deleted",
-      description: "Payroll entry deleted",
-      performedBy: deletedBy,
+        description: "Payroll entry deleted",
+        performedBy: deletedBy,
         isAutomatedAction: false,
         createdAt: new Date(),
       });
@@ -519,9 +517,13 @@ export const deletePayrollEntry = async (id: string, deletedBy: string) => {
   return result;
 };
 
-export const approvePayrollEntry = async (id: string, approvedBy: string, notes?: string) => {
+export const approvePayrollEntry = async (
+  id: string,
+  approvedBy: string,
+  notes?: string,
+) => {
   const entry = await db
-    .select({ 
+    .select({
       status: payrollEntries.status,
     })
     .from(payrollEntries)
@@ -532,7 +534,11 @@ export const approvePayrollEntry = async (id: string, approvedBy: string, notes?
     return null;
   }
 
-  if (entry[0].status === "approved" || entry[0].status === "processed" || entry[0].status === "paid") {
+  if (
+    entry[0].status === "approved" ||
+    entry[0].status === "processed" ||
+    entry[0].status === "paid"
+  ) {
     const error = new Error("Entry is already approved") as any;
     error.code = "ALREADY_APPROVED";
     throw error;
@@ -556,8 +562,8 @@ export const approvePayrollEntry = async (id: string, approvedBy: string, notes?
         referenceType: "payroll_entry",
         referenceId: id,
         action: "approved",
-      description: notes || "Payroll entry approved",
-      performedBy: approvedBy,
+        description: notes || "Payroll entry approved",
+        performedBy: approvedBy,
         isAutomatedAction: false,
         createdAt: new Date(),
       });
@@ -569,9 +575,13 @@ export const approvePayrollEntry = async (id: string, approvedBy: string, notes?
   return result;
 };
 
-export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason: string) => {
+export const rejectPayrollEntry = async (
+  id: string,
+  rejectedBy: string,
+  reason: string,
+) => {
   const entry = await db
-    .select({ 
+    .select({
       status: payrollEntries.status,
     })
     .from(payrollEntries)
@@ -607,8 +617,8 @@ export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason:
         referenceType: "payroll_entry",
         referenceId: id,
         action: "rejected",
-      description: `Payroll entry rejected: ${reason}`,
-      performedBy: rejectedBy,
+        description: `Payroll entry rejected: ${reason}`,
+        performedBy: rejectedBy,
         isAutomatedAction: false,
         createdAt: new Date(),
       });
@@ -624,18 +634,16 @@ export const rejectPayrollEntry = async (id: string, rejectedBy: string, reason:
 export const getPayrollRuns = async (
   offset: number,
   limit: number,
-  filters: PayrollRunsFilters
+  filters: PayrollRunsFilters,
 ) => {
-  let whereConditions = [
-    eq(payrollRuns.isDeleted, false),
-  ];
+  let whereConditions = [eq(payrollRuns.isDeleted, false)];
 
   if (filters.search) {
     whereConditions.push(
       or(
         ilike(payrollRuns.runNumber, `%${filters.search}%`),
-        ilike(payrollRuns.runType, `%${filters.search}%`)
-      )!
+        ilike(payrollRuns.runType, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -759,8 +767,8 @@ export const createPayrollRun = async (data: any) => {
       and(
         eq(payrollRuns.payPeriodId, data.payPeriodId),
         ne(payrollRuns.status, "cancelled"),
-        eq(payrollRuns.isDeleted, false)
-      )
+        eq(payrollRuns.isDeleted, false),
+      ),
     )
     .limit(1);
 
@@ -805,7 +813,7 @@ export const createPayrollRun = async (data: any) => {
 
 export const processPayrollRun = async (id: string, processedBy: string) => {
   const run = await db
-    .select({ 
+    .select({
       status: payrollRuns.status,
     })
     .from(payrollRuns)
@@ -839,7 +847,7 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
       .update(payrollEntries)
       .set({
         status: "processed",
-        processedDate: new Date().toISOString().split('T')[0],
+        processedDate: new Date().toISOString().split("T")[0],
         processedBy: processedBy,
         updatedAt: new Date(),
       })
@@ -849,11 +857,11 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
     if (run[0]) {
       await tx.insert(payrollAuditLog).values({
         organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
-      referenceType: "payroll_run",
-      referenceId: id,
-      action: "processed",
-      description: "Payroll run processed",
-      performedBy: processedBy,
+        referenceType: "payroll_run",
+        referenceId: id,
+        action: "processed",
+        description: "Payroll run processed",
+        performedBy: processedBy,
         isAutomatedAction: false,
         createdAt: new Date(),
       });
@@ -874,22 +882,37 @@ const calculatePayAmounts = (data: any) => {
   const sickHours = parseFloat(data.sickHours) || 0;
   const holidayHours = parseFloat(data.holidayHours) || 0;
   const bonuses = parseFloat(data.bonuses) || 0;
-  
+
   const hourlyRate = parseFloat(data.hourlyRate) || 0;
   const overtimeMultiplier = parseFloat(data.overtimeMultiplier) || 1.5;
-  const doubleOvertimeMultiplier = parseFloat(data.doubleOvertimeMultiplier) || 2.0;
+  const doubleOvertimeMultiplier =
+    parseFloat(data.doubleOvertimeMultiplier) || 2.0;
   const holidayMultiplier = parseFloat(data.holidayMultiplier) || 1.5;
 
   const regularPay = regularHours * hourlyRate;
   const overtimePay = overtimeHours * hourlyRate * overtimeMultiplier;
-  const doubleOvertimePay = doubleOvertimeHours * hourlyRate * doubleOvertimeMultiplier;
+  const doubleOvertimePay =
+    doubleOvertimeHours * hourlyRate * doubleOvertimeMultiplier;
   const ptoPay = ptoHours * hourlyRate;
   const sickPay = sickHours * hourlyRate;
   const holidayPay = holidayHours * hourlyRate * holidayMultiplier;
 
-  const grossPay = regularPay + overtimePay + doubleOvertimePay + ptoPay + sickPay + holidayPay + bonuses;
-  const totalHours = regularHours + overtimeHours + doubleOvertimeHours + ptoHours + sickHours + holidayHours;
-  
+  const grossPay =
+    regularPay +
+    overtimePay +
+    doubleOvertimePay +
+    ptoPay +
+    sickPay +
+    holidayPay +
+    bonuses;
+  const totalHours =
+    regularHours +
+    overtimeHours +
+    doubleOvertimeHours +
+    ptoHours +
+    sickHours +
+    holidayHours;
+
   // Note: totalDeductions would be calculated from deductions in a separate process
   const totalDeductions = parseFloat(data.totalDeductions) || 0;
   const netPay = grossPay - totalDeductions;
@@ -911,33 +934,29 @@ const calculatePayAmounts = (data: any) => {
 const generatePayrollEntryNumber = async (): Promise<string> => {
   const currentYear = new Date().getFullYear();
   const currentWeek = getWeekNumber(new Date());
-  
+
   // Get count of entries this week (T3 internal - no organizationId filter)
   const countResult = await db
     .select({ count: count() })
     .from(payrollEntries)
-    .where(
-      gte(payrollEntries.createdAt, new Date(currentYear, 0, 1))
-    );
+    .where(gte(payrollEntries.createdAt, new Date(currentYear, 0, 1)));
 
   const sequence = (countResult[0]?.count || 0) + 1;
-  return `PAY-${currentYear}-W${currentWeek.toString().padStart(2, '0')}-${sequence.toString().padStart(3, '0')}`;
+  return `PAY-${currentYear}-W${currentWeek.toString().padStart(2, "0")}-${sequence.toString().padStart(3, "0")}`;
 };
 
 const generatePayrollRunNumber = async (): Promise<string> => {
   const currentYear = new Date().getFullYear();
   const currentWeek = getWeekNumber(new Date());
-  
+
   // Get count of runs this week (T3 internal - no organizationId filter)
   const countResult = await db
     .select({ count: count() })
     .from(payrollRuns)
-    .where(
-      gte(payrollRuns.createdAt, new Date(currentYear, 0, 1))
-    );
+    .where(gte(payrollRuns.createdAt, new Date(currentYear, 0, 1)));
 
   const sequence = (countResult[0]?.count || 0) + 1;
-  return `RUN-${currentYear}-W${currentWeek.toString().padStart(2, '0')}-${sequence.toString().padStart(3, '0')}`;
+  return `RUN-${currentYear}-W${currentWeek.toString().padStart(2, "0")}-${sequence.toString().padStart(3, "0")}`;
 };
 
 const getWeekNumber = (date: Date): number => {

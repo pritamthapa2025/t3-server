@@ -1,4 +1,4 @@
-﻿import {
+import {
   pgSchema,
   uuid,
   serial,
@@ -55,7 +55,7 @@ export const departments = org.table(
     index("idx_departments_lead").on(table.leadId),
     // Index for soft delete filtering
     index("idx_departments_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 // Positions table
@@ -92,7 +92,7 @@ export const positions = org.table(
     index("idx_positions_active").on(table.isActive, table.departmentId),
     // Index for soft delete filtering
     index("idx_positions_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 // Enhanced Employees table - T3 internal staff
@@ -101,7 +101,7 @@ export const employees = org.table(
   {
     id: serial("id").primaryKey(),
     userId: uuid("user_id").references(() => users.id),
-    employeeId: varchar("employee_id", { length: 50 }).unique(), // T3-00001, T3-00002, etc.
+    employeeId: varchar("employee_id", { length: 50 }).unique(), // T3-2025-000001 (auto-expands)
 
     departmentId: integer("department_id").references(() => departments.id, {}),
     positionId: integer("position_id").references(() => positions.id, {}),
@@ -149,7 +149,7 @@ export const employees = org.table(
     index("idx_employees_deleted_status").on(table.isDeleted, table.status),
     // Composite index for active employee queries (isDeleted + user join optimization)
     index("idx_employees_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 export const userBankAccounts = org.table("user_bank_accounts", {

@@ -49,7 +49,7 @@ export const inventoryAllocationStatusEnum = pgEnum(
     "fully_used",
     "returned",
     "cancelled",
-  ]
+  ],
 );
 
 /**
@@ -65,7 +65,7 @@ export const inventoryTransactionTypeEnum = pgEnum(
     "return",
     "write_off",
     "initial_stock",
-  ]
+  ],
 );
 
 /**
@@ -109,7 +109,7 @@ export const inventoryCategories = org.table(
   (table) => [
     index("idx_inventory_categories_active").on(table.isActive),
     index("idx_inventory_categories_code").on(table.code),
-  ]
+  ],
 );
 
 /**
@@ -122,7 +122,7 @@ export const inventorySuppliers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
 
     // Basic Info
-    supplierCode: varchar("supplier_code", { length: 50 }), // SUP-001
+    supplierCode: varchar("supplier_code", { length: 50 }), // SUP-2025-000001 (auto-expands)
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
 
@@ -166,7 +166,7 @@ export const inventorySuppliers = org.table(
     index("idx_inventory_suppliers_active").on(table.isActive),
     index("idx_inventory_suppliers_preferred").on(table.isPreferred),
     index("idx_inventory_suppliers_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 /**
@@ -178,13 +178,13 @@ export const inventoryLocations: any = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    locationCode: varchar("location_code", { length: 50 }), // WH-A-S3, TR-B2
+    locationCode: varchar("location_code", { length: 50 }), // LOC-2025-000001 (auto-expands)
     name: varchar("name", { length: 255 }).notNull(),
     locationType: varchar("location_type", { length: 50 }), // warehouse, storage_room, vehicle, job_site
 
     // Hierarchical structure (optional parent location)
     parentLocationId: uuid("parent_location_id").references(
-      () => inventoryLocations.id
+      () => inventoryLocations.id,
     ),
 
     // Address (for warehouses/facilities)
@@ -216,7 +216,7 @@ export const inventoryLocations: any = org.table(
     index("idx_inventory_locations_parent").on(table.parentLocationId),
     index("idx_inventory_locations_active").on(table.isActive),
     index("idx_inventory_locations_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 /**
@@ -239,7 +239,7 @@ export const inventoryUnitsOfMeasure = org.table(
   (table) => [
     index("idx_inventory_uom_active").on(table.isActive),
     index("idx_inventory_uom_type").on(table.unitType),
-  ]
+  ],
 );
 
 /**
@@ -263,7 +263,7 @@ export const inventoryItems = org.table(
 
     // Supplier
     primarySupplierId: uuid("primary_supplier_id").references(
-      () => inventorySuppliers.id
+      () => inventorySuppliers.id,
     ),
 
     // Unit of Measure
@@ -311,7 +311,7 @@ export const inventoryItems = org.table(
 
     // Primary Location
     primaryLocationId: uuid("primary_location_id").references(
-      () => inventoryLocations.id
+      () => inventoryLocations.id,
     ),
 
     // Product Details
@@ -359,9 +359,9 @@ export const inventoryItems = org.table(
     // Composite index for low stock queries
     index("idx_inventory_items_stock_check").on(
       table.quantityOnHand,
-      table.reorderLevel
+      table.reorderLevel,
     ),
-  ]
+  ],
 );
 
 /**
@@ -397,7 +397,7 @@ export const inventoryItemLocations = org.table(
     unique("unique_item_location").on(table.itemId, table.locationId),
     index("idx_inventory_item_locations_item").on(table.itemId),
     index("idx_inventory_item_locations_location").on(table.locationId),
-  ]
+  ],
 );
 
 /**
@@ -431,17 +431,17 @@ export const inventoryTransactions = org.table(
 
     // Related Records
     purchaseOrderId: uuid("purchase_order_id").references(
-      () => inventoryPurchaseOrders.id
+      () => inventoryPurchaseOrders.id,
     ),
     jobId: uuid("job_id").references(() => jobs.id),
     bidId: uuid("bid_id").references(() => bidsTable.id, {}),
 
     // Transfer details (if transaction_type = 'transfer')
     fromLocationId: uuid("from_location_id").references(
-      () => inventoryLocations.id
+      () => inventoryLocations.id,
     ),
     toLocationId: uuid("to_location_id").references(
-      () => inventoryLocations.id
+      () => inventoryLocations.id,
     ),
 
     // Tracking
@@ -472,9 +472,9 @@ export const inventoryTransactions = org.table(
     // Composite index for item history queries
     index("idx_inventory_transactions_item_date").on(
       table.itemId,
-      table.transactionDate
+      table.transactionDate,
     ),
-  ]
+  ],
 );
 
 /**
@@ -507,7 +507,7 @@ export const inventoryPurchaseOrders = org.table(
       .default("0"),
     taxAmount: numeric("tax_amount", { precision: 15, scale: 2 }).default("0"),
     shippingCost: numeric("shipping_cost", { precision: 15, scale: 2 }).default(
-      "0"
+      "0",
     ),
     totalAmount: numeric("total_amount", { precision: 15, scale: 2 })
       .notNull()
@@ -515,7 +515,7 @@ export const inventoryPurchaseOrders = org.table(
 
     // Shipping
     shipToLocationId: uuid("ship_to_location_id").references(
-      () => inventoryLocations.id
+      () => inventoryLocations.id,
     ),
     shippingAddress: text("shipping_address"),
     trackingNumber: varchar("tracking_number", { length: 100 }),
@@ -524,7 +524,7 @@ export const inventoryPurchaseOrders = org.table(
     paymentTerms: varchar("payment_terms", { length: 100 }),
     paymentStatus: varchar("payment_status", { length: 50 }), // pending, partial, paid
     amountPaid: numeric("amount_paid", { precision: 15, scale: 2 }).default(
-      "0"
+      "0",
     ),
 
     // Reference
@@ -550,7 +550,7 @@ export const inventoryPurchaseOrders = org.table(
     index("idx_inventory_po_expected_delivery").on(table.expectedDeliveryDate),
     index("idx_inventory_po_created_by").on(table.createdBy),
     index("idx_inventory_po_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 /**
@@ -593,7 +593,7 @@ export const inventoryPurchaseOrderItems = org.table(
     unique("unique_po_item").on(table.purchaseOrderId, table.itemId),
     index("idx_inventory_po_items_po").on(table.purchaseOrderId),
     index("idx_inventory_po_items_item").on(table.itemId),
-  ]
+  ],
 );
 
 /**
@@ -656,9 +656,9 @@ export const inventoryAllocations = org.table(
     index("idx_inventory_allocations_active").on(
       table.itemId,
       table.status,
-      table.isDeleted
+      table.isDeleted,
     ),
-  ]
+  ],
 );
 
 /**
@@ -707,7 +707,7 @@ export const inventoryStockAlerts = org.table(
     index("idx_inventory_alerts_created").on(table.createdAt),
     // Composite index for unresolved alerts
     index("idx_inventory_alerts_active").on(table.isResolved, table.severity),
-  ]
+  ],
 );
 
 /**
@@ -743,9 +743,9 @@ export const inventoryItemHistory = org.table(
     // Composite index for item audit trail
     index("idx_inventory_item_history_item_date").on(
       table.itemId,
-      table.createdAt
+      table.createdAt,
     ),
-  ]
+  ],
 );
 
 /**
@@ -765,16 +765,18 @@ export const inventoryPriceHistory = org.table(
     priceType: varchar("price_type", { length: 50 }).notNull(), // unit_cost, purchase_price, selling_price
     oldPrice: numeric("old_price", { precision: 15, scale: 2 }),
     newPrice: numeric("new_price", { precision: 15, scale: 2 }).notNull(),
-    
+
     // Context
     supplierId: uuid("supplier_id").references(() => inventorySuppliers.id),
-    purchaseOrderId: uuid("purchase_order_id").references(() => inventoryPurchaseOrders.id),
+    purchaseOrderId: uuid("purchase_order_id").references(
+      () => inventoryPurchaseOrders.id,
+    ),
     reason: varchar("reason", { length: 100 }), // supplier_change, market_adjustment, purchase_order, etc.
-    
+
     // Metadata
     effectiveDate: date("effective_date").notNull(),
     notes: text("notes"),
-    
+
     performedBy: uuid("performed_by")
       .notNull()
       .references(() => users.id),
@@ -789,9 +791,9 @@ export const inventoryPriceHistory = org.table(
     // Composite index for item price timeline
     index("idx_inventory_price_history_item_date").on(
       table.itemId,
-      table.effectiveDate
+      table.effectiveDate,
     ),
-  ]
+  ],
 );
 
 /**
@@ -831,7 +833,7 @@ export const inventoryCounts = org.table(
     index("idx_inventory_counts_status").on(table.status),
     index("idx_inventory_counts_date").on(table.countDate),
     index("idx_inventory_counts_deleted").on(table.isDeleted),
-  ]
+  ],
 );
 
 /**
@@ -875,5 +877,5 @@ export const inventoryCountItems = org.table(
     index("idx_inventory_count_items_item").on(table.itemId),
     // Index for variance analysis
     index("idx_inventory_count_items_variance").on(table.variance),
-  ]
+  ],
 );

@@ -1,0 +1,1 @@
+ALTER TABLE "org"."organizations" ALTER COLUMN "client_id" SET DATA TYPE varchar(50);

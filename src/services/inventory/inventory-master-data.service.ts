@@ -14,20 +14,20 @@ import {
 export const getSuppliers = async (
   offset: number,
   limit: number,
-  filters?: { search?: string; isActive?: boolean }
+  filters?: { search?: string; isActive?: boolean },
 ) => {
   let whereCondition = eq(inventorySuppliers.isDeleted, false);
 
   if (filters?.search) {
     whereCondition = and(
       whereCondition,
-      ilike(inventorySuppliers.name, `%${filters.search}%`)
+      ilike(inventorySuppliers.name, `%${filters.search}%`),
     )!;
   }
   if (filters?.isActive !== undefined) {
     whereCondition = and(
       whereCondition,
-      eq(inventorySuppliers.isActive, filters.isActive)
+      eq(inventorySuppliers.isActive, filters.isActive),
     )!;
   }
 
@@ -67,30 +67,28 @@ export const getSupplierById = async (id: string) => {
   return supplier || null;
 };
 
-// Generate next supplier code in SUP-00001 format using PostgreSQL sequence
-// Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
+// Generate next supplier code using PostgreSQL sequence
+// Format: SUP-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 // This is THREAD-SAFE and prevents race conditions
 const generateSupplierCode = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Use PostgreSQL sequence for atomic ID generation
     const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.supplier_code_seq')::text as nextval`)
+      sql.raw(`SELECT nextval('org.supplier_code_seq')::text as nextval`),
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
-    if (nextNumber <= 99999) {
-      return `SUP-${nextNumber.toString().padStart(5, "0")}`;
-    } else {
-      return `SUP-${nextNumber}`;
-    }
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
-    // (This handles cases where migration hasn't run yet)
     console.warn(
       "Supplier code sequence not found, using fallback method:",
-      error
+      error,
     );
 
     const result = await db
@@ -99,8 +97,8 @@ const generateSupplierCode = async (): Promise<string> => {
       .where(
         and(
           eq(inventorySuppliers.isDeleted, false),
-          sql`${inventorySuppliers.supplierCode} ~ '^SUP-\\d+$'`
-        )
+          sql`${inventorySuppliers.supplierCode} ~ ${`^SUP-${year}-\\d+$`}`,
+        ),
       )
       .orderBy(desc(inventorySuppliers.supplierCode))
       .limit(1);
@@ -108,18 +106,15 @@ const generateSupplierCode = async (): Promise<string> => {
     let nextNumber = 1;
     if (result.length && result[0]?.supplierCode) {
       const lastSupplierCode = result[0].supplierCode;
-      const match = lastSupplierCode.match(/^SUP-(\d+)$/);
+      const match = lastSupplierCode.match(/^SUP-\d+-(\d+)$/);
       if (match) {
         nextNumber = parseInt(match[1]!) + 1;
       }
     }
 
-    // Format: SUP-00001 to SUP-99999 (5 digits padded), then SUP-100000 onwards (no padding)
-    if (nextNumber <= 99999) {
-      return `SUP-${nextNumber.toString().padStart(5, "0")}`;
-    } else {
-      return `SUP-${nextNumber}`;
-    }
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };
 
@@ -186,29 +181,28 @@ export const deleteSupplier = async (id: string) => {
 // Locations
 // ============================
 
-// Generate next location code in LOC-00001 format using PostgreSQL sequence
-// Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
+// Generate next location code using PostgreSQL sequence
+// Format: LOC-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 // This is THREAD-SAFE and prevents race conditions
 const generateLocationCode = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Use PostgreSQL sequence for atomic ID generation
     const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.location_code_seq')::text as nextval`)
+      sql.raw(`SELECT nextval('org.location_code_seq')::text as nextval`),
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
-    if (nextNumber <= 99999) {
-      return `LOC-${nextNumber.toString().padStart(5, "0")}`;
-    } else {
-      return `LOC-${nextNumber}`;
-    }
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
     console.warn(
       "Location code sequence not found, using fallback method:",
-      error
+      error,
     );
 
     const result = await db
@@ -217,8 +211,8 @@ const generateLocationCode = async (): Promise<string> => {
       .where(
         and(
           eq(inventoryLocations.isDeleted, false),
-          sql`${inventoryLocations.locationCode} ~ '^LOC-\\d+$'`
-        )
+          sql`${inventoryLocations.locationCode} ~ ${`^LOC-${year}-\\d+$`}`,
+        ),
       )
       .orderBy(desc(inventoryLocations.locationCode))
       .limit(1);
@@ -226,25 +220,22 @@ const generateLocationCode = async (): Promise<string> => {
     let nextNumber = 1;
     if (result.length && result[0]?.locationCode) {
       const lastLocationCode = result[0].locationCode;
-      const match = lastLocationCode.match(/^LOC-(\d+)$/);
+      const match = lastLocationCode.match(/^LOC-\d+-(\d+)$/);
       if (match) {
         nextNumber = parseInt(match[1]!) + 1;
       }
     }
 
-    // Format: LOC-00001 to LOC-99999 (5 digits padded), then LOC-100000 onwards (no padding)
-    if (nextNumber <= 99999) {
-      return `LOC-${nextNumber.toString().padStart(5, "0")}`;
-    } else {
-      return `LOC-${nextNumber}`;
-    }
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };
 
 export const getLocations = async (
   offset: number,
   limit: number,
-  filters?: { search?: string; locationType?: string }
+  filters?: { search?: string; locationType?: string },
 ) => {
   const conditions = [eq(inventoryLocations.isDeleted, false)];
 
@@ -253,7 +244,7 @@ export const getLocations = async (
   }
   if (filters?.locationType) {
     conditions.push(
-      eq(inventoryLocations.locationType, filters.locationType as any)
+      eq(inventoryLocations.locationType, filters.locationType as any),
     );
   }
 

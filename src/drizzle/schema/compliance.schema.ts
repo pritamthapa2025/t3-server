@@ -18,7 +18,6 @@ import { employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
 // Import fleet tables (vehicles, safetyInspections, safetyInspectionItems) from fleet schema
 
-
 import {
   complianceCaseTypeEnum,
   complianceSeverityEnum,
@@ -34,15 +33,14 @@ export const employeeComplianceCases = org.table(
   "employee_compliance_cases",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .references(() => organizations.id), // Optional - only set if case is related to a specific client
+    organizationId: uuid("organization_id").references(() => organizations.id), // Optional - only set if case is related to a specific client
     jobId: uuid("job_id").references(() => jobs.id),
     employeeId: integer("employee_id")
       .notNull()
       .references(() => employees.id),
 
     // Case Details
-    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-2024-001
+    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-2025-000001 (auto-expands)
     type: complianceCaseTypeEnum("type").notNull(),
     severity: complianceSeverityEnum("severity").notNull(),
     status: complianceStatusEnum("status").notNull().default("open"),
@@ -93,7 +91,7 @@ export const employeeComplianceCases = org.table(
     index("idx_compliance_cases_type").on(table.type),
     index("idx_compliance_cases_assigned_to").on(table.assignedTo),
     index("idx_compliance_cases_due_date").on(table.dueDate),
-  ]
+  ],
 );
 
 // 2. Employee Certifications
@@ -143,7 +141,7 @@ export const employeeCertifications = org.table(
     index("idx_employee_certifications_status").on(table.status),
     index("idx_employee_certifications_expiration").on(table.expirationDate),
     index("idx_employee_certifications_required").on(table.isRequired),
-  ]
+  ],
 );
 
 // 3. Employee Violation History
@@ -158,7 +156,7 @@ export const employeeViolationHistory = org.table(
       .notNull()
       .references(() => employees.id),
     complianceCaseId: uuid("compliance_case_id").references(
-      () => employeeComplianceCases.id
+      () => employeeComplianceCases.id,
     ),
 
     // Violation Details
@@ -194,13 +192,17 @@ export const employeeViolationHistory = org.table(
     index("idx_violation_history_type").on(table.violationType),
     index("idx_violation_history_date").on(table.violationDate),
     index("idx_violation_history_resolved").on(table.isResolved),
-  ]
+  ],
 );
 
 // 4. Vehicle Safety Inspections
 // Note: Vehicles, safety inspections, and inspection items are now defined in fleet.schema.ts
 // These are re-exported here for backward compatibility and compliance module access
-export { vehicles, safetyInspections, safetyInspectionItems } from "./fleet.schema.js";
+export {
+  vehicles,
+  safetyInspections,
+  safetyInspectionItems,
+} from "./fleet.schema.js";
 
 // 5. Training Management
 export const trainingPrograms = org.table(
@@ -238,7 +240,7 @@ export const trainingPrograms = org.table(
     index("idx_training_programs_org").on(table.organizationId),
     index("idx_training_programs_required").on(table.isRequired),
     index("idx_training_programs_active").on(table.isActive),
-  ]
+  ],
 );
 
 export const employeeTrainingRecords = org.table(
@@ -264,7 +266,7 @@ export const employeeTrainingRecords = org.table(
     // Assessment
     score: numeric("score", { precision: 5, scale: 2 }), // 0-100%
     passingScore: numeric("passing_score", { precision: 5, scale: 2 }).default(
-      "80"
+      "80",
     ), // Required score
     attempts: integer("attempts").default(0),
 
@@ -282,13 +284,13 @@ export const employeeTrainingRecords = org.table(
   (table) => [
     unique("unique_employee_training").on(
       table.employeeId,
-      table.trainingProgramId
+      table.trainingProgramId,
     ),
     index("idx_employee_training_employee").on(table.employeeId),
     index("idx_employee_training_org").on(table.organizationId),
     index("idx_employee_training_status").on(table.status),
     index("idx_employee_training_expiration").on(table.expirationDate),
-  ]
+  ],
 );
 
 // 6. Compliance Audit Log
@@ -322,9 +324,9 @@ export const complianceAuditLog = org.table(
     index("idx_compliance_audit_org").on(table.organizationId),
     index("idx_compliance_audit_reference").on(
       table.referenceType,
-      table.referenceId
+      table.referenceId,
     ),
     index("idx_compliance_audit_performed_by").on(table.performedBy),
     index("idx_compliance_audit_created_at").on(table.createdAt),
-  ]
+  ],
 );

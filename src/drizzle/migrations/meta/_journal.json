@@ -372,6 +372,27 @@
       "when": 1770021100000,
       "tag": "0052_check_in_out_remove_driver_job",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1770021200000,
+      "tag": "0053_add_bid_financial_total_price_gross_profit",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1770033274883,
+      "tag": "0054_medical_micromax",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1770035950069,
+      "tag": "0055_vengeful_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

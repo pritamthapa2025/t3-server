@@ -1,6 +1,6 @@
 {
-  "id": "8aedd003-02f0-492e-9654-9c9a4dfa6cac",
-  "prevId": "h0d3792c-e6gg-8f9h-46bb-6hg54407ch4b",
+  "id": "d3fii558-57k5-9e4l-91gg-1ml09952hmhf",
+  "prevId": "c2ehh447-46j4-8d3k-80ff-0lk98841glge",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1252,6 +1252,20 @@
         },
         "total_cost": {
           "name": "total_cost",
+          "type": "numeric(15, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "total_price": {
+          "name": "total_price",
+          "type": "numeric(15, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "gross_profit": {
+          "name": "gross_profit",
           "type": "numeric(15, 2)",
           "primaryKey": false,
           "notNull": true,
@@ -9474,6 +9488,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "fuel_type": {
+          "name": "fuel_type",
+          "type": "fuel_type_enum",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "vehicle_status_enum",
@@ -9549,6 +9570,51 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "oil_change_interval_miles": {
+          "name": "oil_change_interval_miles",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tire_rotation_interval_miles": {
+          "name": "tire_rotation_interval_miles",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "brake_inspection_interval_miles": {
+          "name": "brake_inspection_interval_miles",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "safety_inspection_interval_months": {
+          "name": "safety_inspection_interval_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "maintenance_reminders_enabled": {
+          "name": "maintenance_reminders_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "overdue_repairs_alerts_enabled": {
+          "name": "overdue_repairs_alerts_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "safety_inspection_reminders_enabled": {
+          "name": "safety_inspection_reminders_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
         },
         "purchase_date": {
           "name": "purchase_date",
@@ -14481,24 +14547,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "driver": {
-          "name": "driver",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "driver_avatar": {
-          "name": "driver_avatar",
-          "type": "varchar(500)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "driver_id": {
-          "name": "driver_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "start_date": {
           "name": "start_date",
           "type": "date",
@@ -14517,24 +14565,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'0'"
-        },
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "job_type": {
-          "name": "job_type",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "job_location": {
-          "name": "job_location",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
         },
         "status": {
           "name": "status",
@@ -14581,21 +14611,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_assignment_history_driver": {
-          "name": "idx_assignment_history_driver",
-          "columns": [
-            {
-              "expression": "driver_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_assignment_history_status": {
           "name": "idx_assignment_history_status",
           "columns": [
@@ -14616,21 +14631,6 @@
           "columns": [
             {
               "expression": "start_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_assignment_history_job": {
-          "name": "idx_assignment_history_job",
-          "columns": [
-            {
-              "expression": "job_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -14688,26 +14688,6 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "assignment_history_driver_id_employees_id_fk": {
-          "name": "assignment_history_driver_id_employees_id_fk",
-          "tableFrom": "assignment_history",
-          "tableTo": "employees",
-          "schemaTo": "org",
-          "columnsFrom": ["driver_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assignment_history_job_id_jobs_id_fk": {
-          "name": "assignment_history_job_id_jobs_id_fk",
-          "tableFrom": "assignment_history",
-          "tableTo": "jobs",
-          "schemaTo": "org",
-          "columnsFrom": ["job_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -14759,24 +14739,6 @@
           "notNull": true,
           "default": "now()"
         },
-        "driver": {
-          "name": "driver",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "driver_id": {
-          "name": "driver_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "driver_avatar": {
-          "name": "driver_avatar",
-          "type": "varchar(500)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "odometer": {
           "name": "odometer",
           "type": "numeric(10, 2)",
@@ -14788,18 +14750,6 @@
           "type": "numeric(5, 2)",
           "primaryKey": false,
           "notNull": true
-        },
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "job_location": {
-          "name": "job_location",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
         },
         "dispatch_task_id": {
           "name": "dispatch_task_id",
@@ -14902,36 +14852,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_check_in_out_driver": {
-          "name": "idx_check_in_out_driver",
-          "columns": [
-            {
-              "expression": "driver_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_check_in_out_job": {
-          "name": "idx_check_in_out_job",
-          "columns": [
-            {
-              "expression": "job_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_check_in_out_is_deleted": {
           "name": "idx_check_in_out_is_deleted",
           "columns": [
@@ -14976,26 +14896,6 @@
           "tableTo": "vehicles",
           "schemaTo": "org",
           "columnsFrom": ["vehicle_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "check_in_out_records_driver_id_employees_id_fk": {
-          "name": "check_in_out_records_driver_id_employees_id_fk",
-          "tableFrom": "check_in_out_records",
-          "tableTo": "employees",
-          "schemaTo": "org",
-          "columnsFrom": ["driver_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "check_in_out_records_job_id_jobs_id_fk": {
-          "name": "check_in_out_records_job_id_jobs_id_fk",
-          "tableFrom": "check_in_out_records",
-          "tableTo": "jobs",
-          "schemaTo": "org",
-          "columnsFrom": ["job_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"

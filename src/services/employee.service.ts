@@ -149,7 +149,7 @@ export const getEmployees = async (offset: number, limit: number) => {
         startDate: emp.startDate,
         // TODO: Add current client assignments here
       };
-    })
+    }),
   );
 
   return {
@@ -257,8 +257,8 @@ export const getEmployeeById = async (id: number) => {
           and(
             eq(userBankAccounts.userId, user.id),
             eq(userBankAccounts.isPrimary, true),
-            eq(userBankAccounts.isDeleted, false)
-          )
+            eq(userBankAccounts.isDeleted, false),
+          ),
         )
         .limit(1)
     : [];
@@ -276,12 +276,12 @@ export const getEmployeeById = async (id: number) => {
   const startOfMonth = new Date(
     currentMonth.getFullYear(),
     currentMonth.getMonth(),
-    1
+    1,
   );
   const endOfMonth = new Date(
     currentMonth.getFullYear(),
     currentMonth.getMonth() + 1,
-    0
+    0,
   );
 
   const timesheetStats = await db
@@ -298,7 +298,7 @@ export const getEmployeeById = async (id: number) => {
   // Calculate performance metrics
   const totalTimesheets = timesheetStats.length;
   const onTimeEntries = timesheetStats.filter(
-    (t) => t.status === "approved"
+    (t) => t.status === "approved",
   ).length;
   const onTimeRate =
     totalTimesheets > 0
@@ -398,8 +398,8 @@ export const getEmployeeById = async (id: number) => {
         approval.action === "approved"
           ? "Timesheet approved"
           : approval.action === "rejected"
-          ? "Timesheet rejected"
-          : `Timesheet ${approval.action || "updated"}`;
+            ? "Timesheet rejected"
+            : `Timesheet ${approval.action || "updated"}`;
 
       const activity = {
         action: actionText,
@@ -431,7 +431,7 @@ export const getEmployeeById = async (id: number) => {
 
       if (submission.details) {
         activity.details = `For ${new Date(
-          submission.details
+          submission.details,
         ).toLocaleDateString()}`;
       }
 
@@ -443,7 +443,7 @@ export const getEmployeeById = async (id: number) => {
   if (employee.updatedAt) {
     const daysSinceUpdate = Math.floor(
       (Date.now() - new Date(employee.updatedAt).getTime()) /
-        (1000 * 60 * 60 * 24)
+        (1000 * 60 * 60 * 24),
     );
     if (daysSinceUpdate <= 30) {
       // Only show if updated in last 30 days
@@ -460,7 +460,7 @@ export const getEmployeeById = async (id: number) => {
   const recentActivity = allActivities
     .sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     )
     .slice(0, 10);
 
@@ -523,7 +523,8 @@ export const getEmployeeById = async (id: number) => {
       tasksCompleted: 24, // Mock data - implement actual task tracking
       lastLogin: user?.lastLogin
         ? `${Math.floor(
-            (Date.now() - new Date(user.lastLogin).getTime()) / (1000 * 60 * 60)
+            (Date.now() - new Date(user.lastLogin).getTime()) /
+              (1000 * 60 * 60),
           )} hours ago`
         : "Never",
     },
@@ -561,25 +562,27 @@ export const getEmployeeById = async (id: number) => {
   };
 };
 
+// Generate Employee ID using PostgreSQL sequence (thread-safe)
+// Format: T3-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 export const generateEmployeeId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Use PostgreSQL sequence for atomic ID generation (thread-safe)
     const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`)
+      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`),
     );
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
-    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
-    const numDigits = String(nextNumber).length;
-    const padding = Math.max(4, numDigits);
-    return `T3-${String(nextNumber).padStart(padding, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
     console.warn(
       "Employee ID sequence not found, using fallback method:",
-      error
+      error,
     );
 
     const totalResult = await db
@@ -589,11 +592,9 @@ export const generateEmployeeId = async (): Promise<string> => {
     const total = totalResult[0]?.count ?? 0;
     const nextNumber = total + 1;
 
-    // Format: T3-0001 to T3-9999 (4 digits), then T3-10001 (5 digits), T3-100001 (6 digits), etc.
-    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
-    const numDigits = String(nextNumber).length;
-    const padding = Math.max(4, numDigits);
-    return `T3-${String(nextNumber).padStart(padding, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   }
 };
 
@@ -633,7 +634,7 @@ export const updateEmployee = async (
     status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
     startDate?: Date | null;
     endDate?: Date | null;
-  }
+  },
 ) => {
   const updateData: {
     userId?: string;
@@ -693,7 +694,7 @@ export const deleteEmployee = async (id: number) => {
 export const getEmployeesSimple = async (
   search?: string,
   positionId?: number,
-  roleId?: number
+  roleId?: number,
 ) => {
   let whereConditions = [eq(employees.isDeleted, false)];
 
@@ -703,8 +704,8 @@ export const getEmployeesSimple = async (
       or(
         ilike(users.fullName, `%${search}%`),
         ilike(users.email, `%${search}%`),
-        ilike(employees.employeeId, `%${search}%`)
-      )!
+        ilike(employees.employeeId, `%${search}%`),
+      )!,
     );
   }
 
@@ -742,7 +743,7 @@ export const getEmployeesSimple = async (
           .from(userRoles)
           .innerJoin(roles, eq(userRoles.roleId, roles.id))
           .where(
-            and(inArray(userRoles.userId, userIds), eq(roles.isDeleted, false))
+            and(inArray(userRoles.userId, userIds), eq(roles.isDeleted, false)),
           )
       : [];
 
@@ -779,6 +780,3 @@ export const getEmployeesSimple = async (
     isAvailable: emp.status === "available", // Boolean flag for availability
   }));
 };
-
-
-

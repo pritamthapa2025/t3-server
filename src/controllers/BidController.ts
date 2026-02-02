@@ -2123,9 +2123,8 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
     if (!bid) {
       return res.status(404).json({ success: false, message: "Bid not found" });
     }
-    const clientOrgId = bid.organizationId;
 
-    const timeline = await getBidTimeline(bidId!, clientOrgId);
+    const timeline = await getBidTimeline(bidId!);
 
     logger.info("Bid timeline fetched successfully");
     return res.status(200).json({
@@ -2162,7 +2161,6 @@ export const createBidTimelineEventHandler = async (
     const eventData = {
       ...req.body,
       bidId: bidId!,
-      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -2219,7 +2217,7 @@ export const updateBidTimelineEventHandler = async (
     }
     const clientOrgId = bid.organizationId;
 
-    const event = await updateBidTimelineEvent(eventId!, clientOrgId, req.body);
+    const event = await updateBidTimelineEvent(eventId!, req.body);
 
     if (!event) {
       return res.status(404).json({
@@ -2271,7 +2269,7 @@ export const deleteBidTimelineEventHandler = async (
     }
     const clientOrgId = bid.organizationId;
 
-    const event = await deleteBidTimelineEvent(eventId!, clientOrgId);
+    const event = await deleteBidTimelineEvent(eventId!);
 
     if (!event) {
       return res.status(404).json({
@@ -2318,9 +2316,8 @@ export const getBidNotesHandler = async (req: Request, res: Response) => {
     if (!bid) {
       return res.status(404).json({ success: false, message: "Bid not found" });
     }
-    const clientOrgId = bid.organizationId;
 
-    const notes = await getBidNotes(bidId!, clientOrgId);
+    const notes = await getBidNotes(bidId!);
 
     logger.info("Bid notes fetched successfully");
     return res.status(200).json({
@@ -2354,7 +2351,6 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
     const noteData = {
       ...req.body,
       bidId: bidId!,
-      organizationId: clientOrgId,
       createdBy: performedBy,
     };
 
@@ -2407,7 +2403,7 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
     }
     const clientOrgId = bid.organizationId;
 
-    const note = await updateBidNote(noteId!, clientOrgId, req.body);
+    const note = await updateBidNote(noteId!, req.body);
 
     if (!note) {
       return res.status(404).json({
@@ -2456,7 +2452,7 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
     }
     const clientOrgId = bid.organizationId;
 
-    const note = await deleteBidNote(noteId!, clientOrgId);
+    const note = await deleteBidNote(noteId!);
 
     if (!note) {
       return res.status(404).json({
@@ -2503,9 +2499,8 @@ export const getBidHistoryHandler = async (req: Request, res: Response) => {
     if (!bid) {
       return res.status(404).json({ success: false, message: "Bid not found" });
     }
-    const clientOrgId = bid.organizationId;
 
-    const history = await getBidHistory(bidId!, clientOrgId);
+    const history = await getBidHistory(bidId!);
 
     logger.info("Bid history fetched successfully");
     return res.status(200).json({

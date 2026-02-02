@@ -234,14 +234,19 @@ export const updateVehicleSettings = async (
   return getVehicleSettings(id);
 };
 
-// Generate Vehicle ID using PostgreSQL sequence (thread-safe), format: VEH-000001
+// Generate Vehicle ID using PostgreSQL sequence (thread-safe)
+// Format: VEH-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 export const generateVehicleId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     const result = await db.execute<{ nextval: string }>(
       sql.raw(`SELECT nextval('org.vehicle_id_seq')::text as nextval`),
     );
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    return `VEH-${String(nextNumber).padStart(6, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `VEH-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     console.warn(
       "Vehicle ID sequence not found or error occurred, using fallback method:",
@@ -251,20 +256,24 @@ export const generateVehicleId = async (): Promise<string> => {
       const maxNumResult = await db.execute<{ max_num: string | null }>(
         sql.raw(`
           SELECT COALESCE(
-            MAX(CAST(SUBSTRING(vehicle_id FROM 'VEH-(\\d+)') AS INTEGER)),
+            MAX(CAST(SUBSTRING(vehicle_id FROM 'VEH-${year}-(\\d+)') AS INTEGER)),
             0
           ) as max_num
           FROM org.vehicles
-          WHERE vehicle_id ~ '^VEH-\\d+$'
+          WHERE vehicle_id ~ '^VEH-${year}-\\d+$'
             AND is_deleted = false
         `),
       );
       const maxNum = maxNumResult.rows[0]?.max_num;
       const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
-      return `VEH-${String(nextIdNumber).padStart(6, "0")}`;
+      // Use 6 digits minimum, auto-expand when exceeds 999999
+      const padding = Math.max(6, nextIdNumber.toString().length);
+      return `VEH-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
     } catch (sqlError) {
       console.warn("Vehicle ID fallback failed:", sqlError);
-      return `VEH-${String(Date.now() % 1000000).padStart(6, "0")}`;
+      const fallbackNum = Date.now() % 1000000;
+      const padding = Math.max(6, fallbackNum.toString().length);
+      return `VEH-${year}-${String(fallbackNum).padStart(padding, "0")}`;
     }
   }
 };

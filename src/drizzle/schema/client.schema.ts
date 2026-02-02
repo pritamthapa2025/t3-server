@@ -45,7 +45,7 @@ export const clientTypes: any = org.table(
   (table) => [
     index("idx_client_types_active").on(table.isActive),
     index("idx_client_types_sort").on(table.sortOrder),
-  ]
+  ],
 );
 
 // Industry Classifications table - Reference table for industry types
@@ -64,7 +64,7 @@ export const industryClassifications: any = org.table(
   (table) => [
     index("idx_industry_active").on(table.isActive),
     index("idx_industry_code").on(table.code),
-  ]
+  ],
 );
 
 // Enhanced Organizations/Clients table
@@ -72,13 +72,13 @@ export const organizations: any = org.table(
   "organizations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    clientId: varchar("client_id", { length: 20 }).notNull().unique(),
+    clientId: varchar("client_id", { length: 50 }).notNull().unique(), // CL-2025-000001 (auto-expands)
     // Basic Info
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
     clientTypeId: integer("client_type_id").references(
       () => clientTypes.id,
-      {}
+      {},
     ),
     status: clientStatusEnum("status").notNull().default("prospect"),
     priority: clientPriorityEnum("priority").default("medium"),
@@ -86,7 +86,7 @@ export const organizations: any = org.table(
 
     // Business Info
     industryClassificationId: integer("industry_classification_id").references(
-      () => industryClassifications.id
+      () => industryClassifications.id,
     ),
     taxId: varchar("tax_id", { length: 50 }),
     website: varchar("website", { length: 255 }),
@@ -105,7 +105,7 @@ export const organizations: any = org.table(
 
     // Billing Contact
     billingContactId: uuid("billing_contact_id").references(
-      () => clientContacts.id
+      () => clientContacts.id,
     ),
     billingDay: integer("billing_day"),
     taxExempt: boolean("tax_exempt").default(false),
@@ -131,7 +131,7 @@ export const organizations: any = org.table(
     index("idx_orgs_is_deleted").on(table.isDeleted),
     index("idx_orgs_billing_contact").on(table.billingContactId),
     index("idx_orgs_city_state").on(table.city, table.state),
-  ]
+  ],
 );
 
 // CRITICAL: User-Organization Relationship (Many-to-Many)
@@ -169,7 +169,7 @@ export const userOrganizations = org.table(
     index("idx_user_orgs_org").on(table.organizationId),
     index("idx_user_orgs_type").on(table.userType),
     index("idx_user_orgs_is_active").on(table.isActive),
-  ]
+  ],
 );
 
 // Client Contacts (Multiple contacts per organization)
@@ -204,7 +204,7 @@ export const clientContacts = org.table(
     index("idx_client_contacts_org").on(table.organizationId),
     index("idx_client_contacts_type").on(table.contactType),
     index("idx_client_contacts_is_primary").on(table.isPrimary),
-  ]
+  ],
 );
 
 // Client Notes/Activity Log
@@ -232,7 +232,7 @@ export const clientNotes = org.table(
     index("idx_client_notes_org").on(table.organizationId),
     index("idx_client_notes_created_by").on(table.createdBy),
     index("idx_client_notes_created_at").on(table.createdAt),
-  ]
+  ],
 );
 
 // Client Documents
@@ -258,7 +258,7 @@ export const clientDocuments = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_client_docs_org").on(table.organizationId)]
+  (table) => [index("idx_client_docs_org").on(table.organizationId)],
 );
 
 // Document Categories table - Reference table for document categories
@@ -277,7 +277,7 @@ export const documentCategories: any = org.table(
   (table) => [
     index("idx_doc_categories_active").on(table.isActive),
     index("idx_doc_categories_sort").on(table.sortOrder),
-  ]
+  ],
 );
 
 // Client Document Categories junction table - Many-to-many relationship
@@ -297,7 +297,7 @@ export const clientDocumentCategories: any = org.table(
     unique("unique_doc_category").on(table.documentId, table.categoryId),
     index("idx_doc_categories_document").on(table.documentId),
     index("idx_doc_categories_category").on(table.categoryId),
-  ]
+  ],
 );
 
 // Main Properties table
@@ -359,9 +359,9 @@ export const properties = org.table(
     index("idx_properties_is_deleted").on(table.isDeleted),
     unique("unique_property_code_per_org").on(
       table.organizationId,
-      table.propertyCode
+      table.propertyCode,
     ),
-  ]
+  ],
 );
 
 // Property Contacts (Site managers, maintenance staff, etc.)
@@ -392,7 +392,7 @@ export const propertyContacts = org.table(
   (table) => [
     index("idx_property_contacts_property").on(table.propertyId),
     index("idx_property_contacts_is_primary").on(table.isPrimary),
-  ]
+  ],
 );
 
 // Equipment at Properties (HVAC units, chillers, etc.)
@@ -437,7 +437,7 @@ export const propertyEquipment = org.table(
     index("idx_property_equipment_property").on(table.propertyId),
     index("idx_property_equipment_type").on(table.equipmentType),
     index("idx_property_equipment_status").on(table.status),
-  ]
+  ],
 );
 
 // Property Documents
@@ -468,7 +468,7 @@ export const propertyDocuments = org.table(
   (table) => [
     index("idx_property_docs_property").on(table.propertyId),
     index("idx_property_docs_type").on(table.documentType),
-  ]
+  ],
 );
 
 // Property Service History
@@ -496,7 +496,7 @@ export const propertyServiceHistory = org.table(
     index("idx_property_service_property").on(table.propertyId),
     index("idx_property_service_date").on(table.serviceDate),
     index("idx_property_service_job").on(table.jobId),
-  ]
+  ],
 );
 
 // Financial summary tables
@@ -665,5 +665,5 @@ export const financialReports = org.table(
   },
   (table) => [
     unique("unique_org_report").on(table.organizationId, table.reportKey),
-  ]
+  ],
 );

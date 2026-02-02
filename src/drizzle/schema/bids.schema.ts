@@ -37,7 +37,7 @@ export const bidsTable: any = org.table(
   "bids",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    bidNumber: varchar("bid_number", { length: 100 }).notNull(),
+    bidNumber: varchar("bid_number", { length: 100 }).notNull(), // BID-2025-000001 (auto-expands)
 
     // Basic Information
     title: varchar("title", { length: 255 }),
@@ -92,10 +92,10 @@ export const bidsTable: any = org.table(
 
     // Team Assignment
     supervisorManager: integer("supervisor_manager").references(
-      () => employees.id
+      () => employees.id,
     ),
     primaryTechnicianId: integer("technician_id").references(
-      () => employees.id
+      () => employees.id,
     ),
 
     // Metadata
@@ -115,7 +115,7 @@ export const bidsTable: any = org.table(
     // Unique constraint: bidNumber unique per organization
     unique("unique_bid_number_per_org").on(
       table.organizationId,
-      table.bidNumber
+      table.bidNumber,
     ),
     // Indexes for performance
     index("idx_bids_org").on(table.organizationId),
@@ -127,7 +127,7 @@ export const bidsTable: any = org.table(
     index("idx_bids_expires_date").on(table.expiresDate),
     index("idx_bids_is_deleted").on(table.isDeleted),
     index("idx_bids_created_at").on(table.createdAt),
-  ]
+  ],
 );
 
 /**
@@ -162,12 +162,18 @@ export const bidFinancialBreakdown = org.table(
     totalCost: numeric("total_cost", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
+    totalPrice: numeric("total_price", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
+    grossProfit: numeric("gross_profit", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (_table) => []
+  (_table) => [],
 );
 
 /**
@@ -181,7 +187,9 @@ export const bidMaterials = org.table(
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
-    inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id),
+    inventoryItemId: uuid("inventory_item_id").references(
+      () => inventoryItems.id,
+    ),
     customName: text("custom_name"),
 
     description: text("description"),
@@ -196,7 +204,7 @@ export const bidMaterials = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_bid_materials_bid_id").on(table.bidId)]
+  (table) => [index("idx_bid_materials_bid_id").on(table.bidId)],
 );
 
 /**
@@ -231,7 +239,7 @@ export const bidLabor = org.table(
   (table) => [
     index("idx_bid_labor_bid_id").on(table.bidId),
     index("idx_bid_labor_position_id").on(table.positionId),
-  ]
+  ],
 );
 
 /**
@@ -269,7 +277,7 @@ export const bidTravel = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_bid_travel_labor_id").on(table.bidLaborId)]
+  (table) => [index("idx_bid_travel_labor_id").on(table.bidLaborId)],
 );
 
 /**
@@ -300,7 +308,7 @@ export const bidOperatingExpenses = org.table(
     }).default("0"),
     inflationAdjustedOperatingCost: numeric(
       "inflation_adjusted_operating_cost",
-      { precision: 15, scale: 2 }
+      { precision: 15, scale: 2 },
     ).default("0"),
     inflationRate: numeric("inflation_rate", {
       precision: 5,
@@ -328,7 +336,7 @@ export const bidOperatingExpenses = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_bid_operating_bid_id").on(table.bidId)]
+  (table) => [index("idx_bid_operating_bid_id").on(table.bidId)],
 );
 
 /**
@@ -369,7 +377,7 @@ export const bidPlanSpecData = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_bid_plan_spec_bid_id").on(table.bidId)]
+  (table) => [index("idx_bid_plan_spec_bid_id").on(table.bidId)],
 );
 
 /**
@@ -440,7 +448,7 @@ export const bidDesignBuildData = org.table(
     // Design Costs
     designFeeBasis: varchar("design_fee_basis", { length: 50 }), // fixed, hourly, percentage, lump_sum
     designFees: numeric("design_fees", { precision: 15, scale: 2 }).default(
-      "0"
+      "0",
     ),
 
     // Legacy/Construction fields
@@ -450,7 +458,7 @@ export const bidDesignBuildData = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_bid_design_build_bid_id").on(table.bidId)]
+  (table) => [index("idx_bid_design_build_bid_id").on(table.bidId)],
 );
 
 /**
@@ -461,9 +469,6 @@ export const bidTimeline = org.table(
   "bid_timeline",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
@@ -480,11 +485,10 @@ export const bidTimeline = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_bid_timeline_org").on(table.organizationId),
     index("idx_bid_timeline_bid_id").on(table.bidId),
     index("idx_bid_timeline_status").on(table.status),
     index("idx_bid_timeline_event_date").on(table.eventDate),
-  ]
+  ],
 );
 
 /**
@@ -516,7 +520,7 @@ export const bidDocuments = org.table(
     index("idx_bid_documents_bid_id").on(table.bidId),
     index("idx_bid_documents_type").on(table.documentType),
     index("idx_bid_documents_uploaded_by").on(table.uploadedBy),
-  ]
+  ],
 );
 
 /**
@@ -549,7 +553,7 @@ export const bidPlanSpecFiles = org.table(
     index("idx_bid_plan_spec_files_org").on(table.organizationId),
     index("idx_bid_plan_spec_files_bid_id").on(table.bidId),
     index("idx_bid_plan_spec_files_type").on(table.fileType),
-  ]
+  ],
 );
 
 /**
@@ -580,7 +584,7 @@ export const bidDesignBuildFiles = org.table(
   (table) => [
     index("idx_bid_design_build_files_org").on(table.organizationId),
     index("idx_bid_design_build_files_bid_id").on(table.bidId),
-  ]
+  ],
 );
 
 /**
@@ -591,9 +595,6 @@ export const bidNotes = org.table(
   "bid_notes",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id),
@@ -609,11 +610,10 @@ export const bidNotes = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_bid_notes_org").on(table.organizationId),
     index("idx_bid_notes_bid_id").on(table.bidId),
     index("idx_bid_notes_created_by").on(table.createdBy),
     index("idx_bid_notes_internal").on(table.isInternal),
-  ]
+  ],
 );
 
 /**
@@ -647,5 +647,5 @@ export const bidHistory = org.table(
     index("idx_bid_history_performed_by").on(table.performedBy),
     index("idx_bid_history_created_at").on(table.createdAt),
     index("idx_bid_history_action").on(table.action),
-  ]
+  ],
 );

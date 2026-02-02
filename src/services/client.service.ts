@@ -288,7 +288,10 @@ export const getOrganizationDashboard = async (organizationId: string) => {
 };
 
 // Generate Client ID using PostgreSQL sequence (thread-safe)
+// Format: CL-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 export const generateClientId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Try to use PostgreSQL sequence for atomic ID generation (thread-safe)
     const result = await db.execute<{ nextval: string }>(
@@ -297,8 +300,9 @@ export const generateClientId = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Format: CL-000001 to CL-999999 (6 digits)
-    return `CL-${String(nextNumber).padStart(6, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `CL-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet or has issues
     console.warn(
@@ -306,14 +310,15 @@ export const generateClientId = async (): Promise<string> => {
       error,
     );
 
-    // Find the maximum numeric value from existing client IDs using SQL
-    // This handles both CL- and CLT- formats and ensures we get the actual max number
+    // Find the maximum numeric value from existing client IDs for current year
     try {
       const maxNumResult = await db.execute<{ max_num: string | null }>(
         sql.raw(`
           WITH client_numbers AS (
             SELECT 
               CASE 
+                WHEN client_id ~ '^CL-${year}-\\d+$' THEN
+                  CAST(SUBSTRING(client_id FROM 'CL-${year}-(\\d+)') AS INTEGER)
                 WHEN client_id ~ '^CL-\\d+$' THEN
                   CAST(SUBSTRING(client_id FROM 'CL-(\\d+)') AS INTEGER)
                 WHEN client_id ~ '^CLT-\\d+$' THEN
@@ -322,7 +327,7 @@ export const generateClientId = async (): Promise<string> => {
               END AS num_value
             FROM org.organizations
             WHERE is_deleted = false
-              AND (client_id ~ '^CL-\\d+$' OR client_id ~ '^CLT-\\d+$')
+              AND (client_id ~ '^CL-${year}-\\d+$' OR client_id ~ '^CL-\\d+$' OR client_id ~ '^CLT-\\d+$')
           )
           SELECT COALESCE(MAX(num_value), 0) as max_num
           FROM client_numbers
@@ -332,8 +337,9 @@ export const generateClientId = async (): Promise<string> => {
       const maxNum = maxNumResult.rows[0]?.max_num;
       const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
 
-      // Format: CL-000001 to CL-999999 (6 digits)
-      return `CL-${nextIdNumber.toString().padStart(6, "0")}`;
+      // Use 6 digits minimum, auto-expand when exceeds 999999
+      const padding = Math.max(6, nextIdNumber.toString().length);
+      return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
     } catch (sqlError) {
       // If SQL extraction fails, fall back to simple string comparison
       console.warn("SQL extraction failed, using simple fallback:", sqlError);
@@ -346,11 +352,13 @@ export const generateClientId = async (): Promise<string> => {
       const maxId = clientIdResult[0]?.maxId;
       let nextIdNumber = 1;
 
-      // Handle both CL- and CLT- formats for backward compatibility
+      // Handle CL-YEAR-, CL- and CLT- formats for backward compatibility
       if (maxId && typeof maxId === "string") {
         let numericPart: string | null = null;
 
-        if (maxId.startsWith("CL-")) {
+        if (maxId.startsWith(`CL-${year}-`)) {
+          numericPart = maxId.replace(`CL-${year}-`, "");
+        } else if (maxId.startsWith("CL-")) {
           numericPart = maxId.replace("CL-", "");
         } else if (maxId.startsWith("CLT-")) {
           numericPart = maxId.replace("CLT-", "");
@@ -364,8 +372,9 @@ export const generateClientId = async (): Promise<string> => {
         }
       }
 
-      // Format: CL-000001 to CL-999999 (6 digits)
-      return `CL-${nextIdNumber.toString().padStart(6, "0")}`;
+      // Use 6 digits minimum, auto-expand when exceeds 999999
+      const padding = Math.max(6, nextIdNumber.toString().length);
+      return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
     }
   }
 };

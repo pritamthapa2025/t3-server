@@ -479,9 +479,9 @@ export const getJobWithAllData = async (jobId: string) => {
     getBidMaterials(jobData.bidId, jobData.organizationId),
     getBidLabor(jobData.bidId),
     getBidOperatingExpenses(jobData.bidId, jobData.organizationId),
-    getBidTimeline(jobData.bidId, jobData.organizationId),
-    getBidNotes(jobData.bidId, jobData.organizationId),
-    getBidHistory(jobData.bidId, jobData.organizationId),
+    getBidTimeline(jobData.bidId),
+    getBidNotes(jobData.bidId),
+    getBidHistory(jobData.bidId),
   ]);
 
   // Get travel for each labor entry
@@ -519,7 +519,11 @@ export const getJobWithAllData = async (jobId: string) => {
 // Utility Functions
 // ============================
 
+// Generate next job number
+// Format: JOB-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 const generateJobNumber = async (organizationId: string): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Try to use atomic database function first
     const result = await db.execute<{ next_value: string }>(
@@ -529,12 +533,14 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
-    return `JOB-${nextNumber.toString().padStart(5, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `JOB-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to manual counter if database function doesn't exist
     console.warn("Counter function not found, using fallback method:", error);
 
-    // Get the highest existing job number for this organization
+    // Get the highest existing job number for this organization and year
     const maxResult = await db
       .select({ maxJobNumber: sql<string>`MAX(${jobs.jobNumber})` })
       .from(jobs)
@@ -543,20 +549,22 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
         and(
           eq(bidsTable.organizationId, organizationId),
           eq(jobs.isDeleted, false),
-          sql`${jobs.jobNumber} ~ '^JOB-\\d+$'`, // Only count properly formatted job numbers
+          sql`${jobs.jobNumber} ~ ${`^JOB-${year}-\\d+$`}`, // Only count job numbers for current year
         ),
       );
 
     let nextNumber = 1;
     const maxJobNumber = maxResult[0]?.maxJobNumber;
     if (maxJobNumber) {
-      const match = maxJobNumber.match(/^JOB-(\d+)$/);
+      const match = maxJobNumber.match(/^JOB-\d+-(\d+)$/);
       if (match && match[1]) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
     }
 
-    return `JOB-${nextNumber.toString().padStart(5, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `JOB-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };
 
@@ -1168,7 +1176,7 @@ export const getJobTimeline = async (jobId: string) => {
   }
 
   // Get timeline events from the bid
-  const timeline = await getBidTimeline(jobData.bidId, jobData.organizationId);
+  const timeline = await getBidTimeline(jobData.bidId);
 
   return timeline;
 };
@@ -1200,7 +1208,6 @@ export const createJobTimelineEvent = async (data: {
   // Create timeline event in the bid
   const timelineEvent = await createBidTimelineEvent({
     bidId: jobData.bidId,
-    organizationId: jobData.organizationId,
     event: data.event,
     eventDate: data.eventDate,
     ...(data.status && { status: data.status }),
@@ -1231,10 +1238,7 @@ export const getJobTimelineEventById = async (
   }
 
   // Get the timeline event from the bid
-  const timelineEvent = await getBidTimelineEventById(
-    eventId,
-    jobData.organizationId,
-  );
+  const timelineEvent = await getBidTimelineEventById(eventId);
 
   return timelineEvent;
 };
@@ -1266,11 +1270,7 @@ export const updateJobTimelineEvent = async (
   }
 
   // Update timeline event using bid service
-  const timelineEvent = await updateBidTimelineEvent(
-    id,
-    jobData.organizationId,
-    data,
-  );
+  const timelineEvent = await updateBidTimelineEvent(id, data);
 
   return timelineEvent;
 };
@@ -1295,10 +1295,7 @@ export const deleteJobTimelineEvent = async (
   }
 
   // Delete timeline event using bid service
-  const timelineEvent = await deleteBidTimelineEvent(
-    id,
-    jobData.organizationId,
-  );
+  const timelineEvent = await deleteBidTimelineEvent(id);
 
   return timelineEvent;
 };
@@ -1323,7 +1320,7 @@ export const getJobNotes = async (jobId: string) => {
   }
 
   // Get notes from the bid
-  const notes = await getBidNotes(jobData.bidId, jobData.organizationId);
+  const notes = await getBidNotes(jobData.bidId);
 
   return notes;
 };
@@ -1352,7 +1349,6 @@ export const createJobNote = async (data: {
   // Create note in the bid
   const note = await createBidNote({
     bidId: jobData.bidId,
-    organizationId: jobData.organizationId,
     note: data.note,
     ...(data.isInternal !== undefined && { isInternal: data.isInternal }),
     createdBy: data.createdBy,
@@ -1377,7 +1373,7 @@ export const getJobNoteById = async (jobId: string, noteId: string) => {
   }
 
   // Get the note from the bid
-  const note = await getBidNoteById(noteId, jobData.organizationId);
+  const note = await getBidNoteById(noteId);
 
   return note;
 };
@@ -1406,7 +1402,7 @@ export const updateJobNote = async (
   }
 
   // Update note using bid service
-  const note = await updateBidNote(id, jobData.organizationId, data);
+  const note = await updateBidNote(id, data);
 
   return note;
 };
@@ -1431,7 +1427,7 @@ export const deleteJobNote = async (
   }
 
   // Delete note using bid service
-  const note = await deleteBidNote(id, jobData.organizationId);
+  const note = await deleteBidNote(id);
 
   return note;
 };
@@ -1462,7 +1458,7 @@ export const getJobHistory = async (jobId: string, _organizationId: string) => {
   }
 
   // Get history from the bid
-  const history = await getBidHistory(jobData.bidId, jobData.organizationId);
+  const history = await getBidHistory(jobData.bidId);
 
   return history;
 };

@@ -349,7 +349,10 @@ export const getComplianceCaseById = async (id: string) => {
 };
 
 // Generate Case Number using PostgreSQL sequence (thread-safe)
+// Format: CASE-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 export const generateCaseNumber = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Use PostgreSQL sequence for atomic ID generation
     const result = await db.execute<{ nextval: string }>(
@@ -358,11 +361,9 @@ export const generateCaseNumber = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Format: CASE-0001 to CASE-9999 (4 digits), then CASE-10001 (5 digits), CASE-100001 (6 digits), etc.
-    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
-    const numDigits = String(nextNumber).length;
-    const padding = Math.max(4, numDigits);
-    return `CASE-${String(nextNumber).padStart(padding, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
     console.warn(
@@ -376,7 +377,7 @@ export const generateCaseNumber = async (): Promise<string> => {
       .where(
         and(
           eq(employeeComplianceCases.isDeleted, false),
-          sql`${employeeComplianceCases.caseNumber} ~ '^CASE-\\d+$'`,
+          sql`${employeeComplianceCases.caseNumber} ~ ${`^CASE-${year}-\\d+$`}`,
         ),
       )
       .orderBy(desc(employeeComplianceCases.caseNumber))
@@ -385,17 +386,15 @@ export const generateCaseNumber = async (): Promise<string> => {
     let nextNumber = 1;
     if (result.length && result[0]?.caseNumber) {
       const lastCaseNumber = result[0].caseNumber;
-      const match = lastCaseNumber.match(/^CASE-(\d+)$/);
+      const match = lastCaseNumber.match(/^CASE-\d+-(\d+)$/);
       if (match) {
         nextNumber = parseInt(match[1]!) + 1;
       }
     }
 
-    // Format: CASE-0001 to CASE-9999 (4 digits), then CASE-10001 (5 digits), CASE-100001 (6 digits), etc.
-    // Dynamically calculate padding: minimum 4 digits, then use actual number of digits
-    const numDigits = String(nextNumber).length;
-    const padding = Math.max(4, numDigits);
-    return `CASE-${String(nextNumber).padStart(padding, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
   }
 };
 

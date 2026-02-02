@@ -1,0 +1,60 @@
+---
+description: Drizzle command execution policy - wait for explicit user request
+alwaysApply: true
+---
+
+# Drizzle Command Execution Policy
+
+## Rule
+
+**NEVER run drizzle-related commands automatically. Always wait for explicit user permission.**
+
+## Commands That Require User Permission
+
+- `npx drizzle-kit generate`
+- `npx drizzle-kit push`
+- `npm run db:migrate`
+- `npm run db:generate`
+- `pnpm run db:migrate`
+- `pnpm run db:generate`
+- `drizzle-kit push`
+- `drizzle-kit generate`
+- Any other drizzle-kit or database migration commands
+
+## When to Run These Commands
+
+✅ **ONLY run after user explicitly asks**, such as:
+
+- "run the migration"
+- "apply the changes to the database"
+- "generate the migration"
+- "push to database"
+
+❌ **DO NOT run automatically** even after:
+
+- Making schema changes
+- Creating migration files
+- Updating database models
+- Completing database-related tasks
+
+## Workflow
+
+1. Make schema changes as requested
+2. Create migration files if needed
+3. **STOP** - Inform user that schema changes are ready
+4. **WAIT** for user to explicitly request migration execution
+5. Only then run the drizzle commands
+
+## Example Response
+
+After making schema changes:
+
+```
+✅ Schema changes completed:
+- Updated bid_notes table
+- Updated bid_timeline table
+- Created migration file: 0055_remove_org_id.sql
+
+⚠️ Migration file is ready but NOT applied to database.
+Run `npm run db:migrate` when you're ready to apply these changes.
+```

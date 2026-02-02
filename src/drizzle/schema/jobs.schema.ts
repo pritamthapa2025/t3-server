@@ -32,7 +32,7 @@ export const jobs: any = org.table(
   "jobs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    jobNumber: varchar("job_number", { length: 100 }).notNull(),
+    jobNumber: varchar("job_number", { length: 100 }).notNull(), // JOB-2025-000001 (auto-expands)
 
     // Relationships
     bidId: uuid("bid_id")

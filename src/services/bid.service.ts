@@ -29,6 +29,7 @@ import {
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { getUserRoles } from "./role.service.js";
 
 // ============================
 // Main Bid Operations
@@ -311,6 +312,21 @@ export const createBid = async (data: {
   // Create related records based on job type
   if (bid) {
     await createRelatedRecords(bid.id, data.organizationId, data.jobType);
+
+    // Get user role to determine timeline status
+    const userRole = await getUserRoles(data.createdBy);
+    const timelineStatus =
+      userRole?.roleName === "Executive" ? "in_progress" : "pending";
+
+    // Automatically create a "created" timeline event
+    await createBidTimelineEvent({
+      bidId: bid.id,
+      event: "created",
+      eventDate: bid.createdDate?.toISOString() || new Date().toISOString(),
+      status: timelineStatus,
+      description: `Bid created by ${userRole?.roleName || "user"}`,
+      createdBy: data.createdBy,
+    });
   }
 
   if (!bid) return null;
@@ -465,16 +481,28 @@ export const updateBidFinancialBreakdown = async (
     travel: string;
     operatingExpenses: string;
     totalCost: string;
+    totalPrice?: string;
+    grossProfit?: string;
   },
 ) => {
-  // Check if breakdown exists
+  const totalPrice = data.totalPrice ?? "0";
+  const grossProfit =
+    data.grossProfit ??
+    (parseFloat(totalPrice) - parseFloat(data.totalCost ?? "0")).toFixed(2);
+
+  const payload = {
+    ...data,
+    totalPrice,
+    grossProfit,
+  };
+
   const existing = await getBidFinancialBreakdown(bidId, organizationId);
 
   if (existing) {
     const [breakdown] = await db
       .update(bidFinancialBreakdown)
       .set({
-        ...data,
+        ...payload,
         updatedAt: new Date(),
       })
       .where(eq(bidFinancialBreakdown.id, existing.id))
@@ -485,7 +513,7 @@ export const updateBidFinancialBreakdown = async (
       .insert(bidFinancialBreakdown)
       .values({
         bidId,
-        ...data,
+        ...payload,
       })
       .returning();
     return breakdown;
@@ -1194,41 +1222,25 @@ export const updateBidDesignBuildData = async (
 // Timeline Operations
 // ============================
 
-export const getBidTimeline = async (bidId: string, organizationId: string) => {
+export const getBidTimeline = async (bidId: string) => {
   const timeline = await db
     .select()
     .from(bidTimeline)
-    .where(
-      and(
-        eq(bidTimeline.bidId, bidId),
-        eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidTimeline.bidId, bidId), eq(bidTimeline.isDeleted, false)))
     .orderBy(asc(bidTimeline.sortOrder), asc(bidTimeline.eventDate));
   return timeline;
 };
 
-export const getBidTimelineEventById = async (
-  eventId: string,
-  organizationId: string,
-) => {
+export const getBidTimelineEventById = async (eventId: string) => {
   const [timelineEvent] = await db
     .select()
     .from(bidTimeline)
-    .where(
-      and(
-        eq(bidTimeline.id, eventId),
-        eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false),
-      ),
-    );
+    .where(and(eq(bidTimeline.id, eventId), eq(bidTimeline.isDeleted, false)));
   return timelineEvent || null;
 };
 
 export const createBidTimelineEvent = async (data: {
   bidId: string;
-  organizationId: string;
   event: string;
   eventDate: string;
   status?: string;
@@ -1240,7 +1252,6 @@ export const createBidTimelineEvent = async (data: {
     .insert(bidTimeline)
     .values({
       bidId: data.bidId,
-      organizationId: data.organizationId,
       event: data.event,
       eventDate: new Date(data.eventDate),
       status: (data.status as any) || "pending",
@@ -1254,7 +1265,6 @@ export const createBidTimelineEvent = async (data: {
 
 export const updateBidTimelineEvent = async (
   id: string,
-  organizationId: string,
   data: Partial<{
     event: string;
     eventDate: string;
@@ -1273,34 +1283,19 @@ export const updateBidTimelineEvent = async (
       sortOrder: data.sortOrder,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidTimeline.id, id),
-        eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidTimeline.id, id), eq(bidTimeline.isDeleted, false)))
     .returning();
   return timelineEvent;
 };
 
-export const deleteBidTimelineEvent = async (
-  id: string,
-  organizationId: string,
-) => {
+export const deleteBidTimelineEvent = async (id: string) => {
   const [timelineEvent] = await db
     .update(bidTimeline)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidTimeline.id, id),
-        eq(bidTimeline.organizationId, organizationId),
-        eq(bidTimeline.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidTimeline.id, id), eq(bidTimeline.isDeleted, false)))
     .returning();
   return timelineEvent;
 };
@@ -1309,41 +1304,25 @@ export const deleteBidTimelineEvent = async (
 // Notes Operations
 // ============================
 
-export const getBidNotes = async (bidId: string, organizationId: string) => {
+export const getBidNotes = async (bidId: string) => {
   const notes = await db
     .select()
     .from(bidNotes)
-    .where(
-      and(
-        eq(bidNotes.bidId, bidId),
-        eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidNotes.bidId, bidId), eq(bidNotes.isDeleted, false)))
     .orderBy(desc(bidNotes.createdAt));
   return notes;
 };
 
-export const getBidNoteById = async (
-  noteId: string,
-  organizationId: string,
-) => {
+export const getBidNoteById = async (noteId: string) => {
   const [note] = await db
     .select()
     .from(bidNotes)
-    .where(
-      and(
-        eq(bidNotes.id, noteId),
-        eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false),
-      ),
-    );
+    .where(and(eq(bidNotes.id, noteId), eq(bidNotes.isDeleted, false)));
   return note || null;
 };
 
 export const createBidNote = async (data: {
   bidId: string;
-  organizationId: string;
   note: string;
   createdBy: string;
   isInternal?: boolean;
@@ -1354,7 +1333,6 @@ export const createBidNote = async (data: {
 
 export const updateBidNote = async (
   id: string,
-  organizationId: string,
   data: {
     note: string;
     isInternal?: boolean;
@@ -1366,31 +1344,19 @@ export const updateBidNote = async (
       ...data,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidNotes.id, id),
-        eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidNotes.id, id), eq(bidNotes.isDeleted, false)))
     .returning();
   return note;
 };
 
-export const deleteBidNote = async (id: string, organizationId: string) => {
+export const deleteBidNote = async (id: string) => {
   const [note] = await db
     .update(bidNotes)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(bidNotes.id, id),
-        eq(bidNotes.organizationId, organizationId),
-        eq(bidNotes.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidNotes.id, id), eq(bidNotes.isDeleted, false)))
     .returning();
   return note;
 };
@@ -1399,16 +1365,11 @@ export const deleteBidNote = async (id: string, organizationId: string) => {
 // History Operations (Read-only)
 // ============================
 
-export const getBidHistory = async (bidId: string, organizationId: string) => {
+export const getBidHistory = async (bidId: string) => {
   const history = await db
     .select()
     .from(bidHistory)
-    .where(
-      and(
-        eq(bidHistory.bidId, bidId),
-        eq(bidHistory.organizationId, organizationId),
-      ),
-    )
+    .where(eq(bidHistory.bidId, bidId))
     .orderBy(desc(bidHistory.createdAt));
   return history;
 };
@@ -1431,9 +1392,11 @@ export const createBidHistoryEntry = async (data: {
 // ============================
 
 // Generate next bid number using atomic database function
-// This is THREAD-SAFE and prevents race conditions
+// Format: BID-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
 // This is THREAD-SAFE and prevents race conditions
 const generateBidNumber = async (organizationId: string): Promise<string> => {
+  const year = new Date().getFullYear();
+
   try {
     // Use atomic database function to get next counter value
     const result = await db.execute<{ next_value: string }>(
@@ -1443,7 +1406,9 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
-    return `BID-${nextNumber.toString().padStart(5, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `BID-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if function doesn't exist yet
     console.warn("Counter function not found, using fallback method:", error);
@@ -1453,20 +1418,27 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
         maxBidNumber: max(bidsTable.bidNumber),
       })
       .from(bidsTable)
-      .where(eq(bidsTable.organizationId, organizationId));
+      .where(
+        and(
+          eq(bidsTable.organizationId, organizationId),
+          sql`${bidsTable.bidNumber} ~ ${`^BID-${year}-\\d+$`}`,
+        ),
+      );
 
     const maxBidNumber = maxResult[0]?.maxBidNumber;
     let nextNumber = 1;
 
     if (maxBidNumber) {
-      const match = maxBidNumber.match(/BID-(\d+)/);
+      const match = maxBidNumber.match(/BID-\d+-(\d+)/);
       if (match && match[1]) {
         const currentNumber = parseInt(match[1], 10);
         nextNumber = currentNumber + 1;
       }
     }
 
-    return `BID-${nextNumber.toString().padStart(5, "0")}`;
+    // Use 6 digits minimum, auto-expand when exceeds 999999
+    const padding = Math.max(6, nextNumber.toString().length);
+    return `BID-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };
 
@@ -1489,6 +1461,8 @@ const createRelatedRecords = async (
     travel: "0",
     operatingExpenses: "0",
     totalCost: "0",
+    totalPrice: "0",
+    grossProfit: "0",
   });
 
   // Create operating expenses
@@ -1551,9 +1525,9 @@ export const getBidWithAllData = async (id: string) => {
     getBidSurveyData(id, organizationId),
     getBidPlanSpecData(id, organizationId),
     getBidDesignBuildData(id, organizationId),
-    getBidTimeline(id, organizationId),
-    getBidNotes(id, organizationId),
-    getBidHistory(id, organizationId),
+    getBidTimeline(id),
+    getBidNotes(id),
+    getBidHistory(id),
   ]);
 
   // Get travel for each labor entry

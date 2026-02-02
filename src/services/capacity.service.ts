@@ -506,8 +506,14 @@ export const getResourceAllocations = async (
     .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .leftJoin(jobs, eq(resourceAllocations.jobId, jobs.id))
-    .leftJoin(createdByUser, eq(resourceAllocations.createdBy, createdByUser.id))
-    .leftJoin(assignedByUser, eq(resourceAllocations.assignedBy, assignedByUser.id))
+    .leftJoin(
+      createdByUser,
+      eq(resourceAllocations.createdBy, createdByUser.id),
+    )
+    .leftJoin(
+      assignedByUser,
+      eq(resourceAllocations.assignedBy, assignedByUser.id),
+    )
     .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
     .limit(limit)
     .offset((offset - 1) * limit)
