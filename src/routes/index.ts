@@ -3,6 +3,7 @@ import authRoutes from "./auth/authRoutes.js";
 import userRoutes from "./auth/userRoutes.js";
 import roleRoutes from "./auth/roleRoutes.js";
 import uiPermissionsRoutes from "./auth/uiPermissionsRoutes.js";
+import settingsRoutes from "./auth/settingsRoutes.js";
 import departmentRoutes from "./org/departmentRoutes.js";
 import positionRoutes from "./org/positionRoutes.js";
 import employeeRoutes from "./org/employeeRoutes.js";
@@ -31,6 +32,7 @@ router.use("/auth", authRoutes);
 router.use("/auth", userRoutes);
 router.use("/auth", roleRoutes);
 router.use("/auth/user", uiPermissionsRoutes);
+router.use("/auth/settings", settingsRoutes);
 
 // Mount routers - each router's authenticate middleware will only run for matching routes
 router.use("/org", departmentRoutes);
