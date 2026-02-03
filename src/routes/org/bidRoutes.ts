@@ -44,6 +44,7 @@ import {
   deleteBidNoteHandler,
   getBidHistoryHandler,
   getBidWithAllDataHandler,
+  getRelatedBidsHandler,
   createBidDocumentsHandler,
   getBidDocumentsHandler,
   getBidDocumentByIdHandler,
@@ -98,6 +99,7 @@ import {
   deleteBidNoteSchema,
   getBidHistorySchema,
   getBidWithAllDataSchema,
+  getRelatedBidsSchema,
   createBidDocumentsSchema,
   getBidDocumentsSchema,
   getBidDocumentByIdSchema,
@@ -185,7 +187,7 @@ router
   .get(
     authorizeFeature("bids", "view"),
     validate(getBidsQuerySchema),
-    getBidsHandler
+    getBidsHandler,
   )
   .post(
     authorizeFeature("bids", "create"),
@@ -193,7 +195,7 @@ router
     handleMulterError,
     parseFormData,
     validate(createBidSchema),
-    createBidHandler
+    createBidHandler,
   );
 
 router
@@ -201,25 +203,34 @@ router
   .get(
     authorizeFeature("bids", "view"),
     validate(getBidByIdSchema),
-    getBidByIdHandler
+    getBidByIdHandler,
   )
   .put(
     authorizeAnyFeature("bids", ["edit_own", "edit_pending"]),
     uploadBidDocuments,
     handleMulterError,
     validate(updateBidSchema),
-    updateBidHandler
+    updateBidHandler,
   )
   .delete(
     authorizeFeature("bids", "delete"),
     validate(deleteBidSchema),
-    deleteBidHandler
+    deleteBidHandler,
   );
 
 // Get bid with all related data
 router
   .route("/bids/:id/complete")
   .get(validate(getBidWithAllDataSchema), getBidWithAllDataHandler);
+
+// Get all bids for the same organization (related bids)
+router
+  .route("/bids/:bidId/related-bids")
+  .get(
+    authorizeFeature("bids", "view"),
+    validate(getRelatedBidsSchema),
+    getRelatedBidsHandler,
+  );
 
 // Financial Breakdown Routes
 
@@ -228,7 +239,7 @@ router
   .get(getBidFinancialBreakdownHandler)
   .put(
     validate(updateFinancialBreakdownSchema),
-    updateBidFinancialBreakdownHandler
+    updateBidFinancialBreakdownHandler,
   );
 
 // Materials Routes
@@ -256,7 +267,7 @@ router
   .route("/bids/:bidId/labor-travel/bulk")
   .post(
     validate(createBulkLaborAndTravelSchema),
-    createBulkLaborAndTravelHandler
+    createBulkLaborAndTravelHandler,
   );
 
 router
@@ -310,7 +321,7 @@ router
   .get(getBidDesignBuildDataHandler)
   .put(
     validate(updateBidDesignBuildDataSchema),
-    updateBidDesignBuildDataHandler
+    updateBidDesignBuildDataHandler,
   );
 
 // Timeline Routes
@@ -325,7 +336,7 @@ router
   .put(validate(updateBidTimelineEventSchema), updateBidTimelineEventHandler)
   .delete(
     validate(deleteBidTimelineEventSchema),
-    deleteBidTimelineEventHandler
+    deleteBidTimelineEventHandler,
   );
 
 // Notes Routes
@@ -355,7 +366,7 @@ router
     uploadBidDocuments,
     handleMulterError,
     validate(createBidDocumentsSchema),
-    createBidDocumentsHandler
+    createBidDocumentsHandler,
   );
 
 router
@@ -365,7 +376,7 @@ router
     uploadBidDocuments,
     handleMulterError,
     validate(updateBidDocumentSchema),
-    updateBidDocumentHandler
+    updateBidDocumentHandler,
   )
   .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
 

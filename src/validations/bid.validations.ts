@@ -94,6 +94,12 @@ export const getBidByIdSchema = z.object({
   }),
 });
 
+export const getRelatedBidsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
 export const createBidSchema = z.object({
   body: z.object({
     organizationId: uuidSchema, // Required: Client organization ID (not T3)
@@ -265,7 +271,6 @@ export const createBidSchema = z.object({
         labor: z.array(
           z.object({
             positionId: z.number().int().positive(),
-            quantity: z.number().int().positive(),
             days: z.number().int().positive(),
             hoursPerDay: z.string(),
             totalHours: z.string(),
@@ -843,10 +848,6 @@ export const createBulkLaborAndTravelSchema = z.object({
               .number()
               .int("Position ID must be a whole number")
               .positive("Position ID must be a positive number"),
-            quantity: z
-              .number()
-              .int("Quantity must be a whole number")
-              .positive("Quantity must be a positive number"),
             days: z
               .number()
               .int("Days must be a whole number")

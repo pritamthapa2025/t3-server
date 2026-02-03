@@ -30,6 +30,7 @@ import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { getUserRoles } from "./role.service.js";
+import { getOrganizationById } from "./client.service.js";
 
 // ============================
 // Main Bid Operations
@@ -121,6 +122,44 @@ export const getBids = async (
       limit: limit,
       totalPages: Math.ceil(total / limit),
     },
+  };
+};
+
+/** Minimal bid fields for list/display (related bids) */
+const RELATED_BID_DISPLAY_FIELDS = [
+  "id",
+  "bidNumber",
+  "title",
+  "status",
+  "priority",
+  "projectName",
+  "organizationId",
+  "bidAmount",
+  "jobType",
+  "createdAt",
+  "createdByName",
+  "assignedToName",
+] as const;
+
+/**
+ * Get all bids for the same organization as the given bid (related bids).
+ * Uses the bid's organizationId and returns minimal data for display.
+ */
+export const getRelatedBids = async (bidId: string) => {
+  const bid = await getBidByIdSimple(bidId);
+  if (!bid) return null;
+  const result = await getBids(bid.organizationId, 0, 500);
+  const minimalData = result.data.map((b) => {
+    const minimal: Record<string, unknown> = {};
+    for (const key of RELATED_BID_DISPLAY_FIELDS) {
+      if (key in b) minimal[key] = (b as Record<string, unknown>)[key];
+    }
+    return minimal;
+  });
+  return {
+    data: minimalData,
+    total: result.total,
+    pagination: result.pagination,
   };
 };
 
@@ -327,6 +366,24 @@ export const createBid = async (data: {
       description: `Bid created by ${userRole?.roleName || "user"}`,
       createdBy: data.createdBy,
     });
+
+    // Only create "end date" timeline event when endDate is given; if null/undefined/empty, do not create
+    const endDateValue = bid.endDate ?? data.endDate;
+    if (endDateValue != null && endDateValue !== "") {
+      const endDateEvent =
+        typeof endDateValue === "string"
+          ? new Date(endDateValue + "T23:59:59.000Z").toISOString()
+          : new Date(endDateValue).toISOString();
+      await createBidTimelineEvent({
+        bidId: bid.id,
+        event: "end date",
+        eventDate: endDateEvent,
+        status: "pending",
+        description: "Project end date",
+        sortOrder: 1,
+        createdBy: data.createdBy,
+      });
+    }
   }
 
   if (!bid) return null;
@@ -871,7 +928,6 @@ export const createBulkLaborAndTravel = async (
   bidId: string,
   laborEntries: Array<{
     positionId: number;
-    quantity: number;
     days: number;
     hoursPerDay: string;
     totalHours: string;
@@ -1518,6 +1574,7 @@ export const getBidWithAllData = async (id: string) => {
     timeline,
     notes,
     history,
+    clientInfo,
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
@@ -1528,6 +1585,7 @@ export const getBidWithAllData = async (id: string) => {
     getBidTimeline(id),
     getBidNotes(id),
     getBidHistory(id),
+    getOrganizationById(organizationId),
   ]);
 
   // Get travel for each labor entry
@@ -1547,6 +1605,7 @@ export const getBidWithAllData = async (id: string) => {
     timeline,
     notes,
     history,
+    clientInfo: clientInfo?.organization ?? null,
   };
 };
 

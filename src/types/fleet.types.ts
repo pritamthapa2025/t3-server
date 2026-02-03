@@ -621,9 +621,7 @@ export interface CreateVehicleDocumentData {
   expirationDate?: string;
   uploadedBy: string;
   createdBy?: string;
-}
-
-export interface UpdateVehicleDocumentData {
+}export interface UpdateVehicleDocumentData {
   fileName?: string;
   filePath?: string;
   fileType?: string;

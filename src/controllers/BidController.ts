@@ -89,12 +89,14 @@ import {
   getBidHistory,
   createBidHistoryEntry,
   getBidWithAllData,
+  getRelatedBids,
   createBidDocument,
   getBidDocuments,
   getBidDocumentById,
   updateBidDocument,
   deleteBidDocument,
 } from "../services/bid.service.js";
+import { getOrganizationById } from "../services/client.service.js";
 
 // ============================
 // Main Bid Operations
@@ -171,8 +173,11 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get documents for the bid
-    const documents = await getBidDocuments(id!);
+    // Get documents and client (organization) info for the bid
+    const [documents, clientInfo] = await Promise.all([
+      getBidDocuments(id!),
+      getOrganizationById(bid.organizationId),
+    ]);
 
     logger.info("Bid fetched successfully");
     return res.status(200).json({
@@ -180,6 +185,7 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
       data: {
         ...bid,
         documents,
+        clientInfo: clientInfo?.organization ?? null,
       },
     });
   } catch (error) {
@@ -2540,6 +2546,38 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       data: bidData,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getRelatedBidsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const { bidId } = req.params;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const result = await getRelatedBids(bidId!);
+
+    if (result === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    logger.info("Related bids fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);

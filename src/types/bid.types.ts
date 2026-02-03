@@ -2,7 +2,7 @@
 // Bid Management Types
 // ============================
 
-export type BidStatus = 
+export type BidStatus =
   | "draft"
   | "in_progress"
   | "pending"
@@ -18,7 +18,11 @@ export type BidPriority = "low" | "medium" | "high" | "urgent";
 
 export type BidJobType = "survey" | "plan_spec" | "design_build";
 
-export type TimelineStatus = "completed" | "pending" | "in_progress" | "cancelled";
+export type TimelineStatus =
+  | "completed"
+  | "pending"
+  | "in_progress"
+  | "cancelled";
 
 // ============================
 // Main Bid Interface
@@ -32,7 +36,7 @@ export interface Bid {
   status: BidStatus;
   priority: BidPriority;
   organizationId: string;
-  
+
   // Project Details
   projectName?: string;
   siteAddress?: string;
@@ -41,7 +45,7 @@ export interface Bid {
   scopeOfWork?: string;
   specialRequirements?: string;
   description?: string;
-  
+
   // Dates
   startDate?: string;
   endDate?: string;
@@ -50,13 +54,13 @@ export interface Bid {
   createdDate?: Date;
   expiresDate?: Date;
   removalDate?: string;
-  
+
   // Financial
   bidAmount: string;
   estimatedDuration?: number;
   profitMargin?: string;
   expiresIn?: number;
-  
+
   // Terms & Conditions
   paymentTerms?: string;
   warrantyPeriod?: string;
@@ -67,13 +71,13 @@ export interface Bid {
   proposalBasis?: string;
   referenceDate?: string;
   templateSelection?: string;
-  
+
   // Team Assignment
   supervisorManager?: number;
   primaryTechnicianId?: number;
   createdBy: string;
   assignedTo?: string;
-  
+
   // Metadata
   qtyNumber?: string;
   marked?: string;
@@ -126,9 +130,7 @@ export interface BidMaterial {
 export interface BidLabor {
   id: string;
   bidId: string;
-  organizationId: string;
-  role: string;
-  quantity: number;
+  positionId: number;
   days: number;
   hoursPerDay: string;
   totalHours: string;
@@ -322,45 +324,61 @@ export interface BidFilters {
 // Create/Update Types
 // ============================
 
-export type CreateBidData = Omit<Bid, 'id' | 'bidNumber' | 'createdAt' | 'updatedAt'>;
-export type UpdateBidData = Partial<Omit<Bid, 'id' | 'bidNumber' | 'organizationId' | 'createdBy' | 'createdAt' | 'updatedAt'>>;
+export type CreateBidData = Omit<
+  Bid,
+  "id" | "bidNumber" | "createdAt" | "updatedAt"
+>;
+export type UpdateBidData = Partial<
+  Omit<
+    Bid,
+    | "id"
+    | "bidNumber"
+    | "organizationId"
+    | "createdBy"
+    | "createdAt"
+    | "updatedAt"
+  >
+>;
 
-export type CreateMaterialData = Omit<BidMaterial, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateMaterialData = Partial<Omit<BidMaterial, 'id' | 'bidId' | 'organizationId' | 'createdAt' | 'updatedAt'>>;
+export type CreateMaterialData = Omit<
+  BidMaterial,
+  "id" | "createdAt" | "updatedAt"
+>;
+export type UpdateMaterialData = Partial<
+  Omit<
+    BidMaterial,
+    "id" | "bidId" | "organizationId" | "createdAt" | "updatedAt"
+  >
+>;
 
-export type CreateLaborData = Omit<BidLabor, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateLaborData = Partial<Omit<BidLabor, 'id' | 'bidId' | 'organizationId' | 'createdAt' | 'updatedAt'>>;
+export type CreateLaborData = Omit<BidLabor, "id" | "createdAt" | "updatedAt">;
+export type UpdateLaborData = Partial<
+  Omit<BidLabor, "id" | "bidId" | "createdAt" | "updatedAt">
+>;
 
-export type CreateTravelData = Omit<BidTravel, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTravelData = Partial<Omit<BidTravel, 'id' | 'bidId' | 'organizationId' | 'createdAt' | 'updatedAt'>>;
+export type CreateTravelData = Omit<
+  BidTravel,
+  "id" | "createdAt" | "updatedAt"
+>;
+export type UpdateTravelData = Partial<
+  Omit<BidTravel, "id" | "bidId" | "organizationId" | "createdAt" | "updatedAt">
+>;
 
-export type CreateTimelineEventData = Omit<BidTimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTimelineEventData = Partial<Omit<BidTimelineEvent, 'id' | 'bidId' | 'organizationId' | 'createdAt' | 'updatedAt'>>;
+export type CreateTimelineEventData = Omit<
+  BidTimelineEvent,
+  "id" | "createdAt" | "updatedAt"
+>;
+export type UpdateTimelineEventData = Partial<
+  Omit<
+    BidTimelineEvent,
+    "id" | "bidId" | "organizationId" | "createdAt" | "updatedAt"
+  >
+>;
 
-export type CreateNoteData = Omit<BidNote, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateNoteData = Partial<Omit<BidNote, 'id' | 'bidId' | 'organizationId' | 'createdBy' | 'createdAt' | 'updatedAt'>>;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export type CreateNoteData = Omit<BidNote, "id" | "createdAt" | "updatedAt">;
+export type UpdateNoteData = Partial<
+  Omit<
+    BidNote,
+    "id" | "bidId" | "organizationId" | "createdBy" | "createdAt" | "updatedAt"
+  >
+>;
