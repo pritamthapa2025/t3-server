@@ -40,7 +40,6 @@ export const bidsTable: any = org.table(
     bidNumber: varchar("bid_number", { length: 100 }).notNull(), // BID-2025-000001 (auto-expands)
 
     // Basic Information
-    title: varchar("title", { length: 255 }),
     jobType: bidJobTypeEnum("job_type").notNull(),
     status: bidStatusEnum("status").notNull().default("draft"),
     priority: bidPriorityEnum("priority").notNull().default("medium"),
@@ -60,12 +59,10 @@ export const bidsTable: any = org.table(
     description: text("description"),
 
     // Dates
-    startDate: date("start_date"),
     endDate: date("end_date"),
     plannedStartDate: date("planned_start_date"),
     estimatedCompletion: date("estimated_completion"),
     createdDate: timestamp("created_date").defaultNow(),
-    expiresDate: date("expires_date"),
     removalDate: date("removal_date"),
 
     // Financial
@@ -77,7 +74,6 @@ export const bidsTable: any = org.table(
       .default("0"),
     estimatedDuration: integer("estimated_duration"), // days
     profitMargin: numeric("profit_margin", { precision: 5, scale: 2 }), // %
-    expiresIn: integer("expires_in"), // days
 
     // Terms & Conditions
     paymentTerms: text("payment_terms"),
@@ -124,7 +120,6 @@ export const bidsTable: any = org.table(
     index("idx_bids_created_by").on(table.createdBy),
     index("idx_bids_job_type").on(table.jobType),
     index("idx_bids_priority").on(table.priority),
-    index("idx_bids_expires_date").on(table.expiresDate),
     index("idx_bids_is_deleted").on(table.isDeleted),
     index("idx_bids_created_at").on(table.createdAt),
   ],

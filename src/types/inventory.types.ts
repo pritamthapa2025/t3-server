@@ -33,7 +33,12 @@ export interface InventoryItem {
   images?: any;
   trackBySerialNumber: boolean;
   trackByBatch: boolean;
-  status: "in_stock" | "low_stock" | "out_of_stock" | "on_order" | "discontinued";
+  status:
+    | "in_stock"
+    | "low_stock"
+    | "out_of_stock"
+    | "on_order"
+    | "discontinued";
   isActive: boolean;
   lastRestockedDate?: Date | null;
   lastCountedDate?: Date | null;
@@ -162,7 +167,7 @@ export interface InventoryTransactionWithDetails extends InventoryTransaction {
   location?: { id: string; name: string } | null;
   performedByUser?: { id: string; fullName: string } | null;
   job?: { id: string; name: string; jobNumber: string } | null;
-  bid?: { id: string; title: string; bidNumber: string } | null;
+  bid?: { id: string; projectName?: string; bidNumber: string } | null;
 }
 
 export interface InventoryAllocation {
@@ -177,7 +182,13 @@ export interface InventoryAllocation {
   allocationDate: Date;
   expectedUseDate?: Date | null;
   actualUseDate?: Date | null;
-  status: "allocated" | "issued" | "partially_used" | "fully_used" | "returned" | "cancelled";
+  status:
+    | "allocated"
+    | "issued"
+    | "partially_used"
+    | "fully_used"
+    | "returned"
+    | "cancelled";
   allocatedBy: string;
   notes?: string | null;
   isDeleted: boolean;
@@ -186,9 +197,14 @@ export interface InventoryAllocation {
 }
 
 export interface InventoryAllocationWithDetails extends InventoryAllocation {
-  item?: { id: string; name: string; itemCode: string; unitCost: string } | null;
+  item?: {
+    id: string;
+    name: string;
+    itemCode: string;
+    unitCost: string;
+  } | null;
   job?: { id: string; name: string; jobNumber: string } | null;
-  bid?: { id: string; title: string; bidNumber: string } | null;
+  bid?: { id: string; projectName?: string; bidNumber: string } | null;
   allocatedByUser?: { id: string; fullName: string } | null;
 }
 
@@ -375,15 +391,3 @@ export interface InventoryAllocationFilters {
   bidId?: string;
   status?: string;
 }
-
-
-
-
-
-
-
-
-
-
-
-

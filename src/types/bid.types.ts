@@ -31,7 +31,6 @@ export type TimelineStatus =
 export interface Bid {
   id: string;
   bidNumber: string;
-  title: string;
   jobType: BidJobType;
   status: BidStatus;
   priority: BidPriority;
@@ -47,19 +46,19 @@ export interface Bid {
   description?: string;
 
   // Dates
-  startDate?: string;
   endDate?: string;
   plannedStartDate?: string;
   estimatedCompletion?: string;
   createdDate?: Date;
-  expiresDate?: Date;
   removalDate?: string;
 
   // Financial
   bidAmount: string;
   estimatedDuration?: number;
   profitMargin?: string;
-  expiresIn?: number;
+
+  // Derived (endDate - createdDate in days, in API response only)
+  expiresIn?: number | null;
 
   // Terms & Conditions
   paymentTerms?: string;

@@ -381,7 +381,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
       organizationId: organizationId,
       action: "bid_created",
       newValue: "Created new bid",
-      description: `Bid "${bid.title}" was created with related records`,
+      description: `Bid "${bid.projectName || bid.bidNumber}" was created with related records`,
       performedBy: createdBy,
     });
 
@@ -687,7 +687,7 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
       bidId: id!,
       organizationId: existingBid.organizationId,
       action: "bid_deleted",
-      description: `Bid "${deletedBid.title}" was deleted`,
+      description: `Bid "${deletedBid.projectName || deletedBid.bidNumber}" was deleted`,
       performedBy: performedBy,
     });
 

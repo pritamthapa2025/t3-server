@@ -101,283 +101,271 @@ export const getRelatedBidsSchema = z.object({
 });
 
 export const createBidSchema = z.object({
-  body: z.object({
-    organizationId: uuidSchema, // Required: Client organization ID (not T3)
-    title: z
-      .string()
-      .min(1, "Bid title is required and cannot be empty")
-      .max(255, "Bid title is too long (maximum 255 characters)")
-      .trim(),
-    jobType: bidJobTypeEnum,
-    status: bidStatusEnum.optional().default("draft"),
-    priority: bidPriorityEnum.optional().default("medium"),
-    projectName: z
-      .string()
-      .max(255, "Project name is too long (maximum 255 characters)")
-      .optional(),
-    siteAddress: z.string().optional(),
-    buildingSuiteNumber: z
-      .string()
-      .max(100, "Building/Suite number is too long (maximum 100 characters)")
-      .optional(),
-    acrossValuations: z
-      .string()
-      .max(255, "Across valuations is too long (maximum 255 characters)")
-      .optional(),
-    scopeOfWork: z.string().optional(),
-    specialRequirements: z.string().optional(),
-    description: z.string().optional(),
-    startDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    endDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    plannedStartDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    estimatedCompletion: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    expiresDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    removalDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
-    bidAmount: numericStringSchema.optional(),
-    estimatedDuration: z
-      .number()
-      .int("Estimated duration must be a whole number")
-      .positive("Estimated duration must be positive")
-      .optional(),
-    profitMargin: numericStringSchema.optional(),
-    expiresIn: z
-      .number()
-      .int("Expires in must be a whole number")
-      .positive("Expires in must be positive")
-      .optional(),
-    paymentTerms: z.string().optional(),
-    warrantyPeriod: z
-      .string()
-      .max(50, "Warranty period is too long (maximum 50 characters)")
-      .optional(),
-    warrantyPeriodLabor: z
-      .string()
-      .max(50, "Warranty period labor is too long (maximum 50 characters)")
-      .optional(),
-    warrantyDetails: z.string().optional(),
-    specialTerms: z.string().optional(),
-    exclusions: z.string().optional(),
-    proposalBasis: z.string().optional(),
-    referenceDate: z
-      .string()
-      .max(50, "Reference date is too long (maximum 50 characters)")
-      .optional(),
-    templateSelection: z
-      .string()
-      .max(100, "Template selection is too long (maximum 100 characters)")
-      .optional(),
-    supervisorManager: z
-      .number()
-      .int("Supervisor manager ID must be a whole number")
-      .positive("Supervisor manager ID must be a positive number")
-      .optional(),
-    primaryTechnicianId: z
-      .number()
-      .int("Primary technician ID must be a whole number")
-      .positive("Primary technician ID must be a positive number")
-      .optional(),
-    assignedTo: uuidSchema.optional(),
-    qtyNumber: z
-      .string()
-      .max(50, "Quantity number is too long (maximum 50 characters)")
-      .optional(),
-    marked: z
-      .string()
-      .max(20, "Marked value is too long (maximum 20 characters)")
-      .optional(),
-    convertToJob: z.boolean().optional(),
+  body: z
+    .object({
+      organizationId: uuidSchema, // Required: Client organization ID (not T3)
+      jobType: bidJobTypeEnum,
+      status: bidStatusEnum.optional().default("draft"),
+      priority: bidPriorityEnum.optional().default("medium"),
+      projectName: z
+        .string()
+        .max(255, "Project name is too long (maximum 255 characters)")
+        .optional(),
+      siteAddress: z.string().optional(),
+      buildingSuiteNumber: z
+        .string()
+        .max(100, "Building/Suite number is too long (maximum 100 characters)")
+        .optional(),
+      acrossValuations: z
+        .string()
+        .max(255, "Across valuations is too long (maximum 255 characters)")
+        .optional(),
+      scopeOfWork: z.string().optional(),
+      specialRequirements: z.string().optional(),
+      description: z.string().optional(),
+      endDate: z
+        .string()
+        .regex(
+          /^\d{4}-\d{2}-\d{2}$/,
+          "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+        )
+        .optional(),
+      plannedStartDate: z
+        .string()
+        .regex(
+          /^\d{4}-\d{2}-\d{2}$/,
+          "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+        )
+        .optional(),
+      estimatedCompletion: z
+        .string()
+        .regex(
+          /^\d{4}-\d{2}-\d{2}$/,
+          "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+        )
+        .optional(),
+      removalDate: z
+        .string()
+        .regex(
+          /^\d{4}-\d{2}-\d{2}$/,
+          "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+        )
+        .optional(),
+      bidAmount: numericStringSchema.optional(),
+      estimatedDuration: z
+        .number()
+        .int("Estimated duration must be a whole number")
+        .positive("Estimated duration must be positive")
+        .optional(),
+      profitMargin: numericStringSchema.optional(),
+      paymentTerms: z.string().optional(),
+      warrantyPeriod: z
+        .string()
+        .max(50, "Warranty period is too long (maximum 50 characters)")
+        .optional(),
+      warrantyPeriodLabor: z
+        .string()
+        .max(50, "Warranty period labor is too long (maximum 50 characters)")
+        .optional(),
+      warrantyDetails: z.string().optional(),
+      specialTerms: z.string().optional(),
+      exclusions: z.string().optional(),
+      proposalBasis: z.string().optional(),
+      referenceDate: z
+        .string()
+        .max(50, "Reference date is too long (maximum 50 characters)")
+        .optional(),
+      templateSelection: z
+        .string()
+        .max(100, "Template selection is too long (maximum 100 characters)")
+        .optional(),
+      supervisorManager: z
+        .number()
+        .int("Supervisor manager ID must be a whole number")
+        .positive("Supervisor manager ID must be a positive number")
+        .optional(),
+      primaryTechnicianId: z
+        .number()
+        .int("Primary technician ID must be a whole number")
+        .positive("Primary technician ID must be a positive number")
+        .optional(),
+      assignedTo: uuidSchema.optional(),
+      qtyNumber: z
+        .string()
+        .max(50, "Quantity number is too long (maximum 50 characters)")
+        .optional(),
+      marked: z
+        .string()
+        .max(20, "Marked value is too long (maximum 20 characters)")
+        .optional(),
+      convertToJob: z.boolean().optional(),
 
-    // Nested objects for related data
-    financialBreakdown: z
-      .object({
-        materialsEquipment: z.string().optional(),
-        labor: z.string().optional(),
-        travel: z.string().optional(),
-        operatingExpenses: z.string().optional(),
-        totalCost: z.string().optional(),
-        totalPrice: z.string().optional(),
-        grossProfit: z.string().optional(),
-      })
-      .optional(),
+      // Nested objects for related data
+      financialBreakdown: z
+        .object({
+          materialsEquipment: z.string().optional(),
+          labor: z.string().optional(),
+          travel: z.string().optional(),
+          operatingExpenses: z.string().optional(),
+          totalCost: z.string().optional(),
+          totalPrice: z.string().optional(),
+          grossProfit: z.string().optional(),
+        })
+        .optional(),
 
-    operatingExpenses: z
-      .object({
-        enabled: z.boolean().optional(),
-        grossRevenuePreviousYear: z.string().optional(),
-        currentBidAmount: z.string().optional(),
-        operatingCostPreviousYear: z.string().optional(),
-        inflationAdjustedOperatingCost: z.string().optional(),
-        inflationRate: z.string().optional(),
-        utilizationPercentage: z.string().optional(),
-        calculatedOperatingCost: z.string().optional(),
-        applyMarkup: z.boolean().optional(),
-        markupPercentage: z.string().optional(),
-        operatingPrice: z.string().optional(),
-      })
-      .optional(),
+      operatingExpenses: z
+        .object({
+          enabled: z.boolean().optional(),
+          grossRevenuePreviousYear: z.string().optional(),
+          currentBidAmount: z.string().optional(),
+          operatingCostPreviousYear: z.string().optional(),
+          inflationAdjustedOperatingCost: z.string().optional(),
+          inflationRate: z.string().optional(),
+          utilizationPercentage: z.string().optional(),
+          calculatedOperatingCost: z.string().optional(),
+          applyMarkup: z.boolean().optional(),
+          markupPercentage: z.string().optional(),
+          operatingPrice: z.string().optional(),
+        })
+        .optional(),
 
-    materials: z
-      .array(
-        z.object({
-          inventoryItemId: uuidSchema.optional(),
-          customName: z.string().optional(),
-          description: z.string(),
-          quantity: z.string(),
-          unitCost: z.string(),
-          markup: z.string().optional(),
-          totalCost: z.string(),
-        }),
-      )
-      .optional(),
-
-    laborAndTravel: z
-      .object({
-        labor: z.array(
+      materials: z
+        .array(
           z.object({
-            positionId: z.number().int().positive(),
-            days: z.number().int().positive(),
-            hoursPerDay: z.string(),
-            totalHours: z.string(),
-            costRate: z.string(),
-            billableRate: z.string(),
-            totalCost: z.string(),
-            totalPrice: z.string(),
-          }),
-        ),
-        travel: z.array(
-          z.object({
-            vehicleName: z.string().optional(),
-            roundTripMiles: z.string(),
-            mileageRate: z.string(),
-            vehicleDayRate: z.string(),
-            days: z.number().int().positive(),
-            mileageCost: z.string(),
-            vehicleCost: z.string(),
+            inventoryItemId: uuidSchema.optional(),
+            customName: z.string().optional(),
+            description: z.string(),
+            quantity: z.string(),
+            unitCost: z.string(),
             markup: z.string().optional(),
             totalCost: z.string(),
-            totalPrice: z.string(),
           }),
-        ),
-      })
-      .optional(),
+        )
+        .optional(),
 
-    // Plan Spec specific data
-    planSpecData: z
-      .object({
-        plansReceivedDate: z.string().optional(),
-        planRevision: z.string().max(100).optional(),
-        planReviewNotes: z.string().optional(),
-        specificationsReceivedDate: z.string().optional(),
-        specificationRevision: z.string().max(100).optional(),
-        specificationReviewNotes: z.string().optional(),
-        complianceRequirements: z.string().optional(),
-        codeComplianceStatus: z
-          .enum(["pending", "compliant", "non_compliant", "under_review"])
-          .optional(),
-        addendaReceived: z.boolean().optional(),
-        addendaCount: z.number().int().min(0).optional(),
-        addendaNotes: z.string().optional(),
-        specifications: z.string().optional(),
-        designRequirements: z.string().optional(),
-      })
-      .optional(),
+      laborAndTravel: z
+        .object({
+          labor: z.array(
+            z.object({
+              positionId: z.number().int().positive(),
+              days: z.number().int().positive(),
+              hoursPerDay: z.string(),
+              totalHours: z.string(),
+              costRate: z.string(),
+              billableRate: z.string(),
+              totalCost: z.string(),
+              totalPrice: z.string(),
+            }),
+          ),
+          travel: z.array(
+            z.object({
+              vehicleName: z.string().optional(),
+              roundTripMiles: z.string(),
+              mileageRate: z.string(),
+              vehicleDayRate: z.string(),
+              days: z.number().int().positive(),
+              mileageCost: z.string(),
+              vehicleCost: z.string(),
+              markup: z.string().optional(),
+              totalCost: z.string(),
+              totalPrice: z.string(),
+            }),
+          ),
+        })
+        .optional(),
 
-    // Survey specific data
-    surveyData: z
-      .object({
-        buildingNumber: z.string().optional(),
-        siteLocation: z.string().optional(),
-        workType: z.string().optional(),
-        hasExistingUnit: z.boolean().optional(),
-        unitTag: z.string().optional(),
-        unitLocation: z.string().optional(),
-        make: z.string().optional(),
-        model: z.string().optional(),
-        serial: z.string().optional(),
-        systemType: z.string().optional(),
-        powerStatus: z.string().optional(),
-        voltagePhase: z.string().optional(),
-        overallCondition: z.string().optional(),
-        siteAccessNotes: z.string().optional(),
-        additionalNotes: z.string().optional(),
-        siteConditions: z.string().optional(),
-        clientRequirements: z.string().optional(),
-        termsAndConditions: z.string().optional(),
-        dateOfSurvey: z.string().optional(),
-        timeOfSurvey: z.string().optional(),
-      })
-      .optional(),
+      // Plan Spec specific data
+      planSpecData: z
+        .object({
+          plansReceivedDate: z.string().optional(),
+          planRevision: z.string().max(100).optional(),
+          planReviewNotes: z.string().optional(),
+          specificationsReceivedDate: z.string().optional(),
+          specificationRevision: z.string().max(100).optional(),
+          specificationReviewNotes: z.string().optional(),
+          complianceRequirements: z.string().optional(),
+          codeComplianceStatus: z
+            .enum(["pending", "compliant", "non_compliant", "under_review"])
+            .optional(),
+          addendaReceived: z.boolean().optional(),
+          addendaCount: z.number().int().min(0).optional(),
+          addendaNotes: z.string().optional(),
+          specifications: z.string().optional(),
+          designRequirements: z.string().optional(),
+        })
+        .optional(),
 
-    // Design Build specific data
-    designBuildData: z
-      .object({
-        // Design Phase Information
-        designPhase: z
-          .enum([
-            "conceptual",
-            "schematic",
-            "design_development",
-            "construction_documents",
-            "bidding",
-            "construction_admin",
-          ])
-          .optional(),
-        designStartDate: z.string().optional(),
-        designCompletionDate: z.string().optional(),
-        // Design Team
-        designTeamMembers: z.string().optional(), // JSON array of employee IDs
-        // Design Scope & Requirements
-        conceptDescription: z.string().optional(),
-        designRequirements: z.string().optional(),
-        designDeliverables: z.string().optional(),
-        // Client Approval
-        clientApprovalRequired: z.boolean().optional(),
-        // Design Costs
-        designFeeBasis: z
-          .enum(["fixed", "hourly", "percentage", "lump_sum"])
-          .optional(),
-        designFees: z.string().optional(),
-        // Legacy/Construction
-        buildSpecifications: z.string().optional(),
-      })
-      .optional(),
-  }),
+      // Survey specific data
+      surveyData: z
+        .object({
+          buildingNumber: z.string().optional(),
+          siteLocation: z.string().optional(),
+          workType: z.string().optional(),
+          hasExistingUnit: z.boolean().optional(),
+          unitTag: z.string().optional(),
+          unitLocation: z.string().optional(),
+          make: z.string().optional(),
+          model: z.string().optional(),
+          serial: z.string().optional(),
+          systemType: z.string().optional(),
+          powerStatus: z.string().optional(),
+          voltagePhase: z.string().optional(),
+          overallCondition: z.string().optional(),
+          siteAccessNotes: z.string().optional(),
+          additionalNotes: z.string().optional(),
+          siteConditions: z.string().optional(),
+          clientRequirements: z.string().optional(),
+          termsAndConditions: z.string().optional(),
+          dateOfSurvey: z.string().optional(),
+          timeOfSurvey: z.string().optional(),
+        })
+        .optional(),
+
+      // Design Build specific data
+      designBuildData: z
+        .object({
+          // Design Phase Information
+          designPhase: z
+            .enum([
+              "conceptual",
+              "schematic",
+              "design_development",
+              "construction_documents",
+              "bidding",
+              "construction_admin",
+            ])
+            .optional(),
+          designStartDate: z.string().optional(),
+          designCompletionDate: z.string().optional(),
+          // Design Team
+          designTeamMembers: z.string().optional(), // JSON array of employee IDs
+          // Design Scope & Requirements
+          conceptDescription: z.string().optional(),
+          designRequirements: z.string().optional(),
+          designDeliverables: z.string().optional(),
+          // Client Approval
+          clientApprovalRequired: z.boolean().optional(),
+          // Design Costs
+          designFeeBasis: z
+            .enum(["fixed", "hourly", "percentage", "lump_sum"])
+            .optional(),
+          designFees: z.string().optional(),
+          // Legacy/Construction
+          buildSpecifications: z.string().optional(),
+        })
+        .optional(),
+    })
+    .refine(
+      (data) => {
+        if (!data.endDate) return true;
+        const today = new Date().toISOString().split("T")[0] ?? "";
+        return today ? data.endDate >= today : true;
+      },
+      {
+        message:
+          "endDate cannot be before created date; must be same or future date",
+      },
+    ),
 });
 
 export const updateBidSchema = z.object({
@@ -385,12 +373,6 @@ export const updateBidSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    title: z
-      .string()
-      .min(1, "Bid title cannot be empty")
-      .max(255, "Bid title is too long (maximum 255 characters)")
-      .trim()
-      .optional(),
     status: bidStatusEnum.optional(),
     priority: bidPriorityEnum.optional(),
     projectName: z
@@ -409,13 +391,6 @@ export const updateBidSchema = z.object({
     scopeOfWork: z.string().optional(),
     specialRequirements: z.string().optional(),
     description: z.string().optional(),
-    startDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
     endDate: z
       .string()
       .regex(
@@ -437,13 +412,6 @@ export const updateBidSchema = z.object({
         "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
-    expiresDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
     removalDate: z
       .string()
       .regex(
@@ -458,11 +426,6 @@ export const updateBidSchema = z.object({
       .positive("Estimated duration must be positive")
       .optional(),
     profitMargin: numericStringSchema.optional(),
-    expiresIn: z
-      .number()
-      .int("Expires in must be a whole number")
-      .positive("Expires in must be positive")
-      .optional(),
     paymentTerms: z.string().optional(),
     warrantyPeriod: z
       .string()

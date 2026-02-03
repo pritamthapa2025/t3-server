@@ -40,6 +40,19 @@ import { getOrganizationById } from "./client.service.js";
 const createdByUser = alias(users, "created_by_user");
 const assignedToUser = alias(users, "assigned_to_user");
 
+/** Compute expiresIn (days) from endDate - createdDate. Returns null if either date missing or endDate before createdDate. */
+function computeExpiresIn(bid: {
+  endDate?: string | Date | null;
+  createdDate?: string | Date | null;
+}): number | null {
+  const end = bid.endDate ? new Date(bid.endDate) : null;
+  const created = bid.createdDate ? new Date(bid.createdDate) : null;
+  if (!end || !created) return null;
+  if (end.getTime() < created.getTime()) return null;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((end.getTime() - created.getTime()) / msPerDay);
+}
+
 export const getBids = async (
   organizationId: string | undefined,
   offset: number,
@@ -75,7 +88,6 @@ export const getBids = async (
   if (filters?.search) {
     whereConditions.push(
       or(
-        ilike(bidsTable.title, `%${filters.search}%`),
         ilike(bidsTable.bidNumber, `%${filters.search}%`),
         ilike(bidsTable.projectName, `%${filters.search}%`),
         ilike(bidsTable.siteAddress, `%${filters.search}%`),
@@ -107,11 +119,12 @@ export const getBids = async (
 
   const total = totalCount[0]?.count ?? 0;
 
-  // Map results to include createdByName and assignedToName
+  // Map results to include createdByName, assignedToName, and derived expiresIn
   const enrichedBids = result.map((item) => ({
     ...item.bid,
     createdByName: item.createdByName ?? null,
     assignedToName: item.assignedToName ?? null,
+    expiresIn: computeExpiresIn(item.bid),
   }));
 
   return {
@@ -129,7 +142,6 @@ export const getBids = async (
 const RELATED_BID_DISPLAY_FIELDS = [
   "id",
   "bidNumber",
-  "title",
   "status",
   "priority",
   "projectName",
@@ -139,6 +151,7 @@ const RELATED_BID_DISPLAY_FIELDS = [
   "createdAt",
   "createdByName",
   "assignedToName",
+  "expiresIn",
 ] as const;
 
 /**
@@ -179,6 +192,7 @@ export const getBidById = async (id: string) => {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
+    expiresIn: computeExpiresIn(result.bid),
   };
 };
 
@@ -199,12 +213,12 @@ export const getBidByIdSimple = async (id: string) => {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
+    expiresIn: computeExpiresIn(result.bid),
   };
 };
 
 export const createBid = async (data: {
   organizationId: string;
-  title: string;
   jobType:
     | "general"
     | "survey"
@@ -221,16 +235,13 @@ export const createBid = async (data: {
   scopeOfWork?: string;
   specialRequirements?: string;
   description?: string;
-  startDate?: string;
   endDate?: string;
   plannedStartDate?: string;
   estimatedCompletion?: string;
-  expiresDate?: string;
   removalDate?: string;
   bidAmount?: string;
   estimatedDuration?: number;
   profitMargin?: string;
-  expiresIn?: number;
   paymentTerms?: string;
   warrantyPeriod?: string;
   warrantyPeriodLabor?: string;
@@ -300,12 +311,22 @@ export const createBid = async (data: {
     }
   };
 
+  // Validate endDate: cannot be before created date (same or future only). On create, createdDate = now.
+  const endDateVal = toDateOrUndefined(data.endDate);
+  if (endDateVal) {
+    const createdToday = new Date().toISOString().split("T")[0] ?? "";
+    if (createdToday && endDateVal < createdToday) {
+      throw new Error(
+        "endDate cannot be before created date; it must be the same date or a future date",
+      );
+    }
+  }
+
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
     .insert(bidsTable)
     .values({
       bidNumber,
-      title: data.title,
       jobType: data.jobType,
       organizationId: data.organizationId,
       createdBy: data.createdBy,
@@ -318,16 +339,13 @@ export const createBid = async (data: {
       scopeOfWork: data.scopeOfWork || undefined,
       specialRequirements: data.specialRequirements || undefined,
       description: data.description || undefined,
-      startDate: toDateOrUndefined(data.startDate),
-      endDate: toDateOrUndefined(data.endDate),
+      endDate: endDateVal,
       plannedStartDate: toDateOrUndefined(data.plannedStartDate),
       estimatedCompletion: toDateOrUndefined(data.estimatedCompletion),
-      expiresDate: toDateOrUndefined(data.expiresDate),
       removalDate: toDateOrUndefined(data.removalDate),
       bidAmount: data.bidAmount || "0",
       estimatedDuration: data.estimatedDuration ?? undefined,
       profitMargin: data.profitMargin || undefined,
-      expiresIn: data.expiresIn ?? undefined,
       paymentTerms: data.paymentTerms || undefined,
       warrantyPeriod: data.warrantyPeriod || undefined,
       warrantyPeriodLabor: data.warrantyPeriodLabor || undefined,
@@ -402,6 +420,7 @@ export const createBid = async (data: {
   return {
     ...bid,
     createdByName,
+    expiresIn: computeExpiresIn(bid),
   };
 };
 
@@ -409,18 +428,15 @@ export const updateBid = async (
   id: string,
   organizationId: string,
   data: Partial<{
-    title: string;
     status: string;
     priority: string;
     projectName: string;
     siteAddress: string;
     scopeOfWork: string;
     description: string;
-    startDate: string;
     endDate: string;
     plannedStartDate: string;
     estimatedCompletion: string;
-    expiresDate: string;
     removalDate: string;
     bidAmount: string;
     supervisorManager: number;
@@ -428,19 +444,32 @@ export const updateBid = async (
     assignedTo: string;
   }>,
 ) => {
+  // Validate endDate: cannot be before bid's created date
+  if (data.endDate) {
+    const existing = await getBidByIdSimple(id);
+    if (existing?.createdDate) {
+      const endStr = new Date(data.endDate).toISOString().split("T")[0] ?? "";
+      const createdStr =
+        typeof existing.createdDate === "string"
+          ? existing.createdDate.slice(0, 10)
+          : (new Date(existing.createdDate).toISOString().split("T")[0] ?? "");
+      if (endStr && createdStr && endStr < createdStr) {
+        throw new Error(
+          "endDate cannot be before created date; it must be the same date or a future date",
+        );
+      }
+    }
+  }
+
   const [bid] = await db
     .update(bidsTable)
     .set({
-      title: data.title,
       status: data.status as any,
       priority: data.priority as any,
       projectName: data.projectName,
       siteAddress: data.siteAddress,
       scopeOfWork: data.scopeOfWork,
       description: data.description,
-      startDate: data.startDate
-        ? new Date(data.startDate).toISOString().split("T")[0]
-        : undefined,
       endDate: data.endDate
         ? new Date(data.endDate).toISOString().split("T")[0]
         : undefined,
@@ -449,9 +478,6 @@ export const updateBid = async (
         : undefined,
       estimatedCompletion: data.estimatedCompletion
         ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
-        : undefined,
-      expiresDate: data.expiresDate
-        ? new Date(data.expiresDate).toISOString().split("T")[0]
         : undefined,
       removalDate: data.removalDate
         ? new Date(data.removalDate).toISOString().split("T")[0]
@@ -487,6 +513,7 @@ export const updateBid = async (
   return {
     ...bid,
     createdByName,
+    expiresIn: computeExpiresIn(bid),
   };
 };
 

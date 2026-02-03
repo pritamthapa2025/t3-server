@@ -361,7 +361,7 @@ export const updateJob = async (
   return {
     ...job,
     priority: updatedBid?.priority,
-    name: updatedBid?.title || updatedBid?.projectName || updatedBid?.bidNumber, // Derive name from bid
+    name: updatedBid?.projectName || updatedBid?.bidNumber, // Derive name from bid
     organizationId: jobData.organizationId,
     createdByName,
   };
