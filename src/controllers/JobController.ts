@@ -96,6 +96,7 @@ import {
   deleteJobExpense,
   getJobWithAllData,
 } from "../services/job.service.js";
+import { getOrganizationById } from "../services/client.service.js";
 
 // ============================
 // Main Job Operations
@@ -160,10 +161,16 @@ export const getJobByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Get client (organization) info from job's organizationId (from bid)
+    const clientInfo = await getOrganizationById(job.organizationId);
+
     logger.info("Job fetched successfully");
     return res.status(200).json({
       success: true,
-      data: job,
+      data: {
+        ...job,
+        clientInfo: clientInfo?.organization ?? null,
+      },
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);

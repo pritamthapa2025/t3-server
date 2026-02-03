@@ -687,6 +687,57 @@ export const updateBidOperatingExpenses = async (
   }
 };
 
+export const createBidOperatingExpenses = async (
+  bidId: string,
+  organizationId: string,
+  data: {
+    enabled?: boolean;
+    grossRevenuePreviousYear?: string;
+    currentBidAmount?: string;
+    operatingCostPreviousYear?: string;
+    inflationAdjustedOperatingCost?: string;
+    inflationRate?: string;
+    utilizationPercentage?: string;
+    calculatedOperatingCost?: string;
+    applyMarkup?: boolean;
+    markupPercentage?: string;
+    operatingPrice?: string;
+  },
+) => {
+  const bid = await getBidById(bidId);
+  if (!bid) return null;
+
+  const existing = await getBidOperatingExpenses(bidId, organizationId);
+  if (existing) return "exists"; // signal conflict for controller
+
+  const [operatingExpenses] = await db
+    .insert(bidOperatingExpenses)
+    .values({
+      bidId,
+      ...data,
+    })
+    .returning();
+  return operatingExpenses;
+};
+
+export const deleteBidOperatingExpenses = async (
+  bidId: string,
+  organizationId: string,
+) => {
+  const bid = await getBidById(bidId);
+  if (!bid) return null;
+
+  const existing = await getBidOperatingExpenses(bidId, organizationId);
+  if (!existing) return null;
+
+  const [operatingExpenses] = await db
+    .update(bidOperatingExpenses)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(eq(bidOperatingExpenses.id, existing.id))
+    .returning();
+  return operatingExpenses ?? null;
+};
+
 // ============================
 // Materials Operations
 // ============================
@@ -1619,6 +1670,7 @@ export const getBidWithAllData = async (id: string) => {
     notes,
     history,
     clientInfo,
+    operatingExpenses,
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
@@ -1630,6 +1682,7 @@ export const getBidWithAllData = async (id: string) => {
     getBidNotes(id),
     getBidHistory(id),
     getOrganizationById(organizationId),
+    getBidOperatingExpenses(id, organizationId),
   ]);
 
   // Get travel for each labor entry
@@ -1650,6 +1703,7 @@ export const getBidWithAllData = async (id: string) => {
     notes,
     history,
     clientInfo: clientInfo?.organization ?? null,
+    operatingExpenses: operatingExpenses ?? null,
   };
 };
 

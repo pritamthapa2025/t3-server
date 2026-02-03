@@ -511,6 +511,60 @@ export const updateFinancialBreakdownSchema = z.object({
 });
 
 // ============================
+// Operating Expenses Validations
+// ============================
+
+export const getBidOperatingExpensesSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const createBidOperatingExpensesSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    enabled: z.boolean().optional(),
+    grossRevenuePreviousYear: numericStringSchema.optional(),
+    currentBidAmount: numericStringSchema.optional(),
+    operatingCostPreviousYear: numericStringSchema.optional(),
+    inflationAdjustedOperatingCost: numericStringSchema.optional(),
+    inflationRate: numericStringSchema.optional(),
+    utilizationPercentage: numericStringSchema.optional(),
+    calculatedOperatingCost: numericStringSchema.optional(),
+    applyMarkup: z.boolean().optional(),
+    markupPercentage: numericStringSchema.optional(),
+    operatingPrice: numericStringSchema.optional(),
+  }),
+});
+
+export const updateBidOperatingExpensesSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    enabled: z.boolean().optional(),
+    grossRevenuePreviousYear: numericStringSchema.optional(),
+    currentBidAmount: numericStringSchema.optional(),
+    operatingCostPreviousYear: numericStringSchema.optional(),
+    inflationAdjustedOperatingCost: numericStringSchema.optional(),
+    inflationRate: numericStringSchema.optional(),
+    utilizationPercentage: numericStringSchema.optional(),
+    calculatedOperatingCost: numericStringSchema.optional(),
+    applyMarkup: z.boolean().optional(),
+    markupPercentage: numericStringSchema.optional(),
+    operatingPrice: numericStringSchema.optional(),
+  }),
+});
+
+export const deleteBidOperatingExpensesSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+// ============================
 // Materials Validations
 // ============================
 
@@ -1079,29 +1133,6 @@ export const getBidHistorySchema = z.object({
 export const getBidWithAllDataSchema = z.object({
   params: z.object({
     id: uuidSchema,
-  }),
-});
-
-// ============================
-// Operating Expenses Validations
-// ============================
-
-export const updateBidOperatingExpensesSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
-  }),
-  body: z.object({
-    enabled: z.boolean().optional(),
-    grossRevenuePreviousYear: numericStringSchema.optional(),
-    currentBidAmount: numericStringSchema.optional(),
-    operatingCostPreviousYear: numericStringSchema.optional(),
-    inflationAdjustedOperatingCost: numericStringSchema.optional(),
-    inflationRate: numericStringSchema.optional(),
-    utilizationPercentage: numericStringSchema.optional(),
-    calculatedOperatingCost: numericStringSchema.optional(),
-    applyMarkup: z.boolean().optional(),
-    markupPercentage: numericStringSchema.optional(),
-    operatingPrice: numericStringSchema.optional(),
   }),
 });
 

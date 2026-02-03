@@ -8,6 +8,10 @@ import {
   deleteBidHandler,
   getBidFinancialBreakdownHandler,
   updateBidFinancialBreakdownHandler,
+  getBidOperatingExpensesHandler,
+  createBidOperatingExpensesHandler,
+  updateBidOperatingExpensesHandler,
+  deleteBidOperatingExpensesHandler,
   getBidMaterialsHandler,
   getBidMaterialByIdHandler,
   createBidMaterialHandler,
@@ -66,6 +70,10 @@ import {
   updateBidSchema,
   deleteBidSchema,
   updateFinancialBreakdownSchema,
+  getBidOperatingExpensesSchema,
+  createBidOperatingExpensesSchema,
+  updateBidOperatingExpensesSchema,
+  deleteBidOperatingExpensesSchema,
   getBidMaterialsSchema,
   getBidMaterialByIdSchema,
   createBidMaterialSchema,
@@ -240,6 +248,23 @@ router
   .put(
     validate(updateFinancialBreakdownSchema),
     updateBidFinancialBreakdownHandler,
+  );
+
+// Operating Expenses Routes
+router
+  .route("/bids/:bidId/operating-expenses")
+  .get(validate(getBidOperatingExpensesSchema), getBidOperatingExpensesHandler)
+  .post(
+    validate(createBidOperatingExpensesSchema),
+    createBidOperatingExpensesHandler,
+  )
+  .put(
+    validate(updateBidOperatingExpensesSchema),
+    updateBidOperatingExpensesHandler,
+  )
+  .delete(
+    validate(deleteBidOperatingExpensesSchema),
+    deleteBidOperatingExpensesHandler,
   );
 
 // Materials Routes

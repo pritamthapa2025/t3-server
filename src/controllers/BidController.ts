@@ -77,7 +77,10 @@ import {
   updateBidPlanSpecData,
   getBidDesignBuildData,
   updateBidDesignBuildData,
+  getBidOperatingExpenses,
+  createBidOperatingExpenses,
   updateBidOperatingExpenses,
+  deleteBidOperatingExpenses,
   getBidTimeline,
   createBidTimelineEvent,
   updateBidTimelineEvent,
@@ -788,6 +791,208 @@ export const updateBidFinancialBreakdownHandler = async (
       success: true,
       data: breakdown,
       message: "Financial breakdown updated successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Operating Expenses Operations
+// ============================
+
+export const getBidOperatingExpensesHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const { bidId } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const operatingExpenses = await getBidOperatingExpenses(
+      bidId!,
+      clientOrgId,
+    );
+
+    logger.info("Bid operating expenses fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: operatingExpenses,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createBidOperatingExpensesHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const { bidId } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const result = await createBidOperatingExpenses(
+      bidId!,
+      clientOrgId,
+      req.body ?? {},
+    );
+
+    if (result === null) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    if (result === "exists") {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Operating expenses already exist for this bid. Use PUT to update.",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: clientOrgId,
+      action: "operating_expenses_created",
+      description: "Operating expenses were created",
+      performedBy: userId,
+    });
+
+    logger.info("Bid operating expenses created successfully");
+    return res.status(201).json({
+      success: true,
+      data: result,
+      message: "Operating expenses created successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidOperatingExpensesHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const { bidId } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const operatingExpenses = await updateBidOperatingExpenses(
+      bidId!,
+      clientOrgId,
+      req.body ?? {},
+    );
+
+    if (!operatingExpenses) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: clientOrgId,
+      action: "operating_expenses_updated",
+      description: "Operating expenses were updated",
+      performedBy: userId,
+    });
+
+    logger.info("Bid operating expenses updated successfully");
+    return res.status(200).json({
+      success: true,
+      data: operatingExpenses,
+      message: "Operating expenses updated successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const deleteBidOperatingExpensesHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const { bidId } = req.params;
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const operatingExpenses = await deleteBidOperatingExpenses(
+      bidId!,
+      clientOrgId,
+    );
+
+    if (!operatingExpenses) {
+      return res.status(404).json({
+        success: false,
+        message: "Operating expenses not found for this bid",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: clientOrgId,
+      action: "operating_expenses_deleted",
+      description: "Operating expenses were removed",
+      performedBy: userId,
+    });
+
+    logger.info("Bid operating expenses deleted successfully");
+    return res.status(200).json({
+      success: true,
+      data: operatingExpenses,
+      message: "Operating expenses deleted successfully",
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
