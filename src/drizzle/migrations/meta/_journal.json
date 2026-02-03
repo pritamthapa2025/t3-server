@@ -407,6 +407,20 @@
       "when": 1770098074956,
       "tag": "0057_lively_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1770114484829,
+      "tag": "0058_overconfident_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1770120249104,
+      "tag": "0059_living_lester",
+      "breakpoints": true
     }
   ]
 }

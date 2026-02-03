@@ -15,7 +15,9 @@ export interface DispatchTask {
   linkedJobTaskIds?: string[];
   notes?: string;
   attachments?: string[];
-  assignedVehicleId?: string;
+  /** Technician IDs from dispatch_assignments (derived, not stored on task) */
+  technicianIds?: number[];
+  assignments?: DispatchAssignment[];
   createdBy?: string;
   isDeleted: boolean;
   createdAt: Date;
@@ -33,9 +35,10 @@ export interface CreateDispatchTaskData {
   endTime: Date;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
+  /** Create dispatch_assignments for these employee IDs */
+  technicianIds?: number[];
   notes?: string;
   attachments?: string[];
-  assignedVehicleId?: string;
   createdBy?: string;
 }
 
@@ -50,9 +53,10 @@ export interface UpdateDispatchTaskData {
   endTime?: Date;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
+  /** Replace task assignments with these employee IDs (creates dispatch_assignments) */
+  technicianIds?: number[];
   notes?: string;
   attachments?: string[];
-  assignedVehicleId?: string;
 }
 
 // Dispatch Assignment Types
@@ -88,42 +92,4 @@ export interface UpdateDispatchAssignmentData {
   clockOut?: Date;
   actualDuration?: number;
   role?: string;
-}
-
-// Technician Availability Types
-export interface TechnicianAvailability {
-  id: string;
-  employeeId: number;
-  date: Date;
-  status: "available" | "on_job" | "off_shift" | "break" | "pto";
-  shiftStart?: string;
-  shiftEnd?: string;
-  hoursScheduled?: string;
-  role?: string;
-  notes?: string;
-  isDeleted: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateTechnicianAvailabilityData {
-  employeeId: number;
-  date: Date;
-  status?: "available" | "on_job" | "off_shift" | "break" | "pto";
-  shiftStart?: string;
-  shiftEnd?: string;
-  hoursScheduled?: string;
-  role?: string;
-  notes?: string;
-}
-
-export interface UpdateTechnicianAvailabilityData {
-  employeeId?: number;
-  date?: Date;
-  status?: "available" | "on_job" | "off_shift" | "break" | "pto";
-  shiftStart?: string;
-  shiftEnd?: string;
-  hoursScheduled?: string;
-  role?: string;
-  notes?: string;
 }

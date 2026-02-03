@@ -2,10 +2,14 @@ import { db } from "../config/db.js";
 import {
   dispatchTasks,
   dispatchAssignments,
-  technicianAvailability,
 } from "../drizzle/schema/dispatch.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import {
+  employees,
+  departments,
+  positions,
+} from "../drizzle/schema/org.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
@@ -17,6 +21,7 @@ import {
   lte,
   like,
   or,
+  inArray,
   getTableColumns,
 } from "drizzle-orm";
 import type {
@@ -24,8 +29,6 @@ import type {
   UpdateDispatchTaskData,
   CreateDispatchAssignmentData,
   UpdateDispatchAssignmentData,
-  CreateTechnicianAvailabilityData,
-  UpdateTechnicianAvailabilityData,
 } from "../types/dispatch.types.js";
 
 // ============================
@@ -45,7 +48,6 @@ export const getDispatchTasks = async (
     status?: string;
     taskType?: string;
     priority?: string;
-    assignedVehicleId?: string;
     startDate?: string;
     endDate?: string;
     sortBy?: string;
@@ -58,7 +60,6 @@ export const getDispatchTasks = async (
     status,
     taskType,
     priority,
-    assignedVehicleId,
     startDate,
     endDate,
     sortBy = "createdAt",
@@ -72,9 +73,6 @@ export const getDispatchTasks = async (
     ...(status ? [eq(dispatchTasks.status, status as any)] : []),
     ...(taskType ? [eq(dispatchTasks.taskType, taskType as any)] : []),
     ...(priority ? [eq(dispatchTasks.priority, priority as any)] : []),
-    ...(assignedVehicleId
-      ? [eq(dispatchTasks.assignedVehicleId, assignedVehicleId)]
-      : []),
     ...(startDate ? [gte(dispatchTasks.startTime, new Date(startDate))] : []),
     ...(endDate ? [lte(dispatchTasks.endTime, new Date(endDate))] : []),
   ];
@@ -136,12 +134,37 @@ export const getDispatchTasks = async (
     .limit(limit)
     .offset(offset);
 
+  // Load technicianIds from dispatch_assignments for all tasks in one query
+  const taskIds = tasks.map((t) => t.id);
+  const assignmentsByTask =
+    taskIds.length > 0
+      ? await db
+          .select({
+            taskId: dispatchAssignments.taskId,
+            technicianId: dispatchAssignments.technicianId,
+          })
+          .from(dispatchAssignments)
+          .where(
+            and(
+              inArray(dispatchAssignments.taskId, taskIds),
+              eq(dispatchAssignments.isDeleted, false),
+            ),
+          )
+      : [];
+  const technicianIdsByTaskId = new Map<string, number[]>();
+  for (const a of assignmentsByTask) {
+    const list = technicianIdsByTaskId.get(a.taskId) ?? [];
+    list.push(a.technicianId);
+    technicianIdsByTaskId.set(a.taskId, list);
+  }
+
   return {
     data: tasks.map((task) => {
       const { createdByName, ...record } = task;
       return {
         ...record,
         createdByName: createdByName ?? null,
+        technicianIds: technicianIdsByTaskId.get(task.id) ?? [],
       };
     }),
     total,
@@ -153,7 +176,7 @@ export const getDispatchTasks = async (
   };
 };
 
-// Get Dispatch Task by ID
+// Get Dispatch Task by ID (with assignments / technicianIds from dispatch_assignments)
 export const getDispatchTaskById = async (id: string) => {
   const [row] = await db
     .select({
@@ -167,9 +190,13 @@ export const getDispatchTaskById = async (id: string) => {
   if (!row) return null;
 
   const { createdByName, ...record } = row;
+  const assignments = await getAssignmentsByTaskId(id);
+  const technicianIds = assignments.map((a) => a.technicianId);
   return {
     ...record,
     createdByName: createdByName ?? null,
+    technicianIds,
+    assignments,
   };
 };
 
@@ -196,15 +223,21 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
     insertData.linkedJobTaskIds = data.linkedJobTaskIds;
   if (data.notes) insertData.notes = data.notes;
   if (data.attachments) insertData.attachments = data.attachments;
-  if (data.assignedVehicleId)
-    insertData.assignedVehicleId = data.assignedVehicleId;
   if (data.createdBy) insertData.createdBy = data.createdBy;
 
   const result = await db.insert(dispatchTasks).values(insertData).returning();
-
-  // Return enriched data with names (following cursor rule)
   const inserted = result[0];
   if (!inserted) throw new Error("Failed to create dispatch task");
+
+  // Create dispatch_assignments for each technicianId
+  const technicianIds = data.technicianIds ?? [];
+  for (const technicianId of technicianIds) {
+    await createDispatchAssignment({
+      taskId: inserted.id,
+      technicianId,
+    });
+  }
+
   return await getDispatchTaskById(inserted.id);
 };
 
@@ -237,8 +270,6 @@ export const updateDispatchTask = async (
     updateData.linkedJobTaskIds = data.linkedJobTaskIds;
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.attachments !== undefined) updateData.attachments = data.attachments;
-  if (data.assignedVehicleId !== undefined)
-    updateData.assignedVehicleId = data.assignedVehicleId;
 
   const result = await db
     .update(dispatchTasks)
@@ -246,7 +277,26 @@ export const updateDispatchTask = async (
     .where(and(eq(dispatchTasks.id, id), eq(dispatchTasks.isDeleted, false)))
     .returning();
 
-  return result[0] || null;
+  const updated = result[0];
+  if (!updated) return null;
+
+  // If technicianIds provided, replace assignments: soft-delete existing, create new
+  if (data.technicianIds !== undefined) {
+    await db
+      .update(dispatchAssignments)
+      .set({ isDeleted: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(dispatchAssignments.taskId, id),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      );
+    for (const technicianId of data.technicianIds) {
+      await createDispatchAssignment({ taskId: id, technicianId });
+    }
+  }
+
+  return await getDispatchTaskById(id);
 };
 
 // Soft Delete Dispatch Task
@@ -519,7 +569,7 @@ export const getAssignmentsByTechnicianId = async (
       // Job fields (for display format: "#2024-001 — HVAC System Installation")
       jobId: dispatchTasks.jobId,
       jobNumber: jobs.jobNumber,
-      jobName: jobs.name,
+      jobName: jobs.description,
       jobDescription: jobs.description,
       jobStatus: jobs.status,
       jobType: jobs.jobType,
@@ -535,87 +585,79 @@ export const getAssignmentsByTechnicianId = async (
 };
 
 // ============================
-// TECHNICIAN AVAILABILITY SERVICE
+// AVAILABLE EMPLOYEES (for dispatch assignment)
 // ============================
+// Returns employees with status = 'available' as full objects (source of truth: employees table)
 
-// Get Technician Availability with Pagination
-export const getTechnicianAvailability = async (
+export const getAvailableEmployeesForDispatch = async (
   offset: number,
   limit: number,
-  filters: {
-    employeeId?: number;
-    date?: string;
-    status?: string;
-    startDate?: string;
-    endDate?: string;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-  },
 ) => {
-  const {
-    employeeId,
-    date,
-    status,
-    startDate,
-    endDate,
-    sortBy = "date",
-    sortOrder = "desc",
-  } = filters;
-
   const conditions = [
-    eq(technicianAvailability.isDeleted, false),
-    ...(employeeId ? [eq(technicianAvailability.employeeId, employeeId)] : []),
-    ...(status ? [eq(technicianAvailability.status, status as any)] : []),
-    ...(date
-      ? [
-          gte(
-            technicianAvailability.date,
-            new Date(new Date(date).setHours(0, 0, 0, 0)),
-          ),
-          lte(
-            technicianAvailability.date,
-            new Date(new Date(date).setHours(23, 59, 59, 999)),
-          ),
-        ]
-      : []),
-    ...(startDate
-      ? [gte(technicianAvailability.date, new Date(startDate))]
-      : []),
-    ...(endDate ? [lte(technicianAvailability.date, new Date(endDate))] : []),
+    eq(employees.isDeleted, false),
+    eq(employees.status, "available"),
   ];
-
-  let orderBy: any;
-  if (sortBy === "date") {
-    orderBy =
-      sortOrder === "asc"
-        ? asc(technicianAvailability.date)
-        : desc(technicianAvailability.date);
-  } else if (sortBy === "createdAt") {
-    orderBy =
-      sortOrder === "asc"
-        ? asc(technicianAvailability.createdAt)
-        : desc(technicianAvailability.createdAt);
-  } else {
-    orderBy = desc(technicianAvailability.date);
-  }
 
   const totalResult = await db
     .select({ count: count() })
-    .from(technicianAvailability)
+    .from(employees)
     .where(and(...conditions));
 
   const total = totalResult[0]?.count || 0;
 
-  const availability = await db
-    .select()
-    .from(technicianAvailability)
+  const rows = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      employeeId: employees.employeeId,
+      departmentId: employees.departmentId,
+      positionId: employees.positionId,
+      status: employees.status,
+      hireDate: employees.hireDate,
+      terminationDate: employees.terminationDate,
+      startDate: employees.startDate,
+      endDate: employees.endDate,
+      isDeleted: employees.isDeleted,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
+      employeeName: users.fullName,
+      email: users.email,
+      phone: users.phone,
+      departmentName: departments.name,
+      positionName: positions.name,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
     .where(and(...conditions))
-    .orderBy(orderBy)
+    .orderBy(employees.id)
     .limit(limit)
     .offset(offset);
 
+  const data = rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    employeeId: row.employeeId,
+    departmentId: row.departmentId,
+    positionId: row.positionId,
+    status: row.status,
+    hireDate: row.hireDate,
+    terminationDate: row.terminationDate,
+    startDate: row.startDate,
+    endDate: row.endDate,
+    isDeleted: row.isDeleted,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    employeeName: row.employeeName ?? null,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    departmentName: row.departmentName ?? null,
+    positionName: row.positionName ?? null,
+  }));
+
   return {
-    data: availability,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -625,117 +667,148 @@ export const getTechnicianAvailability = async (
   };
 };
 
-// Get Technician Availability by ID
-export const getTechnicianAvailabilityById = async (id: string) => {
-  const result = await db
-    .select()
-    .from(technicianAvailability)
-    .where(
-      and(
-        eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false),
-      ),
-    );
+// ============================
+// EMPLOYEES WITH ASSIGNED TASKS
+// ============================
+// Returns list of employees, each with a tasks array (dispatch tasks assigned to them). Empty tasks if none.
 
-  return result[0] || null;
-};
-
-// Create Technician Availability
-export const createTechnicianAvailability = async (
-  data: CreateTechnicianAvailabilityData,
+export const getEmployeesWithAssignedTasks = async (
+  offset: number,
+  limit: number,
+  filters?: { status?: string },
 ) => {
-  const insertData: any = {
-    employeeId: data.employeeId,
-    date: data.date instanceof Date ? data.date : new Date(data.date),
-    status: data.status || "available",
-  };
+  const employeeConditions = [eq(employees.isDeleted, false)];
+  if (filters?.status) {
+    employeeConditions.push(eq(employees.status, filters.status as any));
+  }
 
-  if (data.shiftStart) insertData.shiftStart = data.shiftStart;
-  if (data.shiftEnd) insertData.shiftEnd = data.shiftEnd;
-  if (data.hoursScheduled) insertData.hoursScheduled = data.hoursScheduled;
-  if (data.role) insertData.role = data.role;
-  if (data.notes) insertData.notes = data.notes;
+  const totalResult = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(and(...employeeConditions));
 
-  const result = await db
-    .insert(technicianAvailability)
-    .values(insertData)
-    .returning();
+  const total = totalResult[0]?.count || 0;
 
-  return result[0];
-};
-
-// Update Technician Availability
-export const updateTechnicianAvailability = async (
-  id: string,
-  data: UpdateTechnicianAvailabilityData,
-) => {
-  const updateData: any = {
-    updatedAt: new Date(),
-  };
-
-  if (data.employeeId !== undefined) updateData.employeeId = data.employeeId;
-  if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date ? data.date : new Date(data.date);
-  if (data.status !== undefined) updateData.status = data.status;
-  if (data.shiftStart !== undefined) updateData.shiftStart = data.shiftStart;
-  if (data.shiftEnd !== undefined) updateData.shiftEnd = data.shiftEnd;
-  if (data.hoursScheduled !== undefined)
-    updateData.hoursScheduled = data.hoursScheduled;
-  if (data.role !== undefined) updateData.role = data.role;
-  if (data.notes !== undefined) updateData.notes = data.notes;
-
-  const result = await db
-    .update(technicianAvailability)
-    .set(updateData)
-    .where(
-      and(
-        eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false),
-      ),
-    )
-    .returning();
-
-  return result[0] || null;
-};
-
-// Soft Delete Technician Availability
-export const deleteTechnicianAvailability = async (id: string) => {
-  const result = await db
-    .update(technicianAvailability)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
+  const employeeRows = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      employeeId: employees.employeeId,
+      departmentId: employees.departmentId,
+      positionId: employees.positionId,
+      status: employees.status,
+      hireDate: employees.hireDate,
+      terminationDate: employees.terminationDate,
+      startDate: employees.startDate,
+      endDate: employees.endDate,
+      isDeleted: employees.isDeleted,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
+      employeeName: users.fullName,
+      email: users.email,
+      phone: users.phone,
+      departmentName: departments.name,
+      positionName: positions.name,
     })
-    .where(
-      and(
-        eq(technicianAvailability.id, id),
-        eq(technicianAvailability.isDeleted, false),
-      ),
-    )
-    .returning();
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(and(...employeeConditions))
+    .orderBy(employees.id)
+    .limit(limit)
+    .offset(offset);
 
-  return result[0] || null;
-};
+  const employeeIds = employeeRows.map((r) => r.id);
+  const tasksByEmployeeId = new Map<number, any[]>();
 
-// Get Availability by Employee ID and Date Range
-export const getAvailabilityByEmployeeId = async (
-  employeeId: number,
-  startDate: string,
-  endDate: string,
-) => {
-  const availability = await db
-    .select()
-    .from(technicianAvailability)
-    .where(
-      and(
-        eq(technicianAvailability.employeeId, employeeId),
-        eq(technicianAvailability.isDeleted, false),
-        gte(technicianAvailability.date, new Date(startDate)),
-        lte(technicianAvailability.date, new Date(endDate)),
-      ),
-    )
-    .orderBy(asc(technicianAvailability.date));
+  if (employeeIds.length > 0) {
+    const assignments = await db
+      .select({
+        technicianId: dispatchAssignments.technicianId,
+        assignmentId: dispatchAssignments.id,
+        assignmentStatus: dispatchAssignments.status,
+        clockIn: dispatchAssignments.clockIn,
+        clockOut: dispatchAssignments.clockOut,
+        taskId: dispatchTasks.id,
+        taskTitle: dispatchTasks.title,
+        taskDescription: dispatchTasks.description,
+        taskType: dispatchTasks.taskType,
+        taskPriority: dispatchTasks.priority,
+        taskStatus: dispatchTasks.status,
+        startTime: dispatchTasks.startTime,
+        endTime: dispatchTasks.endTime,
+        jobId: dispatchTasks.jobId,
+        jobNumber: jobs.jobNumber,
+        jobName: jobs.description,
+      })
+      .from(dispatchAssignments)
+      .innerJoin(
+        dispatchTasks,
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+      )
+      .leftJoin(jobs, eq(dispatchTasks.jobId, jobs.id))
+      .where(
+        and(
+          inArray(dispatchAssignments.technicianId, employeeIds),
+          eq(dispatchAssignments.isDeleted, false),
+          eq(dispatchTasks.isDeleted, false),
+        ),
+      )
+      .orderBy(asc(dispatchTasks.startTime));
 
-  return availability;
+    for (const a of assignments) {
+      const list = tasksByEmployeeId.get(a.technicianId) ?? [];
+      list.push({
+        assignmentId: a.assignmentId,
+        assignmentStatus: a.assignmentStatus,
+        clockIn: a.clockIn,
+        clockOut: a.clockOut,
+        taskId: a.taskId,
+        taskTitle: a.taskTitle,
+        taskDescription: a.taskDescription,
+        taskType: a.taskType,
+        taskPriority: a.taskPriority,
+        taskStatus: a.taskStatus,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        jobId: a.jobId,
+        jobNumber: a.jobNumber,
+        jobName: a.jobName,
+      });
+      tasksByEmployeeId.set(a.technicianId, list);
+    }
+  }
+
+  const data = employeeRows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    employeeId: row.employeeId,
+    departmentId: row.departmentId,
+    positionId: row.positionId,
+    status: row.status,
+    hireDate: row.hireDate,
+    terminationDate: row.terminationDate,
+    startDate: row.startDate,
+    endDate: row.endDate,
+    isDeleted: row.isDeleted,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    employeeName: row.employeeName ?? null,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    departmentName: row.departmentName ?? null,
+    positionName: row.positionName ?? null,
+    tasks: tasksByEmployeeId.get(row.id) ?? [],
+  }));
+
+  return {
+    data,
+    total,
+    pagination: {
+      page: Math.floor(offset / limit) + 1,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };

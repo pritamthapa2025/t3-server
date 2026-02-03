@@ -1,0 +1,1 @@
+DROP TABLE "org"."technician_availability" CASCADE;

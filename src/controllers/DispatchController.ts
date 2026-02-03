@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
 import {
+  parseDatabaseError,
+  isDatabaseError,
+} from "../utils/database-error-parser.js";
+import { uploadToSpaces } from "../services/storage.service.js";
+import {
   getDispatchTasks,
   getDispatchTaskById,
   createDispatchTask,
@@ -12,12 +17,8 @@ import {
   deleteDispatchAssignment,
   getAssignmentsByTaskId,
   getAssignmentsByTechnicianId,
-  getTechnicianAvailability,
-  getTechnicianAvailabilityById,
-  createTechnicianAvailability,
-  updateTechnicianAvailability,
-  deleteTechnicianAvailability,
-  getAvailabilityByEmployeeId,
+  getAvailableEmployeesForDispatch,
+  getEmployeesWithAssignedTasks,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -35,7 +36,6 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
       status,
       taskType,
       priority,
-      assignedVehicleId,
       startDate,
       endDate,
       sortBy,
@@ -51,8 +51,6 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
     if (status) filters.status = status as string;
     if (taskType) filters.taskType = taskType as string;
     if (priority) filters.priority = priority as string;
-    if (assignedVehicleId)
-      filters.assignedVehicleId = assignedVehicleId as string;
     if (startDate) filters.startDate = startDate as string;
     if (endDate) filters.endDate = endDate as string;
     if (sortBy) filters.sortBy = sortBy as string;
@@ -117,9 +115,38 @@ export const createDispatchTaskHandler = async (
   res: Response,
 ) => {
   try {
-    const taskData = req.body;
+    const taskData = { ...req.body };
     const createdBy = req.user?.id;
     if (createdBy) (taskData as any).createdBy = createdBy;
+
+    // Handle file uploads (attachments_0, attachments_1, ...) and store URLs in attachments
+    const files = (req.files as Express.Multer.File[]) || [];
+    const attachmentFiles = files.filter((file) =>
+      file.fieldname.startsWith("attachments_"),
+    );
+    if (attachmentFiles.length > 0) {
+      const uploadedUrls: string[] = [];
+      for (const file of attachmentFiles) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "dispatch-task-attachments",
+          );
+          uploadedUrls.push(uploadResult.url);
+        } catch (uploadError: any) {
+          logger.logApiError(
+            `Error uploading attachment ${file.originalname}`,
+            uploadError,
+            req,
+          );
+        }
+      }
+      taskData.attachments = [
+        ...(Array.isArray(taskData.attachments) ? taskData.attachments : []),
+        ...uploadedUrls,
+      ];
+    }
 
     const newTask = await createDispatchTask(taskData);
 
@@ -138,6 +165,15 @@ export const createDispatchTaskHandler = async (
     });
   } catch (error: any) {
     logger.logApiError("Error creating dispatch task", error, req);
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
     return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
@@ -157,7 +193,38 @@ export const updateDispatchTaskHandler = async (
         message: "Dispatch task ID is required",
       });
     }
-    const updateData = req.body;
+    const updateData = { ...req.body };
+
+    // Handle file uploads (attachments_0, attachments_1, ...) and append URLs to attachments
+    const files = (req.files as Express.Multer.File[]) || [];
+    const attachmentFiles = files.filter((file) =>
+      file.fieldname.startsWith("attachments_"),
+    );
+    if (attachmentFiles.length > 0) {
+      const uploadedUrls: string[] = [];
+      for (const file of attachmentFiles) {
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "dispatch-task-attachments",
+          );
+          uploadedUrls.push(uploadResult.url);
+        } catch (uploadError: any) {
+          logger.logApiError(
+            `Error uploading attachment ${file.originalname}`,
+            uploadError,
+            req,
+          );
+        }
+      }
+      updateData.attachments = [
+        ...(Array.isArray(updateData.attachments)
+          ? updateData.attachments
+          : []),
+        ...uploadedUrls,
+      ];
+    }
 
     const updatedTask = await updateDispatchTask(id, updateData);
 
@@ -174,11 +241,20 @@ export const updateDispatchTaskHandler = async (
       data: updatedTask,
       message: "Dispatch task updated successfully",
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Error updating dispatch task", error, req);
+    if (isDatabaseError(error)) {
+      const parsedError = parseDatabaseError(error);
+      return res.status(parsedError.statusCode).json({
+        success: false,
+        message: parsedError.userMessage,
+        errorCode: parsedError.errorCode,
+        suggestions: parsedError.suggestions,
+      });
+    }
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error.message || "Internal server error",
     });
   }
 };
@@ -477,34 +553,21 @@ export const getAssignmentsByTechnicianIdHandler = async (
 };
 
 // ============================
-// TECHNICIAN AVAILABILITY HANDLERS
+// AVAILABLE EMPLOYEES (for dispatch - who can be assigned)
 // ============================
 
-export const getTechnicianAvailabilityHandler = async (
+export const getAvailableEmployeesHandler = async (
   req: Request,
   res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const { employeeId, date, status, startDate, endDate, sortBy, sortOrder } =
-      req.query;
-
     const offset = (page - 1) * limit;
 
-    const filters: any = {};
+    const result = await getAvailableEmployeesForDispatch(offset, limit);
 
-    if (employeeId) filters.employeeId = parseInt(employeeId as string);
-    if (date) filters.date = date as string;
-    if (status) filters.status = status as string;
-    if (startDate) filters.startDate = startDate as string;
-    if (endDate) filters.endDate = endDate as string;
-    if (sortBy) filters.sortBy = sortBy as string;
-    if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
-
-    const result = await getTechnicianAvailability(offset, limit, filters);
-
-    logger.info("Technician availability fetched successfully");
+    logger.info("Available employees for dispatch fetched successfully");
     return res.status(200).json({
       success: true,
       data: result.data,
@@ -512,118 +575,11 @@ export const getTechnicianAvailabilityHandler = async (
       pagination: result.pagination,
     });
   } catch (error) {
-    logger.logApiError("Error fetching technician availability", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const getTechnicianAvailabilityByIdHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Technician availability ID is required",
-      });
-    }
-
-    const availability = await getTechnicianAvailabilityById(id);
-
-    if (!availability) {
-      return res.status(404).json({
-        success: false,
-        message: "Technician availability not found",
-      });
-    }
-
-    logger.info(`Technician availability ${id} fetched successfully`);
-    return res.status(200).json({
-      success: true,
-      data: availability,
-    });
-  } catch (error) {
-    logger.logApiError("Error fetching technician availability", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const createTechnicianAvailabilityHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const availabilityData = req.body;
-
-    const newAvailability =
-      await createTechnicianAvailability(availabilityData);
-
-    if (!newAvailability) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to create technician availability",
-      });
-    }
-
-    logger.info(
-      `Technician availability ${newAvailability.id} created successfully`,
+    logger.logApiError(
+      "Error fetching available employees for dispatch",
+      error,
+      req,
     );
-    return res.status(201).json({
-      success: true,
-      data: newAvailability,
-      message: "Technician availability created successfully",
-    });
-  } catch (error: any) {
-    logger.logApiError("Error creating technician availability", error, req);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
-  }
-};
-
-export const updateTechnicianAvailabilityHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Technician availability ID is required",
-      });
-    }
-    const updateData = req.body;
-
-    const updatedAvailability = await updateTechnicianAvailability(
-      id,
-      updateData,
-    );
-
-    if (!updatedAvailability) {
-      return res.status(404).json({
-        success: false,
-        message: "Technician availability not found",
-      });
-    }
-
-    logger.info(`Technician availability ${id} updated successfully`);
-    return res.status(200).json({
-      success: true,
-      data: updatedAvailability,
-      message: "Technician availability updated successfully",
-    });
-  } catch (error) {
-    logger.logApiError("Error updating technician availability", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -631,78 +587,34 @@ export const updateTechnicianAvailabilityHandler = async (
   }
 };
 
-export const deleteTechnicianAvailabilityHandler = async (
+// ============================
+// EMPLOYEES WITH ASSIGNED TASKS
+// ============================
+
+export const getEmployeesWithAssignedTasksHandler = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Technician availability ID is required",
-      });
-    }
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const status = req.query.status as string | undefined;
+    const offset = (page - 1) * limit;
 
-    const deletedAvailability = await deleteTechnicianAvailability(id);
+    const result = await getEmployeesWithAssignedTasks(offset, limit, {
+      ...(status && { status }),
+    });
 
-    if (!deletedAvailability) {
-      return res.status(404).json({
-        success: false,
-        message: "Technician availability not found",
-      });
-    }
-
-    logger.info(`Technician availability ${id} deleted successfully`);
+    logger.info("Employees with assigned tasks fetched successfully");
     return res.status(200).json({
       success: true,
-      message: "Technician availability deleted successfully",
-    });
-  } catch (error) {
-    logger.logApiError("Error deleting technician availability", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const getAvailabilityByEmployeeIdHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const { employeeId } = req.params;
-    const { startDate, endDate } = req.query;
-
-    if (!employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID is required",
-      });
-    }
-
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Start date and end date are required",
-      });
-    }
-
-    const availability = await getAvailabilityByEmployeeId(
-      parseInt(employeeId),
-      startDate as string,
-      endDate as string,
-    );
-
-    logger.info(`Availability for employee ${employeeId} fetched successfully`);
-    return res.status(200).json({
-      success: true,
-      data: availability,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError(
-      "Error fetching availability by employee ID",
+      "Error fetching employees with assigned tasks",
       error,
       req,
     );

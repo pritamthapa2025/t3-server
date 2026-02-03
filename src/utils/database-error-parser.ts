@@ -4,7 +4,7 @@
  * Uses 'pg-error-codes' package for human-readable error code names
  */
 
-import pgErrorCodes from 'pg-error-codes' with { type: 'json' };
+import pgErrorCodes from "pg-error-codes" with { type: "json" };
 
 interface DatabaseError extends Error {
   code?: string;
@@ -31,7 +31,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
   // Check if error has a nested cause (drizzle wraps errors)
   const dbError = error as any;
   let actualError = error;
-  
+
   if (dbError.cause && dbError.cause instanceof Error) {
     const cause = dbError.cause;
     // If cause has database error properties, use it instead
@@ -39,7 +39,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       actualError = cause as DatabaseError;
     }
   }
-  
+
   // Extract error properties, prioritizing nested error if it exists
   const errorCode = actualError.code || dbError.code;
   const detail = actualError.detail || dbError.detail || "";
@@ -48,9 +48,13 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
   const column = actualError.column || dbError.column || "";
   // Use the actual error message, or fall back to wrapper message if it contains useful info
   let message = actualError.message || error.message || "";
-  
+
   // If we have a nested error but the wrapper message has more context, include it
-  if (actualError !== error && error.message && error.message.includes("Failed query")) {
+  if (
+    actualError !== error &&
+    error.message &&
+    error.message.includes("Failed query")
+  ) {
     message = `${error.message}\n\nUnderlying error: ${actualError.message}`;
   }
 
@@ -63,9 +67,9 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       if (codeName) {
         // Convert snake_case to Title Case for better readability
         errorName = codeName
-          .split('_')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(' ');
+          .split("_")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
       } else {
         errorName = `Error Code ${errorCode}`;
       }
@@ -75,7 +79,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
   }
 
   // PostgreSQL Error Codes Reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
-  
+
   switch (errorCode) {
     // ========== UNIQUE CONSTRAINT VIOLATIONS (23505) ==========
     case "23505": {
@@ -133,7 +137,19 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       } else if (constraint.includes("employee")) {
         referencedEntity = "employee";
         field = "employee";
-      } else if (constraint.includes("client") || constraint.includes("organization")) {
+      } else if (constraint.includes("job") && !constraint.includes("job_id")) {
+        referencedEntity = "job";
+        field = "job";
+      } else if (
+        constraint.includes("job_id") ||
+        constraint.includes("jobs_id")
+      ) {
+        referencedEntity = "job";
+        field = "job";
+      } else if (
+        constraint.includes("client") ||
+        constraint.includes("organization")
+      ) {
         referencedEntity = "client/organization";
         field = "client";
       } else if (constraint.includes("property")) {
@@ -142,7 +158,10 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
       }
 
       // Check if it's a deletion error or insertion error
-      if (message.toLowerCase().includes("still referenced") || detail.toLowerCase().includes("still referenced")) {
+      if (
+        message.toLowerCase().includes("still referenced") ||
+        detail.toLowerCase().includes("still referenced")
+      ) {
         return {
           userMessage: `Cannot delete this ${referencedEntity} because it is still being used by other records.`,
           technicalMessage: `Foreign key constraint violation on delete: ${constraint}. ${detail}`,
@@ -171,7 +190,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
     // ========== NOT NULL VIOLATIONS (23502) ==========
     case "23502": {
       let fieldName = column || "field";
-      
+
       // Make field name more readable
       fieldName = fieldName
         .replace(/_/g, " ")
@@ -192,7 +211,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
     // ========== CHECK CONSTRAINT VIOLATIONS (23514) ==========
     case "23514": {
       let fieldHint = "";
-      
+
       if (constraint.includes("email")) {
         fieldHint = "email format";
       } else if (constraint.includes("phone")) {
@@ -337,10 +356,14 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
         ],
       };
 
-    case "42601": { // Syntax error
+    case "42601": {
+      // Syntax error
       // Try to extract more context from the error message
       let syntaxIssue = "SQL syntax error";
-      if (message.includes("missing column") || message.includes("column") && message.includes("does not exist")) {
+      if (
+        message.includes("missing column") ||
+        (message.includes("column") && message.includes("does not exist"))
+      ) {
         syntaxIssue = "Missing or invalid column reference in query";
       } else if (message.includes("syntax error at or near")) {
         const nearMatch = message.match(/syntax error at or near "([^"]+)"/i);
@@ -354,7 +377,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
           syntaxIssue = `Invalid SQL query structure: ${queryMatch[1].substring(0, 100)}...`;
         }
       }
-      
+
       return {
         userMessage: `A database query error occurred (${errorName}). This is likely a system issue. Please contact support if this persists.`,
         technicalMessage: `${syntaxIssue}: ${message}`,
@@ -372,35 +395,43 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
     // ========== GENERIC FALLBACK ==========
     default: {
       // Try to extract meaningful info from the message
-      let userMessage = "A database error occurred while processing your request.";
+      let userMessage =
+        "A database error occurred while processing your request.";
       let suggestions = [
         `Try the operation again`,
         `Contact support if the issue persists`,
       ];
-      
+
       // Check for SQL syntax errors in the message
-      if (message.toLowerCase().includes("failed query") || message.toLowerCase().includes("syntax error")) {
+      if (
+        message.toLowerCase().includes("failed query") ||
+        message.toLowerCase().includes("syntax error")
+      ) {
         // Try to extract the problematic query
         const queryMatch = message.match(/select.*?from.*?where.*?\(/i);
         if (queryMatch) {
-          userMessage = "A database query error occurred. The system attempted to execute an invalid database query. This is a system issue that needs to be fixed.";
+          userMessage =
+            "A database query error occurred. The system attempted to execute an invalid database query. This is a system issue that needs to be fixed.";
           suggestions = [
             `Contact technical support immediately with this error`,
             `Check if the requested data exists and is valid`,
             `Try refreshing the page and attempting the operation again`,
           ];
         } else {
-          userMessage = "A database query error occurred. This is likely a system issue. Please contact support.";
+          userMessage =
+            "A database query error occurred. This is likely a system issue. Please contact support.";
         }
       } else if (message.toLowerCase().includes("duplicate")) {
         userMessage = "A record with this information already exists.";
       } else if (message.toLowerCase().includes("not found")) {
         userMessage = "The requested record was not found.";
       } else if (message.toLowerCase().includes("timeout")) {
-        userMessage = "The operation took too long to complete. Please try again.";
+        userMessage =
+          "The operation took too long to complete. Please try again.";
       } else if (message.includes(" = $") && message.includes("where")) {
         // SQL query with missing column name
-        userMessage = "A database query error occurred. The system attempted to execute a query with missing information. This is a system issue that needs to be fixed.";
+        userMessage =
+          "A database query error occurred. The system attempted to execute a query with missing information. This is a system issue that needs to be fixed.";
         suggestions = [
           `Contact technical support immediately with this error`,
           `The error indicates a missing column reference in a database query`,
@@ -426,7 +457,7 @@ export function parseDatabaseError(error: DatabaseError): ParsedError {
 export function formatErrorForLogging(error: DatabaseError): string {
   const parsed = parseDatabaseError(error);
   const dbError = error as any;
-  
+
   // Extract actual error (check for nested cause)
   let actualError = error;
   if (dbError.cause && dbError.cause instanceof Error) {
@@ -435,13 +466,15 @@ export function formatErrorForLogging(error: DatabaseError): string {
       actualError = cause as DatabaseError;
     }
   }
-  
+
   // Extract SQL query from error message if present
   let sqlQuery = "";
   let sqlParams = "";
   const errorMessage = error.message || "";
   if (errorMessage.includes("Failed query:")) {
-    const queryMatch = errorMessage.match(/Failed query:\s*([\s\S]*?)(?:\nparams:|$)/);
+    const queryMatch = errorMessage.match(
+      /Failed query:\s*([\s\S]*?)(?:\nparams:|$)/,
+    );
     if (queryMatch && queryMatch[1]) {
       sqlQuery = queryMatch[1].trim();
     }
@@ -450,40 +483,47 @@ export function formatErrorForLogging(error: DatabaseError): string {
       sqlParams = paramsMatch[1].trim();
     }
   }
-  
+
   const lines = [
     `   ${parsed.userMessage}`,
     "",
     `   ${parsed.technicalMessage}`,
   ];
-  
+
   // Show underlying error if it exists and is different from the main message
   if (actualError !== error && actualError.message) {
     lines.push("");
     lines.push(`Underlying error: ${actualError.message}`);
   }
-  
+
   // Show SQL query if available (only if not already in technical message)
-  if (sqlQuery && !parsed.technicalMessage.includes(sqlQuery.substring(0, 50))) {
+  if (
+    sqlQuery &&
+    !parsed.technicalMessage.includes(sqlQuery.substring(0, 50))
+  ) {
     lines.push("");
     lines.push("🔍 SQL QUERY:");
     const formattedSql = sqlQuery
-      .split('\n')
-      .map(line => `   ${line}`)
-      .join('\n');
+      .split("\n")
+      .map((line) => `   ${line}`)
+      .join("\n");
     lines.push(formattedSql);
-    
+
     if (sqlParams) {
       lines.push(`📋 PARAMS: ${sqlParams}`);
     }
   }
-  
+
   lines.push("");
-  lines.push(`📋 ERROR CODE: ${parsed.errorCode || "N/A"} | 📊 HTTP STATUS: ${parsed.statusCode}`);
+  lines.push(
+    `📋 ERROR CODE: ${parsed.errorCode || "N/A"} | 📊 HTTP STATUS: ${parsed.statusCode}`,
+  );
 
   // Show nested error info if it exists (compact format)
   if (dbError.cause && actualError !== error) {
-    lines.push(`🔍 NESTED: ${(actualError as any).name || "error"} - ${actualError.message || "N/A"}`);
+    lines.push(
+      `🔍 NESTED: ${(actualError as any).name || "error"} - ${actualError.message || "N/A"}`,
+    );
   }
 
   const code = actualError.code || error.code;
@@ -510,11 +550,11 @@ export function formatErrorForLogging(error: DatabaseError): string {
   if (detail) {
     lines.push(`📄 DETAIL: ${detail}`);
   }
-  
+
   if ((actualError as any).hint) {
     lines.push(`💡 HINT: ${(actualError as any).hint}`);
   }
-  
+
   if ((actualError as any).position) {
     lines.push(`📍 POSITION: ${(actualError as any).position}`);
   }
@@ -530,12 +570,12 @@ export function isDatabaseError(error: unknown): error is DatabaseError {
   if (!(error instanceof Error)) {
     return false;
   }
-  
+
   // Check if error itself has database error properties
   if ("code" in error || "detail" in error || "constraint" in error) {
     return true;
   }
-  
+
   // Check if error has a cause that is a database error (drizzle wraps errors)
   const dbError = error as any;
   if (dbError.cause && dbError.cause instanceof Error) {
@@ -544,32 +584,18 @@ export function isDatabaseError(error: unknown): error is DatabaseError {
       return true;
     }
   }
-  
+
   // Check if error message indicates a database error
   const message = error.message || "";
-  if (message.includes("Failed query") || 
-      message.includes("syntax error") ||
-      message.includes("relation") ||
-      message.includes("column") ||
-      message.includes("constraint")) {
+  if (
+    message.includes("Failed query") ||
+    message.includes("syntax error") ||
+    message.includes("relation") ||
+    message.includes("column") ||
+    message.includes("constraint")
+  ) {
     return true;
   }
-  
+
   return false;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

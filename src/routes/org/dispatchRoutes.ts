@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getDispatchTasksHandler,
   getDispatchTaskByIdHandler,
@@ -12,12 +13,8 @@ import {
   deleteDispatchAssignmentHandler,
   getAssignmentsByTaskIdHandler,
   getAssignmentsByTechnicianIdHandler,
-  getTechnicianAvailabilityHandler,
-  getTechnicianAvailabilityByIdHandler,
-  createTechnicianAvailabilityHandler,
-  updateTechnicianAvailabilityHandler,
-  deleteTechnicianAvailabilityHandler,
-  getAvailabilityByEmployeeIdHandler,
+  getAvailableEmployeesHandler,
+  getEmployeesWithAssignedTasksHandler,
 } from "../../controllers/DispatchController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -34,16 +31,66 @@ import {
   deleteDispatchAssignmentSchema,
   getAssignmentsByTaskIdSchema,
   getAssignmentsByTechnicianIdSchema,
-  getTechnicianAvailabilityQuerySchema,
-  getTechnicianAvailabilityByIdSchema,
-  createTechnicianAvailabilitySchema,
-  updateTechnicianAvailabilitySchema,
-  deleteTechnicianAvailabilitySchema,
-  getAvailabilityByEmployeeIdSchema,
+  getAvailableEmployeesQuerySchema,
+  getEmployeesWithAssignedTasksQuerySchema,
 } from "../../validations/dispatch.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router = Router();
+
+// Configure multer for dispatch task attachment uploads (attachments_0, attachments_1, ...)
+const uploadDispatchAttachments = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit per file
+  },
+  fileFilter: (_req, _file, cb) => cb(null, true),
+}).any();
+
+const handleMulterError = (err: any, req: any, res: any, next: any) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size too large. Maximum size is 5MB per file.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: `File upload error: ${err.message}`,
+    });
+  }
+  if (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next();
+};
+
+// Parse JSON 'data' field from multipart/form-data into req.body
+const parseFormData = (req: any, res: any, next: any) => {
+  if (
+    req.headers["content-type"]?.includes("multipart/form-data") &&
+    req.body?.data
+  ) {
+    try {
+      const parsedData =
+        typeof req.body.data === "string"
+          ? JSON.parse(req.body.data)
+          : req.body.data;
+      req.body = { ...parsedData, ...req.body };
+      delete req.body.data;
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid JSON in 'data' field",
+      });
+    }
+  }
+  next();
+};
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -55,128 +102,83 @@ router.use(generalTransformer);
 // Dispatch Tasks Routes
 // ============================
 
-router.get(
-  "/tasks",
-  validate(getDispatchTasksQuerySchema),
-  getDispatchTasksHandler
-);
+router
+  .route("/tasks")
+  .get(validate(getDispatchTasksQuerySchema), getDispatchTasksHandler)
+  .post(
+    uploadDispatchAttachments,
+    handleMulterError,
+    parseFormData,
+    validate(createDispatchTaskSchema),
+    createDispatchTaskHandler,
+  );
+
+router
+  .route("/tasks/:id")
+  .get(validate(getDispatchTaskByIdSchema), getDispatchTaskByIdHandler)
+  .put(
+    uploadDispatchAttachments,
+    handleMulterError,
+    parseFormData,
+    validate(updateDispatchTaskSchema),
+    updateDispatchTaskHandler,
+  )
+  .delete(validate(deleteDispatchTaskSchema), deleteDispatchTaskHandler);
 
 router.get(
-  "/tasks/:id",
-  validate(getDispatchTaskByIdSchema),
-  getDispatchTaskByIdHandler
-);
-
-router.post(
-  "/tasks",
-  validate(createDispatchTaskSchema),
-  createDispatchTaskHandler
-);
-
-router.put(
-  "/tasks/:id",
-  validate(updateDispatchTaskSchema),
-  updateDispatchTaskHandler
-);
-
-router.delete(
-  "/tasks/:id",
-  validate(deleteDispatchTaskSchema),
-  deleteDispatchTaskHandler
+  "/tasks/:taskId/assignments",
+  validate(getAssignmentsByTaskIdSchema),
+  getAssignmentsByTaskIdHandler,
 );
 
 // ============================
 // Dispatch Assignments Routes
 // ============================
 
-router.get(
-  "/assignments",
-  validate(getDispatchAssignmentsQuerySchema),
-  getDispatchAssignmentsHandler
-);
+router
+  .route("/assignments")
+  .get(
+    validate(getDispatchAssignmentsQuerySchema),
+    getDispatchAssignmentsHandler,
+  )
+  .post(
+    validate(createDispatchAssignmentSchema),
+    createDispatchAssignmentHandler,
+  );
 
-router.get(
-  "/assignments/:id",
-  validate(getDispatchAssignmentByIdSchema),
-  getDispatchAssignmentByIdHandler
-);
+router
+  .route("/assignments/:id")
+  .get(
+    validate(getDispatchAssignmentByIdSchema),
+    getDispatchAssignmentByIdHandler,
+  )
+  .put(
+    validate(updateDispatchAssignmentSchema),
+    updateDispatchAssignmentHandler,
+  )
+  .delete(
+    validate(deleteDispatchAssignmentSchema),
+    deleteDispatchAssignmentHandler,
+  );
 
-router.post(
-  "/assignments",
-  validate(createDispatchAssignmentSchema),
-  createDispatchAssignmentHandler
-);
-
-router.put(
-  "/assignments/:id",
-  validate(updateDispatchAssignmentSchema),
-  updateDispatchAssignmentHandler
-);
-
-router.delete(
-  "/assignments/:id",
-  validate(deleteDispatchAssignmentSchema),
-  deleteDispatchAssignmentHandler
-);
-
-// Get assignments by task ID
-router.get(
-  "/tasks/:taskId/assignments",
-  validate(getAssignmentsByTaskIdSchema),
-  getAssignmentsByTaskIdHandler
-);
-
-// Get assignments by technician ID
 router.get(
   "/technicians/:technicianId/assignments",
   validate(getAssignmentsByTechnicianIdSchema),
-  getAssignmentsByTechnicianIdHandler
+  getAssignmentsByTechnicianIdHandler,
 );
 
-// ============================
-// Technician Availability Routes
-// ============================
-
+// Available employees for dispatch (status = 'available' from employees table)
 router.get(
-  "/availability",
-  validate(getTechnicianAvailabilityQuerySchema),
-  getTechnicianAvailabilityHandler
+  "/available-employees",
+  validate(getAvailableEmployeesQuerySchema),
+  getAvailableEmployeesHandler,
 );
 
+// Employees with assigned dispatch tasks (each employee has tasks array; empty if none)
 router.get(
-  "/availability/:id",
-  validate(getTechnicianAvailabilityByIdSchema),
-  getTechnicianAvailabilityByIdHandler
-);
-
-router.post(
-  "/availability",
-  validate(createTechnicianAvailabilitySchema),
-  createTechnicianAvailabilityHandler
-);
-
-router.put(
-  "/availability/:id",
-  validate(updateTechnicianAvailabilitySchema),
-  updateTechnicianAvailabilityHandler
-);
-
-router.delete(
-  "/availability/:id",
-  validate(deleteTechnicianAvailabilitySchema),
-  deleteTechnicianAvailabilityHandler
-);
-
-// Get availability by employee ID and date range
-router.get(
-  "/employees/:employeeId/availability",
-  validate(getAvailabilityByEmployeeIdSchema),
-  getAvailabilityByEmployeeIdHandler
+  "/employees-with-tasks",
+  validate(getEmployeesWithAssignedTasksQuerySchema),
+  getEmployeesWithAssignedTasksHandler,
 );
 
 export default router;
-
-
-
-
-
