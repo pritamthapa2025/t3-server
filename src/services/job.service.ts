@@ -1186,7 +1186,9 @@ export const createJobTimelineEvent = async (data: {
   organizationId: string;
   event: string;
   eventDate: string;
-  status?: string;
+  estimatedDuration: number;
+  durationType: string;
+  isCompleted?: boolean;
   description?: string;
   sortOrder?: number;
   createdBy?: string;
@@ -1210,10 +1212,12 @@ export const createJobTimelineEvent = async (data: {
     bidId: jobData.bidId,
     event: data.event,
     eventDate: data.eventDate,
-    ...(data.status && { status: data.status }),
-    ...(data.description && { description: data.description }),
+    estimatedDuration: data.estimatedDuration,
+    durationType: data.durationType,
+    isCompleted: data.isCompleted ?? false,
+    ...(data.description !== undefined && { description: data.description }),
     ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),
-    ...(data.createdBy && { createdBy: data.createdBy }),
+    ...(data.createdBy !== undefined && { createdBy: data.createdBy }),
   });
 
   return timelineEvent;
@@ -1250,7 +1254,9 @@ export const updateJobTimelineEvent = async (
   data: Partial<{
     event: string;
     eventDate: string;
-    status: string;
+    estimatedDuration: number;
+    durationType: string;
+    isCompleted: boolean;
     description: string;
     sortOrder: number;
   }>,

@@ -35,13 +35,9 @@ const jobPriorityEnum = z.enum(["low", "medium", "high", "urgent"], {
     "Priority must be one of: low, medium, high, or urgent (updates the associated bid's priority)",
 });
 
-const timelineStatusEnum = z.enum(
-  ["completed", "pending", "in_progress", "cancelled"],
-  {
-    message:
-      "Timeline status must be one of: completed, pending, in_progress, or cancelled",
-  },
-);
+const timelineDurationTypeEnum = z.enum(["days", "weeks", "months"], {
+  message: "Duration type must be one of: days, weeks, or months",
+});
 
 // ============================
 // Main Job Validations
@@ -461,7 +457,12 @@ export const createJobTimelineEventSchema = z.object({
   body: z.object({
     event: z.string().min(1, "Event is required").max(255),
     eventDate: z.string().datetime("Invalid datetime format"),
-    status: timelineStatusEnum.optional().default("pending"),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive"),
+    durationType: timelineDurationTypeEnum,
+    isCompleted: z.boolean().optional().default(false),
     description: z.string().optional(),
     sortOrder: z.number().int().optional().default(0),
   }),
@@ -475,7 +476,13 @@ export const updateJobTimelineEventSchema = z.object({
   body: z.object({
     event: z.string().max(255).optional(),
     eventDate: z.string().datetime().optional(),
-    status: timelineStatusEnum.optional(),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive")
+      .optional(),
+    durationType: timelineDurationTypeEnum.optional(),
+    isCompleted: z.boolean().optional(),
     description: z.string().optional(),
     sortOrder: z.number().int().optional(),
   }),

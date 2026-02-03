@@ -29,7 +29,6 @@ import {
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
-import { getUserRoles } from "./role.service.js";
 import { getOrganizationById } from "./client.service.js";
 
 // ============================
@@ -370,18 +369,17 @@ export const createBid = async (data: {
   if (bid) {
     await createRelatedRecords(bid.id, data.organizationId, data.jobType);
 
-    // Get user role to determine timeline status
-    const userRole = await getUserRoles(data.createdBy);
-    const timelineStatus =
-      userRole?.roleName === "Executive" ? "in_progress" : "pending";
-
     // Automatically create a "created" timeline event
+    const createdDateIso =
+      bid.createdDate?.toISOString() ?? new Date().toISOString();
     await createBidTimelineEvent({
       bidId: bid.id,
       event: "created",
-      eventDate: bid.createdDate?.toISOString() || new Date().toISOString(),
-      status: timelineStatus,
-      description: `Bid created by ${userRole?.roleName || "user"}`,
+      eventDate: createdDateIso,
+      estimatedDuration: 0,
+      durationType: "days",
+      isCompleted: true,
+      description: "Bid created",
       createdBy: data.createdBy,
     });
 
@@ -392,11 +390,22 @@ export const createBid = async (data: {
         typeof endDateValue === "string"
           ? new Date(endDateValue + "T23:59:59.000Z").toISOString()
           : new Date(endDateValue).toISOString();
+      const createdDate = bid.createdDate
+        ? new Date(bid.createdDate)
+        : new Date();
+      const endDate = new Date(endDateEvent);
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const daysBetween = Math.max(
+        0,
+        Math.floor((endDate.getTime() - createdDate.getTime()) / msPerDay),
+      );
       await createBidTimelineEvent({
         bidId: bid.id,
         event: "end date",
         eventDate: endDateEvent,
-        status: "pending",
+        estimatedDuration: daysBetween,
+        durationType: "days",
+        isCompleted: false,
         description: "Project end date",
         sortOrder: 1,
         createdBy: data.createdBy,
@@ -1326,7 +1335,9 @@ export const createBidTimelineEvent = async (data: {
   bidId: string;
   event: string;
   eventDate: string;
-  status?: string;
+  estimatedDuration: number;
+  durationType: string;
+  isCompleted?: boolean;
   description?: string;
   sortOrder?: number;
   createdBy?: string;
@@ -1337,9 +1348,11 @@ export const createBidTimelineEvent = async (data: {
       bidId: data.bidId,
       event: data.event,
       eventDate: new Date(data.eventDate),
-      status: (data.status as any) || "pending",
+      estimatedDuration: data.estimatedDuration,
+      durationType: data.durationType,
+      isCompleted: data.isCompleted ?? false,
       description: data.description,
-      sortOrder: data.sortOrder || 0,
+      sortOrder: data.sortOrder ?? 0,
       createdBy: data.createdBy,
     })
     .returning();
@@ -1351,7 +1364,9 @@ export const updateBidTimelineEvent = async (
   data: Partial<{
     event: string;
     eventDate: string;
-    status: string;
+    estimatedDuration: number;
+    durationType: string;
+    isCompleted: boolean;
     description: string;
     sortOrder: number;
   }>,
@@ -1361,7 +1376,9 @@ export const updateBidTimelineEvent = async (
     .set({
       event: data.event,
       eventDate: data.eventDate ? new Date(data.eventDate) : undefined,
-      status: data.status as any,
+      estimatedDuration: data.estimatedDuration,
+      durationType: data.durationType,
+      isCompleted: data.isCompleted,
       description: data.description,
       sortOrder: data.sortOrder,
       updatedAt: new Date(),

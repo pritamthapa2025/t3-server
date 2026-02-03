@@ -24,7 +24,6 @@ import {
   bidStatusEnum,
   bidPriorityEnum,
   bidJobTypeEnum,
-  timelineStatusEnum,
 } from "../enums/org.enums.js";
 
 const org = pgSchema("org");
@@ -470,7 +469,9 @@ export const bidTimeline = org.table(
 
     event: varchar("event", { length: 255 }).notNull(),
     eventDate: timestamp("event_date").notNull(),
-    status: timelineStatusEnum("status").notNull().default("pending"),
+    estimatedDuration: integer("estimated_duration").notNull(),
+    durationType: varchar("duration_type", { length: 10 }).notNull(), // 'days' | 'weeks' | 'months'
+    isCompleted: boolean("is_completed").default(false),
     description: text("description"),
     sortOrder: integer("sort_order").default(0),
     createdBy: uuid("created_by").references(() => users.id, {}),
@@ -481,8 +482,8 @@ export const bidTimeline = org.table(
   },
   (table) => [
     index("idx_bid_timeline_bid_id").on(table.bidId),
-    index("idx_bid_timeline_status").on(table.status),
     index("idx_bid_timeline_event_date").on(table.eventDate),
+    index("idx_bid_timeline_is_completed").on(table.isCompleted),
   ],
 );
 

@@ -49,13 +49,9 @@ const bidJobTypeEnum = z.enum(
   },
 );
 
-const timelineStatusEnum = z.enum(
-  ["completed", "pending", "in_progress", "cancelled"],
-  {
-    message:
-      "Timeline status must be one of: completed, pending, in_progress, or cancelled",
-  },
-);
+const timelineDurationTypeEnum = z.enum(["days", "weeks", "months"], {
+  message: "Duration type must be one of: days, weeks, or months",
+});
 
 // ============================
 // Main Bid Validations
@@ -973,7 +969,12 @@ export const createBidTimelineEventSchema = z.object({
       .datetime(
         "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)",
       ),
-    status: timelineStatusEnum.optional().default("pending"),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive"),
+    durationType: timelineDurationTypeEnum,
+    isCompleted: z.boolean().optional().default(false),
     description: z.string().optional(),
     sortOrder: z
       .number()
@@ -1001,7 +1002,13 @@ export const updateBidTimelineEventSchema = z.object({
         "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)",
       )
       .optional(),
-    status: timelineStatusEnum.optional(),
+    estimatedDuration: z
+      .number()
+      .int("Estimated duration must be a whole number")
+      .positive("Estimated duration must be positive")
+      .optional(),
+    durationType: timelineDurationTypeEnum.optional(),
+    isCompleted: z.boolean().optional(),
     description: z.string().optional(),
     sortOrder: z.number().int("Sort order must be a whole number").optional(),
   }),
