@@ -14,6 +14,7 @@ import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { getOrganizationById } from "./client.service.js";
 import {
   getBidFinancialBreakdown,
   getBidOperatingExpenses,
@@ -388,10 +389,12 @@ export const getJobTeamMembers = async (jobId: string) => {
     .select({
       teamMember: jobTeamMembers,
       employee: employees,
+      employeeName: users.fullName,
       position: positions,
     })
     .from(jobTeamMembers)
     .leftJoin(employees, eq(jobTeamMembers.employeeId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(positions, eq(jobTeamMembers.positionId, positions.id))
     .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
     .where(
@@ -401,7 +404,13 @@ export const getJobTeamMembers = async (jobId: string) => {
         eq(jobs.isDeleted, false),
       ),
     );
-  return members;
+  
+  return members.map(m => ({
+    ...m.teamMember,
+    employee: m.employee,
+    employeeName: m.employeeName ?? null,
+    position: m.position,
+  }));
 };
 
 export const addJobTeamMember = async (data: {
@@ -474,6 +483,7 @@ export const getJobWithAllData = async (jobId: string) => {
     timeline,
     notes,
     history,
+    clientInfo,
   ] = await Promise.all([
     getBidFinancialBreakdown(jobData.bidId, jobData.organizationId),
     getBidMaterials(jobData.bidId, jobData.organizationId),
@@ -482,6 +492,7 @@ export const getJobWithAllData = async (jobId: string) => {
     getBidTimeline(jobData.bidId),
     getBidNotes(jobData.bidId),
     getBidHistory(jobData.bidId),
+    getOrganizationById(jobData.organizationId),
   ]);
 
   // Get travel for each labor entry
@@ -512,6 +523,7 @@ export const getJobWithAllData = async (jobId: string) => {
     timeline,
     notes,
     history,
+    clientInfo: clientInfo?.organization ?? null,
   };
 };
 

@@ -3,7 +3,7 @@ import { getUserModulePermissions } from "./featurePermission.service.js";
 /**
  * UI Permissions Service
  * Handles UI element visibility and field access control for frontend
- */
+ */ 
 
 export interface UIConfig {
   visibleElements: string[];
