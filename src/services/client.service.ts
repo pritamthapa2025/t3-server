@@ -153,11 +153,28 @@ export const getClientById = async (id: string) => {
 
   if (!row) return null;
 
+  // Get primary contact
+  const [primaryContact] = await db
+    .select()
+    .from(clientContacts)
+    .where(
+      and(
+        eq(clientContacts.organizationId, id),
+        eq(clientContacts.isPrimary, true),
+        eq(clientContacts.isDeleted, false)
+      )
+    )
+    .limit(1);
+
   const { createdByName, organization, clientType } = row;
+  
   return {
     organization: {
       ...organization,
       createdByName: createdByName ?? null,
+      primaryContact: primaryContact?.fullName ?? null,
+      email: primaryContact?.email ?? organization.website ?? null,
+      phone: primaryContact?.phone ?? null,
     },
     clientType,
   };
