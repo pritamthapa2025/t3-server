@@ -4,6 +4,7 @@ import {
   getEmployees,
   getEmployeesSimple,
   getEmployeeById,
+  getInspectors,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -66,11 +67,18 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getEmployeesSimpleHandler = async (req: Request, res: Response) => {
+export const getEmployeesSimpleHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const search = req.query.search as string | undefined;
-    const positionId = req.query.positionId ? parseInt(req.query.positionId as string, 10) : undefined;
-    const roleId = req.query.roleId ? parseInt(req.query.roleId as string, 10) : undefined;
+    const positionId = req.query.positionId
+      ? parseInt(req.query.positionId as string, 10)
+      : undefined;
+    const roleId = req.query.roleId
+      ? parseInt(req.query.roleId as string, 10)
+      : undefined;
 
     // Get simplified employee list with filters (no pagination)
     const employees = await getEmployeesSimple(search, positionId, roleId);
@@ -82,6 +90,23 @@ export const getEmployeesSimpleHandler = async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.logApiError("Error fetching employees (simple)", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getInspectorsHandler = async (req: Request, res: Response) => {
+  try {
+    const data = await getInspectors();
+    logger.info("Inspectors (Executive/Manager) fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching inspectors", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -216,7 +241,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "profile-pictures"
+          "profile-pictures",
         );
         uploadedFileUrl = uploadResult.url;
       } catch (uploadError: any) {
@@ -400,7 +425,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
           userId: createdUser.id,
         },
         process.env.JWT_SECRET || "",
-        { expiresIn: "24h" }
+        { expiresIn: "24h" },
       );
 
       // Send password setup email to the new user
@@ -408,13 +433,13 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
         await sendNewUserPasswordSetupEmail(
           createdUser.email,
           fullName,
-          setupToken
+          setupToken,
         );
       } catch (emailError: any) {
         logger.logApiError(
           "Failed to send password setup email",
           emailError,
-          req
+          req,
         );
         // Note: We don't fail employee creation if email fails
       }

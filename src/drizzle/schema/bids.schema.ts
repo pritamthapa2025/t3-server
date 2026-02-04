@@ -15,7 +15,7 @@ import {
 
 // Import related tables
 import { users } from "./auth.schema.js";
-import { organizations } from "./client.schema.js";
+import { organizations, clientContacts, properties } from "./client.schema.js";
 import { employees, positions } from "./org.schema.js";
 import { inventoryItems } from "./inventory.schema.js";
 
@@ -47,6 +47,10 @@ export const bidsTable: any = org.table(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    primaryContactId: uuid("primary_contact_id").references(
+      () => clientContacts.id,
+    ),
+    propertyId: uuid("property_id").references(() => properties.id),
 
     // Project Details
     projectName: varchar("project_name", { length: 255 }).notNull(),

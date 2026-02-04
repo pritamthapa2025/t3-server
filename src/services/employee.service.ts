@@ -1,4 +1,5 @@
 import { count, eq, desc, and, or, sql, ilike, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
   employees,
@@ -12,6 +13,8 @@ import {
   timesheetApprovals,
 } from "../drizzle/schema/timesheet.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
+
+const reportsToUser = alias(users, "reports_to_user");
 
 export const getEmployees = async (offset: number, limit: number) => {
   // Get employees with all related data for table view
@@ -778,5 +781,63 @@ export const getEmployeesSimple = async (
     positionName: emp.positionName,
     status: emp.status || "available",
     isAvailable: emp.status === "available", // Boolean flag for availability
+  }));
+};
+
+/**
+ * Get all employees whose user has role "Executive" or "Manager".
+ * Returns minimal data: id, userId, userName, employeeId, department, position, reportsToName, role, status, isActive, createdAt, updatedAt.
+ */
+export const getInspectors = async () => {
+  const result = await db
+    .select({
+      id: employees.id,
+      userId: users.id,
+      userName: users.fullName,
+      employeeId: employees.employeeId,
+      departmentId: departments.id,
+      departmentName: departments.name,
+      positionId: positions.id,
+      positionName: positions.name,
+      reportsToName: reportsToUser.fullName,
+      roleName: roles.name,
+      status: employees.status,
+      isActive: users.isActive,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
+    })
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .leftJoin(reportsToUser, eq(employees.reportsTo, reportsToUser.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(roles.isDeleted, false),
+        inArray(roles.name, ["Executive", "Manager"]),
+      ),
+    )
+    .orderBy(users.fullName);
+
+  return result.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    userName: row.userName,
+    employeeId: row.employeeId,
+    department: row.departmentId
+      ? { id: row.departmentId, name: row.departmentName }
+      : null,
+    position: row.positionId
+      ? { id: row.positionId, name: row.positionName }
+      : null,
+    reportsToName: row.reportsToName ?? null,
+    role: row.roleName,
+    status: row.status ?? null,
+    isActive: row.isActive ?? null,
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
   }));
 };

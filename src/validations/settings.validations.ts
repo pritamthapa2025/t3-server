@@ -2,63 +2,43 @@ import { z } from "zod";
 
 /**
  * ============================================================================
- * COMPANY / GENERAL SETTINGS VALIDATIONS
+ * GENERAL TAB - GENERAL SETTINGS VALIDATIONS
  * ============================================================================
+ * Combines company information and announcement settings
  */
 
-export const updateCompanySettingsSchema = z.object({
+export const updateGeneralSettingsSchema = z.object({
   body: z.object({
+    // Company Information
     companyName: z.string().max(255).optional(),
     email: z.string().email().max(255).optional(),
     phone: z.string().max(50).optional(),
+
+    // Business Address
     address: z.string().optional(),
     city: z.string().max(100).optional(),
     state: z.string().max(50).optional(),
     zipCode: z.string().max(20).optional(),
-    country: z.string().max(100).optional(),
+
+    // Business Licenses & IDs
     taxId: z.string().max(50).optional(),
     licenseNumber: z.string().max(100).optional(),
-    logoUrl: z.string().max(500).optional(),
-    timeZone: z.string().max(100).optional(),
-    workWeekStart: z.string().max(20).optional(),
-    workStartTime: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    workEndTime: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    dateFormat: z.string().max(50).optional(),
-    timeFormat: z.enum(["12-hour", "24-hour"]).optional(),
+
+    // Announcement Settings
+    announcementEnabled: z.boolean().optional(),
+    announcementTitle: z.string().max(255).optional(),
+    announcementDescription: z.string().optional(),
   }),
 });
 
 /**
  * ============================================================================
- * ANNOUNCEMENT SETTINGS VALIDATIONS
- * ============================================================================
- */
-
-export const updateAnnouncementSettingsSchema = z.object({
-  body: z.object({
-    enabled: z.boolean().optional(),
-    title: z.string().max(255).optional(),
-    description: z.string().optional(),
-    backgroundColor: z.string().max(50).optional(),
-    textColor: z.string().max(50).optional(),
-  }),
-});
-
-/**
- * ============================================================================
- * LABOR RATE TEMPLATE VALIDATIONS
+ * LABOR ROLES TAB - LABOR RATE TEMPLATE VALIDATIONS
  * ============================================================================
  */
 
 export const updateLaborRateTemplateSchema = z.object({
   body: z.object({
-    defaultQuantity: z.number().int().min(1).optional(),
     defaultDays: z.number().int().min(1).optional(),
     defaultHoursPerDay: z.number().min(0).optional(),
     defaultCostRate: z.number().min(0).optional(),
@@ -68,7 +48,6 @@ export const updateLaborRateTemplateSchema = z.object({
 
 export const bulkUpdateLaborRatesSchema = z.object({
   body: z.object({
-    defaultQuantity: z.number().int().min(1).optional(),
     defaultDays: z.number().int().min(1).optional(),
     defaultHoursPerDay: z.number().min(0).optional(),
     defaultCostRate: z.number().min(0).optional(),
@@ -78,7 +57,7 @@ export const bulkUpdateLaborRatesSchema = z.object({
 
 /**
  * ============================================================================
- * VEHICLE & TRAVEL DEFAULTS VALIDATIONS
+ * VEHICLE & TRAVEL TAB - VEHICLE/TRAVEL DEFAULTS VALIDATIONS
  * ============================================================================
  */
 
@@ -95,7 +74,7 @@ export const updateVehicleTravelDefaultsSchema = z.object({
 
 /**
  * ============================================================================
- * TRAVEL ORIGIN VALIDATIONS
+ * VEHICLE & TRAVEL TAB - TRAVEL ORIGIN VALIDATIONS
  * ============================================================================
  */
 
@@ -135,7 +114,7 @@ export const updateTravelOriginSchema = z.object({
 
 /**
  * ============================================================================
- * OPERATING EXPENSE DEFAULTS VALIDATIONS
+ * OPERATING EXPENSES TAB - VALIDATIONS
  * ============================================================================
  */
 
@@ -151,175 +130,54 @@ export const updateOperatingExpenseDefaultsSchema = z.object({
 
 /**
  * ============================================================================
- * JOB SETTINGS VALIDATIONS
+ * PROPOSAL TEMPLATES TAB - PROPOSAL BASIS TEMPLATE VALIDATIONS
  * ============================================================================
  */
 
-export const updateJobSettingsSchema = z.object({
+export const createProposalBasisTemplateSchema = z.object({
   body: z.object({
-    jobNumberPrefix: z.string().max(20).optional(),
-    jobNumberStartingNumber: z.number().int().min(1).optional(),
-    defaultJobPriority: z
-      .enum(["low", "medium", "high", "critical"])
-      .optional(),
-    defaultJobStatus: z.string().max(50).optional(),
-    autoAssignFromBid: z.boolean().optional(),
-    requireApprovalBeforeStart: z.boolean().optional(),
-    notifyOnStatusChange: z.boolean().optional(),
-    notifyOnCompletion: z.boolean().optional(),
+    label: z.string().min(1).max(255),
+    template: z.string(),
+    sortOrder: z.number().int().optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+
+export const updateProposalBasisTemplateSchema = z.object({
+  body: z.object({
+    label: z.string().max(255).optional(),
+    template: z.string().optional(),
+    sortOrder: z.number().int().optional(),
+    isActive: z.boolean().optional(),
   }),
 });
 
 /**
  * ============================================================================
- * INVOICE SETTINGS VALIDATIONS
+ * PROPOSAL TEMPLATES TAB - TERMS & CONDITIONS TEMPLATE VALIDATIONS
  * ============================================================================
  */
 
-export const updateInvoiceSettingsSchema = z.object({
+export const createTermsConditionsTemplateSchema = z.object({
   body: z.object({
-    invoiceNumberPrefix: z.string().max(20).optional(),
-    invoiceNumberStartingNumber: z.number().int().min(1).optional(),
-    defaultPaymentTerms: z.string().max(50).optional(),
-    defaultPaymentTermsDays: z.number().int().min(0).optional(),
-    enableLateFees: z.boolean().optional(),
-    lateFeePercentage: z.number().min(0).max(100).optional(),
-    lateFeeGracePeriodDays: z.number().int().min(0).optional(),
-    showLineItemDetails: z.boolean().optional(),
-    showLaborBreakdown: z.boolean().optional(),
-    showMaterialsBreakdown: z.boolean().optional(),
-    defaultInvoiceNotes: z.string().optional(),
-    defaultTermsAndConditions: z.string().optional(),
-    autoSendOnCompletion: z.boolean().optional(),
-    autoRemindBeforeDue: z.boolean().optional(),
-    reminderDaysBeforeDue: z.number().int().min(0).optional(),
+    label: z.string().min(1).max(255),
+    exclusions: z.string().optional(),
+    warrantyDetails: z.string().optional(),
+    specialTerms: z.string().optional(),
+    sortOrder: z.number().int().optional(),
+    isActive: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
   }),
 });
 
-/**
- * ============================================================================
- * TAX SETTINGS VALIDATIONS
- * ============================================================================
- */
-
-export const updateTaxSettingsSchema = z.object({
+export const updateTermsConditionsTemplateSchema = z.object({
   body: z.object({
-    defaultSalesTaxRate: z.number().min(0).max(1).optional(),
-    salesTaxLabel: z.string().max(100).optional(),
-    taxIncludedInPrice: z.boolean().optional(),
-    applyTaxToLabor: z.boolean().optional(),
-    applyTaxToMaterials: z.boolean().optional(),
-    applyTaxToTravel: z.boolean().optional(),
-    allowTaxExempt: z.boolean().optional(),
-    requireTaxExemptCertificate: z.boolean().optional(),
-    taxJurisdiction: z.string().max(255).optional(),
-    taxIdNumber: z.string().max(100).optional(),
-  }),
-});
-
-/**
- * ============================================================================
- * INVENTORY SETTINGS VALIDATIONS
- * ============================================================================
- */
-
-export const updateInventorySettingsSchema = z.object({
-  body: z.object({
-    enableLowStockAlerts: z.boolean().optional(),
-    defaultLowStockThreshold: z.number().int().min(0).optional(),
-    enableAutoReorder: z.boolean().optional(),
-    defaultReorderQuantity: z.number().int().min(0).optional(),
-    defaultReorderPoint: z.number().int().min(0).optional(),
-    trackSerialNumbers: z.boolean().optional(),
-    trackLotNumbers: z.boolean().optional(),
-    trackExpirationDates: z.boolean().optional(),
-    valuationMethod: z.enum(["FIFO", "LIFO", "Average Cost"]).optional(),
-    notifyOnLowStock: z.boolean().optional(),
-    notifyOnOutOfStock: z.boolean().optional(),
-    notifyOnReorderPoint: z.boolean().optional(),
-    defaultWeightUnit: z.string().max(20).optional(),
-    defaultVolumeUnit: z.string().max(20).optional(),
-  }),
-});
-
-/**
- * ============================================================================
- * NOTIFICATION SETTINGS VALIDATIONS
- * ============================================================================
- */
-
-export const updateNotificationSettingsSchema = z.object({
-  body: z.object({
-    enableEmailNotifications: z.boolean().optional(),
-    enablePushNotifications: z.boolean().optional(),
-    enableSmsNotifications: z.boolean().optional(),
-    enableInAppNotifications: z.boolean().optional(),
-    notifyOnNewBid: z.boolean().optional(),
-    notifyOnBidApproval: z.boolean().optional(),
-    notifyOnJobAssignment: z.boolean().optional(),
-    notifyOnJobCompletion: z.boolean().optional(),
-    notifyOnInvoiceCreated: z.boolean().optional(),
-    notifyOnPaymentReceived: z.boolean().optional(),
-    notifyOnInventoryLow: z.boolean().optional(),
-    notifyOnVehicleMaintenance: z.boolean().optional(),
-    notifyOnTimesheetSubmission: z.boolean().optional(),
-    notifyOnTimesheetApproval: z.boolean().optional(),
-    enableDailyDigest: z.boolean().optional(),
-    dailyDigestTime: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    enableWeeklyDigest: z.boolean().optional(),
-    weeklyDigestDay: z.string().max(20).optional(),
-    quietHoursEnabled: z.boolean().optional(),
-    quietHoursStart: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    quietHoursEnd: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-  }),
-});
-
-/**
- * ============================================================================
- * USER NOTIFICATION PREFERENCES VALIDATIONS
- * ============================================================================
- */
-
-export const updateUserNotificationPreferencesSchema = z.object({
-  body: z.object({
-    enableEmailNotifications: z.boolean().optional(),
-    enablePushNotifications: z.boolean().optional(),
-    enableSmsNotifications: z.boolean().optional(),
-    enableInAppNotifications: z.boolean().optional(),
-    notifyOnNewBid: z.boolean().optional(),
-    notifyOnBidApproval: z.boolean().optional(),
-    notifyOnJobAssignment: z.boolean().optional(),
-    notifyOnJobCompletion: z.boolean().optional(),
-    notifyOnInvoiceCreated: z.boolean().optional(),
-    notifyOnPaymentReceived: z.boolean().optional(),
-    notifyOnInventoryLow: z.boolean().optional(),
-    notifyOnVehicleMaintenance: z.boolean().optional(),
-    notifyOnTimesheetSubmission: z.boolean().optional(),
-    notifyOnTimesheetApproval: z.boolean().optional(),
-    enableDailyDigest: z.boolean().optional(),
-    dailyDigestTime: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    enableWeeklyDigest: z.boolean().optional(),
-    weeklyDigestDay: z.string().max(20).optional(),
-    quietHoursEnabled: z.boolean().optional(),
-    quietHoursStart: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    quietHoursEnd: z
-      .string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
+    label: z.string().max(255).optional(),
+    exclusions: z.string().optional(),
+    warrantyDetails: z.string().optional(),
+    specialTerms: z.string().optional(),
+    sortOrder: z.number().int().optional(),
+    isActive: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
   }),
 });

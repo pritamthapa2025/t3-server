@@ -8,6 +8,7 @@ import {
   updateEmployeeHandler,
   deleteEmployeeHandler,
   getEmployeeKPIsHandler,
+  getInspectorsHandler,
 } from "../../controllers/EmployeeController.js";
 import {
   getEmployeeReviews,
@@ -80,11 +81,14 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(userTransformer);
 
+// Inspectors: employees whose role is Executive or Manager (full employee + user record)
+router.get("/inspector", getInspectorsHandler);
+
 router.get("/employees/kpis", getEmployeeKPIsHandler);
 router.get(
   "/employees/simple",
   validate(getEmployeesSimpleQuerySchema),
-  getEmployeesSimpleHandler
+  getEmployeesSimpleHandler,
 );
 
 router
@@ -106,7 +110,7 @@ router
       }
     },
     validate(createEmployeeSchema),
-    createEmployeeHandler
+    createEmployeeHandler,
   );
 
 router
@@ -121,29 +125,28 @@ router
 router.get(
   "/employees/:employeeId/reviews",
   validate(getReviewsByEmployeeIdSchema),
-  getEmployeeReviews
+  getEmployeeReviews,
 );
 
 // Create review for specific employee
 router.post(
   "/employees/:employeeId/reviews",
   validate(createEmployeeReviewSchema),
-  createEmployeeReview
+  createEmployeeReview,
 );
 
 // Update review for specific employee
 router.put(
   "/employees/:employeeId/reviews/:reviewId",
   validate(updateEmployeeReviewSchema),
-  updateEmployeeReview
+  updateEmployeeReview,
 );
 
 // Get employee review summary
 router.get(
   "/employees/:employeeId/reviews/summary",
   validate(getEmployeeReviewSummarySchema),
-  getEmployeeReviewSummary
+  getEmployeeReviewSummary,
 );
-
 
 export default router;

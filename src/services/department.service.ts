@@ -19,11 +19,12 @@ import {
 } from "../drizzle/schema/org.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import * as SettingsService from "./settings.service.js";
 
 export const getDepartments = async (
   offset: number,
   limit: number,
-  search?: string
+  search?: string,
 ) => {
   let whereConditions: any[] = [];
 
@@ -32,8 +33,8 @@ export const getDepartments = async (
     whereConditions.push(
       or(
         ilike(departments.name, `%${search}%`),
-        ilike(departments.description, `%${search}%`)
-      )!
+        ilike(departments.description, `%${search}%`),
+      )!,
     );
   }
 
@@ -59,12 +60,12 @@ export const getDepartments = async (
   const startOfMonth = new Date(
     currentDate.getFullYear(),
     currentDate.getMonth(),
-    1
+    1,
   );
   const endOfMonth = new Date(
     currentDate.getFullYear(),
     currentDate.getMonth() + 1,
-    0
+    0,
   );
 
   // Process each department to get comprehensive metrics
@@ -97,8 +98,8 @@ export const getDepartments = async (
         .where(
           and(
             eq(employees.departmentId, dept.id),
-            eq(employees.isDeleted, false)
-          )
+            eq(employees.isDeleted, false),
+          ),
         );
 
       // Get all positions in this department with pay information
@@ -116,22 +117,22 @@ export const getDepartments = async (
         .where(
           and(
             eq(positions.departmentId, dept.id),
-            or(isNull(positions.isDeleted), eq(positions.isDeleted, false))
-          )
+            or(isNull(positions.isDeleted), eq(positions.isDeleted, false)),
+          ),
         );
 
       // Calculate metrics
       // Filter to only active employees (matching the KPI logic)
       const activeEmployees = deptEmployees.filter(
-        (e) => e.user?.isActive === true
+        (e) => e.user?.isActive === true,
       );
       // Total should only count active employees (not inactive users)
       const totalPeople = activeEmployees.length;
       const inFieldCount = activeEmployees.filter(
-        (e) => e.employee.status === "in_field"
+        (e) => e.employee.status === "in_field",
       ).length;
       const availableCount = activeEmployees.filter(
-        (e) => e.employee.status === "available"
+        (e) => e.employee.status === "available",
       ).length;
 
       // Role breakdown (only for active employees)
@@ -176,7 +177,7 @@ export const getDepartments = async (
           (e) =>
             e.position?.name?.toLowerCase().includes("manager") ||
             e.position?.name?.toLowerCase().includes("director") ||
-            e.position?.name?.toLowerCase().includes("lead")
+            e.position?.name?.toLowerCase().includes("lead"),
         ) || activeEmployees[0];
 
       // Calculate utilisation (based on timesheets this month)
@@ -195,8 +196,8 @@ export const getDepartments = async (
               or(...employeeIds.map((id) => eq(timesheets.employeeId, id)))!,
               gte(timesheets.sheetDate, startOfMonthStr),
               lte(timesheets.sheetDate, endOfMonthStr),
-              sql`${timesheets.status} IN ('submitted', 'approved')`
-            )
+              sql`${timesheets.status} IN ('submitted', 'approved')`,
+            ),
           );
 
         totalHours = Number(timesheetData[0]?.totalHours || 0);
@@ -210,10 +211,10 @@ export const getDepartments = async (
       const filledPositionIds = new Set(
         activeEmployees
           .map((e) => e.employee.positionId)
-          .filter((id) => id !== null)
+          .filter((id) => id !== null),
       );
       const openRoles = deptPositions.filter(
-        (p) => !filledPositionIds.has(p.id)
+        (p) => !filledPositionIds.has(p.id),
       ).length;
 
       // Pay structure (only for active employees)
@@ -257,9 +258,9 @@ export const getDepartments = async (
         const minSalary = Math.min(...salaryRates);
         const maxSalary = Math.max(...salaryRates);
         payRange = `$${Math.round(minHourly)} - $${Math.round(
-          maxHourly
+          maxHourly,
         )}/hr or $${Math.round(minSalary / 1000)}k - $${Math.round(
-          maxSalary / 1000
+          maxSalary / 1000,
         )}k/yr`;
         payType = "Mixed pay types";
         const avgHourly =
@@ -267,7 +268,7 @@ export const getDepartments = async (
         const avgSalary =
           salaryRates.reduce((a, b) => a + b, 0) / salaryRates.length;
         averageYearlyPay = `$${Math.round(
-          (avgHourly * 2080 + avgSalary) / 2 / 1000
+          (avgHourly * 2080 + avgSalary) / 2 / 1000,
         )}k/yr`;
       } else if (hourlyRates.length > 0) {
         const minRate = Math.min(...hourlyRates);
@@ -281,7 +282,7 @@ export const getDepartments = async (
         const minRate = Math.min(...salaryRates);
         const maxRate = Math.max(...salaryRates);
         payRange = `$${Math.round(minRate / 1000)}k - $${Math.round(
-          maxRate / 1000
+          maxRate / 1000,
         )}k/yr`;
         payType = "Salary";
         const avgRate =
@@ -292,7 +293,7 @@ export const getDepartments = async (
       // Get position pay details
       deptPositions.forEach((pos) => {
         const posEmployees = deptEmployees.filter(
-          (e) => e.employee.positionId === pos.id
+          (e) => e.employee.positionId === pos.id,
         );
         if (posEmployees.length > 0 && posEmployees[0]) {
           const firstEmp = posEmployees[0].employee;
@@ -312,10 +313,10 @@ export const getDepartments = async (
 
       // Create detailed pay range groups (like in getDepartmentById)
       const hourlyPositions = deptPositions.filter(
-        (pos) => pos.payType?.toLowerCase() === "hourly"
+        (pos) => pos.payType?.toLowerCase() === "hourly",
       );
       const salaryPositions = deptPositions.filter(
-        (pos) => pos.payType?.toLowerCase() === "salary"
+        (pos) => pos.payType?.toLowerCase() === "salary",
       );
 
       const payRangeGroups = [];
@@ -334,7 +335,7 @@ export const getDepartments = async (
               minSalary === maxSalary
                 ? `$${Math.round(minSalary).toLocaleString()}/yr`
                 : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(
-                    maxSalary
+                    maxSalary,
                   ).toLocaleString()}/yr`,
             type: "salary",
             positionCount: salaryPositions.length,
@@ -342,7 +343,7 @@ export const getDepartments = async (
               id: pos.id,
               name: pos.name,
               payRate: `$${Math.round(
-                Number(pos.payRate)
+                Number(pos.payRate),
               ).toLocaleString()}/yr`,
               description: pos.description || "",
             })),
@@ -425,7 +426,7 @@ export const getDepartments = async (
           operatingConditions: "Business Hours", // Default - can be enhanced
         },
       };
-    })
+    }),
   );
 
   const totalCount = total[0]?.count ?? 0;
@@ -502,7 +503,7 @@ export const getDepartmentById = async (id: number) => {
       .leftJoin(users, eq(employees.userId, users.id))
       .leftJoin(positions, eq(employees.positionId, positions.id))
       .where(
-        and(eq(employees.departmentId, id), eq(employees.isDeleted, false))
+        and(eq(employees.departmentId, id), eq(employees.isDeleted, false)),
       ),
 
     // Get all positions in this department with pay information
@@ -520,8 +521,8 @@ export const getDepartmentById = async (id: number) => {
       .where(
         and(
           eq(positions.departmentId, id),
-          or(isNull(positions.isDeleted), eq(positions.isDeleted, false))
-        )
+          or(isNull(positions.isDeleted), eq(positions.isDeleted, false)),
+        ),
       ),
 
     // Get team lead directly from the leadId field
@@ -540,7 +541,7 @@ export const getDepartmentById = async (id: number) => {
 
   // Filter to only active employees (matching the KPI logic)
   const activeEmployees = deptEmployees.filter(
-    (e) => e.user?.isActive === true
+    (e) => e.user?.isActive === true,
   );
 
   // Get timesheet data for utilisation calculation (rolling 30 days)
@@ -561,7 +562,7 @@ export const getDepartmentById = async (id: number) => {
           AND t.status IN ('submitted', 'approved')
           AND e.is_deleted = false
           AND u.is_active = true
-      `)
+      `),
     );
     timesheetData = result;
   }
@@ -569,13 +570,13 @@ export const getDepartmentById = async (id: number) => {
   // Calculate metrics (only for active employees)
   const totalPeople = activeEmployees.length;
   const inFieldCount = activeEmployees.filter(
-    (e) => e.employee.status === "in_field"
+    (e) => e.employee.status === "in_field",
   ).length;
   const availableCount = activeEmployees.filter(
-    (e) => e.employee.status === "available"
+    (e) => e.employee.status === "available",
   ).length;
   const suspendedCount = activeEmployees.filter(
-    (e) => e.employee.status === "suspended"
+    (e) => e.employee.status === "suspended",
   ).length;
 
   // This is no longer needed since we fetch team lead directly from leadId
@@ -603,10 +604,10 @@ export const getDepartmentById = async (id: number) => {
 
   // Open roles (positions without employees)
   const filledPositionIds = new Set(
-    deptEmployees.map((e) => e.employee.positionId).filter((id) => id !== null)
+    deptEmployees.map((e) => e.employee.positionId).filter((id) => id !== null),
   );
   const openRoles = deptPositions.filter(
-    (p) => !filledPositionIds.has(p.id)
+    (p) => !filledPositionIds.has(p.id),
   ).length;
 
   // Pay structure - get all positions with their pay details
@@ -659,10 +660,10 @@ export const getDepartmentById = async (id: number) => {
 
   // Group positions by pay type and create ranges
   const hourlyPositions = deptPositions.filter(
-    (pos) => pos.payType?.toLowerCase() === "hourly"
+    (pos) => pos.payType?.toLowerCase() === "hourly",
   );
   const salaryPositions = deptPositions.filter(
-    (pos) => pos.payType?.toLowerCase() === "salary"
+    (pos) => pos.payType?.toLowerCase() === "salary",
   );
 
   const payRangeGroups = [];
@@ -681,7 +682,7 @@ export const getDepartmentById = async (id: number) => {
           minSalary === maxSalary
             ? `$${Math.round(minSalary).toLocaleString()}/yr`
             : `$${Math.round(minSalary).toLocaleString()} - $${Math.round(
-                maxSalary
+                maxSalary,
               ).toLocaleString()}/yr`,
         type: "salary",
         positionCount: salaryPositions.length,
@@ -835,8 +836,18 @@ export const createDepartment = async (data: {
         isDeleted: false,
       }));
 
-      // This will throw an error if it fails, causing the entire transaction to rollback
-      await tx.insert(positions).values(positionsToCreate);
+      const createdPositions = await tx
+        .insert(positions)
+        .values(positionsToCreate)
+        .returning();
+
+      for (const pos of createdPositions) {
+        await SettingsService.createLaborRateTemplateForPosition(
+          pos.id,
+          undefined,
+          tx as any,
+        );
+      }
     }
 
     return department;
@@ -862,7 +873,7 @@ export const updateDepartment = async (
       payRate: number;
       notes?: string;
     }>;
-  }
+  },
 ) => {
   // Use a database transaction to ensure atomicity
   return await db.transaction(async (tx) => {
@@ -900,18 +911,18 @@ export const updateDepartment = async (
         .select()
         .from(positions)
         .where(
-          and(eq(positions.departmentId, id), eq(positions.isDeleted, false))
+          and(eq(positions.departmentId, id), eq(positions.isDeleted, false)),
         );
 
       const existingPositionIds = new Set(
         data.positionPayBands
           .map((band) => band.id)
-          .filter((id): id is number => id !== undefined)
+          .filter((id): id is number => id !== undefined),
       );
 
       // Soft delete positions that are no longer in the list
       const positionsToDelete = existingPositions.filter(
-        (pos) => !existingPositionIds.has(pos.id)
+        (pos) => !existingPositionIds.has(pos.id),
       );
       if (positionsToDelete.length > 0) {
         await tx
@@ -920,8 +931,8 @@ export const updateDepartment = async (
           .where(
             inArray(
               positions.id,
-              positionsToDelete.map((p) => p.id)
-            )
+              positionsToDelete.map((p) => p.id),
+            ),
           );
       }
 
@@ -941,16 +952,26 @@ export const updateDepartment = async (
             .where(eq(positions.id, band.id));
         } else {
           // Create new position
-          await tx.insert(positions).values({
-            name: band.positionTitle,
-            departmentId: id,
-            description: band.notes || null,
-            payRate: String(band.payRate),
-            payType: band.payType,
-            currency: "USD",
-            isActive: true,
-            isDeleted: false,
-          });
+          const [newPosition] = await tx
+            .insert(positions)
+            .values({
+              name: band.positionTitle,
+              departmentId: id,
+              description: band.notes || null,
+              payRate: String(band.payRate),
+              payType: band.payType,
+              currency: "USD",
+              isActive: true,
+              isDeleted: false,
+            })
+            .returning();
+          if (newPosition) {
+            await SettingsService.createLaborRateTemplateForPosition(
+              newPosition.id,
+              undefined,
+              tx as any,
+            );
+          }
         }
       }
     }
@@ -1030,8 +1051,8 @@ export const getDepartmentKPIs = async () => {
           eq(employees.isDeleted, false),
           eq(users.isActive, true),
           isNotNull(employees.departmentId), // Only count employees with departments
-          eq(departments.isDeleted, false) // Only count employees in non-deleted departments
-        )
+          eq(departments.isDeleted, false), // Only count employees in non-deleted departments
+        ),
       ),
 
     // 3. Open roles (positions without assigned employees)
@@ -1046,7 +1067,7 @@ export const getDepartmentKPIs = async () => {
             WHERE e.position_id = p.id
               AND e.is_deleted = false
           )
-      `)
+      `),
     ),
 
     // 4. Average utilisation (rolling 30 days)
@@ -1068,7 +1089,7 @@ export const getDepartmentKPIs = async () => {
           AND t.status IN ('submitted', 'approved')
           AND e.is_deleted = false
           AND u.is_active = true
-      `)
+      `),
     ),
   ]);
 
@@ -1081,7 +1102,7 @@ export const getDepartmentKPIs = async () => {
   // Expected hours = active employees * 8 hours/day * 30 days = 240 hours per employee
   const totalHours = Number(utilisationData.rows?.[0]?.total_hours || 0);
   const activeEmployees = Number(
-    utilisationData.rows?.[0]?.active_employees || 0
+    utilisationData.rows?.[0]?.active_employees || 0,
   );
   const expectedHours = activeEmployees * 240; // 240 hours per 30 days (8 hrs/day * 30 days)
   const avgUtilisation =

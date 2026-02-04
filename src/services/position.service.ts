@@ -1,11 +1,12 @@
 import { count, eq, and, or, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { positions } from "../drizzle/schema/org.schema.js";
+import * as SettingsService from "./settings.service.js";
 
 export const getPositions = async (
   offset: number,
   limit: number,
-  search?: string
+  search?: string,
 ) => {
   let whereConditions: any[] = [];
 
@@ -14,8 +15,8 @@ export const getPositions = async (
     whereConditions.push(
       or(
         ilike(positions.name, `%${search}%`),
-        ilike(positions.description, `%${search}%`)
-      )!
+        ilike(positions.description, `%${search}%`),
+      )!,
     );
   }
 
@@ -90,6 +91,9 @@ export const createPosition = async (data: {
       isDeleted: false,
     })
     .returning();
+  if (position) {
+    await SettingsService.createLaborRateTemplateForPosition(position.id);
+  }
   return position;
 };
 
@@ -105,7 +109,7 @@ export const updatePosition = async (
     notes?: string | null;
     isActive?: boolean;
     sortOrder?: number | null;
-  }
+  },
 ) => {
   const updateData: any = {
     updatedAt: new Date(),
@@ -152,8 +156,8 @@ export const getPositionsByDepartment = async (departmentId: number) => {
       .where(
         and(
           eq(positions.departmentId, departmentId),
-          eq(positions.isDeleted, false)
-        )
+          eq(positions.isDeleted, false),
+        ),
       )
       .orderBy(positions.name);
 

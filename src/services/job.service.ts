@@ -18,6 +18,7 @@ import { users } from "../drizzle/schema/auth.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { getOrganizationById } from "./client.service.js";
 import {
+  getBidById,
   getBidFinancialBreakdown,
   getBidOperatingExpenses,
   getBidMaterials,
@@ -164,13 +165,21 @@ export const getJobById = async (id: string) => {
     .leftJoin(users, eq(jobs.createdBy, users.id))
     .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)));
   if (!result) return null;
-  // Return job with bid priority and name instead of job priority
+
+  // Get bid with primaryContact and property (minimal data)
+  const bidWithContactAndProperty = await getBidById(result.bid.id);
+  const primaryContact = bidWithContactAndProperty?.primaryContact ?? null;
+  const property = bidWithContactAndProperty?.property ?? null;
+
+  // Return job with bid priority and name, plus primaryContact and property from bid
   return {
     ...result.jobs,
     priority: result.bid.priority,
     name: result.bid.projectName, // Derive name from bid.projectName
     organizationId: result.bid.organizationId,
     createdByName: result.createdByName || null,
+    ...(primaryContact && { primaryContact }),
+    ...(property && { property }),
   };
 };
 
@@ -548,7 +557,7 @@ export const getJobWithAllData = async (jobId: string) => {
     .from(bidsTable)
     .where(eq(bidsTable.id, jobData.bidId))
     .limit(1);
-  
+
   // Get property info if available
   let property = null;
   if (bid?.propertyId) {
@@ -566,31 +575,35 @@ export const getJobWithAllData = async (jobId: string) => {
       priority: bid?.priority, // Use bid priority instead of job priority
       name: bid?.projectName, // Derive name from bid.projectName
       organizationId: jobData.organizationId,
-      bid: bid ? {
-        id: bid.id,
-        bidNumber: bid.bidNumber,
-        title: bid.title,
-        projectName: bid.projectName,
-        priority: bid.priority,
-        propertyId: bid.propertyId,
-        siteAddress: bid.siteAddress,
-        buildingSuiteNumber: bid.buildingSuiteNumber,
-        scopeOfWork: bid.scopeOfWork,
-        specialRequirements: bid.specialRequirements,
-        paymentTerms: bid.paymentTerms,
-        warrantyPeriod: bid.warrantyPeriod,
-        warrantyPeriodLabor: bid.warrantyPeriodLabor,
-        warrantyDetails: bid.warrantyDetails,
-        exclusions: bid.exclusions,
-        proposalBasis: bid.proposalBasis,
-        expectedStartDate: bid.expectedStartDate,
-        expectedCompletionDate: bid.expectedCompletionDate,
-      } : undefined,
-      property: property ? {
-        id: property.id,
-        name: property.propertyName,
-        address: property.addressLine1,
-      } : undefined,
+      bid: bid
+        ? {
+            id: bid.id,
+            bidNumber: bid.bidNumber,
+            title: bid.title,
+            projectName: bid.projectName,
+            priority: bid.priority,
+            propertyId: bid.propertyId,
+            siteAddress: bid.siteAddress,
+            buildingSuiteNumber: bid.buildingSuiteNumber,
+            scopeOfWork: bid.scopeOfWork,
+            specialRequirements: bid.specialRequirements,
+            paymentTerms: bid.paymentTerms,
+            warrantyPeriod: bid.warrantyPeriod,
+            warrantyPeriodLabor: bid.warrantyPeriodLabor,
+            warrantyDetails: bid.warrantyDetails,
+            exclusions: bid.exclusions,
+            proposalBasis: bid.proposalBasis,
+            expectedStartDate: bid.expectedStartDate,
+            expectedCompletionDate: bid.expectedCompletionDate,
+          }
+        : undefined,
+      property: property
+        ? {
+            id: property.id,
+            name: property.propertyName,
+            address: property.addressLine1,
+          }
+        : undefined,
     },
     teamMembers,
     financialBreakdown,

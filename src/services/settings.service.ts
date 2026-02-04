@@ -1,34 +1,29 @@
 import { db } from "../config/db.js";
 import {
-  companySettings,
-  announcementSettings,
+  generalSettings,
   laborRateTemplates,
   vehicleTravelDefaults,
   travelOrigins,
   operatingExpenseDefaults,
-  jobSettings,
-  invoiceSettings,
-  taxSettings,
-  inventorySettings,
-  notificationSettings,
-  userNotificationPreferences,
+  proposalBasisTemplates,
+  termsConditionsTemplates,
 } from "../drizzle/schema/settings.schema.js";
 import { positions } from "../drizzle/schema/org.schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 
 /**
  * ============================================================================
- * COMPANY / GENERAL SETTINGS
+ * GENERAL TAB - GENERAL SETTINGS (Company Info + Announcements)
  * ============================================================================
  */
 
-export const getCompanySettings = async () => {
-  const [settings] = await db.select().from(companySettings).limit(1);
+export const getGeneralSettings = async () => {
+  const [settings] = await db.select().from(generalSettings).limit(1);
 
   // If no settings exist, create default
   if (!settings) {
     const [newSettings] = await db
-      .insert(companySettings)
+      .insert(generalSettings)
       .values({})
       .returning();
     return newSettings;
@@ -37,18 +32,18 @@ export const getCompanySettings = async () => {
   return settings;
 };
 
-export const updateCompanySettings = async (data: any, userId?: string) => {
-  const existing = await getCompanySettings();
-  if (!existing) throw new Error("Company settings not found");
+export const updateGeneralSettings = async (data: any, userId?: string) => {
+  const existing = await getGeneralSettings();
+  if (!existing) throw new Error("General settings not found");
 
   const [updated] = await db
-    .update(companySettings)
+    .update(generalSettings)
     .set({
       ...data,
       updatedBy: userId,
       updatedAt: new Date(),
     })
-    .where(eq(companySettings.id, existing.id))
+    .where(eq(generalSettings.id, existing.id))
     .returning();
 
   return updated;
@@ -56,48 +51,7 @@ export const updateCompanySettings = async (data: any, userId?: string) => {
 
 /**
  * ============================================================================
- * ANNOUNCEMENT SETTINGS
- * ============================================================================
- */
-
-export const getAnnouncementSettings = async () => {
-  const [settings] = await db.select().from(announcementSettings).limit(1);
-
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(announcementSettings)
-      .values({})
-      .returning();
-    return newSettings;
-  }
-
-  return settings;
-};
-
-export const updateAnnouncementSettings = async (
-  data: any,
-  userId?: string,
-) => {
-  const existing = await getAnnouncementSettings();
-  if (!existing) throw new Error("Announcement settings not found");
-
-  const [updated] = await db
-    .update(announcementSettings)
-    .set({
-      ...data,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(announcementSettings.id, existing.id))
-    .returning();
-
-  return updated;
-};
-
-/**
- * ============================================================================
- * LABOR RATE TEMPLATES
+ * LABOR ROLES TAB - LABOR RATE TEMPLATES
  * ============================================================================
  */
 
@@ -107,8 +61,7 @@ export const getLaborRates = async () => {
     .select({
       id: laborRateTemplates.id,
       positionId: laborRateTemplates.positionId,
-      positionName: positions.name,
-      defaultQuantity: laborRateTemplates.defaultQuantity,
+      position: positions.name, // Position name as string (matches frontend)
       defaultDays: laborRateTemplates.defaultDays,
       defaultHoursPerDay: laborRateTemplates.defaultHoursPerDay,
       defaultCostRate: laborRateTemplates.defaultCostRate,
@@ -131,6 +84,91 @@ export const getLaborRateByPosition = async (positionId: number) => {
     .limit(1);
 
   return rate || null;
+};
+
+/** Get a labor rate template by its primary key (uuid). */
+export const getLaborRateById = async (id: string) => {
+  const [rate] = await db
+    .select({
+      id: laborRateTemplates.id,
+      positionId: laborRateTemplates.positionId,
+      position: positions.name,
+      defaultDays: laborRateTemplates.defaultDays,
+      defaultHoursPerDay: laborRateTemplates.defaultHoursPerDay,
+      defaultCostRate: laborRateTemplates.defaultCostRate,
+      defaultBillableRate: laborRateTemplates.defaultBillableRate,
+      updatedBy: laborRateTemplates.updatedBy,
+      createdAt: laborRateTemplates.createdAt,
+      updatedAt: laborRateTemplates.updatedAt,
+    })
+    .from(laborRateTemplates)
+    .leftJoin(positions, eq(laborRateTemplates.positionId, positions.id))
+    .where(eq(laborRateTemplates.id, id))
+    .limit(1);
+
+  return rate || null;
+};
+
+/** Update a labor_rate_templates record by id. Only updates existing record. */
+export const updateLaborRate = async (
+  id: string,
+  data: {
+    defaultDays?: number;
+    defaultHoursPerDay?: string | number;
+    defaultCostRate?: string | number;
+    defaultBillableRate?: string | number;
+  },
+  userId?: string,
+) => {
+  const setPayload: Record<string, unknown> = {
+    updatedBy: userId,
+    updatedAt: new Date(),
+  };
+  if (data.defaultDays !== undefined) setPayload.defaultDays = data.defaultDays;
+  if (data.defaultHoursPerDay !== undefined)
+    setPayload.defaultHoursPerDay = String(data.defaultHoursPerDay);
+  if (data.defaultCostRate !== undefined)
+    setPayload.defaultCostRate = String(data.defaultCostRate);
+  if (data.defaultBillableRate !== undefined)
+    setPayload.defaultBillableRate = String(data.defaultBillableRate);
+
+  const [updated] = await db
+    .update(laborRateTemplates)
+    .set(setPayload as typeof laborRateTemplates.$inferInsert)
+    .where(eq(laborRateTemplates.id, id))
+    .returning();
+
+  if (!updated) return null;
+  return await getLaborRateById(id);
+};
+
+/** Delete a labor_rate_templates record by id. Returns true if deleted, false if not found. */
+export const deleteLaborRate = async (id: string) => {
+  const [deleted] = await db
+    .delete(laborRateTemplates)
+    .where(eq(laborRateTemplates.id, id))
+    .returning({ id: laborRateTemplates.id });
+  return deleted != null;
+};
+
+/**
+ * Create a labor rate template for a newly created position.
+ * Called automatically when a position is created (position API or department API).
+ * Uses schema defaults for defaultDays, defaultHoursPerDay, defaultCostRate, defaultBillableRate.
+ */
+export const createLaborRateTemplateForPosition = async (
+  positionId: number,
+  userId?: string,
+  client: typeof db = db,
+) => {
+  const [created] = await client
+    .insert(laborRateTemplates)
+    .values({
+      positionId,
+      updatedBy: userId,
+    })
+    .returning();
+  return created;
 };
 
 export const upsertLaborRate = async (
@@ -167,7 +205,7 @@ export const upsertLaborRate = async (
 };
 
 export const bulkApplyLaborRates = async (data: any, userId?: string) => {
-  // Get all positions
+  // Get all active positions
   const allPositions = await db
     .select()
     .from(positions)
@@ -187,7 +225,7 @@ export const bulkApplyLaborRates = async (data: any, userId?: string) => {
 
 /**
  * ============================================================================
- * VEHICLE & TRAVEL DEFAULTS
+ * VEHICLE & TRAVEL TAB - VEHICLE/TRAVEL DEFAULTS
  * ============================================================================
  */
 
@@ -211,7 +249,7 @@ export const updateVehicleTravelDefaults = async (
   userId?: string,
 ) => {
   const existing = await getVehicleTravelDefaults();
-  if (!existing) throw new Error("Vehicle travel defaults not found");
+  if (!existing) throw new Error("Vehicle/travel defaults not found");
 
   const [updated] = await db
     .update(vehicleTravelDefaults)
@@ -228,7 +266,7 @@ export const updateVehicleTravelDefaults = async (
 
 /**
  * ============================================================================
- * TRAVEL ORIGINS
+ * VEHICLE & TRAVEL TAB - TRAVEL ORIGINS
  * ============================================================================
  */
 
@@ -251,8 +289,8 @@ export const getTravelOrigins = async (params?: {
   return {
     data: origins,
     total: origins.length,
-    page: params?.page || 1,
-    limit: params?.limit || origins.length,
+    page: params?.page ?? 1,
+    limit: params?.limit ?? origins.length,
   };
 };
 
@@ -299,11 +337,12 @@ export const updateTravelOrigin = async (
   let fullAddress;
   if (data.addressLine1 || data.city || data.state || data.zipCode) {
     const existing = await getTravelOriginById(id);
+    if (!existing) throw new Error("Travel origin not found");
     fullAddress = [
-      data.addressLine1 || existing?.addressLine1,
-      data.addressLine2 || existing?.addressLine2,
-      `${data.city || existing?.city}, ${data.state || existing?.state} ${data.zipCode || existing?.zipCode}`,
-      data.country || existing?.country || "USA",
+      data.addressLine1 || existing.addressLine1,
+      data.addressLine2 || existing.addressLine2,
+      `${data.city || existing.city}, ${data.state || existing.state} ${data.zipCode || existing.zipCode}`,
+      data.country || existing.country || "USA",
     ]
       .filter(Boolean)
       .join(", ");
@@ -354,7 +393,7 @@ export const setDefaultTravelOrigin = async (id: string) => {
 
 /**
  * ============================================================================
- * OPERATING EXPENSE DEFAULTS (Financial)
+ * OPERATING EXPENSES TAB
  * ============================================================================
  */
 
@@ -395,229 +434,177 @@ export const updateOperatingExpenseDefaults = async (
 
 /**
  * ============================================================================
- * JOB SETTINGS
+ * PROPOSAL TEMPLATES TAB - PROPOSAL BASIS TEMPLATES
  * ============================================================================
  */
 
-export const getJobSettings = async () => {
-  const [settings] = await db.select().from(jobSettings).limit(1);
+export const getProposalBasisTemplates = async () => {
+  const templates = await db
+    .select()
+    .from(proposalBasisTemplates)
+    .where(eq(proposalBasisTemplates.isDeleted, false))
+    .orderBy(
+      asc(proposalBasisTemplates.sortOrder),
+      asc(proposalBasisTemplates.label),
+    );
 
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db.insert(jobSettings).values({}).returning();
-    return newSettings;
-  }
-
-  return settings;
+  return templates;
 };
 
-export const updateJobSettings = async (data: any, userId?: string) => {
-  const existing = await getJobSettings();
-  if (!existing) throw new Error("Job settings not found");
+export const getProposalBasisTemplateById = async (id: string) => {
+  const [template] = await db
+    .select()
+    .from(proposalBasisTemplates)
+    .where(
+      and(
+        eq(proposalBasisTemplates.id, id),
+        eq(proposalBasisTemplates.isDeleted, false),
+      ),
+    )
+    .limit(1);
 
-  const [updated] = await db
-    .update(jobSettings)
-    .set({
-      ...data,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(jobSettings.id, existing.id))
-    .returning();
-
-  return updated;
+  return template || null;
 };
 
-/**
- * ============================================================================
- * INVOICE SETTINGS
- * ============================================================================
- */
-
-export const getInvoiceSettings = async () => {
-  const [settings] = await db.select().from(invoiceSettings).limit(1);
-
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(invoiceSettings)
-      .values({})
-      .returning();
-    return newSettings;
-  }
-
-  return settings;
-};
-
-export const updateInvoiceSettings = async (data: any, userId?: string) => {
-  const existing = await getInvoiceSettings();
-  if (!existing) throw new Error("Invoice settings not found");
-
-  const [updated] = await db
-    .update(invoiceSettings)
-    .set({
-      ...data,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(invoiceSettings.id, existing.id))
-    .returning();
-
-  return updated;
-};
-
-/**
- * ============================================================================
- * TAX SETTINGS
- * ============================================================================
- */
-
-export const getTaxSettings = async () => {
-  const [settings] = await db.select().from(taxSettings).limit(1);
-
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db.insert(taxSettings).values({}).returning();
-    return newSettings;
-  }
-
-  return settings;
-};
-
-export const updateTaxSettings = async (data: any, userId?: string) => {
-  const existing = await getTaxSettings();
-  if (!existing) throw new Error("Tax settings not found");
-
-  const [updated] = await db
-    .update(taxSettings)
-    .set({
-      ...data,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(taxSettings.id, existing.id))
-    .returning();
-
-  return updated;
-};
-
-/**
- * ============================================================================
- * INVENTORY SETTINGS
- * ============================================================================
- */
-
-export const getInventorySettings = async () => {
-  const [settings] = await db.select().from(inventorySettings).limit(1);
-
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(inventorySettings)
-      .values({})
-      .returning();
-    return newSettings;
-  }
-
-  return settings;
-};
-
-export const updateInventorySettings = async (data: any, userId?: string) => {
-  const existing = await getInventorySettings();
-  if (!existing) throw new Error("Inventory settings not found");
-
-  const [updated] = await db
-    .update(inventorySettings)
-    .set({
-      ...data,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    })
-    .where(eq(inventorySettings.id, existing.id))
-    .returning();
-
-  return updated;
-};
-
-/**
- * ============================================================================
- * NOTIFICATION SETTINGS (System-wide)
- * ============================================================================
- */
-
-export const getNotificationSettings = async () => {
-  const [settings] = await db.select().from(notificationSettings).limit(1);
-
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(notificationSettings)
-      .values({})
-      .returning();
-    return newSettings;
-  }
-
-  return settings;
-};
-
-export const updateNotificationSettings = async (
+export const createProposalBasisTemplate = async (
   data: any,
   userId?: string,
 ) => {
-  const existing = await getNotificationSettings();
-  if (!existing) throw new Error("Notification settings not found");
+  const [created] = await db
+    .insert(proposalBasisTemplates)
+    .values({
+      ...data,
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning();
 
+  return created;
+};
+
+export const updateProposalBasisTemplate = async (
+  id: string,
+  data: any,
+  userId?: string,
+) => {
   const [updated] = await db
-    .update(notificationSettings)
+    .update(proposalBasisTemplates)
     .set({
       ...data,
       updatedBy: userId,
       updatedAt: new Date(),
     })
-    .where(eq(notificationSettings.id, existing.id))
+    .where(eq(proposalBasisTemplates.id, id))
     .returning();
 
   return updated;
 };
 
+export const deleteProposalBasisTemplate = async (id: string) => {
+  await db
+    .update(proposalBasisTemplates)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(proposalBasisTemplates.id, id));
+
+  return { success: true };
+};
+
 /**
  * ============================================================================
- * USER NOTIFICATION PREFERENCES (Per-user)
+ * PROPOSAL TEMPLATES TAB - TERMS & CONDITIONS TEMPLATES
  * ============================================================================
  */
 
-export const getUserNotificationPreferences = async (userId: string) => {
-  const [preferences] = await db
+export const getTermsConditionsTemplates = async () => {
+  const templates = await db
     .select()
-    .from(userNotificationPreferences)
-    .where(eq(userNotificationPreferences.userId, userId))
-    .limit(1);
+    .from(termsConditionsTemplates)
+    .where(eq(termsConditionsTemplates.isDeleted, false))
+    .orderBy(
+      desc(termsConditionsTemplates.isDefault),
+      asc(termsConditionsTemplates.sortOrder),
+      asc(termsConditionsTemplates.label),
+    );
 
-  // If no preferences exist, create default (inherits from system settings)
-  if (!preferences) {
-    const [newPreferences] = await db
-      .insert(userNotificationPreferences)
-      .values({ userId })
-      .returning();
-    return newPreferences;
-  }
-
-  return preferences;
+  return templates;
 };
 
-export const updateUserNotificationPreferences = async (
-  userId: string,
-  data: any,
-) => {
-  const _existing = await getUserNotificationPreferences(userId);
+export const getTermsConditionsTemplateById = async (id: string) => {
+  const [template] = await db
+    .select()
+    .from(termsConditionsTemplates)
+    .where(
+      and(
+        eq(termsConditionsTemplates.id, id),
+        eq(termsConditionsTemplates.isDeleted, false),
+      ),
+    )
+    .limit(1);
 
+  return template || null;
+};
+
+export const createTermsConditionsTemplate = async (
+  data: any,
+  userId?: string,
+) => {
+  const [created] = await db
+    .insert(termsConditionsTemplates)
+    .values({
+      ...data,
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning();
+
+  return created;
+};
+
+export const updateTermsConditionsTemplate = async (
+  id: string,
+  data: any,
+  userId?: string,
+) => {
   const [updated] = await db
-    .update(userNotificationPreferences)
+    .update(termsConditionsTemplates)
     .set({
       ...data,
+      updatedBy: userId,
       updatedAt: new Date(),
     })
-    .where(eq(userNotificationPreferences.userId, userId))
+    .where(eq(termsConditionsTemplates.id, id))
+    .returning();
+
+  return updated;
+};
+
+export const deleteTermsConditionsTemplate = async (id: string) => {
+  await db
+    .update(termsConditionsTemplates)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(termsConditionsTemplates.id, id));
+
+  return { success: true };
+};
+
+export const setDefaultTermsConditionsTemplate = async (id: string) => {
+  // First, unset all defaults
+  await db
+    .update(termsConditionsTemplates)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(eq(termsConditionsTemplates.isDefault, true));
+
+  // Then set the new default
+  const [updated] = await db
+    .update(termsConditionsTemplates)
+    .set({ isDefault: true, updatedAt: new Date() })
+    .where(eq(termsConditionsTemplates.id, id))
     .returning();
 
   return updated;

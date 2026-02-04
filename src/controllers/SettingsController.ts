@@ -4,27 +4,27 @@ import { successResponse, errorResponse } from "../utils/response.js";
 
 /**
  * ============================================================================
- * COMPANY / GENERAL SETTINGS
+ * GENERAL TAB - GENERAL SETTINGS (Company Info + Announcements)
  * ============================================================================
  */
 
-export const getCompanySettings = async (req: Request, res: Response) => {
+export const getGeneralSettings = async (req: Request, res: Response) => {
   try {
-    const settings = await SettingsService.getCompanySettings();
-    return successResponse(res, settings, "Company settings retrieved");
+    const settings = await SettingsService.getGeneralSettings();
+    return successResponse(res, settings, "General settings retrieved");
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
   }
 };
 
-export const updateCompanySettings = async (req: Request, res: Response) => {
+export const updateGeneralSettings = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    const settings = await SettingsService.updateCompanySettings(
+    const settings = await SettingsService.updateGeneralSettings(
       req.body,
       userId,
     );
-    return successResponse(res, settings, "Company settings updated");
+    return successResponse(res, settings, "General settings updated");
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
   }
@@ -32,38 +32,7 @@ export const updateCompanySettings = async (req: Request, res: Response) => {
 
 /**
  * ============================================================================
- * ANNOUNCEMENT SETTINGS
- * ============================================================================
- */
-
-export const getAnnouncementSettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getAnnouncementSettings();
-    return successResponse(res, settings, "Announcement settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateAnnouncementSettings = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateAnnouncementSettings(
-      req.body,
-      userId,
-    );
-    return successResponse(res, settings, "Announcement settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * LABOR RATE TEMPLATES
+ * LABOR ROLES TAB - LABOR RATE TEMPLATES
  * ============================================================================
  */
 
@@ -76,34 +45,54 @@ export const getLaborRates = async (req: Request, res: Response) => {
   }
 };
 
-export const getLaborRateByPosition = async (req: Request, res: Response) => {
+export const getLaborRateById = async (req: Request, res: Response) => {
   try {
-    const { positionId } = req.params;
-    if (positionId == null) {
-      return errorResponse(res, "Position ID is required", 400);
+    const laborRatesId = req.params.laborRatesId;
+    if (laborRatesId === undefined) {
+      return errorResponse(res, "laborRatesId is required", 400);
     }
-    const laborRate = await SettingsService.getLaborRateByPosition(
-      parseInt(positionId, 10),
-    );
+    const laborRate = await SettingsService.getLaborRateById(laborRatesId);
+    if (!laborRate) {
+      return errorResponse(res, "Labor rate not found", 404);
+    }
     return successResponse(res, laborRate, "Labor rate retrieved");
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
   }
 };
 
-export const upsertLaborRate = async (req: Request, res: Response) => {
+export const updateLaborRate = async (req: Request, res: Response) => {
   try {
-    const { positionId } = req.params;
-    if (positionId == null) {
-      return errorResponse(res, "Position ID is required", 400);
+    const laborRatesId = req.params.laborRatesId;
+    if (laborRatesId === undefined) {
+      return errorResponse(res, "laborRatesId is required", 400);
     }
     const userId = req.user?.id;
-    const laborRate = await SettingsService.upsertLaborRate(
-      parseInt(positionId, 10),
+    const laborRate = await SettingsService.updateLaborRate(
+      laborRatesId,
       req.body,
       userId,
     );
-    return successResponse(res, laborRate, "Labor rate saved");
+    if (!laborRate) {
+      return errorResponse(res, "Labor rate not found", 404);
+    }
+    return successResponse(res, laborRate, "Labor rate updated");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const deleteLaborRate = async (req: Request, res: Response) => {
+  try {
+    const laborRatesId = req.params.laborRatesId;
+    if (laborRatesId === undefined) {
+      return errorResponse(res, "laborRatesId is required", 400);
+    }
+    const deleted = await SettingsService.deleteLaborRate(laborRatesId);
+    if (!deleted) {
+      return errorResponse(res, "Labor rate not found", 404);
+    }
+    return successResponse(res, null, "Labor rate deleted");
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
   }
@@ -121,7 +110,7 @@ export const bulkApplyLaborRates = async (req: Request, res: Response) => {
 
 /**
  * ============================================================================
- * VEHICLE & TRAVEL DEFAULTS
+ * VEHICLE & TRAVEL TAB - VEHICLE/TRAVEL DEFAULTS
  * ============================================================================
  */
 
@@ -152,25 +141,19 @@ export const updateVehicleTravelDefaults = async (
 
 /**
  * ============================================================================
- * TRAVEL ORIGINS
+ * VEHICLE & TRAVEL TAB - TRAVEL ORIGINS
  * ============================================================================
  */
 
 export const getTravelOrigins = async (req: Request, res: Response) => {
   try {
     const { page, limit, isActive } = req.query;
-    const opts: {
-      page?: number;
-      limit?: number;
-      isActive?: boolean;
-    } = {};
-    if (page != null && String(page).trim() !== "")
-      opts.page = parseInt(String(page), 10);
-    if (limit != null && String(limit).trim() !== "")
-      opts.limit = parseInt(String(limit), 10);
-    if (isActive === "true") opts.isActive = true;
-    if (isActive === "false") opts.isActive = false;
-    const origins = await SettingsService.getTravelOrigins(opts);
+    const params: { page?: number; limit?: number; isActive?: boolean } = {};
+    if (page !== undefined) params.page = parseInt(page as string);
+    if (limit !== undefined) params.limit = parseInt(limit as string);
+    if (isActive === "true") params.isActive = true;
+    else if (isActive === "false") params.isActive = false;
+    const origins = await SettingsService.getTravelOrigins(params);
     return successResponse(res, origins, "Travel origins retrieved");
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
@@ -179,9 +162,9 @@ export const getTravelOrigins = async (req: Request, res: Response) => {
 
 export const getTravelOriginById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    if (id == null) {
-      return errorResponse(res, "Travel origin ID is required", 400);
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
     }
     const origin = await SettingsService.getTravelOriginById(id);
     if (!origin) {
@@ -205,9 +188,9 @@ export const createTravelOrigin = async (req: Request, res: Response) => {
 
 export const updateTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    if (id == null) {
-      return errorResponse(res, "Travel origin ID is required", 400);
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
     }
     const userId = req.user?.id;
     const origin = await SettingsService.updateTravelOrigin(
@@ -223,9 +206,9 @@ export const updateTravelOrigin = async (req: Request, res: Response) => {
 
 export const deleteTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    if (id == null) {
-      return errorResponse(res, "Travel origin ID is required", 400);
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
     }
     await SettingsService.deleteTravelOrigin(id);
     return successResponse(res, null, "Travel origin deleted");
@@ -236,9 +219,9 @@ export const deleteTravelOrigin = async (req: Request, res: Response) => {
 
 export const setDefaultTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    if (id == null) {
-      return errorResponse(res, "Travel origin ID is required", 400);
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
     }
     const origin = await SettingsService.setDefaultTravelOrigin(id);
     return successResponse(res, origin, "Default travel origin set");
@@ -249,7 +232,7 @@ export const setDefaultTravelOrigin = async (req: Request, res: Response) => {
 
 /**
  * ============================================================================
- * OPERATING EXPENSE DEFAULTS (Financial)
+ * OPERATING EXPENSES TAB
  * ============================================================================
  */
 
@@ -287,179 +270,225 @@ export const updateOperatingExpenseDefaults = async (
 
 /**
  * ============================================================================
- * JOB SETTINGS
+ * PROPOSAL TEMPLATES TAB - PROPOSAL BASIS TEMPLATES
  * ============================================================================
  */
 
-export const getJobSettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getJobSettings();
-    return successResponse(res, settings, "Job settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateJobSettings = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateJobSettings(req.body, userId);
-    return successResponse(res, settings, "Job settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * INVOICE SETTINGS
- * ============================================================================
- */
-
-export const getInvoiceSettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getInvoiceSettings();
-    return successResponse(res, settings, "Invoice settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateInvoiceSettings = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateInvoiceSettings(
-      req.body,
-      userId,
-    );
-    return successResponse(res, settings, "Invoice settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * TAX SETTINGS
- * ============================================================================
- */
-
-export const getTaxSettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getTaxSettings();
-    return successResponse(res, settings, "Tax settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateTaxSettings = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateTaxSettings(req.body, userId);
-    return successResponse(res, settings, "Tax settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * INVENTORY SETTINGS
- * ============================================================================
- */
-
-export const getInventorySettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getInventorySettings();
-    return successResponse(res, settings, "Inventory settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateInventorySettings = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateInventorySettings(
-      req.body,
-      userId,
-    );
-    return successResponse(res, settings, "Inventory settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * NOTIFICATION SETTINGS (System-wide)
- * ============================================================================
- */
-
-export const getNotificationSettings = async (req: Request, res: Response) => {
-  try {
-    const settings = await SettingsService.getNotificationSettings();
-    return successResponse(res, settings, "Notification settings retrieved");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-export const updateNotificationSettings = async (
+export const getProposalBasisTemplates = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const userId = req.user?.id;
-    const settings = await SettingsService.updateNotificationSettings(
-      req.body,
-      userId,
-    );
-    return successResponse(res, settings, "Notification settings updated");
-  } catch (error: any) {
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * ============================================================================
- * USER NOTIFICATION PREFERENCES (Per-user)
- * ============================================================================
- */
-
-export const getUserNotificationPreferences = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const userId = req.user?.id!;
-    const preferences =
-      await SettingsService.getUserNotificationPreferences(userId);
+    const templates = await SettingsService.getProposalBasisTemplates();
     return successResponse(
       res,
-      preferences,
-      "User notification preferences retrieved",
+      templates,
+      "Proposal basis templates retrieved",
     );
   } catch (error: any) {
     return errorResponse(res, error.message, 500);
   }
 };
 
-export const updateUserNotificationPreferences = async (
+export const getProposalBasisTemplateById = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const userId = req.user?.id!;
-    const preferences = await SettingsService.updateUserNotificationPreferences(
-      userId,
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    const template = await SettingsService.getProposalBasisTemplateById(id);
+    if (!template) {
+      return errorResponse(res, "Proposal basis template not found", 404);
+    }
+    return successResponse(res, template, "Proposal basis template retrieved");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const createProposalBasisTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    const template = await SettingsService.createProposalBasisTemplate(
       req.body,
+      userId,
     );
     return successResponse(
       res,
-      preferences,
-      "User notification preferences updated",
+      template,
+      "Proposal basis template created",
+      201,
+    );
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const updateProposalBasisTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    const userId = req.user?.id;
+    const template = await SettingsService.updateProposalBasisTemplate(
+      id,
+      req.body,
+      userId,
+    );
+    return successResponse(res, template, "Proposal basis template updated");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const deleteProposalBasisTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    await SettingsService.deleteProposalBasisTemplate(id);
+    return successResponse(res, null, "Proposal basis template deleted");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * ============================================================================
+ * PROPOSAL TEMPLATES TAB - TERMS & CONDITIONS TEMPLATES
+ * ============================================================================
+ */
+
+export const getTermsConditionsTemplates = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const templates = await SettingsService.getTermsConditionsTemplates();
+    return successResponse(
+      res,
+      templates,
+      "Terms & conditions templates retrieved",
+    );
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const getTermsConditionsTemplateById = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    const template = await SettingsService.getTermsConditionsTemplateById(id);
+    if (!template) {
+      return errorResponse(res, "Terms & conditions template not found", 404);
+    }
+    return successResponse(
+      res,
+      template,
+      "Terms & conditions template retrieved",
+    );
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const createTermsConditionsTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    const template = await SettingsService.createTermsConditionsTemplate(
+      req.body,
+      userId,
+    );
+    return successResponse(
+      res,
+      template,
+      "Terms & conditions template created",
+      201,
+    );
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const updateTermsConditionsTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    const userId = req.user?.id;
+    const template = await SettingsService.updateTermsConditionsTemplate(
+      id,
+      req.body,
+      userId,
+    );
+    return successResponse(
+      res,
+      template,
+      "Terms & conditions template updated",
+    );
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const deleteTermsConditionsTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    await SettingsService.deleteTermsConditionsTemplate(id);
+    return successResponse(res, null, "Terms & conditions template deleted");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const setDefaultTermsConditionsTemplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = req.params.id;
+    if (id === undefined) {
+      return errorResponse(res, "id is required", 400);
+    }
+    const template =
+      await SettingsService.setDefaultTermsConditionsTemplate(id);
+    return successResponse(
+      res,
+      template,
+      "Default terms & conditions template set",
     );
   } catch (error: any) {
     return errorResponse(res, error.message, 500);

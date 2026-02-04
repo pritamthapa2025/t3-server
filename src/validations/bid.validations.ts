@@ -100,6 +100,8 @@ export const createBidSchema = z.object({
   body: z
     .object({
       organizationId: uuidSchema, // Required: Client organization ID (not T3)
+      primaryContactId: uuidSchema.optional().nullable(),
+      propertyId: uuidSchema.optional().nullable(),
       jobType: bidJobTypeEnum,
       status: bidStatusEnum.optional().default("draft"),
       priority: bidPriorityEnum.optional().default("medium"),
@@ -371,6 +373,8 @@ export const updateBidSchema = z.object({
   body: z.object({
     status: bidStatusEnum.optional(),
     priority: bidPriorityEnum.optional(),
+    primaryContactId: uuidSchema.optional().nullable(),
+    propertyId: uuidSchema.optional().nullable(),
     projectName: z
       .string()
       .max(255, "Project name is too long (maximum 255 characters)")

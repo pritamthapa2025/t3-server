@@ -28,7 +28,11 @@ import {
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import { organizations } from "../drizzle/schema/client.schema.js";
+import {
+  organizations,
+  clientContacts,
+  properties,
+} from "../drizzle/schema/client.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { getOrganizationById } from "./client.service.js";
 
@@ -51,6 +55,47 @@ function computeExpiresIn(bid: {
   if (end.getTime() < created.getTime()) return null;
   const msPerDay = 24 * 60 * 60 * 1000;
   return Math.floor((end.getTime() - created.getTime()) / msPerDay);
+}
+
+/** Fetch minimal primary contact by id (for bid response). */
+async function getPrimaryContactMinimal(contactId: string | null | undefined) {
+  if (!contactId) return null;
+  const [c] = await db
+    .select({
+      id: clientContacts.id,
+      fullName: clientContacts.fullName,
+      email: clientContacts.email,
+      phone: clientContacts.phone,
+      title: clientContacts.title,
+    })
+    .from(clientContacts)
+    .where(
+      and(
+        eq(clientContacts.id, contactId),
+        eq(clientContacts.isDeleted, false),
+      ),
+    )
+    .limit(1);
+  return c ?? null;
+}
+
+/** Fetch minimal property by id (for bid response). */
+async function getPropertyMinimal(propertyId: string | null | undefined) {
+  if (!propertyId) return null;
+  const [p] = await db
+    .select({
+      id: properties.id,
+      propertyName: properties.propertyName,
+      propertyCode: properties.propertyCode,
+      addressLine1: properties.addressLine1,
+      city: properties.city,
+      state: properties.state,
+      zipCode: properties.zipCode,
+    })
+    .from(properties)
+    .where(and(eq(properties.id, propertyId), eq(properties.isDeleted, false)))
+    .limit(1);
+  return p ?? null;
 }
 
 export const getBids = async (
@@ -108,11 +153,39 @@ export const getBids = async (
       organizationCity: organizations.city,
       organizationState: organizations.state,
       organizationZipCode: organizations.zipCode,
+      // Minimal primary contact (only when primaryContactId is set)
+      contactId: clientContacts.id,
+      contactFullName: clientContacts.fullName,
+      contactEmail: clientContacts.email,
+      contactPhone: clientContacts.phone,
+      contactTitle: clientContacts.title,
+      // Minimal property (only when propertyId is set)
+      propId: properties.id,
+      propPropertyName: properties.propertyName,
+      propPropertyCode: properties.propertyCode,
+      propAddressLine1: properties.addressLine1,
+      propCity: properties.city,
+      propState: properties.state,
+      propZipCode: properties.zipCode,
     })
     .from(bidsTable)
     .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
     .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
+    .leftJoin(
+      clientContacts,
+      and(
+        eq(bidsTable.primaryContactId, clientContacts.id),
+        eq(clientContacts.isDeleted, false),
+      ),
+    )
+    .leftJoin(
+      properties,
+      and(
+        eq(bidsTable.propertyId, properties.id),
+        eq(properties.isDeleted, false),
+      ),
+    )
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
@@ -125,22 +198,48 @@ export const getBids = async (
 
   const total = totalCount[0]?.count ?? 0;
 
-  // Map results to include createdByName, assignedToName, organization data, and derived expiresIn
-  const enrichedBids = result.map((item) => ({
-    ...item.bid,
-    createdByName: item.createdByName ?? null,
-    assignedToName: item.assignedToName ?? null,
-    organizationName: item.organizationName ?? null,
-    organizationLocation:
-      item.organizationCity && item.organizationState
-        ? `${item.organizationCity}, ${item.organizationState}`
-        : (item.organizationCity ?? item.organizationState ?? null),
-    organizationStreetAddress: item.organizationStreetAddress ?? null,
-    organizationCity: item.organizationCity ?? null,
-    organizationState: item.organizationState ?? null,
-    organizationZipCode: item.organizationZipCode ?? null,
-    expiresIn: computeExpiresIn(item.bid),
-  }));
+  // Map results to include createdByName, assignedToName, organization data, primaryContact, property, and derived expiresIn
+  const enrichedBids = result.map((item) => {
+    const primaryContact =
+      item.bid.primaryContactId && item.contactId
+        ? {
+            id: item.contactId,
+            fullName: item.contactFullName,
+            email: item.contactEmail,
+            phone: item.contactPhone,
+            title: item.contactTitle,
+          }
+        : null;
+    const property =
+      item.bid.propertyId && item.propId
+        ? {
+            id: item.propId,
+            propertyName: item.propPropertyName,
+            propertyCode: item.propPropertyCode,
+            addressLine1: item.propAddressLine1,
+            city: item.propCity,
+            state: item.propState,
+            zipCode: item.propZipCode,
+          }
+        : null;
+    return {
+      ...item.bid,
+      createdByName: item.createdByName ?? null,
+      assignedToName: item.assignedToName ?? null,
+      organizationName: item.organizationName ?? null,
+      organizationLocation:
+        item.organizationCity && item.organizationState
+          ? `${item.organizationCity}, ${item.organizationState}`
+          : (item.organizationCity ?? item.organizationState ?? null),
+      organizationStreetAddress: item.organizationStreetAddress ?? null,
+      organizationCity: item.organizationCity ?? null,
+      organizationState: item.organizationState ?? null,
+      organizationZipCode: item.organizationZipCode ?? null,
+      ...(primaryContact && { primaryContact }),
+      ...(property && { property }),
+      expiresIn: computeExpiresIn(item.bid),
+    };
+  });
 
   return {
     data: enrichedBids || [],
@@ -203,11 +302,17 @@ export const getBidById = async (id: string) => {
     .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
+  const [primaryContact, property] = await Promise.all([
+    getPrimaryContactMinimal(result.bid.primaryContactId),
+    getPropertyMinimal(result.bid.propertyId),
+  ]);
   return {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
     expiresIn: computeExpiresIn(result.bid),
+    ...(primaryContact && { primaryContact }),
+    ...(property && { property }),
   };
 };
 
@@ -224,16 +329,24 @@ export const getBidByIdSimple = async (id: string) => {
     .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)));
   if (!result) return null;
+  const [primaryContact, property] = await Promise.all([
+    getPrimaryContactMinimal(result.bid.primaryContactId),
+    getPropertyMinimal(result.bid.propertyId),
+  ]);
   return {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
     expiresIn: computeExpiresIn(result.bid),
+    ...(primaryContact && { primaryContact }),
+    ...(property && { property }),
   };
 };
 
 export const createBid = async (data: {
   organizationId: string;
+  primaryContactId?: string | null;
+  propertyId?: string | null;
   jobType:
     | "general"
     | "survey"
@@ -344,6 +457,8 @@ export const createBid = async (data: {
       bidNumber,
       jobType: data.jobType,
       organizationId: data.organizationId,
+      primaryContactId: data.primaryContactId ?? undefined,
+      propertyId: data.propertyId ?? undefined,
       createdBy: data.createdBy,
       status: (data.status as any) || "draft",
       priority: (data.priority as any) || "medium",
@@ -431,22 +546,7 @@ export const createBid = async (data: {
 
   if (!bid) return null;
 
-  // Get createdBy user name
-  let createdByName: string | null = null;
-  if (bid.createdBy) {
-    const [creator] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, bid.createdBy))
-      .limit(1);
-    createdByName = creator?.fullName || null;
-  }
-
-  return {
-    ...bid,
-    createdByName,
-    expiresIn: computeExpiresIn(bid),
-  };
+  return getBidById(bid.id);
 };
 
 export const updateBid = async (
@@ -464,6 +564,8 @@ export const updateBid = async (
     estimatedCompletion: string;
     removalDate: string;
     bidAmount: string;
+    primaryContactId: string | null;
+    propertyId: string | null;
     supervisorManager: number;
     primaryTechnicianId: number;
     assignedTo: string;
@@ -508,6 +610,8 @@ export const updateBid = async (
         ? new Date(data.removalDate).toISOString().split("T")[0]
         : undefined,
       bidAmount: data.bidAmount,
+      primaryContactId: data.primaryContactId ?? undefined,
+      propertyId: data.propertyId ?? undefined,
       supervisorManager: data.supervisorManager ?? undefined,
       primaryTechnicianId: data.primaryTechnicianId ?? undefined,
       assignedTo: data.assignedTo,
@@ -524,22 +628,7 @@ export const updateBid = async (
 
   if (!bid) return null;
 
-  // Get createdBy user name
-  let createdByName: string | null = null;
-  if (bid.createdBy) {
-    const [creator] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, bid.createdBy))
-      .limit(1);
-    createdByName = creator?.fullName || null;
-  }
-
-  return {
-    ...bid,
-    createdByName,
-    expiresIn: computeExpiresIn(bid),
-  };
+  return getBidById(id);
 };
 
 export const deleteBid = async (id: string, organizationId: string) => {
