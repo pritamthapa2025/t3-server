@@ -19,6 +19,7 @@ import {
 } from "../drizzle/schema/org.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { laborRateTemplates } from "../drizzle/schema/settings.schema.js";
 import * as SettingsService from "./settings.service.js";
 
 export const getDepartments = async (
@@ -842,11 +843,20 @@ export const createDepartment = async (data: {
         .returning();
 
       for (const pos of createdPositions) {
-        await SettingsService.createLaborRateTemplateForPosition(
-          pos.id,
-          undefined,
-          tx as any,
-        );
+        if (pos.payType === "Hourly") {
+          await SettingsService.createLaborRateTemplateForPosition(
+            pos.id,
+            undefined,
+            tx as any,
+          );
+          await tx
+            .update(laborRateTemplates)
+            .set({
+              defaultCostRate: pos.payRate,
+              updatedAt: new Date(),
+            })
+            .where(eq(laborRateTemplates.positionId, pos.id));
+        }
       }
     }
 
@@ -950,6 +960,14 @@ export const updateDepartment = async (
               updatedAt: new Date(),
             })
             .where(eq(positions.id, band.id));
+          // Sync labor_rate_templates.defaultCostRate with position pay rate
+          await tx
+            .update(laborRateTemplates)
+            .set({
+              defaultCostRate: String(band.payRate),
+              updatedAt: new Date(),
+            })
+            .where(eq(laborRateTemplates.positionId, band.id));
         } else {
           // Create new position
           const [newPosition] = await tx
@@ -965,12 +983,20 @@ export const updateDepartment = async (
               isDeleted: false,
             })
             .returning();
-          if (newPosition) {
+          if (newPosition && band.payType === "Hourly") {
             await SettingsService.createLaborRateTemplateForPosition(
               newPosition.id,
               undefined,
               tx as any,
             );
+            // Set defaultCostRate to position pay rate on the new labor rate template
+            await tx
+              .update(laborRateTemplates)
+              .set({
+                defaultCostRate: String(band.payRate),
+                updatedAt: new Date(),
+              })
+              .where(eq(laborRateTemplates.positionId, newPosition.id));
           }
         }
       }

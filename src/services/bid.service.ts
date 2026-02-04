@@ -153,6 +153,8 @@ export const getBids = async (
       organizationCity: organizations.city,
       organizationState: organizations.state,
       organizationZipCode: organizations.zipCode,
+      // totalPrice from bid_financial_breakdown
+      totalPrice: bidFinancialBreakdown.totalPrice,
       // Minimal primary contact (only when primaryContactId is set)
       contactId: clientContacts.id,
       contactFullName: clientContacts.fullName,
@@ -172,6 +174,13 @@ export const getBids = async (
     .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
     .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
     .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .leftJoin(
       clientContacts,
       and(
@@ -224,6 +233,7 @@ export const getBids = async (
         : null;
     return {
       ...item.bid,
+      totalPrice: item.totalPrice ?? null,
       createdByName: item.createdByName ?? null,
       assignedToName: item.assignedToName ?? null,
       organizationName: item.organizationName ?? null,

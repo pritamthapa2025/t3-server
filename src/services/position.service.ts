@@ -91,7 +91,7 @@ export const createPosition = async (data: {
       isDeleted: false,
     })
     .returning();
-  if (position) {
+  if (position && data.payType === "Hourly") {
     await SettingsService.createLaborRateTemplateForPosition(position.id);
   }
   return position;

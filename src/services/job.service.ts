@@ -97,6 +97,7 @@ export const getJobs = async (
     .select({
       job: jobs,
       bid: bidsTable,
+      totalPrice: bidFinancialBreakdown.totalPrice,
       createdByName: users.fullName,
       organizationName: organizations.name,
       organizationStreetAddress: organizations.streetAddress,
@@ -106,6 +107,13 @@ export const getJobs = async (
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .leftJoin(users, eq(jobs.createdBy, users.id))
     .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(whereCondition)
@@ -122,12 +130,13 @@ export const getJobs = async (
 
   const totalCount = totalCountResult[0]?.count || 0;
 
-  // Map jobs and add bid priority, name, and organization info to each job
+  // Map jobs and add bid priority, name, organization info, and totalPrice from bid_financial_breakdown
   const jobsList = jobsData.map((item) => ({
     ...item.job,
     priority: item.bid.priority, // Use bid priority instead of job priority
     name: item.bid.projectName, // Derive name from bid.projectName
     organizationId: item.bid.organizationId, // Include organization info
+    totalPrice: item.totalPrice ?? null,
     createdByName: item.createdByName || null, // Include created by name
     organizationName: item.organizationName ?? null,
     organizationLocation:
