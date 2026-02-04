@@ -10,6 +10,7 @@ import {
   bidsTable,
   bidFinancialBreakdown,
 } from "../drizzle/schema/bids.schema.js";
+import { properties } from "../drizzle/schema/client.schema.js";
 import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
@@ -541,12 +542,23 @@ export const getJobWithAllData = async (jobId: string) => {
   const travelArrays = await Promise.all(travelPromises);
   const travel = travelArrays.flat();
 
-  // Get bid to include priority
+  // Get bid to include priority and all necessary fields for editing
   const [bid] = await db
     .select()
     .from(bidsTable)
     .where(eq(bidsTable.id, jobData.bidId))
     .limit(1);
+  
+  // Get property info if available
+  let property = null;
+  if (bid?.propertyId) {
+    const [propertyData] = await db
+      .select()
+      .from(properties)
+      .where(eq(properties.id, bid.propertyId))
+      .limit(1);
+    property = propertyData || null;
+  }
 
   return {
     job: {
@@ -554,6 +566,31 @@ export const getJobWithAllData = async (jobId: string) => {
       priority: bid?.priority, // Use bid priority instead of job priority
       name: bid?.projectName, // Derive name from bid.projectName
       organizationId: jobData.organizationId,
+      bid: bid ? {
+        id: bid.id,
+        bidNumber: bid.bidNumber,
+        title: bid.title,
+        projectName: bid.projectName,
+        priority: bid.priority,
+        propertyId: bid.propertyId,
+        siteAddress: bid.siteAddress,
+        buildingSuiteNumber: bid.buildingSuiteNumber,
+        scopeOfWork: bid.scopeOfWork,
+        specialRequirements: bid.specialRequirements,
+        paymentTerms: bid.paymentTerms,
+        warrantyPeriod: bid.warrantyPeriod,
+        warrantyPeriodLabor: bid.warrantyPeriodLabor,
+        warrantyDetails: bid.warrantyDetails,
+        exclusions: bid.exclusions,
+        proposalBasis: bid.proposalBasis,
+        expectedStartDate: bid.expectedStartDate,
+        expectedCompletionDate: bid.expectedCompletionDate,
+      } : undefined,
+      property: property ? {
+        id: property.id,
+        name: property.propertyName,
+        address: property.addressLine1,
+      } : undefined,
     },
     teamMembers,
     financialBreakdown,
