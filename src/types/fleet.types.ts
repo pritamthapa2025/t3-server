@@ -608,9 +608,7 @@ export interface VehicleDocument {
   isDeleted: boolean;
   createdAt: Date | null;
   updatedAt: Date | null;
-}
-
-export interface CreateVehicleDocumentData {
+}export interface CreateVehicleDocumentData {
   vehicleId: string;
   fileName: string;
   filePath: string;
