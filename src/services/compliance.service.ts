@@ -349,7 +349,7 @@ export const getComplianceCaseById = async (id: string) => {
 };
 
 // Generate Case Number using PostgreSQL sequence (thread-safe)
-// Format: CASE-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
+// Format: CASE-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
 export const generateCaseNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
 
@@ -361,8 +361,8 @@ export const generateCaseNumber = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
@@ -392,8 +392,8 @@ export const generateCaseNumber = async (): Promise<string> => {
       }
     }
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
   }
 };

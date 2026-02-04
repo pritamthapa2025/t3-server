@@ -14,6 +14,7 @@ import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
 import { getOrganizationById } from "./client.service.js";
 import {
   getBidFinancialBreakdown,
@@ -95,10 +96,16 @@ export const getJobs = async (
       job: jobs,
       bid: bidsTable,
       createdByName: users.fullName,
+      organizationName: organizations.name,
+      organizationStreetAddress: organizations.streetAddress,
+      organizationCity: organizations.city,
+      organizationState: organizations.state,
+      organizationZipCode: organizations.zipCode,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .leftJoin(users, eq(jobs.createdBy, users.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(whereCondition)
     .orderBy(desc(jobs.createdAt))
     .limit(limit)
@@ -113,13 +120,22 @@ export const getJobs = async (
 
   const totalCount = totalCountResult[0]?.count || 0;
 
-  // Map jobs and add bid priority and name to each job
+  // Map jobs and add bid priority, name, and organization info to each job
   const jobsList = jobsData.map((item) => ({
     ...item.job,
     priority: item.bid.priority, // Use bid priority instead of job priority
     name: item.bid.projectName, // Derive name from bid.projectName
     organizationId: item.bid.organizationId, // Include organization info
     createdByName: item.createdByName || null, // Include created by name
+    organizationName: item.organizationName ?? null,
+    organizationLocation:
+      item.organizationCity && item.organizationState
+        ? `${item.organizationCity}, ${item.organizationState}`
+        : (item.organizationCity ?? item.organizationState ?? null),
+    organizationStreetAddress: item.organizationStreetAddress ?? null,
+    organizationCity: item.organizationCity ?? null,
+    organizationState: item.organizationState ?? null,
+    organizationZipCode: item.organizationZipCode ?? null,
   }));
   return {
     jobs: jobsList,
@@ -177,9 +193,12 @@ export const createJob = async (data: {
   }>;
   createdBy: string;
 }) => {
-  // Get organizationId from bid
+  // Get organizationId and current status from bid
   const [bid] = await db
-    .select({ organizationId: bidsTable.organizationId })
+    .select({
+      organizationId: bidsTable.organizationId,
+      currentStatus: bidsTable.status,
+    })
     .from(bidsTable)
     .where(eq(bidsTable.id, data.bidId))
     .limit(1);
@@ -188,13 +207,35 @@ export const createJob = async (data: {
     throw new Error("Bid not found");
   }
 
+  // Update bid status to "won" and set convertToJob flag when creating a job from a bid
+  const { updateBid } = await import("./bid.service.js");
+  const bidUpdateData: any = {
+    status: "won",
+  };
+
   // Update bid priority if provided
   if (data.priority) {
-    const { updateBid } = await import("./bid.service.js");
-    await updateBid(data.bidId, bid.organizationId, {
-      priority: data.priority,
-    });
+    bidUpdateData.priority = data.priority;
   }
+
+  await updateBid(data.bidId, bid.organizationId, bidUpdateData);
+
+  // Also update the convertToJob flag
+  await db
+    .update(bidsTable)
+    .set({ convertToJob: true })
+    .where(eq(bidsTable.id, data.bidId));
+
+  // Create history entry for bid status change to "won"
+  await createBidHistoryEntry({
+    bidId: data.bidId,
+    organizationId: bid.organizationId,
+    action: "status_changed",
+    oldValue: bid.currentStatus,
+    newValue: "won",
+    description: "Bid status changed to 'won' - Job created",
+    performedBy: data.createdBy,
+  });
 
   // Generate job number atomically
   const jobNumber = await generateJobNumber(bid.organizationId);
@@ -404,8 +445,8 @@ export const getJobTeamMembers = async (jobId: string) => {
         eq(jobs.isDeleted, false),
       ),
     );
-  
-  return members.map(m => ({
+
+  return members.map((m) => ({
     ...m.teamMember,
     employee: m.employee,
     employeeName: m.employeeName ?? null,
@@ -545,8 +586,8 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `JOB-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to manual counter if database function doesn't exist
@@ -574,8 +615,8 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
       }
     }
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `JOB-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };

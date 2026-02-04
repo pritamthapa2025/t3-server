@@ -235,7 +235,7 @@ export const updateVehicleSettings = async (
 };
 
 // Generate Vehicle ID using PostgreSQL sequence (thread-safe)
-// Format: VEH-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
+// Format: VEH-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
 export const generateVehicleId = async (): Promise<string> => {
   const year = new Date().getFullYear();
 
@@ -244,8 +244,8 @@ export const generateVehicleId = async (): Promise<string> => {
       sql.raw(`SELECT nextval('org.vehicle_id_seq')::text as nextval`),
     );
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `VEH-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     console.warn(
@@ -266,13 +266,13 @@ export const generateVehicleId = async (): Promise<string> => {
       );
       const maxNum = maxNumResult.rows[0]?.max_num;
       const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
-      // Use 6 digits minimum, auto-expand when exceeds 999999
-      const padding = Math.max(6, nextIdNumber.toString().length);
+      // Use 4 digits minimum, auto-expand when exceeds 9999
+      const padding = Math.max(4, nextIdNumber.toString().length);
       return `VEH-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
     } catch (sqlError) {
       console.warn("Vehicle ID fallback failed:", sqlError);
-      const fallbackNum = Date.now() % 1000000;
-      const padding = Math.max(6, fallbackNum.toString().length);
+      const fallbackNum = Date.now() % 10000;
+      const padding = Math.max(4, fallbackNum.toString().length);
       return `VEH-${year}-${String(fallbackNum).padStart(padding, "0")}`;
     }
   }

@@ -81,8 +81,8 @@ const generateSupplierCode = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
@@ -112,8 +112,8 @@ const generateSupplierCode = async (): Promise<string> => {
       }
     }
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };
@@ -195,8 +195,8 @@ const generateLocationCode = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
@@ -226,8 +226,8 @@ const generateLocationCode = async (): Promise<string> => {
       }
     }
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };

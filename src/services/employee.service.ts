@@ -575,8 +575,8 @@ export const generateEmployeeId = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet
@@ -592,8 +592,8 @@ export const generateEmployeeId = async (): Promise<string> => {
     const total = totalResult[0]?.count ?? 0;
     const nextNumber = total + 1;
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   }
 };

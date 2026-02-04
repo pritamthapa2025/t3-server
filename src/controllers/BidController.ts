@@ -466,7 +466,23 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
-    const updatedBid = await updateBid(id!, clientOrgId, req.body);
+    // Extract nested objects from request body (same as create)
+    const {
+      financialBreakdown,
+      operatingExpenses,
+      materials,
+      laborAndTravel,
+      surveyData,
+      planSpecData,
+      designBuildData,
+      documentIdsToUpdate,
+      documentUpdates,
+      documentIdsToDelete,
+      ...bidFields
+    } = req.body;
+
+    // Update bid with only bid fields (excluding nested objects)
+    const updatedBid = await updateBid(id!, clientOrgId, bidFields);
 
     if (!updatedBid) {
       return res.status(404).json({
@@ -475,8 +491,100 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Update related records if provided
+    const updatedRecords: any = {};
+
+    // Update financial breakdown if provided
+    if (financialBreakdown) {
+      updatedRecords.financialBreakdown = await updateBidFinancialBreakdown(
+        id!,
+        clientOrgId,
+        financialBreakdown,
+      );
+    }
+
+    // Update operating expenses if provided
+    if (operatingExpenses) {
+      updatedRecords.operatingExpenses = await updateBidOperatingExpenses(
+        id!,
+        clientOrgId,
+        operatingExpenses,
+      );
+    }
+
+    // Update materials if provided (delete existing and create new)
+    if (materials && Array.isArray(materials)) {
+      // Get existing materials
+      const existingMaterials = await getBidMaterials(id!, clientOrgId);
+
+      // Delete all existing materials
+      for (const material of existingMaterials) {
+        await deleteBidMaterial(material.id, clientOrgId);
+      }
+
+      // Create new materials
+      if (materials.length > 0) {
+        updatedRecords.materials = [];
+        for (const material of materials) {
+          const createdMaterial = await createBidMaterial({
+            ...material,
+            bidId: id!,
+          });
+          updatedRecords.materials.push(createdMaterial);
+        }
+      } else {
+        updatedRecords.materials = [];
+      }
+    }
+
+    // Update labor and travel if provided (delete existing and create new in bulk)
+    if (laborAndTravel) {
+      const { labor, travel } = laborAndTravel;
+      if (labor && travel && Array.isArray(labor) && Array.isArray(travel)) {
+        // Get existing labor entries
+        const existingLabor = await getBidLabor(id!);
+
+        // Delete all existing labor (this will cascade delete travel)
+        for (const laborEntry of existingLabor) {
+          await deleteBidLabor(laborEntry.id);
+        }
+
+        // Create new labor and travel in bulk
+        if (labor.length === travel.length && labor.length > 0) {
+          const bulkResult = await createBulkLaborAndTravel(id!, labor, travel);
+          updatedRecords.labor = bulkResult.labor;
+          updatedRecords.travel = bulkResult.travel;
+        } else {
+          updatedRecords.labor = [];
+          updatedRecords.travel = [];
+        }
+      }
+    }
+
+    // Update type-specific data if provided (jobType comes from original bid; it is not updated)
+    const jobType = originalBid.jobType;
+    if (surveyData && jobType === "survey") {
+      updatedRecords.surveyData = await updateBidSurveyData(
+        id!,
+        clientOrgId,
+        surveyData,
+      );
+    } else if (planSpecData && jobType === "plan_spec") {
+      updatedRecords.planSpecData = await updateBidPlanSpecData(
+        id!,
+        clientOrgId,
+        planSpecData,
+      );
+    } else if (designBuildData && jobType === "design_build") {
+      updatedRecords.designBuildData = await updateBidDesignBuildData(
+        id!,
+        clientOrgId,
+        designBuildData,
+      );
+    }
+
     // Handle document operations
-    const documentUpdates: any = {};
+    const documentUpdatesResult: any = {};
 
     // Handle new document uploads (document_0, document_1, etc.)
     const files = (req.files as Express.Multer.File[]) || [];
@@ -516,20 +624,17 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
 
       if (uploadedDocuments.length > 0) {
-        documentUpdates.added = uploadedDocuments;
+        documentUpdatesResult.added = uploadedDocuments;
       }
     }
 
     // Handle document updates (if documentIdsToUpdate is provided)
-    if (
-      req.body.documentIdsToUpdate &&
-      Array.isArray(req.body.documentIdsToUpdate)
-    ) {
-      const documentUpdatesList = req.body.documentUpdates || [];
+    if (documentIdsToUpdate && Array.isArray(documentIdsToUpdate)) {
+      const documentUpdatesList = documentUpdates || [];
       const updatedDocuments = [];
 
-      for (let i = 0; i < req.body.documentIdsToUpdate.length; i++) {
-        const documentId = req.body.documentIdsToUpdate[i];
+      for (let i = 0; i < documentIdsToUpdate.length; i++) {
+        const documentId = documentIdsToUpdate[i];
         const updateData = documentUpdatesList[i] || {};
 
         try {
@@ -547,18 +652,15 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
 
       if (updatedDocuments.length > 0) {
-        documentUpdates.updated = updatedDocuments;
+        documentUpdatesResult.updated = updatedDocuments;
       }
     }
 
     // Handle document deletions (if documentIdsToDelete is provided)
-    if (
-      req.body.documentIdsToDelete &&
-      Array.isArray(req.body.documentIdsToDelete)
-    ) {
+    if (documentIdsToDelete && Array.isArray(documentIdsToDelete)) {
       const deletedDocuments = [];
 
-      for (const documentId of req.body.documentIdsToDelete) {
+      for (const documentId of documentIdsToDelete) {
         try {
           const existingDoc = await getBidDocumentById(documentId);
           if (existingDoc && existingDoc.bidId === id!) {
@@ -571,20 +673,12 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
 
       if (deletedDocuments.length > 0) {
-        documentUpdates.deleted = deletedDocuments;
+        documentUpdatesResult.deleted = deletedDocuments;
       }
     }
 
-    // Create history entries for changed fields
-    for (const [key, value] of Object.entries(req.body)) {
-      // Skip document-related fields
-      if (
-        key === "documentIdsToUpdate" ||
-        key === "documentUpdates" ||
-        key === "documentIdsToDelete"
-      ) {
-        continue;
-      }
+    // Create history entries for changed base bid fields
+    for (const [key, value] of Object.entries(bidFields)) {
       const oldValue = (originalBid as any)[key];
       if (oldValue !== value) {
         await createBidHistoryEntry({
@@ -599,25 +693,79 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Create history entry for document operations
-    if (Object.keys(documentUpdates).length > 0) {
+    // Create history entries for nested data updates
+    if (financialBreakdown) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
-        action: "documents_updated",
-        description: `Documents updated: ${documentUpdates.added?.length || 0} added, ${documentUpdates.updated?.length || 0} updated, ${documentUpdates.deleted?.length || 0} deleted`,
+        action: "financial_breakdown_updated",
+        description: "Financial breakdown was updated",
         performedBy: performedBy,
       });
     }
 
-    logger.info("Bid updated successfully");
+    if (operatingExpenses) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: "operating_expenses_updated",
+        description: "Operating expenses were updated",
+        performedBy: performedBy,
+      });
+    }
+
+    if (materials) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: "materials_updated",
+        description: `Materials were updated: ${materials.length} items`,
+        performedBy: performedBy,
+      });
+    }
+
+    if (laborAndTravel) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: "labor_travel_updated",
+        description: `Labor and travel were updated: ${laborAndTravel.labor?.length || 0} labor entries, ${laborAndTravel.travel?.length || 0} travel entries`,
+        performedBy: performedBy,
+      });
+    }
+
+    if (surveyData || planSpecData || designBuildData) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: "job_type_data_updated",
+        description: "Job-type specific data was updated",
+        performedBy: performedBy,
+      });
+    }
+
+    // Create history entry for document operations
+    if (Object.keys(documentUpdatesResult).length > 0) {
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: "documents_updated",
+        description: `Documents updated: ${documentUpdatesResult.added?.length || 0} added, ${documentUpdatesResult.updated?.length || 0} updated, ${documentUpdatesResult.deleted?.length || 0} deleted`,
+        performedBy: performedBy,
+      });
+    }
+
+    logger.info("Bid updated successfully with all related records");
     return res.status(200).json({
       success: true,
       data: {
-        ...updatedBid,
-        ...(Object.keys(documentUpdates).length > 0 && { documentUpdates }),
+        bid: updatedBid,
+        ...updatedRecords,
+        ...(Object.keys(documentUpdatesResult).length > 0 && {
+          documentUpdates: documentUpdatesResult,
+        }),
       },
-      message: "Bid updated successfully",
+      message: "Bid updated successfully with all related records",
     });
   } catch (error: any) {
     logger.logApiError("Error updating bid", error, req);

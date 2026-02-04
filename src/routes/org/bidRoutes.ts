@@ -217,6 +217,7 @@ router
     authorizeAnyFeature("bids", ["edit_own", "edit_pending"]),
     uploadBidDocuments,
     handleMulterError,
+    parseFormData,
     validate(updateBidSchema),
     updateBidHandler,
   )

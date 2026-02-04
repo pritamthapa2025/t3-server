@@ -28,6 +28,7 @@ import {
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { getOrganizationById } from "./client.service.js";
 
@@ -102,10 +103,16 @@ export const getBids = async (
       bid: bidsTable,
       createdByName: createdByUser.fullName,
       assignedToName: assignedToUser.fullName,
+      organizationName: organizations.name,
+      organizationStreetAddress: organizations.streetAddress,
+      organizationCity: organizations.city,
+      organizationState: organizations.state,
+      organizationZipCode: organizations.zipCode,
     })
     .from(bidsTable)
     .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
     .leftJoin(assignedToUser, eq(bidsTable.assignedTo, assignedToUser.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
@@ -118,11 +125,20 @@ export const getBids = async (
 
   const total = totalCount[0]?.count ?? 0;
 
-  // Map results to include createdByName, assignedToName, and derived expiresIn
+  // Map results to include createdByName, assignedToName, organization data, and derived expiresIn
   const enrichedBids = result.map((item) => ({
     ...item.bid,
     createdByName: item.createdByName ?? null,
     assignedToName: item.assignedToName ?? null,
+    organizationName: item.organizationName ?? null,
+    organizationLocation:
+      item.organizationCity && item.organizationState
+        ? `${item.organizationCity}, ${item.organizationState}`
+        : (item.organizationCity ?? item.organizationState ?? null),
+    organizationStreetAddress: item.organizationStreetAddress ?? null,
+    organizationCity: item.organizationCity ?? null,
+    organizationState: item.organizationState ?? null,
+    organizationZipCode: item.organizationZipCode ?? null,
     expiresIn: computeExpiresIn(item.bid),
   }));
 
@@ -1557,8 +1573,8 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
     );
 
     const nextNumber = parseInt(result.rows[0]?.next_value || "1");
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `BID-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if function doesn't exist yet
@@ -1587,8 +1603,8 @@ const generateBidNumber = async (organizationId: string): Promise<string> => {
       }
     }
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `BID-${year}-${nextNumber.toString().padStart(padding, "0")}`;
   }
 };

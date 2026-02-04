@@ -161,13 +161,13 @@ export const getClientById = async (id: string) => {
       and(
         eq(clientContacts.organizationId, id),
         eq(clientContacts.isPrimary, true),
-        eq(clientContacts.isDeleted, false)
-      )
+        eq(clientContacts.isDeleted, false),
+      ),
     )
     .limit(1);
 
   const { createdByName, organization, clientType } = row;
-  
+
   return {
     organization: {
       ...organization,
@@ -305,7 +305,7 @@ export const getOrganizationDashboard = async (organizationId: string) => {
 };
 
 // Generate Client ID using PostgreSQL sequence (thread-safe)
-// Format: CL-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
+// Format: CL-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
 export const generateClientId = async (): Promise<string> => {
   const year = new Date().getFullYear();
 
@@ -317,8 +317,8 @@ export const generateClientId = async (): Promise<string> => {
 
     const nextNumber = parseInt(result.rows[0]?.nextval || "1");
 
-    // Use 6 digits minimum, auto-expand when exceeds 999999
-    const padding = Math.max(6, nextNumber.toString().length);
+    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const padding = Math.max(4, nextNumber.toString().length);
     return `CL-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
     // Fallback to old method if sequence doesn't exist yet or has issues
@@ -354,8 +354,8 @@ export const generateClientId = async (): Promise<string> => {
       const maxNum = maxNumResult.rows[0]?.max_num;
       const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
 
-      // Use 6 digits minimum, auto-expand when exceeds 999999
-      const padding = Math.max(6, nextIdNumber.toString().length);
+      // Use 4 digits minimum, auto-expand when exceeds 9999
+      const padding = Math.max(4, nextIdNumber.toString().length);
       return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
     } catch (sqlError) {
       // If SQL extraction fails, fall back to simple string comparison
@@ -389,8 +389,8 @@ export const generateClientId = async (): Promise<string> => {
         }
       }
 
-      // Use 6 digits minimum, auto-expand when exceeds 999999
-      const padding = Math.max(6, nextIdNumber.toString().length);
+      // Use 4 digits minimum, auto-expand when exceeds 9999
+      const padding = Math.max(4, nextIdNumber.toString().length);
       return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
     }
   }
