@@ -9,6 +9,7 @@ import {
   deleteEmployeeHandler,
   getEmployeeKPIsHandler,
   getInspectorsHandler,
+  getUnassignedDriversHandler,
 } from "../../controllers/EmployeeController.js";
 import {
   getEmployeeReviews,
@@ -83,6 +84,9 @@ router.use(userTransformer);
 
 // Inspectors: employees whose role is Executive or Manager (full employee + user record)
 router.get("/inspector", getInspectorsHandler);
+
+// Unassigned drivers (Technicians not assigned to any vehicle)
+router.get("/unassigned-drivers", getUnassignedDriversHandler);
 
 router.get("/employees/kpis", getEmployeeKPIsHandler);
 router.get(

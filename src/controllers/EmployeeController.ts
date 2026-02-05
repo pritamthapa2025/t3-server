@@ -5,6 +5,7 @@ import {
   getEmployeesSimple,
   getEmployeeById,
   getInspectors,
+  getUnassignedDrivers,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -107,6 +108,26 @@ export const getInspectorsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error fetching inspectors", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getUnassignedDriversHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const data = await getUnassignedDrivers();
+    logger.info("Unassigned drivers fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching unassigned drivers", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

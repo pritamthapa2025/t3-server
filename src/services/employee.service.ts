@@ -13,6 +13,7 @@ import {
   timesheetApprovals,
 } from "../drizzle/schema/timesheet.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
+import { vehicles } from "../drizzle/schema/fleet.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
 
@@ -818,6 +819,71 @@ export const getInspectors = async () => {
         eq(employees.isDeleted, false),
         eq(roles.isDeleted, false),
         inArray(roles.name, ["Executive", "Manager"]),
+      ),
+    )
+    .orderBy(users.fullName);
+
+  return result.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    userName: row.userName,
+    employeeId: row.employeeId,
+    department: row.departmentId
+      ? { id: row.departmentId, name: row.departmentName }
+      : null,
+    position: row.positionId
+      ? { id: row.positionId, name: row.positionName }
+      : null,
+    reportsToName: row.reportsToName ?? null,
+    role: row.roleName,
+    status: row.status ?? null,
+    isActive: row.isActive ?? null,
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  }));
+};
+
+/**
+ * Get all employees with role "Technician" who are not assigned to any vehicle (unassigned drivers).
+ */
+export const getUnassignedDrivers = async () => {
+  const result = await db
+    .select({
+      id: employees.id,
+      userId: users.id,
+      userName: users.fullName,
+      employeeId: employees.employeeId,
+      departmentId: departments.id,
+      departmentName: departments.name,
+      positionId: positions.id,
+      positionName: positions.name,
+      reportsToName: reportsToUser.fullName,
+      roleName: roles.name,
+      status: employees.status,
+      isActive: users.isActive,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
+    })
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .leftJoin(reportsToUser, eq(employees.reportsTo, reportsToUser.id))
+    .leftJoin(
+      vehicles,
+      and(
+        eq(vehicles.assignedToEmployeeId, employees.id),
+        eq(vehicles.isDeleted, false),
+      ),
+    )
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(roles.isDeleted, false),
+        eq(roles.name, "Technician"),
+        sql`${vehicles.id} IS NULL`,
       ),
     )
     .orderBy(users.fullName);
