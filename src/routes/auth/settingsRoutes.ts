@@ -13,6 +13,8 @@ import {
   updateProposalBasisTemplateSchema,
   createTermsConditionsTemplateSchema,
   updateTermsConditionsTemplateSchema,
+  getInvoiceSettingsSchema,
+  updateInvoiceSettingsSchema,
 } from "../../validations/settings.validations.js";
 
 const router = Router();
@@ -135,5 +137,19 @@ router
     SettingsController.updateTermsConditionsTemplate,
   )
   .delete(authenticate, SettingsController.deleteTermsConditionsTemplate);
+
+// ===== INVOICE SETTINGS TAB (per organization) =====
+router
+  .route("/invoice")
+  .get(
+    authenticate,
+    validate(getInvoiceSettingsSchema),
+    SettingsController.getInvoiceSettings,
+  )
+  .put(
+    authenticate,
+    validate(updateInvoiceSettingsSchema),
+    SettingsController.updateInvoiceSettings,
+  );
 
 export default router;

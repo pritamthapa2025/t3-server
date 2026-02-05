@@ -180,7 +180,17 @@ export const getJobById = async (id: string) => {
   const primaryContact = bidWithContactAndProperty?.primaryContact ?? null;
   const property = bidWithContactAndProperty?.property ?? null;
 
-  // Return job with bid priority and name, plus primaryContact and property from bid
+  // Financial summary (totalContractValue, profitMargin, estimatedProfit, startDate=createdAt, endDate, remaining)
+  const financialBreakdown = await getBidFinancialBreakdown(
+    result.bid.id,
+    result.bid.organizationId,
+  );
+  const jobSummary = getJobFinancialSummaryFields(
+    result.jobs,
+    financialBreakdown,
+  );
+
+  // Return job with bid priority and name, plus primaryContact, property, and summary
   return {
     ...result.jobs,
     priority: result.bid.priority,
@@ -189,6 +199,12 @@ export const getJobById = async (id: string) => {
     createdByName: result.createdByName || null,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
+    totalContractValue: jobSummary.totalContractValue,
+    profitMargin: jobSummary.profitMargin,
+    estimatedProfit: jobSummary.estimatedProfit,
+    startDate: jobSummary.startDate,
+    endDate: jobSummary.endDate,
+    remaining: jobSummary.remaining,
   };
 };
 
@@ -522,6 +538,57 @@ export const removeJobTeamMember = async (
 };
 
 // ============================
+// Job Summary (for get-by-id and get-by-id-complete)
+// ============================
+
+export type JobFinancialSummary = {
+  totalContractValue: string;
+  profitMargin: number;
+  estimatedProfit: string;
+  startDate: string | null;
+  endDate: string | null;
+  remaining: string;
+};
+
+function toDecimal2(value: number): string {
+  return value.toFixed(2);
+}
+
+export const getJobFinancialSummaryFields = (
+  job: {
+    contractValue?: string | null;
+    actualCost?: string | null;
+    createdAt?: Date | null;
+    scheduledEndDate?: string | null;
+    actualEndDate?: string | null;
+  },
+  financialBreakdown: { totalCost?: string | null } | null,
+): JobFinancialSummary => {
+  const contractVal = Number(job.contractValue) || 0;
+  const plannedCost = Number(financialBreakdown?.totalCost) || 0;
+  const actualCostNum = job.actualCost != null ? Number(job.actualCost) : null;
+  const costForRemaining = actualCostNum ?? plannedCost;
+  const estimatedProfit = contractVal - plannedCost;
+  const profitMargin = contractVal ? (estimatedProfit / contractVal) * 100 : 0;
+  const remaining = contractVal - costForRemaining;
+
+  const startDate: string | null = job.createdAt
+    ? (new Date(job.createdAt).toISOString().split("T")[0] ?? null)
+    : null;
+  const rawEndDate = job.actualEndDate ?? job.scheduledEndDate;
+  const endDate: string | null = rawEndDate != null ? rawEndDate : null;
+
+  return {
+    totalContractValue: toDecimal2(contractVal),
+    profitMargin: Math.round(profitMargin * 100) / 100,
+    estimatedProfit: toDecimal2(estimatedProfit),
+    startDate,
+    endDate,
+    remaining: toDecimal2(remaining),
+  };
+};
+
+// ============================
 // Job with All Data (from Bid)
 // ============================
 
@@ -588,12 +655,24 @@ export const getJobWithAllData = async (jobId: string) => {
     property = propertyData || null;
   }
 
+  // Financial summary (totalContractValue, profitMargin, estimatedProfit, startDate=createdAt, endDate, remaining)
+  const jobSummary = getJobFinancialSummaryFields(
+    jobData.job,
+    financialBreakdown,
+  );
+
   return {
     job: {
       ...jobData.job,
       priority: bid?.priority, // Use bid priority instead of job priority
       name: bid?.projectName, // Derive name from bid.projectName
       organizationId: jobData.organizationId,
+      totalContractValue: jobSummary.totalContractValue,
+      profitMargin: jobSummary.profitMargin,
+      estimatedProfit: jobSummary.estimatedProfit,
+      startDate: jobSummary.startDate,
+      endDate: jobSummary.endDate,
+      remaining: jobSummary.remaining,
       bid: bid
         ? {
             id: bid.id,

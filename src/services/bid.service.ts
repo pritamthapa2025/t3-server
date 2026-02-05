@@ -57,6 +57,46 @@ function computeExpiresIn(bid: {
   return Math.floor((end.getTime() - created.getTime()) / msPerDay);
 }
 
+/** Days from today until endDate (0 if no endDate or already past). For "Expires in X Days" card. */
+function expiresInDaysFromToday(bid: {
+  endDate?: string | Date | null;
+}): number {
+  const end = bid.endDate ? new Date(bid.endDate) : null;
+  if (!end) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endDay = new Date(end);
+  endDay.setHours(0, 0, 0, 0);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const days = Math.floor((endDay.getTime() - today.getTime()) / msPerDay);
+  return Math.max(0, days);
+}
+
+/** Summary fields for bid cards: Bid Amount, Estimated Duration, Profit Margin, Expires in. */
+export type BidSummaryFields = {
+  bidAmount: string;
+  estimatedDuration: number;
+  profitMargin: number;
+  expiresIn: number;
+};
+
+function getBidSummaryFields(bid: {
+  bidAmount?: string | null;
+  estimatedDuration?: number | null;
+  profitMargin?: string | null;
+  endDate?: string | Date | null;
+}): BidSummaryFields {
+  const amount = Number(bid.bidAmount) || 0;
+  const duration = bid.estimatedDuration ?? 0;
+  const margin = bid.profitMargin != null ? Number(bid.profitMargin) : 0;
+  return {
+    bidAmount: amount.toFixed(2),
+    estimatedDuration: duration,
+    profitMargin: Math.round(margin * 100) / 100,
+    expiresIn: expiresInDaysFromToday(bid),
+  };
+}
+
 /** Fetch minimal primary contact by id (for bid response). */
 async function getPrimaryContactMinimal(contactId: string | null | undefined) {
   if (!contactId) return null;
@@ -316,11 +356,13 @@ export const getBidById = async (id: string) => {
     getPrimaryContactMinimal(result.bid.primaryContactId),
     getPropertyMinimal(result.bid.propertyId),
   ]);
+  const bidSummary = getBidSummaryFields(result.bid);
   return {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
     expiresIn: computeExpiresIn(result.bid),
+    bidSummary,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
   };
@@ -343,11 +385,13 @@ export const getBidByIdSimple = async (id: string) => {
     getPrimaryContactMinimal(result.bid.primaryContactId),
     getPropertyMinimal(result.bid.propertyId),
   ]);
+  const bidSummary = getBidSummaryFields(result.bid);
   return {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
     expiresIn: computeExpiresIn(result.bid),
+    bidSummary,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
   };

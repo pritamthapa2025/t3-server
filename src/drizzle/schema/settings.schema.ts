@@ -11,9 +11,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { positions } from "./org.schema.js";
 import { users } from "./auth.schema.js";
+import { organizations } from "./client.schema.js";
 
 // Settings use auth schema (system-wide, not per-organization)
 const auth = pgSchema("auth");
+const org = pgSchema("org");
 
 /**
  * ============================================================================
@@ -300,4 +302,65 @@ export const termsConditionsTemplates = auth.table(
     index("idx_terms_templates_default").on(table.isDefault),
     index("idx_terms_templates_sort").on(table.sortOrder),
   ],
+);
+
+/**
+ * ============================================================================
+ * INVOICE SETTINGS (per organization)
+ * ============================================================================
+ * Default content, terms, display, automation, and email settings for invoices.
+ * Excludes invoice numbering (handled elsewhere).
+ */
+export const invoiceSettings = org.table(
+  "invoice_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id)
+      .unique(),
+
+    // Default Terms
+    defaultPaymentTerms: varchar("default_payment_terms", {
+      length: 50,
+    }).default("Net 30"),
+    defaultPaymentTermsDays: integer("default_payment_terms_days").default(30),
+    defaultTaxRate: numeric("default_tax_rate", {
+      precision: 5,
+      scale: 4,
+    }).default("0"),
+
+    // Late Fees
+    enableLateFees: boolean("enable_late_fees").default(false),
+    lateFeePercentage: numeric("late_fee_percentage", {
+      precision: 5,
+      scale: 2,
+    }).default("0"),
+    lateFeeGracePeriodDays: integer("late_fee_grace_period_days").default(0),
+
+    // Display Options
+    showLineItemDetails: boolean("show_line_item_details").default(true),
+    showLaborBreakdown: boolean("show_labor_breakdown").default(true),
+    showMaterialsBreakdown: boolean("show_materials_breakdown").default(true),
+
+    // Default Content
+    defaultInvoiceNotes: text("default_invoice_notes"),
+    defaultTermsAndConditions: text("default_terms_and_conditions"),
+
+    // Automation
+    autoSendOnCompletion: boolean("auto_send_on_completion").default(false),
+    autoRemindBeforeDue: boolean("auto_remind_before_due").default(false),
+    reminderDaysBeforeDue: integer("reminder_days_before_due").default(7),
+
+    // Email Settings
+    defaultEmailSubject: varchar("default_email_subject", { length: 500 }),
+    defaultEmailMessage: text("default_email_message"),
+    alwaysAttachPdf: boolean("always_attach_pdf").default(true),
+
+    // Metadata
+    updatedBy: uuid("updated_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("idx_invoice_settings_org").on(table.organizationId)],
 );

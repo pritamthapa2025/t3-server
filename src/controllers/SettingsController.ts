@@ -494,3 +494,49 @@ export const setDefaultTermsConditionsTemplate = async (
     return errorResponse(res, error.message, 500);
   }
 };
+
+/**
+ * ============================================================================
+ * INVOICE SETTINGS TAB (per organization)
+ * ============================================================================
+ */
+
+export const getInvoiceSettings = async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.query.organizationId as string;
+    if (!organizationId) {
+      return errorResponse(res, "organizationId is required", 400);
+    }
+    const settings = await SettingsService.getInvoiceSettings(organizationId);
+    if (!settings) {
+      return errorResponse(res, "Invoice settings not found", 404);
+    }
+    return successResponse(res, settings, "Invoice settings retrieved");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+export const updateInvoiceSettings = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { organizationId, ...data } = req.body as {
+      organizationId: string;
+      [key: string]: unknown;
+    };
+    if (!organizationId) {
+      return errorResponse(res, "organizationId is required", 400);
+    }
+    const updated = await SettingsService.updateInvoiceSettings(
+      organizationId,
+      data as Parameters<typeof SettingsService.updateInvoiceSettings>[1],
+      userId,
+    );
+    if (!updated) {
+      return errorResponse(res, "Invoice settings not found", 404);
+    }
+    return successResponse(res, updated, "Invoice settings updated");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};

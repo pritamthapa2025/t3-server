@@ -181,3 +181,46 @@ export const updateTermsConditionsTemplateSchema = z.object({
     isDefault: z.boolean().optional(),
   }),
 });
+
+/**
+ * ============================================================================
+ * INVOICE SETTINGS TAB (per organization)
+ * ============================================================================
+ */
+
+const uuidString = z.string().uuid("Must be a valid UUID");
+
+export const getInvoiceSettingsSchema = z.object({
+  query: z.object({
+    organizationId: uuidString,
+  }),
+});
+
+export const updateInvoiceSettingsSchema = z.object({
+  body: z.object({
+    organizationId: uuidString,
+    defaultPaymentTerms: z.string().max(50).optional(),
+    defaultPaymentTermsDays: z.number().int().min(0).optional(),
+    defaultTaxRate: z
+      .string()
+      .regex(/^\d+(\.\d{1,4})?$/, "Invalid tax rate")
+      .optional(),
+    enableLateFees: z.boolean().optional(),
+    lateFeePercentage: z
+      .string()
+      .regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage")
+      .optional(),
+    lateFeeGracePeriodDays: z.number().int().min(0).optional(),
+    showLineItemDetails: z.boolean().optional(),
+    showLaborBreakdown: z.boolean().optional(),
+    showMaterialsBreakdown: z.boolean().optional(),
+    defaultInvoiceNotes: z.string().nullable().optional(),
+    defaultTermsAndConditions: z.string().nullable().optional(),
+    autoSendOnCompletion: z.boolean().optional(),
+    autoRemindBeforeDue: z.boolean().optional(),
+    reminderDaysBeforeDue: z.number().int().min(0).optional(),
+    defaultEmailSubject: z.string().max(500).nullable().optional(),
+    defaultEmailMessage: z.string().nullable().optional(),
+    alwaysAttachPdf: z.boolean().optional(),
+  }),
+});

@@ -8,6 +8,7 @@ import {
   proposalBasisTemplates,
   termsConditionsTemplates,
 } from "../drizzle/schema/settings.schema.js";
+import { invoiceSettings } from "../drizzle/schema/settings.schema.js";
 import { positions } from "../drizzle/schema/org.schema.js";
 import { eq, and, desc, asc } from "drizzle-orm";
 
@@ -608,4 +609,66 @@ export const setDefaultTermsConditionsTemplate = async (id: string) => {
     .returning();
 
   return updated;
+};
+
+/**
+ * ============================================================================
+ * INVOICE SETTINGS (per organization) - Default content, terms, display, automation, email
+ * ============================================================================
+ */
+
+export const getInvoiceSettings = async (organizationId: string) => {
+  const [row] = await db
+    .select()
+    .from(invoiceSettings)
+    .where(eq(invoiceSettings.organizationId, organizationId))
+    .limit(1);
+
+  if (row) return row;
+
+  const [inserted] = await db
+    .insert(invoiceSettings)
+    .values({ organizationId })
+    .returning();
+
+  return inserted ?? null;
+};
+
+export const updateInvoiceSettings = async (
+  organizationId: string,
+  data: Partial<{
+    defaultPaymentTerms: string;
+    defaultPaymentTermsDays: number;
+    defaultTaxRate: string;
+    enableLateFees: boolean;
+    lateFeePercentage: string;
+    lateFeeGracePeriodDays: number;
+    showLineItemDetails: boolean;
+    showLaborBreakdown: boolean;
+    showMaterialsBreakdown: boolean;
+    defaultInvoiceNotes: string | null;
+    defaultTermsAndConditions: string | null;
+    autoSendOnCompletion: boolean;
+    autoRemindBeforeDue: boolean;
+    reminderDaysBeforeDue: number;
+    defaultEmailSubject: string | null;
+    defaultEmailMessage: string | null;
+    alwaysAttachPdf: boolean;
+  }>,
+  updatedBy?: string,
+) => {
+  const existing = await getInvoiceSettings(organizationId);
+  if (!existing) return null;
+
+  const [updated] = await db
+    .update(invoiceSettings)
+    .set({
+      ...data,
+      updatedBy: updatedBy ?? undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(invoiceSettings.organizationId, organizationId))
+    .returning();
+
+  return updated ?? null;
 };

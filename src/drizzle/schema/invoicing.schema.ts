@@ -38,21 +38,21 @@ export const invoices: any = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
-    
+
     // Relationships
     jobId: uuid("job_id").references(() => jobs.id),
-    
+
     // Invoice Details
     invoiceType: invoiceTypeEnum("invoice_type").notNull().default("standard"),
     status: invoiceStatusEnum("status").notNull().default("draft"),
-    
+
     // Dates
     invoiceDate: date("invoice_date").notNull(),
     dueDate: date("due_date").notNull(),
     sentDate: timestamp("sent_date"),
     paidDate: timestamp("paid_date"),
     lastReminderDate: timestamp("last_reminder_date"),
-    
+
     // Financial
     subtotal: numeric("subtotal", { precision: 15, scale: 2 })
       .notNull()
@@ -77,14 +77,14 @@ export const invoices: any = org.table(
     balanceDue: numeric("balance_due", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
-    
+
     // Terms & Conditions
     paymentTerms: varchar("payment_terms", { length: 100 }), // "Net 30", "Due on Receipt", etc.
     paymentTermsDays: integer("payment_terms_days"), // Number of days (e.g., 30 for Net 30)
     notes: text("notes"),
     termsAndConditions: text("terms_and_conditions"),
     internalNotes: text("internal_notes"), // Internal-only notes
-    
+
     // Billing Address
     billingAddressLine1: varchar("billing_address_line1", { length: 255 }),
     billingAddressLine2: varchar("billing_address_line2", { length: 255 }),
@@ -92,7 +92,7 @@ export const invoices: any = org.table(
     billingState: varchar("billing_state", { length: 100 }),
     billingZipCode: varchar("billing_zip_code", { length: 20 }),
     billingCountry: varchar("billing_country", { length: 100 }),
-    
+
     // Recurring Invoice Settings
     isRecurring: boolean("is_recurring").default(false),
     recurringFrequency: recurringFrequencyEnum("recurring_frequency"), // "monthly", "quarterly", "yearly"
@@ -100,20 +100,20 @@ export const invoices: any = org.table(
     recurringEndDate: date("recurring_end_date"),
     nextInvoiceDate: date("next_invoice_date"),
     parentInvoiceId: uuid("parent_invoice_id").references(() => invoices.id), // For recurring invoice series
-    
+
     // Email & Communication
     emailSent: boolean("email_sent").default(false),
     emailSentTo: varchar("email_sent_to", { length: 255 }), // Email address
     reminderSent: boolean("reminder_sent").default(false),
     reminderCount: integer("reminder_count").default(0),
-    
+
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -129,8 +129,11 @@ export const invoices: any = org.table(
     index("idx_invoices_due_date").on(table.dueDate),
     index("idx_invoices_is_deleted").on(table.isDeleted),
     index("idx_invoices_created_at").on(table.createdAt),
-    index("idx_invoices_recurring").on(table.isRecurring, table.parentInvoiceId),
-  ]
+    index("idx_invoices_recurring").on(
+      table.isRecurring,
+      table.parentInvoiceId,
+    ),
+  ],
 );
 
 /**
@@ -144,7 +147,7 @@ export const invoiceLineItems = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // Line Item Details
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
@@ -160,18 +163,16 @@ export const invoiceLineItems = org.table(
       .notNull()
       .default("0"),
     lineTotal: numeric("line_total", { precision: 15, scale: 2 }).notNull(),
-    
+
     // Metadata
     sortOrder: integer("sort_order").default(0),
     notes: text("notes"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_invoice_line_items_invoice").on(table.invoiceId),
-  ]
+  (table) => [index("idx_invoice_line_items_invoice").on(table.invoiceId)],
 );
 
 /**
@@ -183,39 +184,38 @@ export const payments = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     paymentNumber: varchar("payment_number", { length: 100 }).notNull(),
-    
+
     // Relationships
     clientId: uuid("client_id")
       .notNull()
       .references(() => organizations.id), // Client organization (derived from invoice → job → bid)
-    invoiceId: uuid("invoice_id")
-      .references(() => invoices.id), // Optional for deposits/prepayments
-    
+    invoiceId: uuid("invoice_id").references(() => invoices.id), // Optional for deposits/prepayments
+
     // Payment Details
     paymentType: paymentTypeEnum("payment_type").notNull().default("full"),
     paymentMethod: invoicePaymentMethodEnum("payment_method").notNull(),
     status: paymentStatusEnum("status").notNull().default("pending"),
-    
+
     // Financial
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).default("USD"),
     exchangeRate: numeric("exchange_rate", { precision: 10, scale: 6 })
       .notNull()
       .default("1"),
-    
+
     // Payment Processing
     paymentDate: date("payment_date").notNull(),
     receivedDate: timestamp("received_date"),
     processedDate: timestamp("processed_date"),
     clearedDate: timestamp("cleared_date"), // For checks/ACH
-    
+
     // Payment Method Specific
     checkNumber: varchar("check_number", { length: 50 }),
     transactionId: varchar("transaction_id", { length: 255 }), // For credit card, ACH, wire
     referenceNumber: varchar("reference_number", { length: 255 }),
     bankName: varchar("bank_name", { length: 255 }),
     accountLastFour: varchar("account_last_four", { length: 4 }),
-    
+
     // Fees & Adjustments
     processingFee: numeric("processing_fee", { precision: 15, scale: 2 })
       .notNull()
@@ -230,17 +230,17 @@ export const payments = org.table(
       .notNull()
       .default("0"),
     adjustmentReason: text("adjustment_reason"),
-    
+
     // Notes
     notes: text("notes"),
     internalNotes: text("internal_notes"),
-    
+
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
     processedBy: uuid("processed_by").references(() => users.id),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -257,7 +257,7 @@ export const payments = org.table(
     index("idx_payments_received_date").on(table.receivedDate),
     index("idx_payments_is_deleted").on(table.isDeleted),
     index("idx_payments_created_at").on(table.createdAt),
-  ]
+  ],
 );
 
 /**
@@ -278,15 +278,17 @@ export const paymentAllocations = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // Allocation Details
-    allocatedAmount: numeric("allocated_amount", { precision: 15, scale: 2 })
-      .notNull(),
+    allocatedAmount: numeric("allocated_amount", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
     allocationDate: timestamp("allocation_date").defaultNow(),
-    
+
     // Notes
     notes: text("notes"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -294,12 +296,12 @@ export const paymentAllocations = org.table(
     // Unique constraint: one allocation per payment-invoice pair
     unique("unique_payment_invoice_allocation").on(
       table.paymentId,
-      table.invoiceId
+      table.invoiceId,
     ),
     index("idx_payment_allocations_org").on(table.organizationId),
     index("idx_payment_allocations_payment").on(table.paymentId),
     index("idx_payment_allocations_invoice").on(table.invoiceId),
-  ]
+  ],
 );
 
 /**
@@ -316,7 +318,7 @@ export const invoiceDocuments = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // Document Details
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -324,13 +326,13 @@ export const invoiceDocuments = org.table(
     fileSize: integer("file_size"),
     documentType: varchar("document_type", { length: 50 }), // "invoice_pdf", "receipt", "proof_of_delivery", etc.
     mimeType: varchar("mime_type", { length: 100 }),
-    
+
     // Metadata
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
     description: text("description"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -339,7 +341,7 @@ export const invoiceDocuments = org.table(
     index("idx_invoice_documents_invoice").on(table.invoiceId),
     index("idx_invoice_documents_type").on(table.documentType),
     index("idx_invoice_documents_uploaded_by").on(table.uploadedBy),
-  ]
+  ],
 );
 
 /**
@@ -356,7 +358,7 @@ export const paymentDocuments = org.table(
     paymentId: uuid("payment_id")
       .notNull()
       .references(() => payments.id),
-    
+
     // Document Details
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -364,13 +366,13 @@ export const paymentDocuments = org.table(
     fileSize: integer("file_size"),
     documentType: varchar("document_type", { length: 50 }), // "receipt", "bank_statement", "check_image", etc.
     mimeType: varchar("mime_type", { length: 100 }),
-    
+
     // Metadata
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
     description: text("description"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -379,7 +381,7 @@ export const paymentDocuments = org.table(
     index("idx_payment_documents_payment").on(table.paymentId),
     index("idx_payment_documents_type").on(table.documentType),
     index("idx_payment_documents_uploaded_by").on(table.uploadedBy),
-  ]
+  ],
 );
 
 /**
@@ -393,18 +395,18 @@ export const invoiceHistory = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // History Details
     action: varchar("action", { length: 100 }).notNull(), // "created", "status_changed", "amount_updated", "sent", "paid", etc.
     oldValue: text("old_value"),
     newValue: text("new_value"),
     description: text("description"),
-    
+
     // Metadata
     performedBy: uuid("performed_by")
       .notNull()
       .references(() => users.id),
-    
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -412,7 +414,7 @@ export const invoiceHistory = org.table(
     index("idx_invoice_history_performed_by").on(table.performedBy),
     index("idx_invoice_history_created_at").on(table.createdAt),
     index("idx_invoice_history_action").on(table.action),
-  ]
+  ],
 );
 
 /**
@@ -429,18 +431,18 @@ export const paymentHistory = org.table(
     paymentId: uuid("payment_id")
       .notNull()
       .references(() => payments.id),
-    
+
     // History Details
     action: varchar("action", { length: 100 }).notNull(), // "created", "status_changed", "processed", "cleared", etc.
     oldValue: text("old_value"),
     newValue: text("new_value"),
     description: text("description"),
-    
+
     // Metadata
     performedBy: uuid("performed_by")
       .notNull()
       .references(() => users.id),
-    
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -449,7 +451,7 @@ export const paymentHistory = org.table(
     index("idx_payment_history_performed_by").on(table.performedBy),
     index("idx_payment_history_created_at").on(table.createdAt),
     index("idx_payment_history_action").on(table.action),
-  ]
+  ],
 );
 
 /**
@@ -466,7 +468,7 @@ export const invoiceReminders = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // Reminder Details
     reminderType: varchar("reminder_type", { length: 50 }), // "overdue", "due_soon", "custom"
     daysOverdue: integer("days_overdue"), // Number of days past due date
@@ -474,16 +476,16 @@ export const invoiceReminders = org.table(
     sentTo: varchar("sent_to", { length: 255 }), // Email address
     subject: varchar("subject", { length: 255 }),
     message: text("message"),
-    
+
     // Status
     emailOpened: boolean("email_opened").default(false),
     emailOpenedAt: timestamp("email_opened_at"),
     linkClicked: boolean("link_clicked").default(false),
     linkClickedAt: timestamp("link_clicked_at"),
-    
+
     // Metadata
     sentBy: uuid("sent_by").references(() => users.id),
-    
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -491,7 +493,7 @@ export const invoiceReminders = org.table(
     index("idx_invoice_reminders_invoice").on(table.invoiceId),
     index("idx_invoice_reminders_sent_date").on(table.sentDate),
     index("idx_invoice_reminders_type").on(table.reminderType),
-  ]
+  ],
 );
 
 /**
@@ -503,7 +505,7 @@ export const creditNotes = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     creditNoteNumber: varchar("credit_note_number", { length: 100 }).notNull(),
-    
+
     // Relationships
     organizationId: uuid("organization_id")
       .notNull()
@@ -513,33 +515,37 @@ export const creditNotes = org.table(
       .references(() => organizations.id),
     invoiceId: uuid("invoice_id").references(() => invoices.id), // If credit note is for specific invoice
     paymentId: uuid("payment_id").references(() => payments.id), // If credit note is for specific payment
-    
+
     // Credit Note Details
     creditNoteDate: date("credit_note_date").notNull(),
     reason: varchar("reason", { length: 100 }), // "refund", "adjustment", "discount", "cancellation", etc.
     description: text("description"),
-    
+
     // Financial
-    creditAmount: numeric("credit_amount", { precision: 15, scale: 2 })
-      .notNull(),
+    creditAmount: numeric("credit_amount", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
     appliedAmount: numeric("applied_amount", { precision: 15, scale: 2 })
       .notNull()
       .default("0"), // Amount applied to invoices
-    remainingAmount: numeric("remaining_amount", { precision: 15, scale: 2 })
-      .notNull(),
-    
+    remainingAmount: numeric("remaining_amount", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
+
     // Status
     status: varchar("status", { length: 50 }).notNull().default("pending"), // "pending", "applied", "expired", "cancelled"
-    
+
     // Dates
     expiryDate: date("expiry_date"),
     appliedDate: timestamp("applied_date"),
-    
+
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -548,7 +554,7 @@ export const creditNotes = org.table(
     // Unique constraint: creditNoteNumber unique per organization
     unique("unique_credit_note_number_per_org").on(
       table.organizationId,
-      table.creditNoteNumber
+      table.creditNoteNumber,
     ),
     index("idx_credit_notes_org").on(table.organizationId),
     index("idx_credit_notes_client").on(table.clientId),
@@ -556,7 +562,7 @@ export const creditNotes = org.table(
     index("idx_credit_notes_payment").on(table.paymentId),
     index("idx_credit_notes_status").on(table.status),
     index("idx_credit_notes_credit_note_date").on(table.creditNoteDate),
-  ]
+  ],
 );
 
 /**
@@ -576,15 +582,17 @@ export const creditNoteApplications = org.table(
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
-    
+
     // Application Details
-    appliedAmount: numeric("applied_amount", { precision: 15, scale: 2 })
-      .notNull(),
+    appliedAmount: numeric("applied_amount", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
     applicationDate: timestamp("application_date").defaultNow(),
-    
+
     // Notes
     notes: text("notes"),
-    
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -592,11 +600,10 @@ export const creditNoteApplications = org.table(
     // Unique constraint: one application per credit note-invoice pair
     unique("unique_credit_note_invoice_application").on(
       table.creditNoteId,
-      table.invoiceId
+      table.invoiceId,
     ),
     index("idx_credit_note_applications_org").on(table.organizationId),
     index("idx_credit_note_applications_credit_note").on(table.creditNoteId),
     index("idx_credit_note_applications_invoice").on(table.invoiceId),
-  ]
+  ],
 );
-
