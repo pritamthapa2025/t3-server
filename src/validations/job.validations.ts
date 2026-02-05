@@ -154,6 +154,11 @@ export const getJobTeamMembersSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
   }),
+  query: z
+    .object({
+      roleName: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
 export const addJobTeamMemberSchema = z.object({

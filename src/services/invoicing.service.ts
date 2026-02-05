@@ -684,6 +684,192 @@ export const updateInvoice = async (
 };
 
 /**
+ * Create invoice line item
+ */
+export const createInvoiceLineItem = async (
+  invoiceId: string,
+  organizationId: string,
+  data: {
+    description: string;
+    itemType?: string;
+    quantity?: string;
+    unitPrice: string;
+    discountAmount?: string;
+    taxRate?: string;
+    notes?: string;
+    sortOrder?: number;
+  },
+) => {
+  const invoice = await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: false,
+    includePayments: false,
+    includeDocuments: false,
+  });
+  if (!invoice) {
+    return null;
+  }
+
+  const [inv] = await db
+    .select({ taxRate: invoices.taxRate })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId));
+  const invoiceTaxRate = inv?.taxRate ?? "0";
+
+  const title = (data.description || "").slice(0, 255) || "Line item";
+  const quantity = data.quantity ?? "1";
+  const unitPrice = data.unitPrice;
+  const discountAmount = data.discountAmount ?? "0";
+  const { lineTotal, taxAmount } = calculateLineItemTotal(
+    quantity,
+    unitPrice,
+    discountAmount,
+    data.taxRate ?? invoiceTaxRate,
+  );
+
+  const [inserted] = await db
+    .insert(invoiceLineItems)
+    .values({
+      invoiceId,
+      title,
+      description: data.description ?? null,
+      itemType: data.itemType ?? null,
+      quantity,
+      unitPrice,
+      discountAmount,
+      taxAmount,
+      lineTotal,
+      notes: data.notes ?? null,
+      sortOrder: data.sortOrder ?? 0,
+    })
+    .returning();
+
+  await recalculateInvoiceTotals(invoiceId);
+  return inserted ?? null;
+};
+
+/**
+ * Update invoice line item
+ */
+export const updateInvoiceLineItem = async (
+  invoiceId: string,
+  lineItemId: string,
+  organizationId: string,
+  data: Partial<{
+    description: string;
+    itemType: string;
+    quantity: string;
+    unitPrice: string;
+    discountAmount: string;
+    taxRate: string;
+    notes: string;
+    sortOrder: number;
+  }>,
+) => {
+  const invoice = await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: true,
+    includePayments: false,
+    includeDocuments: false,
+  });
+  if (!invoice) {
+    return null;
+  }
+
+  const existing = (invoice.lineItems as any[]).find(
+    (li: { id: string }) => li.id === lineItemId,
+  );
+  if (!existing) {
+    return null;
+  }
+
+  const [inv] = await db
+    .select({ taxRate: invoices.taxRate })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId));
+  const invoiceTaxRate = inv?.taxRate ?? "0";
+
+  const quantity = data.quantity ?? existing.quantity ?? "1";
+  const unitPrice = data.unitPrice ?? existing.unitPrice ?? "0";
+  const discountAmount = data.discountAmount ?? existing.discountAmount ?? "0";
+  const taxRateInput = data.taxRate ?? invoiceTaxRate;
+  const { lineTotal, taxAmount } = calculateLineItemTotal(
+    quantity,
+    unitPrice,
+    discountAmount,
+    taxRateInput,
+  );
+
+  const updatePayload: Record<string, unknown> = {
+    quantity,
+    unitPrice,
+    discountAmount,
+    taxAmount,
+    lineTotal,
+    updatedAt: new Date(),
+  };
+  if (data.description !== undefined) {
+    updatePayload.title = data.description.slice(0, 255) || existing.title;
+    updatePayload.description = data.description;
+  }
+  if (data.itemType !== undefined) updatePayload.itemType = data.itemType;
+  if (data.notes !== undefined) updatePayload.notes = data.notes;
+  if (data.sortOrder !== undefined) updatePayload.sortOrder = data.sortOrder;
+
+  const [updated] = await db
+    .update(invoiceLineItems)
+    .set(updatePayload as any)
+    .where(
+      and(
+        eq(invoiceLineItems.id, lineItemId),
+        eq(invoiceLineItems.invoiceId, invoiceId),
+        eq(invoiceLineItems.isDeleted, false),
+      ),
+    )
+    .returning();
+
+  await recalculateInvoiceTotals(invoiceId);
+  return updated ?? null;
+};
+
+/**
+ * Delete invoice line item (soft delete)
+ */
+export const deleteInvoiceLineItem = async (
+  invoiceId: string,
+  lineItemId: string,
+  organizationId: string,
+) => {
+  const invoice = await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: true,
+    includePayments: false,
+    includeDocuments: false,
+  });
+  if (!invoice) {
+    return null;
+  }
+
+  const existing = (invoice.lineItems as any[]).find(
+    (li: { id: string }) => li.id === lineItemId,
+  );
+  if (!existing) {
+    return null;
+  }
+
+  const [updated] = await db
+    .update(invoiceLineItems)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(invoiceLineItems.id, lineItemId),
+        eq(invoiceLineItems.invoiceId, invoiceId),
+      ),
+    )
+    .returning();
+
+  await recalculateInvoiceTotals(invoiceId);
+  return updated ?? null;
+};
+
+/**
  * Delete invoice (soft delete)
  */
 export const deleteInvoice = async (
@@ -1217,6 +1403,136 @@ export const deletePayment = async (
     .where(eq(payments.id, paymentId));
 
   return { success: true };
+};
+
+/**
+ * Get payment and organizationId (for allocation operations)
+ */
+const getPaymentWithOrg = async (
+  paymentId: string,
+  organizationId?: string,
+): Promise<{ organizationId: string } | null> => {
+  const [row] = await db
+    .select({
+      organizationId: bidsTable.organizationId,
+    })
+    .from(payments)
+    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
+    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(eq(payments.id, paymentId), eq(payments.isDeleted, false)))
+    .limit(1);
+
+  if (!row?.organizationId) return null;
+  if (organizationId && row.organizationId !== organizationId) return null;
+  return { organizationId: row.organizationId };
+};
+
+/**
+ * Create payment allocation
+ */
+export const createPaymentAllocation = async (
+  paymentId: string,
+  organizationId: string | undefined,
+  data: { invoiceId: string; allocatedAmount: string; notes?: string },
+) => {
+  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
+  if (!paymentOrg) return null;
+
+  const [inserted] = await db
+    .insert(paymentAllocations)
+    .values({
+      organizationId: paymentOrg.organizationId,
+      paymentId,
+      invoiceId: data.invoiceId,
+      allocatedAmount: data.allocatedAmount,
+      notes: data.notes ?? null,
+    })
+    .returning();
+
+  return inserted ?? null;
+};
+
+/**
+ * Update payment allocation
+ */
+export const updatePaymentAllocation = async (
+  paymentId: string,
+  allocationId: string,
+  organizationId: string | undefined,
+  data: { allocatedAmount?: string; notes?: string },
+) => {
+  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
+  if (!paymentOrg) return null;
+
+  const [existing] = await db
+    .select()
+    .from(paymentAllocations)
+    .where(
+      and(
+        eq(paymentAllocations.id, allocationId),
+        eq(paymentAllocations.paymentId, paymentId),
+        eq(paymentAllocations.isDeleted, false),
+      ),
+    );
+
+  if (!existing) return null;
+
+  const updatePayload: Record<string, unknown> = {};
+  if (data.allocatedAmount !== undefined)
+    updatePayload.allocatedAmount = data.allocatedAmount;
+  if (data.notes !== undefined) updatePayload.notes = data.notes;
+
+  const [updated] = await db
+    .update(paymentAllocations)
+    .set(updatePayload as any)
+    .where(
+      and(
+        eq(paymentAllocations.id, allocationId),
+        eq(paymentAllocations.paymentId, paymentId),
+      ),
+    )
+    .returning();
+
+  return updated ?? null;
+};
+
+/**
+ * Delete payment allocation (soft delete)
+ */
+export const deletePaymentAllocation = async (
+  paymentId: string,
+  allocationId: string,
+  organizationId: string | undefined,
+) => {
+  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
+  if (!paymentOrg) return null;
+
+  const [existing] = await db
+    .select()
+    .from(paymentAllocations)
+    .where(
+      and(
+        eq(paymentAllocations.id, allocationId),
+        eq(paymentAllocations.paymentId, paymentId),
+        eq(paymentAllocations.isDeleted, false),
+      ),
+    );
+
+  if (!existing) return null;
+
+  const [updated] = await db
+    .update(paymentAllocations)
+    .set({ isDeleted: true })
+    .where(
+      and(
+        eq(paymentAllocations.id, allocationId),
+        eq(paymentAllocations.paymentId, paymentId),
+      ),
+    )
+    .returning();
+
+  return updated ?? null;
 };
 
 // ============================

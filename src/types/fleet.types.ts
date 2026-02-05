@@ -590,9 +590,7 @@ export interface UpdateVehicleMediaData {
   url?: string;
   thumbnailUrl?: string;
   tags?: unknown;
-}
-
-// Vehicle Document Types
+}// Vehicle Document Types
 export interface VehicleDocument {
   id: string;
   vehicleId: string;

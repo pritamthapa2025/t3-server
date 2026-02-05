@@ -24,7 +24,7 @@ const validateUserAccess = (req: Request, res: Response): string | null => {
 const validateParam = (
   param: string | undefined,
   paramName: string,
-  res: Response
+  res: Response,
 ): string | null => {
   if (!param) {
     res.status(400).json({
@@ -61,7 +61,7 @@ export const getInventoryItemsHandler = async (req: Request, res: Response) => {
     const result = await inventoryService.getInventoryItems(
       offset,
       limit,
-      filters
+      filters,
     );
 
     logger.info("Inventory items fetched successfully");
@@ -84,7 +84,7 @@ export const getInventoryItemsHandler = async (req: Request, res: Response) => {
 
 export const getInventoryItemByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -118,7 +118,7 @@ export const getInventoryItemByIdHandler = async (
 
 export const createInventoryItemHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const userId = validateUserAccess(req, res);
@@ -156,7 +156,7 @@ export const createInventoryItemHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "inventory-items"
+          "inventory-items",
         );
         // Add image URL to images array
         if (!itemData.images) {
@@ -178,7 +178,7 @@ export const createInventoryItemHandler = async (
 
     const newItem = await inventoryService.createInventoryItem(
       itemData,
-      userId
+      userId,
     );
 
     logger.info(`Inventory item ${newItem.id} created successfully`);
@@ -199,7 +199,7 @@ export const createInventoryItemHandler = async (
 
 export const updateInventoryItemHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -212,7 +212,7 @@ export const updateInventoryItemHandler = async (
     const updatedItem = await inventoryService.updateInventoryItem(
       validId,
       req.body,
-      userId
+      userId,
     );
 
     logger.info(`Inventory item ${validId} updated successfully`);
@@ -233,7 +233,7 @@ export const updateInventoryItemHandler = async (
 
 export const deleteInventoryItemHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -299,7 +299,7 @@ export const getDashboardHandler = async (req: Request, res: Response) => {
     logger.logApiError(
       "Error fetching inventory dashboard summary",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -311,7 +311,7 @@ export const getDashboardHandler = async (req: Request, res: Response) => {
 
 export const getStatsByCategoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const stats = await inventoryService.getStatsByCategory();
@@ -326,7 +326,7 @@ export const getStatsByCategoryHandler = async (
     logger.logApiError(
       "Error fetching inventory statistics by category",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -338,7 +338,7 @@ export const getStatsByCategoryHandler = async (
 
 export const getStatsByLocationHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const stats = await inventoryService.getStatsByLocation();
@@ -353,7 +353,7 @@ export const getStatsByLocationHandler = async (
     logger.logApiError(
       "Error fetching inventory statistics by location",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -377,7 +377,7 @@ export const getStatsByStatusHandler = async (req: Request, res: Response) => {
     logger.logApiError(
       "Error fetching inventory statistics by status",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -410,7 +410,7 @@ export const getTransactionsHandler = async (req: Request, res: Response) => {
     const result = await inventoryService.getTransactions(
       offset,
       limit,
-      filters
+      filters,
     );
 
     logger.info("Inventory transactions fetched successfully");
@@ -438,11 +438,11 @@ export const createTransactionHandler = async (req: Request, res: Response) => {
 
     const newTransaction = await inventoryService.createTransaction(
       req.body,
-      userId
+      userId,
     );
 
     logger.info(
-      `Inventory transaction ${newTransaction.id} created successfully`
+      `Inventory transaction ${newTransaction.id} created successfully`,
     );
     res.status(201).json({
       success: true,
@@ -461,7 +461,7 @@ export const createTransactionHandler = async (req: Request, res: Response) => {
 
 export const getItemTransactionsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -505,7 +505,7 @@ export const getAllocationsHandler = async (req: Request, res: Response) => {
     const result = await inventoryService.getAllocations(
       offset,
       limit,
-      filters
+      filters,
     );
 
     logger.info("Inventory allocations fetched successfully");
@@ -562,11 +562,11 @@ export const createAllocationHandler = async (req: Request, res: Response) => {
 
     const newAllocation = await inventoryService.createAllocation(
       req.body,
-      userId
+      userId,
     );
 
     logger.info(
-      `Inventory allocation ${newAllocation.id} created successfully`
+      `Inventory allocation ${newAllocation.id} created successfully`,
     );
     res.status(201).json({
       success: true,
@@ -589,7 +589,7 @@ export const updateAllocationHandler = async (req: Request, res: Response) => {
 
     const updatedAllocation = await inventoryService.updateAllocation(
       id!,
-      req.body
+      req.body,
     );
 
     logger.info(`Inventory allocation ${id} updated successfully`);
@@ -617,7 +617,7 @@ export const issueAllocationHandler = async (req: Request, res: Response) => {
 
     const updatedAllocation = await inventoryService.issueAllocation(
       id!,
-      userId
+      userId,
     );
 
     logger.info(`Inventory allocation ${id} issued successfully`);
@@ -646,7 +646,7 @@ export const returnAllocationHandler = async (req: Request, res: Response) => {
     const updatedAllocation = await inventoryService.returnAllocation(
       id!,
       req.body,
-      userId
+      userId,
     );
 
     logger.info(`Inventory allocation ${id} returned successfully`);
@@ -689,7 +689,7 @@ export const cancelAllocationHandler = async (req: Request, res: Response) => {
 
 export const getAllocationsByJobHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { jobId } = req.params;
@@ -707,7 +707,7 @@ export const getAllocationsByJobHandler = async (
     logger.logApiError(
       "Error fetching inventory allocations by job",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -719,7 +719,7 @@ export const getAllocationsByJobHandler = async (
 
 export const getAllocationsByBidHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { bidId } = req.params;
@@ -737,7 +737,7 @@ export const getAllocationsByBidHandler = async (
     logger.logApiError(
       "Error fetching inventory allocations by bid",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -768,7 +768,7 @@ export const getPurchaseOrdersHandler = async (req: Request, res: Response) => {
     const result = await inventoryService.getPurchaseOrders(
       offset,
       limit,
-      filters
+      filters,
     );
 
     logger.info("Purchase orders fetched successfully");
@@ -791,7 +791,7 @@ export const getPurchaseOrdersHandler = async (req: Request, res: Response) => {
 
 export const getPurchaseOrderByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -823,7 +823,7 @@ export const getPurchaseOrderByIdHandler = async (
 
 export const createPurchaseOrderHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const userId = validateUserAccess(req, res);
@@ -849,7 +849,7 @@ export const createPurchaseOrderHandler = async (
 
 export const updatePurchaseOrderHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -874,7 +874,7 @@ export const updatePurchaseOrderHandler = async (
 
 export const approvePurchaseOrderHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -922,7 +922,10 @@ export const sendPurchaseOrderHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const cancelPurchaseOrderHandler = async (req: Request, res: Response) => {
+export const cancelPurchaseOrderHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -945,7 +948,10 @@ export const cancelPurchaseOrderHandler = async (req: Request, res: Response) =>
   }
 };
 
-export const closePurchaseOrderHandler = async (req: Request, res: Response) => {
+export const closePurchaseOrderHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
 
@@ -970,7 +976,10 @@ export const closePurchaseOrderHandler = async (req: Request, res: Response) => 
   }
 };
 
-export const receivePartialPurchaseOrderHandler = async (req: Request, res: Response) => {
+export const receivePartialPurchaseOrderHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params;
 
@@ -980,7 +989,7 @@ export const receivePartialPurchaseOrderHandler = async (req: Request, res: Resp
     const result = await inventoryService.receivePartialPurchaseOrder(
       id!,
       req.body,
-      userId
+      userId,
     );
 
     logger.info(`Purchase order ${id} partially received successfully`);
@@ -1001,7 +1010,7 @@ export const receivePartialPurchaseOrderHandler = async (req: Request, res: Resp
 
 export const receivePurchaseOrderHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1012,7 +1021,7 @@ export const receivePurchaseOrderHandler = async (
     const result = await inventoryService.receivePurchaseOrder(
       id!,
       req.body,
-      userId
+      userId,
     );
 
     logger.info(`Purchase order ${id} received successfully`);
@@ -1035,7 +1044,10 @@ export const receivePurchaseOrderHandler = async (
 // PO Line Item Handlers
 // ============================
 
-export const addPurchaseOrderItemHandler = async (req: Request, res: Response) => {
+export const addPurchaseOrderItemHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params; // PO ID
 
@@ -1057,11 +1069,17 @@ export const addPurchaseOrderItemHandler = async (req: Request, res: Response) =
   }
 };
 
-export const updatePurchaseOrderItemHandler = async (req: Request, res: Response) => {
+export const updatePurchaseOrderItemHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params; // PO Item ID
 
-    const updatedItem = await inventoryService.updatePurchaseOrderItem(id!, req.body);
+    const updatedItem = await inventoryService.updatePurchaseOrderItem(
+      id!,
+      req.body,
+    );
 
     logger.info(`Purchase order item ${id} updated successfully`);
     res.status(200).json({
@@ -1079,7 +1097,10 @@ export const updatePurchaseOrderItemHandler = async (req: Request, res: Response
   }
 };
 
-export const deletePurchaseOrderItemHandler = async (req: Request, res: Response) => {
+export const deletePurchaseOrderItemHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id } = req.params; // PO Item ID
 
@@ -1103,7 +1124,7 @@ export const deletePurchaseOrderItemHandler = async (req: Request, res: Response
 
 export const getPurchaseOrderItemsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -1111,7 +1132,7 @@ export const getPurchaseOrderItemsHandler = async (
     const items = await inventoryService.getPurchaseOrderItems(id!);
 
     logger.info(
-      `Purchase order items for purchase order ${id} fetched successfully`
+      `Purchase order items for purchase order ${id} fetched successfully`,
     );
     res.status(200).json({
       success: true,
@@ -1226,7 +1247,7 @@ export const updateSupplierHandler = async (req: Request, res: Response) => {
 
     const updatedSupplier = await inventoryService.updateSupplier(
       id!,
-      req.body
+      req.body,
     );
 
     logger.info(`Supplier ${id} updated successfully`);
@@ -1358,7 +1379,7 @@ export const updateLocationHandler = async (req: Request, res: Response) => {
 
     const updatedLocation = await inventoryService.updateLocation(
       id!,
-      req.body
+      req.body,
     );
 
     logger.info(`Inventory location ${id} updated successfully`);
@@ -1449,7 +1470,7 @@ export const updateCategoryHandler = async (req: Request, res: Response) => {
 
     const updatedCategory = await inventoryService.updateCategory(
       parseInt(id!),
-      req.body
+      req.body,
     );
 
     logger.info(`Inventory category ${id} updated successfully`);
@@ -1473,7 +1494,7 @@ export const deleteCategoryHandler = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const deletedCategory = await inventoryService.deleteCategory(
-      parseInt(id!)
+      parseInt(id!),
     );
 
     logger.info(`Inventory category ${id} deleted successfully`);
@@ -1529,7 +1550,7 @@ export const createUnitHandler = async (req: Request, res: Response) => {
     const newUnit = await inventoryService.createUnit(req.body);
 
     logger.info(
-      `Inventory unit ${newUnit?.id || "unknown"} created successfully`
+      `Inventory unit ${newUnit?.id || "unknown"} created successfully`,
     );
     res.status(201).json({
       success: true,
@@ -1552,7 +1573,7 @@ export const updateUnitHandler = async (req: Request, res: Response) => {
 
     const updatedUnit = await inventoryService.updateUnit(
       parseInt(id!),
-      req.body
+      req.body,
     );
 
     logger.info(`Inventory unit ${id} updated successfully`);
@@ -1627,7 +1648,7 @@ export const getAlertsHandler = async (req: Request, res: Response) => {
 
 export const getUnresolvedAlertsHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const alerts = await inventoryService.getUnresolvedAlerts();
@@ -1642,7 +1663,7 @@ export const getUnresolvedAlertsHandler = async (
     logger.logApiError(
       "Error fetching unresolved inventory alerts",
       error,
-      req
+      req,
     );
     res.status(500).json({
       success: false,
@@ -1661,7 +1682,7 @@ export const acknowledgeAlertHandler = async (req: Request, res: Response) => {
 
     const acknowledgedAlert = await inventoryService.acknowledgeAlert(
       id!,
-      userId
+      userId,
     );
 
     logger.info(`Inventory alert ${id} acknowledged successfully`);
@@ -1690,7 +1711,7 @@ export const resolveAlertHandler = async (req: Request, res: Response) => {
     const resolvedAlert = await inventoryService.resolveAlert(
       id!,
       req.body.resolutionNotes,
-      userId
+      userId,
     );
 
     logger.info(`Inventory alert ${id} resolved successfully`);
@@ -1805,6 +1826,42 @@ export const createCountHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const updateCountHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Count ID is required",
+      });
+    }
+
+    const body = req.body as { status?: string; notes?: string };
+    const updated = await inventoryService.updateCount(id, body);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Count not found",
+      });
+    }
+
+    logger.info(`Inventory count ${id} updated successfully`);
+    res.status(200).json({
+      success: true,
+      message: "Count updated successfully",
+      data: updated,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating inventory count", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update count",
+      error: error.message,
+    });
+  }
+};
+
 export const startCountHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1882,11 +1939,11 @@ export const recordCountItemHandler = async (req: Request, res: Response) => {
     const recordedItem = await inventoryService.recordCountItem(
       countId!,
       itemId!,
-      { actualQuantity: countedQuantity, notes }
+      { actualQuantity: countedQuantity, notes },
     );
 
     logger.info(
-      `Count item ${itemId} recorded successfully for count ${countId}`
+      `Count item ${itemId} recorded successfully for count ${countId}`,
     );
     res.status(200).json({
       success: true,
@@ -1902,7 +1959,3 @@ export const recordCountItemHandler = async (req: Request, res: Response) => {
     });
   }
 };
-
-
-
-

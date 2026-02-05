@@ -1421,9 +1421,7 @@ export const createInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    // Get invoice first to derive organizationId
     const invoice = await invoicingService.getInvoiceById(invoiceId);
-
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -1431,12 +1429,45 @@ export const createInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated line item CRUD operations
-    res.status(501).json({
-      success: false,
-      message:
-        "Line item creation not yet implemented - use invoice update instead",
+    const organizationId = invoice.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization for invoice",
+      });
+    }
+
+    const body = req.body as {
+      description: string;
+      itemType?: string;
+      quantity?: string;
+      unitPrice: string;
+      discountAmount?: string;
+      taxRate?: string;
+      notes?: string;
+      sortOrder?: number;
+    };
+
+    const lineItem = await invoicingService.createInvoiceLineItem(
+      invoiceId,
+      organizationId,
+      body,
+    );
+
+    if (!lineItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    logger.info(
+      `Invoice line item created: ${lineItem.id} for invoice ${invoiceId}`,
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Line item created successfully",
+      data: { lineItem },
     });
   } catch (error: any) {
     logger.logApiError("Error creating invoice line item", error, req);
@@ -1463,12 +1494,60 @@ export const updateInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated line item CRUD operations
-    res.status(501).json({
-      success: false,
-      message:
-        "Line item update not yet implemented - use invoice update instead",
+    const { invoiceId, lineItemId } = req.params;
+    if (!invoiceId || !lineItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID and line item ID are required",
+      });
+    }
+
+    const invoice = await invoicingService.getInvoiceById(invoiceId);
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    const organizationId = invoice.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization for invoice",
+      });
+    }
+
+    const body = req.body as Partial<{
+      description: string;
+      itemType: string;
+      quantity: string;
+      unitPrice: string;
+      discountAmount: string;
+      taxRate: string;
+      notes: string;
+      sortOrder: number;
+    }>;
+
+    const lineItem = await invoicingService.updateInvoiceLineItem(
+      invoiceId,
+      lineItemId,
+      organizationId,
+      body,
+    );
+
+    if (!lineItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Line item not found",
+      });
+    }
+
+    logger.info(`Invoice line item updated: ${lineItemId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Line item updated successfully",
+      data: { lineItem },
     });
   } catch (error: any) {
     logger.logApiError("Error updating invoice line item", error, req);
@@ -1495,16 +1574,51 @@ export const deleteInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated line item CRUD operations
-    res.status(501).json({
-      success: false,
-      message:
-        "Line item deletion not yet implemented - use invoice update instead",
+    const { invoiceId, lineItemId } = req.params;
+    if (!invoiceId || !lineItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID and line item ID are required",
+      });
+    }
+
+    const invoice = await invoicingService.getInvoiceById(invoiceId);
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    const organizationId = invoice.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Could not determine organization for invoice",
+      });
+    }
+
+    const deleted = await invoicingService.deleteInvoiceLineItem(
+      invoiceId,
+      lineItemId,
+      organizationId,
+    );
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Line item not found",
+      });
+    }
+
+    logger.info(`Invoice line item deleted: ${lineItemId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Line item deleted successfully",
     });
   } catch (error: any) {
     logger.logApiError("Error deleting invoice line item", error, req);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to delete line item",
       error: error.message,

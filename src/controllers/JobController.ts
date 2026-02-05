@@ -439,11 +439,14 @@ export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
     const { jobId } = req.params;
+    const roleName = req.query.roleName as string | undefined;
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const teamMembers = await getJobTeamMembers(jobId!);
+    const teamMembers = await getJobTeamMembers(jobId!, {
+      ...(roleName && { roleName }),
+    });
 
     logger.info("Job team members fetched successfully");
     return res.status(200).json({

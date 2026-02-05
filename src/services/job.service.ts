@@ -14,7 +14,7 @@ import { properties } from "../drizzle/schema/client.schema.js";
 import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { getOrganizationById } from "./client.service.js";
 import {
@@ -444,32 +444,42 @@ export const deleteJob = async (id: string) => {
 // Job Team Members
 // ============================
 
-export const getJobTeamMembers = async (jobId: string) => {
+export const getJobTeamMembers = async (
+  jobId: string,
+  options?: { roleName?: string },
+) => {
+  const conditions = [
+    eq(jobTeamMembers.jobId, jobId),
+    eq(jobTeamMembers.isActive, true),
+    eq(jobs.isDeleted, false),
+  ];
+  if (options?.roleName?.trim()) {
+    conditions.push(eq(roles.name, options.roleName.trim()));
+  }
+
   const members = await db
     .select({
       teamMember: jobTeamMembers,
       employee: employees,
       employeeName: users.fullName,
       position: positions,
+      roleName: roles.name,
     })
     .from(jobTeamMembers)
     .leftJoin(employees, eq(jobTeamMembers.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .leftJoin(positions, eq(jobTeamMembers.positionId, positions.id))
     .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
-    .where(
-      and(
-        eq(jobTeamMembers.jobId, jobId),
-        eq(jobTeamMembers.isActive, true),
-        eq(jobs.isDeleted, false),
-      ),
-    );
+    .where(and(...conditions));
 
   return members.map((m) => ({
     ...m.teamMember,
     employee: m.employee,
     employeeName: m.employeeName ?? null,
     position: m.position,
+    role: m.roleName ?? null,
   }));
 };
 

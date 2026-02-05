@@ -1342,3 +1342,11 @@ export const deleteBidDocumentSchema = z.object({
     documentId: uuidSchema,
   }),
 });
+
+export const downloadBidQuotePDFSchema = z.object({
+  params: z.object({ id: uuidSchema }),
+});
+
+export const previewBidQuotePDFSchema = z.object({
+  params: z.object({ id: uuidSchema }),
+});

@@ -5,7 +5,9 @@ import {
   getEmployeesSimple,
   getEmployeeById,
   getInspectors,
+  getTechnicians,
   getUnassignedDrivers,
+  getEmployeeKPIs,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -108,6 +110,23 @@ export const getInspectorsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error fetching inspectors", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getTechniciansHandler = async (req: Request, res: Response) => {
+  try {
+    const data = await getTechnicians();
+    logger.info("Technicians fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching technicians", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -820,16 +839,11 @@ export const deleteEmployeeHandler = async (req: Request, res: Response) => {
 
 export const getEmployeeKPIsHandler = async (req: Request, res: Response) => {
   try {
-    // TODO: Implement getEmployeeKPIs function in employee.service.ts
+    const kpis = await getEmployeeKPIs();
     logger.info("Employee KPIs fetched successfully");
     return res.status(200).json({
       success: true,
-      data: {
-        totalEmployees: 0,
-        activeEmployees: 0,
-        onLeave: 0,
-        newHires: 0,
-      },
+      data: kpis,
     });
   } catch (error) {
     logger.logApiError("Error fetching employee KPIs", error, req);

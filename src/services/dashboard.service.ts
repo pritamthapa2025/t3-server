@@ -16,7 +16,7 @@ import { eq, and, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
 /**
  * Get complete dashboard overview in one call
  */
-export const getDashboardOverview = async (organizationId: string) => {
+export const getDashboardOverview = async (organizationId?: string) => {
   const [
     revenueStats,
     activeJobsStats,
@@ -49,11 +49,15 @@ export const getDashboardOverview = async (organizationId: string) => {
 /**
  * Get revenue statistics for the last 6 months
  */
-export const getRevenueStats = async (organizationId: string) => {
+export const getRevenueStats = async (organizationId?: string) => {
   // Calculate date range for last 6 months
   const today = new Date();
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(today.getMonth() - 6);
+
+  const invoiceOrgFilter = organizationId
+    ? eq(invoices.organizationId, organizationId)
+    : undefined;
 
   // Get monthly revenue from paid invoices
   const monthlyRevenue = await db
@@ -65,7 +69,7 @@ export const getRevenueStats = async (organizationId: string) => {
     .from(invoices)
     .where(
       and(
-        eq(invoices.organizationId, organizationId),
+        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
         eq(invoices.status, "paid"),
         gte(invoices.paidDate, sixMonthsAgo),
       ),
@@ -85,7 +89,7 @@ export const getRevenueStats = async (organizationId: string) => {
     .from(invoices)
     .where(
       and(
-        eq(invoices.organizationId, organizationId),
+        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
         eq(invoices.status, "paid"),
         gte(invoices.paidDate, firstDayOfMonth),
       ),
@@ -105,7 +109,7 @@ export const getRevenueStats = async (organizationId: string) => {
     .from(invoices)
     .where(
       and(
-        eq(invoices.organizationId, organizationId),
+        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
         eq(invoices.status, "paid"),
         gte(invoices.paidDate, firstDayOfPrevMonth),
         lte(invoices.paidDate, lastDayOfPrevMonth),
@@ -136,10 +140,14 @@ export const getRevenueStats = async (organizationId: string) => {
 /**
  * Get active jobs statistics for the last 6 months
  */
-export const getActiveJobsStats = async (organizationId: string) => {
+export const getActiveJobsStats = async (organizationId?: string) => {
   const today = new Date();
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(today.getMonth() - 6);
+
+  const bidOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
 
   // Get jobs started per month via bids.organizationId
   const monthlyJobs = await db
@@ -152,7 +160,7 @@ export const getActiveJobsStats = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidOrgFilter ? [bidOrgFilter] : []),
         gte(jobs.actualStartDate, sixMonthsAgo),
         eq(jobs.isDeleted, false),
       ),
@@ -172,7 +180,7 @@ export const getActiveJobsStats = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidOrgFilter ? [bidOrgFilter] : []),
         eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
       ),
@@ -187,7 +195,7 @@ export const getActiveJobsStats = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidOrgFilter ? [bidOrgFilter] : []),
         eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
         gte(
@@ -220,7 +228,7 @@ export const getActiveJobsStats = async (organizationId: string) => {
 /**
  * Get team utilization statistics
  */
-export const getTeamUtilization = async (organizationId: string) => {
+export const getTeamUtilization = async (organizationId?: string) => {
   const today = new Date();
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(today.getMonth() - 6);
@@ -238,6 +246,10 @@ export const getTeamUtilization = async (organizationId: string) => {
       ),
     );
 
+  const assignedOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
+
   // Get assigned employees count
   const assignedEmployees = await db
     .select({
@@ -248,7 +260,7 @@ export const getTeamUtilization = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(assignedOrgFilter ? [assignedOrgFilter] : []),
         eq(jobTeamMembers.isActive, true),
         eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
@@ -280,8 +292,11 @@ export const getTeamUtilization = async (organizationId: string) => {
 /**
  * Get today's dispatch - employees assigned to jobs today
  */
-export const getTodaysDispatch = async (organizationId: string) => {
+export const getTodaysDispatch = async (organizationId?: string) => {
   const today = new Date().toISOString().split("T")[0];
+  const dispatchBidOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
 
   // Get employees assigned to jobs scheduled for today
   const dispatch = await db
@@ -302,7 +317,7 @@ export const getTodaysDispatch = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(dispatchBidOrgFilter ? [dispatchBidOrgFilter] : []),
         eq(jobTeamMembers.isActive, true),
         eq(employees.isDeleted, false),
         eq(jobs.isDeleted, false),
@@ -328,7 +343,11 @@ export const getTodaysDispatch = async (organizationId: string) => {
 /**
  * Get active bids statistics
  */
-export const getActiveBidsStats = async (organizationId: string) => {
+export const getActiveBidsStats = async (organizationId?: string) => {
+  const bidsOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
+
   // Get active bids (in_progress, pending)
   const activeBids = await db
     .select({
@@ -342,7 +361,7 @@ export const getActiveBidsStats = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
         sql`${bidsTable.status} IN ('in_progress', 'pending')`,
         eq(bidsTable.isDeleted, false),
       ),
@@ -358,7 +377,7 @@ export const getActiveBidsStats = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
         eq(bidsTable.isDeleted, false),
       ),
     );
@@ -370,7 +389,7 @@ export const getActiveBidsStats = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
         eq(bidsTable.marked, "won"),
         eq(bidsTable.isDeleted, false),
       ),
@@ -388,7 +407,7 @@ export const getActiveBidsStats = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
         sql`${bidsTable.status} IN ('in_progress', 'pending')`,
         eq(bidsTable.isDeleted, false),
       ),
@@ -409,8 +428,14 @@ export const getActiveBidsStats = async (organizationId: string) => {
 /**
  * Get performance overview
  */
-export const getPerformanceOverview = async (organizationId: string) => {
+export const getPerformanceOverview = async (organizationId?: string) => {
   const today = new Date();
+  const perfBidOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
+  const perfInvoiceOrgFilter = organizationId
+    ? eq(invoices.organizationId, organizationId)
+    : undefined;
 
   // On-time jobs percentage
   const totalCompletedJobs = await db
@@ -421,7 +446,7 @@ export const getPerformanceOverview = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
         eq(jobs.status, "completed"),
         eq(jobs.isDeleted, false),
       ),
@@ -435,7 +460,7 @@ export const getPerformanceOverview = async (organizationId: string) => {
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
         eq(jobs.status, "completed"),
         eq(jobs.isDeleted, false),
         sql`${jobs.actualEndDate} <= ${jobs.scheduledEndDate}`,
@@ -458,7 +483,7 @@ export const getPerformanceOverview = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
         eq(bidsTable.isDeleted, false),
       ),
     );
@@ -470,7 +495,7 @@ export const getPerformanceOverview = async (organizationId: string) => {
     .from(bidsTable)
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
         eq(bidsTable.marked, "won"),
         eq(bidsTable.isDeleted, false),
       ),
@@ -488,7 +513,7 @@ export const getPerformanceOverview = async (organizationId: string) => {
     .from(invoices)
     .where(
       and(
-        eq(invoices.organizationId, organizationId),
+        ...(perfInvoiceOrgFilter ? [perfInvoiceOrgFilter] : []),
         eq(invoices.status, "paid"),
         gte(
           invoices.paidDate,
@@ -517,10 +542,13 @@ export const getPerformanceOverview = async (organizationId: string) => {
  * Get priority jobs for dashboard table
  */
 export const getPriorityJobs = async (
-  organizationId: string,
+  organizationId?: string,
   options: { limit?: number; search?: string } = {},
 ) => {
   const { limit = 10, search } = options;
+  const priorityBidOrgFilter = organizationId
+    ? eq(bidsTable.organizationId, organizationId)
+    : undefined;
 
   // Build query
   let query = db
@@ -537,7 +565,7 @@ export const getPriorityJobs = async (
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
         eq(jobs.isDeleted, false),
         sql`${jobs.status} IN ('in_progress', 'planned', 'on_hold')`,
       ),

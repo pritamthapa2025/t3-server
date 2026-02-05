@@ -15,11 +15,7 @@ import { successResponse, errorResponse } from "../utils/response.js";
  */
 export const getDashboardOverview = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const overview =
       await DashboardService.getDashboardOverview(organizationId);
     return successResponse(res, overview, "Dashboard overview retrieved");
@@ -35,11 +31,7 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
  */
 export const getRevenueStats = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const stats = await DashboardService.getRevenueStats(organizationId);
     return successResponse(res, stats, "Revenue stats retrieved");
   } catch (error: any) {
@@ -53,11 +45,7 @@ export const getRevenueStats = async (req: Request, res: Response) => {
  */
 export const getActiveJobsStats = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const stats = await DashboardService.getActiveJobsStats(organizationId);
     return successResponse(res, stats, "Active jobs stats retrieved");
   } catch (error: any) {
@@ -71,11 +59,7 @@ export const getActiveJobsStats = async (req: Request, res: Response) => {
  */
 export const getTeamUtilization = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const stats = await DashboardService.getTeamUtilization(organizationId);
     return successResponse(res, stats, "Team utilization retrieved");
   } catch (error: any) {
@@ -89,11 +73,7 @@ export const getTeamUtilization = async (req: Request, res: Response) => {
  */
 export const getTodaysDispatch = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const dispatch = await DashboardService.getTodaysDispatch(organizationId);
     return successResponse(res, dispatch, "Today's dispatch retrieved");
   } catch (error: any) {
@@ -107,11 +87,7 @@ export const getTodaysDispatch = async (req: Request, res: Response) => {
  */
 export const getActiveBidsStats = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const stats = await DashboardService.getActiveBidsStats(organizationId);
     return successResponse(res, stats, "Active bids stats retrieved");
   } catch (error: any) {
@@ -125,11 +101,7 @@ export const getActiveBidsStats = async (req: Request, res: Response) => {
  */
 export const getPerformanceOverview = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const performance =
       await DashboardService.getPerformanceOverview(organizationId);
     return successResponse(res, performance, "Performance overview retrieved");
@@ -144,11 +116,7 @@ export const getPerformanceOverview = async (req: Request, res: Response) => {
  */
 export const getPriorityJobs = async (req: Request, res: Response) => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      return errorResponse(res, "Organization ID not found", 400);
-    }
-
+    const organizationId = req.user?.organizationId ?? undefined;
     const { limit, search } = req.query;
     const jobs = await DashboardService.getPriorityJobs(organizationId, {
       limit: limit ? parseInt(limit as string) : 10,

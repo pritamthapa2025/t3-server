@@ -453,11 +453,53 @@ export const createPaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated allocation CRUD operations
-    res.status(501).json({
-      success: false,
-      message: "Payment allocation creation not yet fully implemented",
+    const { paymentId } = req.params;
+    if (!paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID is required",
+      });
+    }
+
+    const payment = await invoicingService.getPaymentById(
+      paymentId,
+      undefined,
+      {
+        includeAllocations: false,
+      },
+    );
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    const body = req.body as {
+      invoiceId: string;
+      allocatedAmount: string;
+      notes?: string;
+    };
+    const allocation = await invoicingService.createPaymentAllocation(
+      paymentId,
+      undefined,
+      body,
+    );
+
+    if (!allocation) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    logger.info(
+      `Payment allocation created: ${allocation.id} for payment ${paymentId}`,
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Allocation created successfully",
+      data: { allocation },
     });
   } catch (error: any) {
     logger.logApiError("Error creating payment allocation", error, req);
@@ -484,11 +526,37 @@ export const updatePaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated allocation CRUD operations
-    res.status(501).json({
-      success: false,
-      message: "Payment allocation update not yet fully implemented",
+    const { paymentId, allocationId } = req.params;
+    if (!paymentId || !allocationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID and allocation ID are required",
+      });
+    }
+
+    const body = req.body as Partial<{
+      allocatedAmount: string;
+      notes: string;
+    }>;
+    const allocation = await invoicingService.updatePaymentAllocation(
+      paymentId,
+      allocationId,
+      undefined,
+      body,
+    );
+
+    if (!allocation) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment or allocation not found",
+      });
+    }
+
+    logger.info(`Payment allocation updated: ${allocationId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Allocation updated successfully",
+      data: { allocation },
     });
   } catch (error: any) {
     logger.logApiError("Error updating payment allocation", error, req);
@@ -515,11 +583,31 @@ export const deletePaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    // This is a simplified implementation
-    // In production, you'd have dedicated allocation CRUD operations
-    res.status(501).json({
-      success: false,
-      message: "Payment allocation deletion not yet fully implemented",
+    const { paymentId, allocationId } = req.params;
+    if (!paymentId || !allocationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID and allocation ID are required",
+      });
+    }
+
+    const deleted = await invoicingService.deletePaymentAllocation(
+      paymentId,
+      allocationId,
+      undefined,
+    );
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment or allocation not found",
+      });
+    }
+
+    logger.info(`Payment allocation deleted: ${allocationId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Allocation deleted successfully",
     });
   } catch (error: any) {
     logger.logApiError("Error deleting payment allocation", error, req);

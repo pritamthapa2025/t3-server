@@ -63,6 +63,7 @@ import {
   getCountsHandler,
   getCountByIdHandler,
   createCountHandler,
+  updateCountHandler,
   startCountHandler,
   completeCountHandler,
   getCountItemsHandler,
@@ -109,6 +110,7 @@ import {
   acknowledgeAlertSchema,
   resolveAlertSchema,
   createCountSchema,
+  updateCountSchema,
   recordCountItemSchema,
   uuidParamSchema,
   deleteSchema,
@@ -169,13 +171,13 @@ router.use(generalTransformer);
 router.get(
   "/items",
   validate(getInventoryItemsQuerySchema),
-  getInventoryItemsHandler
+  getInventoryItemsHandler,
 );
 
 router.get(
   "/items/:id",
   validate(getInventoryItemByIdSchema),
-  getInventoryItemByIdHandler
+  getInventoryItemByIdHandler,
 );
 
 router.post(
@@ -195,31 +197,31 @@ router.post(
     }
   },
   validate(createInventoryItemSchema),
-  createInventoryItemHandler
+  createInventoryItemHandler,
 );
 
 router.put(
   "/items/:id",
   validate(updateInventoryItemSchema),
-  updateInventoryItemHandler
+  updateInventoryItemHandler,
 );
 
 router.delete(
   "/items/:id",
   validate(deleteInventoryItemSchema),
-  deleteInventoryItemHandler
+  deleteInventoryItemHandler,
 );
 
 router.get(
   "/items/:id/history",
   validate(uuidParamSchema),
-  getItemHistoryHandler
+  getItemHistoryHandler,
 );
 
 router.get(
   "/items/:id/transactions",
   validate(uuidParamSchema),
-  getItemTransactionsHandler
+  getItemTransactionsHandler,
 );
 
 // ============================
@@ -238,50 +240,50 @@ router.get("/stats/by-status", getStatsByStatusHandler);
 router.get(
   "/transactions",
   validate(getInventoryTransactionsQuerySchema),
-  getTransactionsHandler
+  getTransactionsHandler,
 );
 
 router.post(
   "/transactions",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 // Convenient transaction endpoints by type
 router.post(
   "/transactions/receipt",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 router.post(
   "/transactions/issue",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 router.post(
   "/transactions/adjustment",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 router.post(
   "/transactions/transfer",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 router.post(
   "/transactions/return",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 router.post(
   "/transactions/write-off",
   validate(createTransactionSchema),
-  createTransactionHandler
+  createTransactionHandler,
 );
 
 // ============================
@@ -291,55 +293,55 @@ router.post(
 router.get(
   "/allocations",
   validate(getAllocationsQuerySchema),
-  getAllocationsHandler
+  getAllocationsHandler,
 );
 
 router.get(
   "/allocations/:id",
   validate(uuidParamSchema),
-  getAllocationByIdHandler
+  getAllocationByIdHandler,
 );
 
 router.post(
   "/allocations",
   validate(createAllocationSchema),
-  createAllocationHandler
+  createAllocationHandler,
 );
 
 router.put(
   "/allocations/:id",
   validate(updateAllocationSchema),
-  updateAllocationHandler
+  updateAllocationHandler,
 );
 
 router.delete(
   "/allocations/:id",
   validate(deleteSchema),
-  cancelAllocationHandler
+  cancelAllocationHandler,
 );
 
 router.post(
   "/allocations/:id/issue",
   validate(issueAllocationSchema),
-  issueAllocationHandler
+  issueAllocationHandler,
 );
 
 router.post(
   "/allocations/:id/return",
   validate(returnAllocationSchema),
-  returnAllocationHandler
+  returnAllocationHandler,
 );
 
 router.get(
   "/allocations/job/:jobId",
   validate(uuidParamSchema),
-  getAllocationsByJobHandler
+  getAllocationsByJobHandler,
 );
 
 router.get(
   "/allocations/bid/:bidId",
   validate(uuidParamSchema),
-  getAllocationsByBidHandler
+  getAllocationsByBidHandler,
 );
 
 // ============================
@@ -349,86 +351,86 @@ router.get(
 router.get(
   "/purchase-orders",
   validate(getPurchaseOrdersQuerySchema),
-  getPurchaseOrdersHandler
+  getPurchaseOrdersHandler,
 );
 
 router.get(
   "/purchase-orders/:id",
   validate(getPurchaseOrderByIdSchema),
-  getPurchaseOrderByIdHandler
+  getPurchaseOrderByIdHandler,
 );
 
 router.post(
   "/purchase-orders",
   validate(createPurchaseOrderSchema),
-  createPurchaseOrderHandler
+  createPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id",
   validate(updatePurchaseOrderSchema),
-  updatePurchaseOrderHandler
+  updatePurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/approve",
   validate(approvePurchaseOrderSchema),
-  approvePurchaseOrderHandler
+  approvePurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/send",
   validate(sendPurchaseOrderSchema),
-  sendPurchaseOrderHandler
+  sendPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/cancel",
   validate(cancelPurchaseOrderSchema),
-  cancelPurchaseOrderHandler
+  cancelPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/close",
   validate(closePurchaseOrderSchema),
-  closePurchaseOrderHandler
+  closePurchaseOrderHandler,
 );
 
 router.post(
   "/purchase-orders/:id/receive",
   validate(receivePurchaseOrderSchema),
-  receivePurchaseOrderHandler
+  receivePurchaseOrderHandler,
 );
 
 router.post(
   "/purchase-orders/:id/receive-partial",
   validate(receivePartialPurchaseOrderSchema),
-  receivePartialPurchaseOrderHandler
+  receivePartialPurchaseOrderHandler,
 );
 
 // PO Line Item Routes
 router.post(
   "/purchase-orders/:id/items",
   validate(addPurchaseOrderItemSchema),
-  addPurchaseOrderItemHandler
+  addPurchaseOrderItemHandler,
 );
 
 router.put(
   "/purchase-order-items/:id",
   validate(updatePurchaseOrderItemSchema),
-  updatePurchaseOrderItemHandler
+  updatePurchaseOrderItemHandler,
 );
 
 router.delete(
   "/purchase-order-items/:id",
   validate(deletePurchaseOrderItemSchema),
-  deletePurchaseOrderItemHandler
+  deletePurchaseOrderItemHandler,
 );
 
 router.get(
   "/purchase-orders/:id/items",
   validate(uuidParamSchema),
-  getPurchaseOrderItemsHandler
+  getPurchaseOrderItemsHandler,
 );
 
 // ============================
@@ -438,7 +440,7 @@ router.get(
 router.get(
   "/suppliers",
   validate(getSuppliersQuerySchema),
-  getSuppliersHandler
+  getSuppliersHandler,
 );
 
 router.get("/suppliers/:id", validate(uuidParamSchema), getSupplierByIdHandler);
@@ -446,13 +448,13 @@ router.get("/suppliers/:id", validate(uuidParamSchema), getSupplierByIdHandler);
 router.post(
   "/suppliers",
   validate(createSupplierSchema),
-  createSupplierHandler
+  createSupplierHandler,
 );
 
 router.put(
   "/suppliers/:id",
   validate(updateSupplierSchema),
-  updateSupplierHandler
+  updateSupplierHandler,
 );
 
 router.delete("/suppliers/:id", validate(deleteSchema), deleteSupplierHandler);
@@ -464,7 +466,7 @@ router.delete("/suppliers/:id", validate(deleteSchema), deleteSupplierHandler);
 router.get(
   "/locations",
   validate(getLocationsQuerySchema),
-  getLocationsHandler
+  getLocationsHandler,
 );
 
 router.get("/locations/:id", validate(uuidParamSchema), getLocationByIdHandler);
@@ -472,13 +474,13 @@ router.get("/locations/:id", validate(uuidParamSchema), getLocationByIdHandler);
 router.post(
   "/locations",
   validate(createLocationSchema),
-  createLocationHandler
+  createLocationHandler,
 );
 
 router.put(
   "/locations/:id",
   validate(updateLocationSchema),
-  updateLocationHandler
+  updateLocationHandler,
 );
 
 router.delete("/locations/:id", validate(deleteSchema), deleteLocationHandler);
@@ -492,19 +494,19 @@ router.get("/categories", getCategoriesHandler);
 router.post(
   "/categories",
   validate(createCategorySchema),
-  createCategoryHandler
+  createCategoryHandler,
 );
 
 router.put(
   "/categories/:id",
   validate(updateCategorySchema),
-  updateCategoryHandler
+  updateCategoryHandler,
 );
 
 router.delete(
   "/categories/:id",
   validate(deleteCategorySchema),
-  deleteCategoryHandler
+  deleteCategoryHandler,
 );
 
 // ============================
@@ -527,13 +529,13 @@ router.get("/alerts/unresolved", getUnresolvedAlertsHandler);
 router.put(
   "/alerts/:id/acknowledge",
   validate(acknowledgeAlertSchema),
-  acknowledgeAlertHandler
+  acknowledgeAlertHandler,
 );
 
 router.put(
   "/alerts/:id/resolve",
   validate(resolveAlertSchema),
-  resolveAlertHandler
+  resolveAlertHandler,
 );
 
 router.post("/alerts/trigger-check", triggerAlertCheckHandler);
@@ -548,31 +550,26 @@ router.get("/counts/:id", validate(uuidParamSchema), getCountByIdHandler);
 
 router.post("/counts", validate(createCountSchema), createCountHandler);
 
-// Note: updateCountHandler not implemented yet
-// router.put("/counts/:id", validate(updateCountSchema), updateCountHandler);
+router.put("/counts/:id", validate(updateCountSchema), updateCountHandler);
 
 router.post("/counts/:id/start", validate(uuidParamSchema), startCountHandler);
 
 router.post(
   "/counts/:id/complete",
   validate(uuidParamSchema),
-  completeCountHandler
+  completeCountHandler,
 );
 
 router.get(
   "/counts/:id/items",
   validate(uuidParamSchema),
-  getCountItemsHandler
+  getCountItemsHandler,
 );
 
 router.put(
   "/counts/:countId/items/:itemId",
   validate(recordCountItemSchema),
-  recordCountItemHandler
+  recordCountItemHandler,
 );
 
 export default router;
-
-
-
-

@@ -54,6 +54,8 @@ import {
   getBidDocumentByIdHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
+  downloadBidQuotePDF,
+  previewBidQuotePDF,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -113,6 +115,8 @@ import {
   getBidDocumentByIdSchema,
   updateBidDocumentSchema,
   deleteBidDocumentSchema,
+  downloadBidQuotePDFSchema,
+  previewBidQuotePDFSchema,
 } from "../../validations/bid.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
@@ -405,5 +409,19 @@ router
     updateBidDocumentHandler,
   )
   .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
+
+// Quote PDF routes
+router.get(
+  "/bids/:id/pdf",
+  authorizeFeature("bids", "view"),
+  validate(downloadBidQuotePDFSchema),
+  downloadBidQuotePDF,
+);
+router.get(
+  "/bids/:id/pdf/preview",
+  authorizeFeature("bids", "view"),
+  validate(previewBidQuotePDFSchema),
+  previewBidQuotePDF,
+);
 
 export default router;

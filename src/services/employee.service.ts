@@ -1,4 +1,14 @@
-import { count, eq, desc, and, or, sql, ilike, inArray } from "drizzle-orm";
+import {
+  count,
+  eq,
+  desc,
+  and,
+  or,
+  sql,
+  ilike,
+  inArray,
+  gte,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -602,6 +612,60 @@ export const generateEmployeeId = async (): Promise<string> => {
   }
 };
 
+/**
+ * Get employee KPIs (total, active, on leave, new hires)
+ */
+export const getEmployeeKPIs = async (): Promise<{
+  totalEmployees: number;
+  activeEmployees: number;
+  onLeave: number;
+  newHires: number;
+}> => {
+  const notDeleted = eq(employees.isDeleted, false);
+
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(notDeleted);
+  const totalEmployees = Number(totalRow?.count ?? 0);
+
+  const activeStatuses = ["available", "on_leave", "in_field"] as const;
+  const [activeRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(and(notDeleted, inArray(employees.status, activeStatuses)));
+  const activeEmployees = Number(activeRow?.count ?? 0);
+
+  const [onLeaveRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(and(notDeleted, eq(employees.status, "on_leave")));
+  const onLeave = Number(onLeaveRow?.count ?? 0);
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const [newHiresRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(
+      and(
+        notDeleted,
+        or(
+          gte(employees.hireDate, thirtyDaysAgo.toISOString().split("T")[0]!),
+          gte(employees.startDate, thirtyDaysAgo),
+        )!,
+      ),
+    );
+  const newHires = Number(newHiresRow?.count ?? 0);
+
+  return {
+    totalEmployees,
+    activeEmployees,
+    onLeave,
+    newHires,
+  };
+};
+
 export const createEmployee = async (data: {
   userId: string;
   employeeId?: string;
@@ -819,6 +883,63 @@ export const getInspectors = async () => {
         eq(employees.isDeleted, false),
         eq(roles.isDeleted, false),
         inArray(roles.name, ["Executive", "Manager"]),
+      ),
+    )
+    .orderBy(users.fullName);
+
+  return result.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    userName: row.userName,
+    employeeId: row.employeeId,
+    department: row.departmentId
+      ? { id: row.departmentId, name: row.departmentName }
+      : null,
+    position: row.positionId
+      ? { id: row.positionId, name: row.positionName }
+      : null,
+    reportsToName: row.reportsToName ?? null,
+    role: row.roleName,
+    status: row.status ?? null,
+    isActive: row.isActive ?? null,
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  }));
+};
+
+/**
+ * Get all employees whose role is Technician.
+ */
+export const getTechnicians = async () => {
+  const result = await db
+    .select({
+      id: employees.id,
+      userId: users.id,
+      userName: users.fullName,
+      employeeId: employees.employeeId,
+      departmentId: departments.id,
+      departmentName: departments.name,
+      positionId: positions.id,
+      positionName: positions.name,
+      reportsToName: reportsToUser.fullName,
+      roleName: roles.name,
+      status: employees.status,
+      isActive: users.isActive,
+      createdAt: employees.createdAt,
+      updatedAt: employees.updatedAt,
+    })
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .leftJoin(reportsToUser, eq(employees.reportsTo, reportsToUser.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(roles.isDeleted, false),
+        eq(roles.name, "Technician"),
       ),
     )
     .orderBy(users.fullName);

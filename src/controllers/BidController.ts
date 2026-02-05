@@ -100,6 +100,10 @@ import {
   deleteBidDocument,
 } from "../services/bid.service.js";
 import { getOrganizationById } from "../services/client.service.js";
+import {
+  prepareQuoteDataForPDF,
+  generateQuotePDF,
+} from "../services/pdf.service.js";
 
 // ============================
 // Main Bid Operations
@@ -3266,6 +3270,136 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+/**
+ * Download quote (bid) as PDF
+ * GET /bids/:id/pdf
+ */
+export const downloadBidQuotePDF = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Bid ID is required",
+      });
+    }
+
+    const bid = await getBidById(id);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const organizationId = bid.organizationId;
+    const client = await getOrganizationById(organizationId);
+    if (!client?.organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Client organization not found",
+      });
+    }
+
+    const financialBreakdown = await getBidFinancialBreakdown(
+      id,
+      organizationId,
+    );
+
+    const pdfData = prepareQuoteDataForPDF(
+      bid,
+      client.organization,
+      financialBreakdown,
+      bid.primaryContact ?? null,
+      bid.property ?? null,
+    );
+
+    const pdfBuffer = await generateQuotePDF(pdfData);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="quote-${bid.bidNumber}.pdf"`,
+    );
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+
+    logger.info(`Quote PDF downloaded for bid: ${id}`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    logger.logApiError("Error generating quote PDF", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate quote PDF",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Preview quote (bid) PDF (inline display)
+ * GET /bids/:id/pdf/preview
+ */
+export const previewBidQuotePDF = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Bid ID is required",
+      });
+    }
+
+    const bid = await getBidById(id);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const organizationId = bid.organizationId;
+    const client = await getOrganizationById(organizationId);
+    if (!client?.organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Client organization not found",
+      });
+    }
+
+    const financialBreakdown = await getBidFinancialBreakdown(
+      id,
+      organizationId,
+    );
+
+    const pdfData = prepareQuoteDataForPDF(
+      bid,
+      client.organization,
+      financialBreakdown,
+      bid.primaryContact ?? null,
+      bid.property ?? null,
+    );
+
+    const pdfBuffer = await generateQuotePDF(pdfData);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="quote-${bid.bidNumber}.pdf"`,
+    );
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+
+    logger.info(`Quote PDF previewed for bid: ${id}`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    logger.logApiError("Error previewing quote PDF", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to preview quote PDF",
+      error: error.message,
     });
   }
 };
