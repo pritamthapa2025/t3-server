@@ -138,7 +138,7 @@ router
   )
   .delete(authenticate, SettingsController.deleteTermsConditionsTemplate);
 
-// ===== INVOICE SETTINGS TAB (per organization) =====
+// ===== INVOICE SETTINGS TAB (system-wide) =====
 router
   .route("/invoice")
   .get(

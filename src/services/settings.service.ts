@@ -613,29 +613,24 @@ export const setDefaultTermsConditionsTemplate = async (id: string) => {
 
 /**
  * ============================================================================
- * INVOICE SETTINGS (per organization) - Default content, terms, display, automation, email
+ * INVOICE SETTINGS (system-wide) - Default content, terms, display, automation, email
  * ============================================================================
  */
 
-export const getInvoiceSettings = async (organizationId: string) => {
+export const getInvoiceSettings = async () => {
   const [row] = await db
     .select()
     .from(invoiceSettings)
-    .where(eq(invoiceSettings.organizationId, organizationId))
     .limit(1);
 
   if (row) return row;
 
-  const [inserted] = await db
-    .insert(invoiceSettings)
-    .values({ organizationId })
-    .returning();
+  const [inserted] = await db.insert(invoiceSettings).values({}).returning();
 
   return inserted ?? null;
 };
 
 export const updateInvoiceSettings = async (
-  organizationId: string,
   data: Partial<{
     defaultPaymentTerms: string;
     defaultPaymentTermsDays: number;
@@ -657,7 +652,7 @@ export const updateInvoiceSettings = async (
   }>,
   updatedBy?: string,
 ) => {
-  const existing = await getInvoiceSettings(organizationId);
+  const existing = await getInvoiceSettings();
   if (!existing) return null;
 
   const [updated] = await db
@@ -667,7 +662,7 @@ export const updateInvoiceSettings = async (
       updatedBy: updatedBy ?? undefined,
       updatedAt: new Date(),
     })
-    .where(eq(invoiceSettings.organizationId, organizationId))
+    .where(eq(invoiceSettings.id, existing.id))
     .returning();
 
   return updated ?? null;

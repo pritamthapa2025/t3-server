@@ -11,8 +11,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { positions } from "./org.schema.js";
 import { users } from "./auth.schema.js";
-import { organizations } from "./client.schema.js";
-
 // Settings use auth schema (system-wide, not per-organization)
 const auth = pgSchema("auth");
 const org = pgSchema("org");
@@ -306,21 +304,15 @@ export const termsConditionsTemplates = auth.table(
 
 /**
  * ============================================================================
- * INVOICE SETTINGS (per organization)
+ * INVOICE SETTINGS (system-wide)
  * ============================================================================
  * Default content, terms, display, automation, and email settings for invoices.
  * Excludes invoice numbering (handled elsewhere).
  */
-export const invoiceSettings = org.table(
-  "invoice_settings",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id)
-      .unique(),
+export const invoiceSettings = org.table("invoice_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
 
-    // Default Terms
+  // Default Terms
     defaultPaymentTerms: varchar("default_payment_terms", {
       length: 50,
     }).default("Net 30"),
@@ -362,5 +354,4 @@ export const invoiceSettings = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_invoice_settings_org").on(table.organizationId)],
 );

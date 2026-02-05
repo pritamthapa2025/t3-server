@@ -184,21 +184,16 @@ export const updateTermsConditionsTemplateSchema = z.object({
 
 /**
  * ============================================================================
- * INVOICE SETTINGS TAB (per organization)
+ * INVOICE SETTINGS TAB (system-wide)
  * ============================================================================
  */
 
-const uuidString = z.string().uuid("Must be a valid UUID");
-
 export const getInvoiceSettingsSchema = z.object({
-  query: z.object({
-    organizationId: uuidString,
-  }),
+  query: z.object({}).optional(),
 });
 
 export const updateInvoiceSettingsSchema = z.object({
   body: z.object({
-    organizationId: uuidString,
     defaultPaymentTerms: z.string().max(50).optional(),
     defaultPaymentTermsDays: z.number().int().min(0).optional(),
     defaultTaxRate: z
