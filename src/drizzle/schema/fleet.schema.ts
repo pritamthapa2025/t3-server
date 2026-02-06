@@ -16,7 +16,6 @@ import {
 import { users } from "./auth.schema.js";
 import { employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
-import { dispatchTasks } from "./dispatch.schema.js";
 
 // Import enums
 import {
@@ -491,9 +490,8 @@ export const checkInOutRecords = org.table(
     odometer: numeric("odometer", { precision: 10, scale: 2 }).notNull(),
     fuelLevel: numeric("fuel_level", { precision: 5, scale: 2 }).notNull(), // Percentage
 
-    // Dispatch Task (references dispatch_tasks.id)
+    // Job (references jobs.id)
     jobId: uuid("job_id").references(() => jobs.id),
-    dispatchTaskId: uuid("dispatch_task_id").references(() => dispatchTasks.id),
 
     // Notes
     notes: text("notes"),

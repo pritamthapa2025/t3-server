@@ -1105,7 +1105,6 @@ export const createCheckInOutRecordSchema = z.object({
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
-    dispatchTaskId: uuidSchema.optional(),
     notes: z.string().optional(),
   }),
 });
@@ -1129,7 +1128,6 @@ export const updateCheckInOutRecordSchema = z.object({
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
-    dispatchTaskId: uuidSchema.optional(),
     notes: z.string().optional(),
   }),
 });
@@ -1170,7 +1168,6 @@ export const createCheckInOutRecordByVehicleSchema = z.object({
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
-    dispatchTaskId: uuidSchema.optional(),
     notes: z.string().optional(),
   }),
 });
@@ -1195,7 +1192,6 @@ export const updateCheckInOutRecordByVehicleSchema = z.object({
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
-    dispatchTaskId: uuidSchema.optional(),
     notes: z.string().optional(),
   }),
 });

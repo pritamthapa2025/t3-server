@@ -496,7 +496,6 @@ export interface CheckInOutRecord {
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;
-  dispatchTaskId?: string;
   notes?: string;
   createdBy?: string;
   isDeleted: boolean;
@@ -513,7 +512,6 @@ export interface CreateCheckInOutRecordData {
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;
-  dispatchTaskId?: string;
   notes?: string;
   createdBy?: string;
 }
@@ -527,7 +525,6 @@ export interface UpdateCheckInOutRecordData {
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;
-  dispatchTaskId?: string;
   notes?: string;
 }
 

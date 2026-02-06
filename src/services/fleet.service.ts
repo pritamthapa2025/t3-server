@@ -14,7 +14,6 @@ import {
 import { users } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
@@ -1749,14 +1748,6 @@ export const getCheckInOutRecords = async (
       _jobScheduledStartDate: jobs.scheduledStartDate,
       _jobScheduledEndDate: jobs.scheduledEndDate,
       _jobSiteAddress: jobs.siteAddress,
-      _dispId: dispatchTasks.id,
-      _dispTitle: dispatchTasks.title,
-      _dispTaskType: dispatchTasks.taskType,
-      _dispPriority: dispatchTasks.priority,
-      _dispStatus: dispatchTasks.status,
-      _dispStartTime: dispatchTasks.startTime,
-      _dispEndTime: dispatchTasks.endTime,
-      _dispJobId: dispatchTasks.jobId,
     })
     .from(checkInOutRecords)
     .leftJoin(createdByUser, eq(checkInOutRecords.createdBy, createdByUser.id))
@@ -1764,7 +1755,6 @@ export const getCheckInOutRecords = async (
     .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
     .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
     .leftJoin(jobs, eq(checkInOutRecords.jobId, jobs.id))
-    .leftJoin(dispatchTasks, eq(checkInOutRecords.dispatchTaskId, dispatchTasks.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
@@ -1785,14 +1775,6 @@ export const getCheckInOutRecords = async (
       _jobScheduledStartDate,
       _jobScheduledEndDate,
       _jobSiteAddress,
-      _dispId,
-      _dispTitle,
-      _dispTaskType,
-      _dispPriority,
-      _dispStatus,
-      _dispStartTime,
-      _dispEndTime,
-      _dispJobId,
       ...record
     } = row;
     const assignedEmployeeDetails =
@@ -1817,25 +1799,11 @@ export const getCheckInOutRecords = async (
             siteAddress: _jobSiteAddress ?? null,
           }
         : null;
-    const dispatchDetails =
-      record.dispatchTaskId != null && _dispId != null
-        ? {
-            id: _dispId,
-            title: _dispTitle ?? null,
-            taskType: _dispTaskType ?? null,
-            priority: _dispPriority ?? null,
-            status: _dispStatus ?? null,
-            startTime: _dispStartTime ?? null,
-            endTime: _dispEndTime ?? null,
-            jobId: _dispJobId ?? null,
-          }
-        : null;
     return {
       ...record,
       createdByName: createdByName ?? null,
       assignedEmployeeDetails,
       jobDetails,
-      dispatchDetails,
     };
   });
 
@@ -1850,7 +1818,7 @@ export const getCheckInOutRecords = async (
   };
 };
 
-// Get Check-In/Out Record by ID (with createdByName, assignedEmployeeDetails, jobDetails, dispatchDetails)
+// Get Check-In/Out Record by ID (with createdByName, assignedEmployeeDetails, jobDetails)
 export const getCheckInOutRecordById = async (id: string) => {
   const [row] = await db
     .select({
@@ -1868,14 +1836,6 @@ export const getCheckInOutRecordById = async (id: string) => {
       _jobScheduledStartDate: jobs.scheduledStartDate,
       _jobScheduledEndDate: jobs.scheduledEndDate,
       _jobSiteAddress: jobs.siteAddress,
-      _dispId: dispatchTasks.id,
-      _dispTitle: dispatchTasks.title,
-      _dispTaskType: dispatchTasks.taskType,
-      _dispPriority: dispatchTasks.priority,
-      _dispStatus: dispatchTasks.status,
-      _dispStartTime: dispatchTasks.startTime,
-      _dispEndTime: dispatchTasks.endTime,
-      _dispJobId: dispatchTasks.jobId,
     })
     .from(checkInOutRecords)
     .leftJoin(createdByUser, eq(checkInOutRecords.createdBy, createdByUser.id))
@@ -1883,7 +1843,6 @@ export const getCheckInOutRecordById = async (id: string) => {
     .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
     .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
     .leftJoin(jobs, eq(checkInOutRecords.jobId, jobs.id))
-    .leftJoin(dispatchTasks, eq(checkInOutRecords.dispatchTaskId, dispatchTasks.id))
     .where(
       and(eq(checkInOutRecords.id, id), eq(checkInOutRecords.isDeleted, false)),
     );
@@ -1904,14 +1863,6 @@ export const getCheckInOutRecordById = async (id: string) => {
     _jobScheduledStartDate,
     _jobScheduledEndDate,
     _jobSiteAddress,
-    _dispId,
-    _dispTitle,
-    _dispTaskType,
-    _dispPriority,
-    _dispStatus,
-    _dispStartTime,
-    _dispEndTime,
-    _dispJobId,
     ...record
   } = row;
 
@@ -1937,30 +1888,16 @@ export const getCheckInOutRecordById = async (id: string) => {
           siteAddress: _jobSiteAddress ?? null,
         }
       : null;
-  const dispatchDetails =
-    record.dispatchTaskId != null && _dispId != null
-      ? {
-          id: _dispId,
-          title: _dispTitle ?? null,
-          taskType: _dispTaskType ?? null,
-          priority: _dispPriority ?? null,
-          status: _dispStatus ?? null,
-          startTime: _dispStartTime ?? null,
-          endTime: _dispEndTime ?? null,
-          jobId: _dispJobId ?? null,
-        }
-      : null;
 
   return {
     ...record,
     createdByName: createdByName ?? null,
     assignedEmployeeDetails,
     jobDetails,
-    dispatchDetails,
   };
 };
 
-// Create Check-In/Out Record (for check_out: auto-fill jobId and dispatchTaskId from vehicle when not provided)
+// Create Check-In/Out Record (for check_out: auto-fill jobId from vehicle when not provided)
 export const createCheckInOutRecord = async (
   data: CreateCheckInOutRecordData,
 ) => {
@@ -1980,36 +1917,20 @@ export const createCheckInOutRecord = async (
   if (data.notes) insertData.notes = data.notes;
   if (data.createdBy) insertData.createdBy = data.createdBy;
 
-  // For check_out: use provided jobId/dispatchTaskId or snapshot from vehicle
-  if (data.type === "check_out") {
-    if (data.jobId) insertData.jobId = data.jobId;
-    if (data.dispatchTaskId) insertData.dispatchTaskId = data.dispatchTaskId;
-    const needsFromVehicle =
-      !insertData.jobId || !insertData.dispatchTaskId;
-    if (needsFromVehicle) {
-      const [vehicle] = await db
-        .select({
-          currentJobId: vehicles.currentJobId,
-          currentDispatchTaskId: vehicles.currentDispatchTaskId,
-        })
-        .from(vehicles)
-        .where(
-          and(
-            eq(vehicles.id, data.vehicleId),
-            eq(vehicles.isDeleted, false),
-          ),
-        )
-        .limit(1);
-      if (vehicle) {
-        if (!insertData.jobId && vehicle.currentJobId)
-          insertData.jobId = vehicle.currentJobId;
-        if (!insertData.dispatchTaskId && vehicle.currentDispatchTaskId)
-          insertData.dispatchTaskId = vehicle.currentDispatchTaskId;
-      }
-    }
-  } else {
-    if (data.jobId) insertData.jobId = data.jobId;
-    if (data.dispatchTaskId) insertData.dispatchTaskId = data.dispatchTaskId;
+  if (data.jobId) insertData.jobId = data.jobId;
+  // For check_out: use provided jobId or snapshot from vehicle
+  if (data.type === "check_out" && !insertData.jobId) {
+    const [vehicle] = await db
+      .select({ currentJobId: vehicles.currentJobId })
+      .from(vehicles)
+      .where(
+        and(
+          eq(vehicles.id, data.vehicleId),
+          eq(vehicles.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (vehicle?.currentJobId) insertData.jobId = vehicle.currentJobId;
   }
 
   const result = await db
@@ -2044,8 +1965,6 @@ export const updateCheckInOutRecord = async (
   if (data.odometer !== undefined) updateData.odometer = data.odometer;
   if (data.fuelLevel !== undefined) updateData.fuelLevel = data.fuelLevel;
   if (data.jobId !== undefined) updateData.jobId = data.jobId;
-  if (data.dispatchTaskId !== undefined)
-    updateData.dispatchTaskId = data.dispatchTaskId;
   if (data.notes !== undefined) updateData.notes = data.notes;
 
   const result = await db
