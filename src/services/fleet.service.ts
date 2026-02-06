@@ -13,6 +13,8 @@ import {
 } from "../drizzle/schema/fleet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
@@ -496,11 +498,20 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
           eq(assignmentHistory.isDeleted, false),
         ),
       );
-    // If assigning to a new driver, create a new assignment history row with employeeId for history details
+    // If assigning to a new driver, create a new assignment history row with employeeId and jobId
+    // Use job from request (data.currentJobId) when provided, otherwise vehicle's current job
     if (data.assignedToEmployeeId != null) {
+      const [vehicleRow] = await db
+        .select({ currentJobId: vehicles.currentJobId })
+        .from(vehicles)
+        .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)))
+        .limit(1);
+      const jobIdForHistory =
+        data.currentJobId ?? vehicleRow?.currentJobId ?? null;
       await db.insert(assignmentHistory).values({
         vehicleId: id,
         employeeId: data.assignedToEmployeeId,
+        jobId: jobIdForHistory,
         startDate: today,
         status: "active",
       });
@@ -577,10 +588,18 @@ export const getAssignmentHistoryByVehicleId = async (
       _empFullName: assignedToUser.fullName,
       _empEmail: assignedToUser.email,
       _empStatus: employees.status,
+      _jobId: jobs.id,
+      _jobJobNumber: jobs.jobNumber,
+      _jobStatus: jobs.status,
+      _jobJobType: jobs.jobType,
+      _jobScheduledStartDate: jobs.scheduledStartDate,
+      _jobScheduledEndDate: jobs.scheduledEndDate,
+      _jobSiteAddress: jobs.siteAddress,
     })
     .from(assignmentHistory)
     .leftJoin(employees, eq(assignmentHistory.employeeId, employees.id))
     .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
+    .leftJoin(jobs, eq(assignmentHistory.jobId, jobs.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
@@ -593,6 +612,13 @@ export const getAssignmentHistoryByVehicleId = async (
       _empFullName,
       _empEmail,
       _empStatus,
+      _jobId,
+      _jobJobNumber,
+      _jobStatus,
+      _jobJobType,
+      _jobScheduledStartDate,
+      _jobScheduledEndDate,
+      _jobSiteAddress,
       ...record
     } = row;
     const assignedEmployeeDetails =
@@ -605,7 +631,19 @@ export const getAssignmentHistoryByVehicleId = async (
             status: _empStatus ?? null,
           }
         : null;
-    return { ...record, assignedEmployeeDetails };
+    const jobDetails =
+      record.jobId != null && _jobId != null
+        ? {
+            id: _jobId,
+            jobNumber: _jobJobNumber ?? null,
+            status: _jobStatus ?? null,
+            jobType: _jobJobType ?? null,
+            scheduledStartDate: _jobScheduledStartDate ?? null,
+            scheduledEndDate: _jobScheduledEndDate ?? null,
+            siteAddress: _jobSiteAddress ?? null,
+          }
+        : null;
+    return { ...record, assignedEmployeeDetails, jobDetails };
   });
 
   return {
@@ -1695,16 +1733,114 @@ export const getCheckInOutRecords = async (
 
   const total = totalResult[0]?.count || 0;
 
-  const records = await db
-    .select()
+  const rows = await db
+    .select({
+      ...getTableColumns(checkInOutRecords),
+      createdByName: createdByUser.fullName,
+      _empId: employees.id,
+      _empEmployeeId: employees.employeeId,
+      _empFullName: assignedToUser.fullName,
+      _empEmail: assignedToUser.email,
+      _empStatus: employees.status,
+      _jobId: jobs.id,
+      _jobJobNumber: jobs.jobNumber,
+      _jobStatus: jobs.status,
+      _jobJobType: jobs.jobType,
+      _jobScheduledStartDate: jobs.scheduledStartDate,
+      _jobScheduledEndDate: jobs.scheduledEndDate,
+      _jobSiteAddress: jobs.siteAddress,
+      _dispId: dispatchTasks.id,
+      _dispTitle: dispatchTasks.title,
+      _dispTaskType: dispatchTasks.taskType,
+      _dispPriority: dispatchTasks.priority,
+      _dispStatus: dispatchTasks.status,
+      _dispStartTime: dispatchTasks.startTime,
+      _dispEndTime: dispatchTasks.endTime,
+      _dispJobId: dispatchTasks.jobId,
+    })
     .from(checkInOutRecords)
+    .leftJoin(createdByUser, eq(checkInOutRecords.createdBy, createdByUser.id))
+    .leftJoin(vehicles, eq(checkInOutRecords.vehicleId, vehicles.id))
+    .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
+    .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
+    .leftJoin(jobs, eq(checkInOutRecords.jobId, jobs.id))
+    .leftJoin(dispatchTasks, eq(checkInOutRecords.dispatchTaskId, dispatchTasks.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
+  const data = rows.map((row) => {
+    const {
+      createdByName,
+      _empId,
+      _empEmployeeId,
+      _empFullName,
+      _empEmail,
+      _empStatus,
+      _jobId,
+      _jobJobNumber,
+      _jobStatus,
+      _jobJobType,
+      _jobScheduledStartDate,
+      _jobScheduledEndDate,
+      _jobSiteAddress,
+      _dispId,
+      _dispTitle,
+      _dispTaskType,
+      _dispPriority,
+      _dispStatus,
+      _dispStartTime,
+      _dispEndTime,
+      _dispJobId,
+      ...record
+    } = row;
+    const assignedEmployeeDetails =
+      _empId != null
+        ? {
+            id: _empId,
+            employeeId: _empEmployeeId ?? null,
+            fullName: _empFullName ?? null,
+            email: _empEmail ?? null,
+            status: _empStatus ?? null,
+          }
+        : null;
+    const jobDetails =
+      record.jobId != null && _jobId != null
+        ? {
+            id: _jobId,
+            jobNumber: _jobJobNumber ?? null,
+            status: _jobStatus ?? null,
+            jobType: _jobJobType ?? null,
+            scheduledStartDate: _jobScheduledStartDate ?? null,
+            scheduledEndDate: _jobScheduledEndDate ?? null,
+            siteAddress: _jobSiteAddress ?? null,
+          }
+        : null;
+    const dispatchDetails =
+      record.dispatchTaskId != null && _dispId != null
+        ? {
+            id: _dispId,
+            title: _dispTitle ?? null,
+            taskType: _dispTaskType ?? null,
+            priority: _dispPriority ?? null,
+            status: _dispStatus ?? null,
+            startTime: _dispStartTime ?? null,
+            endTime: _dispEndTime ?? null,
+            jobId: _dispJobId ?? null,
+          }
+        : null;
+    return {
+      ...record,
+      createdByName: createdByName ?? null,
+      assignedEmployeeDetails,
+      jobDetails,
+      dispatchDetails,
+    };
+  });
+
   return {
-    data: records,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -1714,29 +1850,117 @@ export const getCheckInOutRecords = async (
   };
 };
 
-// Get Check-In/Out Record by ID (with createdByName; driver from vehicles.assignedToEmployeeId)
+// Get Check-In/Out Record by ID (with createdByName, assignedEmployeeDetails, jobDetails, dispatchDetails)
 export const getCheckInOutRecordById = async (id: string) => {
   const [row] = await db
     .select({
       ...getTableColumns(checkInOutRecords),
       createdByName: createdByUser.fullName,
+      _empId: employees.id,
+      _empEmployeeId: employees.employeeId,
+      _empFullName: assignedToUser.fullName,
+      _empEmail: assignedToUser.email,
+      _empStatus: employees.status,
+      _jobId: jobs.id,
+      _jobJobNumber: jobs.jobNumber,
+      _jobStatus: jobs.status,
+      _jobJobType: jobs.jobType,
+      _jobScheduledStartDate: jobs.scheduledStartDate,
+      _jobScheduledEndDate: jobs.scheduledEndDate,
+      _jobSiteAddress: jobs.siteAddress,
+      _dispId: dispatchTasks.id,
+      _dispTitle: dispatchTasks.title,
+      _dispTaskType: dispatchTasks.taskType,
+      _dispPriority: dispatchTasks.priority,
+      _dispStatus: dispatchTasks.status,
+      _dispStartTime: dispatchTasks.startTime,
+      _dispEndTime: dispatchTasks.endTime,
+      _dispJobId: dispatchTasks.jobId,
     })
     .from(checkInOutRecords)
     .leftJoin(createdByUser, eq(checkInOutRecords.createdBy, createdByUser.id))
+    .leftJoin(vehicles, eq(checkInOutRecords.vehicleId, vehicles.id))
+    .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
+    .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
+    .leftJoin(jobs, eq(checkInOutRecords.jobId, jobs.id))
+    .leftJoin(dispatchTasks, eq(checkInOutRecords.dispatchTaskId, dispatchTasks.id))
     .where(
       and(eq(checkInOutRecords.id, id), eq(checkInOutRecords.isDeleted, false)),
     );
 
   if (!row) return null;
 
-  const { createdByName, ...record } = row;
+  const {
+    createdByName,
+    _empId,
+    _empEmployeeId,
+    _empFullName,
+    _empEmail,
+    _empStatus,
+    _jobId,
+    _jobJobNumber,
+    _jobStatus,
+    _jobJobType,
+    _jobScheduledStartDate,
+    _jobScheduledEndDate,
+    _jobSiteAddress,
+    _dispId,
+    _dispTitle,
+    _dispTaskType,
+    _dispPriority,
+    _dispStatus,
+    _dispStartTime,
+    _dispEndTime,
+    _dispJobId,
+    ...record
+  } = row;
+
+  const assignedEmployeeDetails =
+    _empId != null
+      ? {
+          id: _empId,
+          employeeId: _empEmployeeId ?? null,
+          fullName: _empFullName ?? null,
+          email: _empEmail ?? null,
+          status: _empStatus ?? null,
+        }
+      : null;
+  const jobDetails =
+    record.jobId != null && _jobId != null
+      ? {
+          id: _jobId,
+          jobNumber: _jobJobNumber ?? null,
+          status: _jobStatus ?? null,
+          jobType: _jobJobType ?? null,
+          scheduledStartDate: _jobScheduledStartDate ?? null,
+          scheduledEndDate: _jobScheduledEndDate ?? null,
+          siteAddress: _jobSiteAddress ?? null,
+        }
+      : null;
+  const dispatchDetails =
+    record.dispatchTaskId != null && _dispId != null
+      ? {
+          id: _dispId,
+          title: _dispTitle ?? null,
+          taskType: _dispTaskType ?? null,
+          priority: _dispPriority ?? null,
+          status: _dispStatus ?? null,
+          startTime: _dispStartTime ?? null,
+          endTime: _dispEndTime ?? null,
+          jobId: _dispJobId ?? null,
+        }
+      : null;
+
   return {
     ...record,
     createdByName: createdByName ?? null,
+    assignedEmployeeDetails,
+    jobDetails,
+    dispatchDetails,
   };
 };
 
-// Create Check-In/Out Record
+// Create Check-In/Out Record (for check_out: auto-fill jobId and dispatchTaskId from vehicle when not provided)
 export const createCheckInOutRecord = async (
   data: CreateCheckInOutRecordData,
 ) => {
@@ -1753,9 +1977,40 @@ export const createCheckInOutRecord = async (
 
   if (data.odometer) insertData.odometer = data.odometer;
   if (data.fuelLevel) insertData.fuelLevel = data.fuelLevel;
-  if (data.dispatchTaskId) insertData.dispatchTaskId = data.dispatchTaskId;
   if (data.notes) insertData.notes = data.notes;
   if (data.createdBy) insertData.createdBy = data.createdBy;
+
+  // For check_out: use provided jobId/dispatchTaskId or snapshot from vehicle
+  if (data.type === "check_out") {
+    if (data.jobId) insertData.jobId = data.jobId;
+    if (data.dispatchTaskId) insertData.dispatchTaskId = data.dispatchTaskId;
+    const needsFromVehicle =
+      !insertData.jobId || !insertData.dispatchTaskId;
+    if (needsFromVehicle) {
+      const [vehicle] = await db
+        .select({
+          currentJobId: vehicles.currentJobId,
+          currentDispatchTaskId: vehicles.currentDispatchTaskId,
+        })
+        .from(vehicles)
+        .where(
+          and(
+            eq(vehicles.id, data.vehicleId),
+            eq(vehicles.isDeleted, false),
+          ),
+        )
+        .limit(1);
+      if (vehicle) {
+        if (!insertData.jobId && vehicle.currentJobId)
+          insertData.jobId = vehicle.currentJobId;
+        if (!insertData.dispatchTaskId && vehicle.currentDispatchTaskId)
+          insertData.dispatchTaskId = vehicle.currentDispatchTaskId;
+      }
+    }
+  } else {
+    if (data.jobId) insertData.jobId = data.jobId;
+    if (data.dispatchTaskId) insertData.dispatchTaskId = data.dispatchTaskId;
+  }
 
   const result = await db
     .insert(checkInOutRecords)
@@ -1788,6 +2043,7 @@ export const updateCheckInOutRecord = async (
   if (data.timestamp !== undefined) updateData.timestamp = data.timestamp;
   if (data.odometer !== undefined) updateData.odometer = data.odometer;
   if (data.fuelLevel !== undefined) updateData.fuelLevel = data.fuelLevel;
+  if (data.jobId !== undefined) updateData.jobId = data.jobId;
   if (data.dispatchTaskId !== undefined)
     updateData.dispatchTaskId = data.dispatchTaskId;
   if (data.notes !== undefined) updateData.notes = data.notes;
@@ -1800,7 +2056,8 @@ export const updateCheckInOutRecord = async (
     )
     .returning();
 
-  return result[0] || null;
+  if (!result[0]) return null;
+  return await getCheckInOutRecordById(result[0].id);
 };
 
 // Soft Delete Check-In/Out Record

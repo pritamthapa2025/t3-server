@@ -1,0 +1,48 @@
+---
+description: Do not create migration files until asked; inform when one is needed
+alwaysApply: true
+---
+
+# Migration File Creation Policy
+
+## Rule
+
+**Do NOT create migration files automatically.** When schema changes require a database migration, inform the user that a migration file needs to be created instead of creating it yourself—until the user explicitly asks you to create it.
+
+## Behavior
+
+### When You Make Schema Changes
+
+1. Update the Drizzle schema (e.g. in `src/drizzle/schema/*.ts`) as requested.
+2. **Do not** add or edit files in `src/drizzle/migrations/` or `meta/_journal.json` unless the user asks you to create the migration.
+3. **Do** tell the user that a migration is needed, in a short, clear note.
+
+### When to Mention a Migration
+
+Mention that a migration file is needed when you:
+
+- Add or remove a table
+- Add or remove a column
+- Add or remove an index
+- Add or remove a foreign key or constraint
+- Change column types or nullability in a way that affects the database
+
+### When the User Asks
+
+If the user says things like “create the migration,” “add the migration file,” “generate the migration,” or “write the migration,” then you **may** create the migration file(s) and, if applicable, update the journal.
+
+## Example Response (Schema Change Only)
+
+After making schema changes without creating a migration:
+
+```
+Schema changes completed:
+- Added `jobId` to `assignment_history` in fleet.schema.ts
+- Added index `idx_assignment_history_job` on `job_id`
+
+A migration file is needed to apply these changes to the database. I haven’t created it yet. When you’re ready, you can run `pnpm run db:generate` (or ask me to create the migration file), then `pnpm run db:migrate` to apply it.
+```
+
+## Relation to Other Rules
+
+- This rule is about **whether to create** migration files; follow **drizzle-commands.mdc** for **running** drizzle commands (e.g. `db:migrate`, `db:generate`) only after the user explicitly requests it.

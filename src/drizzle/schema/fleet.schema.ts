@@ -16,6 +16,7 @@ import {
 import { users } from "./auth.schema.js";
 import { employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
+import { dispatchTasks } from "./dispatch.schema.js";
 
 // Import enums
 import {
@@ -491,7 +492,8 @@ export const checkInOutRecords = org.table(
     fuelLevel: numeric("fuel_level", { precision: 5, scale: 2 }).notNull(), // Percentage
 
     // Dispatch Task (references dispatch_tasks.id)
-    dispatchTaskId: uuid("dispatch_task_id"),
+    jobId: uuid("job_id").references(() => jobs.id),
+    dispatchTaskId: uuid("dispatch_task_id").references(() => dispatchTasks.id),
 
     // Notes
     notes: text("notes"),
@@ -527,6 +529,7 @@ export const assignmentHistory = org.table(
       .notNull()
       .references(() => vehicles.id),
     employeeId: integer("employee_id").references(() => employees.id), // Driver assigned for this period
+    jobId: uuid("job_id").references(() => jobs.id), // Job the driver was assigned to for this period
 
     // Assignment Period
     startDate: date("start_date").notNull(),
@@ -549,6 +552,7 @@ export const assignmentHistory = org.table(
   (table) => [
     index("idx_assignment_history_vehicle").on(table.vehicleId),
     index("idx_assignment_history_employee").on(table.employeeId),
+    index("idx_assignment_history_job").on(table.jobId),
     index("idx_assignment_history_status").on(table.status),
     index("idx_assignment_history_start_date").on(table.startDate),
     index("idx_assignment_history_is_deleted").on(table.isDeleted),

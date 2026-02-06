@@ -485,7 +485,7 @@ export interface UpdateFuelRecordData {
   notes?: string;
 }
 
-// Check-In/Out Record Types (driver from vehicles.assignedToEmployeeId, job from vehicles.currentDispatchTaskId)
+// Check-In/Out Record Types (driver from vehicles.assignedToEmployeeId, job/dispatch from vehicle when check_out)
 export interface CheckInOutRecord {
   id: string;
   vehicleId: string;
@@ -495,6 +495,7 @@ export interface CheckInOutRecord {
   timestamp: Date;
   odometer?: string;
   fuelLevel?: string;
+  jobId?: string;
   dispatchTaskId?: string;
   notes?: string;
   createdBy?: string;
@@ -511,6 +512,7 @@ export interface CreateCheckInOutRecordData {
   timestamp: Date;
   odometer?: string;
   fuelLevel?: string;
+  jobId?: string;
   dispatchTaskId?: string;
   notes?: string;
   createdBy?: string;
@@ -524,6 +526,7 @@ export interface UpdateCheckInOutRecordData {
   timestamp?: Date;
   odometer?: string;
   fuelLevel?: string;
+  jobId?: string;
   dispatchTaskId?: string;
   notes?: string;
 }

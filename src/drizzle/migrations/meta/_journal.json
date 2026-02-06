@@ -477,6 +477,20 @@
       "when": 1770355123698,
       "tag": "0067_grey_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1770356548903,
+      "tag": "0068_fresh_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1770357737360,
+      "tag": "0069_amused_the_anarchist",
+      "breakpoints": true
     }
   ]
 }
