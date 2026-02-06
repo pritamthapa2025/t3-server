@@ -145,23 +145,55 @@ export const getVehicles = async (
   };
 };
 
-// Get Vehicle by ID (with createdByName)
+// Get Vehicle by ID (with createdByName, assignedToEmployeeName, assignedEmployeeDetails)
 export const getVehicleById = async (id: string) => {
   const [row] = await db
     .select({
       ...getTableColumns(vehicles),
       createdByName: createdByUser.fullName,
+      assignedToEmployeeName: assignedToUser.fullName,
+      // Assigned employee details (important fields only)
+      _assignedEmpId: employees.id,
+      _assignedEmpEmployeeId: employees.employeeId,
+      _assignedEmpFullName: assignedToUser.fullName,
+      _assignedEmpEmail: assignedToUser.email,
+      _assignedEmpStatus: employees.status,
     })
     .from(vehicles)
     .leftJoin(createdByUser, eq(vehicles.createdBy, createdByUser.id))
+    .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
+    .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
     .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)));
 
   if (!row) return null;
 
-  const { createdByName, ...record } = row;
+  const {
+    createdByName,
+    assignedToEmployeeName,
+    _assignedEmpId,
+    _assignedEmpEmployeeId,
+    _assignedEmpFullName,
+    _assignedEmpEmail,
+    _assignedEmpStatus,
+    ...record
+  } = row;
+
+  const assignedEmployeeDetails =
+    record.assignedToEmployeeId != null
+      ? {
+          id: _assignedEmpId ?? record.assignedToEmployeeId,
+          employeeId: _assignedEmpEmployeeId ?? null,
+          fullName: _assignedEmpFullName ?? null,
+          email: _assignedEmpEmail ?? null,
+          status: _assignedEmpStatus ?? null,
+        }
+      : null;
+
   return {
     ...record,
     createdByName: createdByName ?? null,
+    assignedToEmployeeName: assignedToEmployeeName ?? null,
+    assignedEmployeeDetails,
   };
 };
 
@@ -464,10 +496,11 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
           eq(assignmentHistory.isDeleted, false),
         ),
       );
-    // If assigning to a new driver, create a new assignment history row (driver from vehicles.assignedToEmployeeId, job from vehicles.currentDispatchTaskId)
+    // If assigning to a new driver, create a new assignment history row with employeeId for history details
     if (data.assignedToEmployeeId != null) {
       await db.insert(assignmentHistory).values({
         vehicleId: id,
+        employeeId: data.assignedToEmployeeId,
         startDate: today,
         status: "active",
       });
@@ -537,15 +570,46 @@ export const getAssignmentHistoryByVehicleId = async (
   const total = totalResult[0]?.count || 0;
 
   const rows = await db
-    .select()
+    .select({
+      ...getTableColumns(assignmentHistory),
+      _empId: employees.id,
+      _empEmployeeId: employees.employeeId,
+      _empFullName: assignedToUser.fullName,
+      _empEmail: assignedToUser.email,
+      _empStatus: employees.status,
+    })
     .from(assignmentHistory)
+    .leftJoin(employees, eq(assignmentHistory.employeeId, employees.id))
+    .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
+  const data = rows.map((row) => {
+    const {
+      _empId,
+      _empEmployeeId,
+      _empFullName,
+      _empEmail,
+      _empStatus,
+      ...record
+    } = row;
+    const assignedEmployeeDetails =
+      record.employeeId != null
+        ? {
+            id: _empId ?? record.employeeId,
+            employeeId: _empEmployeeId ?? null,
+            fullName: _empFullName ?? null,
+            email: _empEmail ?? null,
+            status: _empStatus ?? null,
+          }
+        : null;
+    return { ...record, assignedEmployeeDetails };
+  });
+
   return {
-    data: rows,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,

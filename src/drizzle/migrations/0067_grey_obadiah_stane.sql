@@ -1,0 +1,3 @@
+ALTER TABLE "org"."assignment_history" ADD COLUMN "employee_id" integer;--> statement-breakpoint
+ALTER TABLE "org"."assignment_history" ADD CONSTRAINT "assignment_history_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "org"."employees"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_assignment_history_employee" ON "org"."assignment_history" USING btree ("employee_id");

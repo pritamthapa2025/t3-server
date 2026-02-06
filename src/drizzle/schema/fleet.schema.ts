@@ -526,6 +526,7 @@ export const assignmentHistory = org.table(
     vehicleId: uuid("vehicle_id")
       .notNull()
       .references(() => vehicles.id),
+    employeeId: integer("employee_id").references(() => employees.id), // Driver assigned for this period
 
     // Assignment Period
     startDate: date("start_date").notNull(),
@@ -547,6 +548,7 @@ export const assignmentHistory = org.table(
   },
   (table) => [
     index("idx_assignment_history_vehicle").on(table.vehicleId),
+    index("idx_assignment_history_employee").on(table.employeeId),
     index("idx_assignment_history_status").on(table.status),
     index("idx_assignment_history_start_date").on(table.startDate),
     index("idx_assignment_history_is_deleted").on(table.isDeleted),
