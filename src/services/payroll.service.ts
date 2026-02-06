@@ -16,9 +16,11 @@ import {
   payrollRuns,
   payrollEntries,
   payrollAuditLog,
+  payrollTimesheetEntries,
 } from "../drizzle/schema/payroll.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 
 interface PayrollDashboardFilters {
@@ -39,11 +41,7 @@ interface PayrollRunsFilters {
   status?: string | undefined;
 }
 
-// T3 internal organization ID for audit logs
-const T3_ORGANIZATION_ID =
-  process.env.T3_ORGANIZATION_ID || "00000000-0000-0000-0000-000000000000";
-
-// Dashboard Service (T3 internal - no organizationId filter)
+// Dashboard Service (T3 internal - no organizationId)
 export const getPayrollDashboard = async (filters: PayrollDashboardFilters) => {
   let whereConditions = [eq(payrollEntries.isDeleted, false)];
 
@@ -386,16 +384,14 @@ export const createPayrollEntry = async (data: any) => {
       .insert(payrollEntries)
       .values({
         ...calculatedData,
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         entryNumber,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_entry",
       referenceId: newEntry!.id,
       action: "created",
@@ -446,9 +442,8 @@ export const updatePayrollEntry = async (id: string, data: any) => {
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_entry",
       referenceId: id,
       action: "updated",
@@ -497,10 +492,9 @@ export const deletePayrollEntry = async (id: string, deletedBy: string) => {
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "deleted",
@@ -555,10 +549,9 @@ export const approvePayrollEntry = async (
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "approved",
@@ -610,10 +603,9 @@ export const rejectPayrollEntry = async (
       .where(eq(payrollEntries.id, id))
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     if (entry[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_entry",
         referenceId: id,
         action: "rejected",
@@ -786,16 +778,14 @@ export const createPayrollRun = async (data: any) => {
       .insert(payrollRuns)
       .values({
         ...data,
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         runNumber,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning();
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
       referenceType: "payroll_run",
       referenceId: newRun!.id,
       action: "created",
@@ -853,10 +843,9 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
       })
       .where(eq(payrollEntries.payrollRunId, id));
 
-    // Create audit log (T3 internal - use default organization)
+    // Create audit log
     if (run[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: T3_ORGANIZATION_ID, // T3 internal - default organization
         referenceType: "payroll_run",
         referenceId: id,
         action: "processed",
@@ -871,6 +860,278 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
   });
 
   return result;
+};
+
+// --- Weekly pay period and payroll sync from timesheets (hourly) ---
+
+/** Get Monday and Sunday of the week containing the given date (ISO week Mon–Sun). */
+function getWeekStartEnd(date: Date): { startDate: string; endDate: string } {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 Sun, 1 Mon, ... 6 Sat
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  const start = new Date(d);
+  start.setDate(d.getDate() - daysFromMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    startDate: start.toISOString().split("T")[0]!,
+    endDate: end.toISOString().split("T")[0]!,
+  };
+}
+
+/** Get ISO week number (1–53) for a date. */
+function getISOWeekNumber(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+/** Get or create a weekly pay period for the week containing the given date. (T3 internal: no organizationId.) */
+export const getOrCreatePayPeriodForWeek = async (date: Date) => {
+  const { startDate, endDate } = getWeekStartEnd(date);
+  const periodNumber = getISOWeekNumber(new Date(startDate));
+  // Pay date = Friday after week end (end + 5 days)
+  const end = new Date(endDate);
+  end.setDate(end.getDate() + 5);
+  const payDate = end.toISOString().split("T")[0]!;
+
+  const [existing] = await db
+    .select()
+    .from(payPeriods)
+    .where(
+      and(
+        eq(payPeriods.frequency, "weekly"),
+        eq(payPeriods.startDate, startDate),
+        eq(payPeriods.endDate, endDate),
+        eq(payPeriods.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (existing) return existing;
+
+  const [created] = await db
+    .insert(payPeriods)
+    .values({
+      frequency: "weekly",
+      startDate,
+      endDate,
+      payDate,
+      periodNumber,
+      status: "draft",
+      approvalWorkflow: "auto_from_timesheet",
+      autoGenerateFromTimesheets: true,
+      isDeleted: false,
+    })
+    .returning();
+
+  return created!;
+};
+
+/** Get or create a payroll run for the given pay period. (T3 internal: no organizationId.) */
+export const getOrCreatePayrollRunForPeriod = async (payPeriodId: string) => {
+  const [existing] = await db
+    .select()
+    .from(payrollRuns)
+    .where(
+      and(
+        eq(payrollRuns.payPeriodId, payPeriodId),
+        eq(payrollRuns.isDeleted, false),
+        ne(payrollRuns.status, "cancelled"),
+      ),
+    )
+    .limit(1);
+
+  if (existing) return existing;
+
+  const runNumber = await generatePayrollRunNumber();
+  const [created] = await db
+    .insert(payrollRuns)
+    .values({
+      payPeriodId,
+      runNumber,
+      runType: "regular",
+      status: "draft",
+      isDeleted: false,
+    })
+    .returning();
+
+  return created!;
+};
+
+/**
+ * Sync hourly payroll from an approved timesheet: create or update the payroll entry
+ * for that employee for the week containing the timesheet date, using all approved
+ * timesheets in that period. Only runs for hourly employees; no-op for salary.
+ */
+export const syncPayrollFromApprovedTimesheet = async (
+  timesheetId: number,
+): Promise<void> => {
+  const [timesheet] = await db
+    .select({
+      id: timesheets.id,
+      employeeId: timesheets.employeeId,
+      sheetDate: timesheets.sheetDate,
+      totalHours: timesheets.totalHours,
+      overtimeHours: timesheets.overtimeHours,
+      status: timesheets.status,
+    })
+    .from(timesheets)
+    .where(eq(timesheets.id, timesheetId))
+    .limit(1);
+
+  if (!timesheet || timesheet.status !== "approved") return;
+
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      hourlyRate: employees.hourlyRate,
+      payType: employees.payType,
+    })
+    .from(employees)
+    .where(eq(employees.id, timesheet.employeeId))
+    .limit(1);
+
+  if (!employee) return;
+
+  const payType = employee.payType?.trim().toLowerCase();
+  if (payType === "salary" || !employee.hourlyRate) return;
+
+  const sheetDate =
+    typeof timesheet.sheetDate === "string"
+      ? new Date(timesheet.sheetDate)
+      : timesheet.sheetDate;
+
+  const period = await getOrCreatePayPeriodForWeek(sheetDate);
+  const run = await getOrCreatePayrollRunForPeriod(period.id);
+
+  const approvedInPeriod = await db
+    .select({
+      id: timesheets.id,
+      totalHours: timesheets.totalHours,
+      overtimeHours: timesheets.overtimeHours,
+    })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, employee.id),
+        eq(timesheets.status, "approved"),
+        gte(timesheets.sheetDate, period.startDate),
+        lte(timesheets.sheetDate, period.endDate),
+      ),
+    );
+
+  let regularHours = 0;
+  let overtimeHours = 0;
+  for (const row of approvedInPeriod) {
+    const total = parseFloat(String(row.totalHours ?? 0)) || 0;
+    const ot = parseFloat(String(row.overtimeHours ?? 0)) || 0;
+    regularHours += Math.max(0, total - ot);
+    overtimeHours += ot;
+  }
+
+  const hourlyRate = parseFloat(String(employee.hourlyRate)) || 0;
+  const payData = {
+    payrollRunId: run.id,
+    payPeriodId: period.id,
+    employeeId: employee.id,
+    regularHours,
+    overtimeHours,
+    doubleOvertimeHours: 0,
+    ptoHours: 0,
+    sickHours: 0,
+    holidayHours: 0,
+    bonuses: 0,
+    hourlyRate,
+    overtimeMultiplier: 1.5,
+    doubleOvertimeMultiplier: 2.0,
+    holidayMultiplier: 1.5,
+    totalDeductions: 0,
+    sourceType: "timesheet_auto",
+    approvalWorkflow: "auto_from_timesheet",
+    timesheetIntegrationStatus: "auto_generated",
+    createdBy: undefined as string | undefined,
+  };
+
+  const calculatedData = calculatePayAmounts(payData);
+
+  const [existingEntry] = await db
+    .select({ id: payrollEntries.id })
+    .from(payrollEntries)
+    .where(
+      and(
+        eq(payrollEntries.payrollRunId, run.id),
+        eq(payrollEntries.employeeId, employee.id),
+        eq(payrollEntries.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (existingEntry) {
+    await db
+      .update(payrollEntries)
+      .set({
+        ...calculatedData,
+        sourceType: "timesheet_auto",
+        timesheetIntegrationStatus: "auto_generated",
+        updatedAt: new Date(),
+      })
+      .where(eq(payrollEntries.id, existingEntry.id));
+
+    // Re-link timesheets: remove old links then insert current approved set
+    await db
+      .delete(payrollTimesheetEntries)
+      .where(eq(payrollTimesheetEntries.payrollEntryId, existingEntry.id));
+    for (const row of approvedInPeriod) {
+      await db.insert(payrollTimesheetEntries).values({
+        payrollEntryId: existingEntry.id,
+        timesheetId: row.id,
+        hoursIncluded: String(
+          parseFloat(String(row.totalHours ?? 0)) || 0,
+        ),
+        overtimeHours: String(parseFloat(String(row.overtimeHours ?? 0)) || 0),
+        doubleOvertimeHours: "0",
+        includedInPayroll: true,
+      });
+    }
+    return;
+  }
+
+  const entryNumber = await generatePayrollEntryNumber();
+  const [newEntry] = await db
+    .insert(payrollEntries)
+    .values({
+      payrollRunId: run.id,
+      employeeId: employee.id,
+      entryNumber,
+      status: "draft",
+      sourceType: "timesheet_auto",
+      timesheetIntegrationStatus: "auto_generated",
+      approvalWorkflow: "auto_from_timesheet",
+      ...calculatedData,
+      hourlyRate: String(hourlyRate),
+      paymentMethod: "direct_deposit",
+      isDeleted: false,
+    })
+    .returning();
+
+  if (newEntry) {
+    for (const row of approvedInPeriod) {
+      await db.insert(payrollTimesheetEntries).values({
+        payrollEntryId: newEntry.id,
+        timesheetId: row.id,
+        hoursIncluded: String(
+          parseFloat(String(row.totalHours ?? 0)) || 0,
+        ),
+        overtimeHours: String(parseFloat(String(row.overtimeHours ?? 0)) || 0),
+        doubleOvertimeHours: "0",
+        includedInPayroll: true,
+      });
+    }
+  }
 };
 
 // Helper Functions

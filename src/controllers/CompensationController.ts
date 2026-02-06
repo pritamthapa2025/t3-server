@@ -29,7 +29,6 @@ export const getEmployeeCompensationsHandler = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
-    const organizationId = req.query.organizationId as string;
     const employeeId = req.query.employeeId as string | undefined;
     const isActive = req.query.isActive as string | undefined;
 
@@ -37,7 +36,6 @@ export const getEmployeeCompensationsHandler = async (
 
     const result = await getEmployeeCompensations(offset, limit, {
       search,
-      organizationId,
       employeeId,
       isActive:
         isActive === "true" ? true : isActive === "false" ? false : undefined,
@@ -263,7 +261,6 @@ export const getPayPeriodsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const organizationId = req.query.organizationId as string;
     const frequency = req.query.frequency as string | undefined;
     const year = req.query.year as string | undefined;
     const status = req.query.status as string | undefined;
@@ -271,7 +268,6 @@ export const getPayPeriodsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
 
     const result = await getPayPeriods(offset, limit, {
-      organizationId,
       frequency,
       year: year ? parseInt(year) : undefined,
       status,
@@ -452,7 +448,6 @@ export const getEmployeeLeaveBalancesHandler = async (
 ) => {
   try {
     const employeeId = parseInt(req.params.employeeId as string);
-    const organizationId = req.query.organizationId as string;
 
     if (isNaN(employeeId)) {
       return res.status(400).json({
@@ -461,10 +456,7 @@ export const getEmployeeLeaveBalancesHandler = async (
       });
     }
 
-    const leaveBalances = await getEmployeeLeaveBalances(
-      employeeId,
-      organizationId
-    );
+    const leaveBalances = await getEmployeeLeaveBalances(employeeId);
 
     logger.info("Employee leave balances fetched successfully");
     return res.status(200).json({
@@ -528,7 +520,6 @@ export const getEmployeeBenefitsHandler = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const employeeId = req.query.employeeId as string | undefined;
-    const organizationId = req.query.organizationId as string;
     const benefitType = req.query.benefitType as string | undefined;
     const isActive = req.query.isActive as string | undefined;
 
@@ -536,7 +527,6 @@ export const getEmployeeBenefitsHandler = async (
 
     const result = await getEmployeeBenefits(offset, limit, {
       employeeId: employeeId ? parseInt(employeeId) : undefined,
-      organizationId,
       benefitType,
       isActive:
         isActive === "true" ? true : isActive === "false" ? false : undefined,

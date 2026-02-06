@@ -16,6 +16,7 @@ import {
 import { users } from "./auth.schema.js";
 import { employees } from "./org.schema.js";
 import { jobs } from "./jobs.schema.js";
+import { dispatchTasks } from "./dispatch.schema.js";
 
 // Import enums
 import {
@@ -31,6 +32,13 @@ import {
 } from "../enums/fleet.enums.js";
 
 const org = pgSchema("org");
+
+/**
+ * T3 internal data: Fleet, dispatch, timesheets, payroll, etc. are not scoped by
+ * the organizations table. T3 is the team; data lives in employees, positions,
+ * and departments (org schema). organizationId on payroll/client tables is for
+ * client orgs; T3 uses a placeholder org ID where the schema requires it.
+ */
 
 /**
  * ============================================================================
@@ -62,7 +70,9 @@ export const vehicles = org.table(
       () => employees.id,
     ), // Current driver assignment
     currentJobId: uuid("current_job_id").references(() => jobs.id), // Currently assigned job
-    currentDispatchTaskId: uuid("current_dispatch_task_id"), // Link to dispatch task (references dispatch_tasks.id)
+    currentDispatchTaskId: uuid("current_dispatch_task_id").references(
+      () => dispatchTasks.id,
+    ), // T3 internal: link to dispatch task (no organization; data in employees/positions/departments)
 
     // Current Metrics
     mileage: numeric("mileage", { precision: 10, scale: 2 })

@@ -13,9 +13,8 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-// Import existing tables and users from auth schema
+// Import existing tables and users from auth schema (T3 internal: no organizations)
 import { users } from "./auth.schema.js";
-import { organizations } from "./client.schema.js";
 import {
   employees,
   userBankAccounts,
@@ -48,11 +47,8 @@ export const payPeriods = org.table(
   "pay_periods",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
-    // Period Details
+    // Period Details (T3 internal: no organizationId; data in employees/positions/departments)
     periodNumber: integer("period_number").notNull(), // 1, 2, 3... for the year
     frequency: payrollFrequencyEnum("frequency").notNull(),
     startDate: date("start_date").notNull(),
@@ -95,12 +91,11 @@ export const payPeriods = org.table(
   },
   (table) => [
     unique("unique_pay_period").on(
-      table.organizationId,
       table.frequency,
       table.startDate,
       table.endDate
     ),
-    index("idx_pay_periods_org_status").on(table.organizationId, table.status),
+    index("idx_pay_periods_status").on(table.status),
     index("idx_pay_periods_pay_date").on(table.payDate),
     index("idx_pay_periods_lock_status").on(table.lockStatus),
     index("idx_pay_periods_workflow").on(table.approvalWorkflow),
@@ -118,9 +113,6 @@ export const employeeCompensation = org.table(
     employeeId: integer("employee_id")
       .notNull()
       .references(() => employees.id, ),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
     // Pay Structure
     baseSalary: numeric("base_salary", { precision: 15, scale: 2 }),
@@ -168,7 +160,6 @@ export const employeeCompensation = org.table(
   },
   (table) => [
     index("idx_employee_compensation_employee").on(table.employeeId),
-    index("idx_employee_compensation_org").on(table.organizationId),
     index("idx_employee_compensation_active").on(
       table.isActive,
       table.effectiveDate
@@ -188,9 +179,6 @@ export const payrollRuns = org.table(
   "payroll_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     payPeriodId: uuid("pay_period_id")
       .notNull()
       .references(() => payPeriods.id, ),
@@ -249,11 +237,8 @@ export const payrollRuns = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    unique("unique_payroll_run_number").on(
-      table.organizationId,
-      table.runNumber
-    ),
-    index("idx_payroll_runs_org_status").on(table.organizationId, table.status),
+    unique("unique_payroll_run_number").on(table.runNumber),
+    index("idx_payroll_runs_status").on(table.status),
     index("idx_payroll_runs_pay_period").on(table.payPeriodId),
     index("idx_payroll_runs_processed_at").on(table.processedAt),
   ]
@@ -267,9 +252,6 @@ export const payrollEntries = org.table(
   "payroll_entries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
     payrollRunId: uuid("payroll_run_id")
       .notNull()
       .references(() => payrollRuns.id, ),
@@ -385,10 +367,7 @@ export const payrollEntries = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    unique("unique_payroll_entry_number").on(
-      table.organizationId,
-      table.entryNumber
-    ),
+    unique("unique_payroll_entry_number").on(table.entryNumber),
     index("idx_payroll_entries_run").on(table.payrollRunId),
     index("idx_payroll_entries_employee").on(table.employeeId),
     index("idx_payroll_entries_status").on(table.status),
@@ -559,9 +538,6 @@ export const payrollLocks = org.table(
   "payroll_locks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
     // Lock scope
     lockScope: varchar("lock_scope", { length: 50 }).notNull(), // "pay_period", "payroll_run", "individual_entry"
@@ -596,7 +572,6 @@ export const payrollLocks = org.table(
       table.referenceId,
       table.isActive
     ),
-    index("idx_payroll_locks_org").on(table.organizationId),
     index("idx_payroll_locks_reference").on(
       table.referenceType,
       table.referenceId
@@ -660,9 +635,6 @@ export const employeeBenefits = org.table(
     employeeId: integer("employee_id")
       .notNull()
       .references(() => employees.id, ),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
     // Benefit Details
     benefitType: benefitTypeEnum("benefit_type").notNull(),
@@ -692,7 +664,6 @@ export const employeeBenefits = org.table(
   },
   (table) => [
     index("idx_employee_benefits_employee").on(table.employeeId),
-    index("idx_employee_benefits_org").on(table.organizationId),
     index("idx_employee_benefits_type").on(table.benefitType),
     index("idx_employee_benefits_active").on(
       table.isActive,
@@ -712,9 +683,6 @@ export const employeeLeaveBalances = org.table(
     employeeId: integer("employee_id")
       .notNull()
       .references(() => employees.id, ),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
     // Balance Details
     leaveType: leaveTypeEnum("leave_type").notNull(),
@@ -741,7 +709,6 @@ export const employeeLeaveBalances = org.table(
   (table) => [
     unique("unique_employee_leave_type").on(table.employeeId, table.leaveType),
     index("idx_employee_leave_balances_employee").on(table.employeeId),
-    index("idx_employee_leave_balances_org").on(table.organizationId),
   ]
 );
 
@@ -753,9 +720,6 @@ export const payrollAuditLog = org.table(
   "payroll_audit_log",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, ),
 
     // Reference (payroll run, entry, compensation change)
     referenceType: varchar("reference_type", { length: 50 }).notNull(),
@@ -779,7 +743,6 @@ export const payrollAuditLog = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_payroll_audit_org").on(table.organizationId),
     index("idx_payroll_audit_reference").on(
       table.referenceType,
       table.referenceId

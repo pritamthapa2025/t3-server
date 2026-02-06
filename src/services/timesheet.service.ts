@@ -18,6 +18,7 @@ import {
   timesheetApprovals,
 } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { getUserRoles } from "./role.service.js";
 
 export const getTimesheets = async (
   offset: number,
@@ -1258,6 +1259,69 @@ export const getTimesheetsByEmployee = async (
       totalPages: Math.ceil(totalCount / limit),
     },
   };
+};
+
+/**
+ * Check if the approver is allowed to approve this timesheet based on role rules:
+ * - Technician's timesheet → Manager or Executive can approve
+ * - Manager's timesheet → only Executive can approve
+ * - Executive (or other) timesheet → only Executive can approve
+ */
+export const canApproveTimesheet = async (
+  approverUserId: string,
+  timesheetId: number,
+): Promise<{ allowed: boolean; message?: string }> => {
+  const [timesheet] = await db
+    .select({ employeeId: timesheets.employeeId })
+    .from(timesheets)
+    .where(eq(timesheets.id, timesheetId))
+    .limit(1);
+
+  if (!timesheet) {
+    return { allowed: false, message: "Timesheet not found" };
+  }
+
+  const [employee] = await db
+    .select({ userId: employees.userId })
+    .from(employees)
+    .where(eq(employees.id, timesheet.employeeId))
+    .limit(1);
+
+  if (!employee?.userId) {
+    return { allowed: false, message: "Employee or user not found for timesheet" };
+  }
+
+  const submitterRole = await getUserRoles(employee.userId);
+  const approverRole = await getUserRoles(approverUserId);
+
+  const submitterRoleName = submitterRole?.roleName?.trim().toLowerCase() ?? "";
+  const approverRoleName = approverRole?.roleName?.trim().toLowerCase() ?? "";
+
+  if (!approverRoleName) {
+    return { allowed: false, message: "Approver has no role assigned" };
+  }
+
+  // Technician's timesheet (including "Field Technician"): Manager or Executive can approve
+  if (submitterRoleName.includes("technician")) {
+    const allowed = approverRoleName === "manager" || approverRoleName === "executive";
+    return allowed
+      ? { allowed: true }
+      : { allowed: false, message: "Only a Manager or Executive can approve a Technician's timesheet" };
+  }
+
+  // Manager's timesheet: only Executive can approve
+  if (submitterRoleName === "manager") {
+    const allowed = approverRoleName === "executive";
+    return allowed
+      ? { allowed: true }
+      : { allowed: false, message: "Only an Executive can approve a Manager's timesheet" };
+  }
+
+  // Executive or any other role: only Executive can approve
+  const allowed = approverRoleName === "executive";
+  return allowed
+    ? { allowed: true }
+    : { allowed: false, message: "Only an Executive can approve this timesheet" };
 };
 
 export const approveTimesheet = async (

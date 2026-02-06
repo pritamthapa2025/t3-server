@@ -21,13 +21,11 @@ import { users } from "../drizzle/schema/auth.schema.js";
 
 interface EmployeeCompensationFilters {
   search?: string | undefined;
-  organizationId: string;
   employeeId?: string | undefined;
   isActive?: boolean | undefined;
 }
 
 interface PayPeriodFilters {
-  organizationId: string;
   frequency?: string | undefined;
   year?: number | undefined;
   status?: string | undefined;
@@ -35,7 +33,6 @@ interface PayPeriodFilters {
 
 interface EmployeeBenefitFilters {
   employeeId?: number | undefined;
-  organizationId: string;
   benefitType?: string | undefined;
   isActive?: boolean | undefined;
 }
@@ -46,10 +43,7 @@ export const getEmployeeCompensations = async (
   limit: number,
   filters: EmployeeCompensationFilters
 ) => {
-  let whereConditions = [
-    eq(employeeCompensation.organizationId, filters.organizationId),
-    eq(employeeCompensation.isDeleted, false),
-  ];
+  let whereConditions = [eq(employeeCompensation.isDeleted, false)];
 
   // Add search filter
   if (filters.search) {
@@ -165,7 +159,6 @@ export const getEmployeeCompensationById = async (id: string) => {
       employeeId: employees.id,
       employeeNumber: employees.employeeId,
       employeeName: users.fullName,
-      organizationId: employeeCompensation.organizationId,
 
       // Audit Fields
       notes: employeeCompensation.notes,
@@ -201,12 +194,13 @@ export const createEmployeeCompensation = async (data: any) => {
     throw error;
   }
 
+  const { organizationId: _omitOrg, ...compensationData } = data;
   const result = await db.transaction(async (tx) => {
     // Create new compensation
     const [newCompensation] = await tx
       .insert(employeeCompensation)
       .values({
-        ...data,
+        ...compensationData,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -214,7 +208,6 @@ export const createEmployeeCompensation = async (data: any) => {
 
     // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: data.organizationId,
       referenceType: "employee_compensation",
       referenceId: newCompensation!.id,
       action: "created",
@@ -238,12 +231,13 @@ export const updateEmployeeCompensation = async (id: string, data: any) => {
     return null;
   }
 
+  const { organizationId: _omitOrg, ...updateData } = data || {};
   const result = await db.transaction(async (tx) => {
     // Update compensation
     const [updatedCompensation] = await tx
       .update(employeeCompensation)
       .set({
-        ...data,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(eq(employeeCompensation.id, id))
@@ -251,7 +245,6 @@ export const updateEmployeeCompensation = async (id: string, data: any) => {
 
     // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: oldValues.organizationId,
       referenceType: "employee_compensation",
       referenceId: id,
       action: "updated",
@@ -271,9 +264,7 @@ export const updateEmployeeCompensation = async (id: string, data: any) => {
 
 export const deleteEmployeeCompensation = async (id: string) => {
   const compensation = await db
-    .select({ 
-      organizationId: employeeCompensation.organizationId,
-    })
+    .select({ id: employeeCompensation.id })
     .from(employeeCompensation)
     .where(eq(employeeCompensation.id, id))
     .limit(1);
@@ -297,8 +288,7 @@ export const deleteEmployeeCompensation = async (id: string) => {
     // Create audit log
     if (compensation[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: compensation[0].organizationId,
-      referenceType: "employee_compensation",
+        referenceType: "employee_compensation",
       referenceId: id,
       action: "deleted",
       description: "Employee compensation deleted",
@@ -375,10 +365,7 @@ export const getPayPeriods = async (
   limit: number,
   filters: PayPeriodFilters
 ) => {
-  let whereConditions = [
-    eq(payPeriods.organizationId, filters.organizationId),
-    eq(payPeriods.isDeleted, false),
-  ];
+  let whereConditions = [eq(payPeriods.isDeleted, false)];
 
   // Add filters
   if (filters.frequency) {
@@ -449,7 +436,6 @@ export const getPayPeriodById = async (id: string) => {
   const result = await db
     .select({
       id: payPeriods.id,
-      organizationId: payPeriods.organizationId,
       periodNumber: payPeriods.periodNumber,
       frequency: payPeriods.frequency,
       startDate: payPeriods.startDate,
@@ -482,7 +468,6 @@ export const createPayPeriod = async (data: any) => {
     .from(payPeriods)
     .where(
       and(
-        eq(payPeriods.organizationId, data.organizationId),
         eq(payPeriods.frequency, data.frequency),
         eq(payPeriods.startDate, data.startDate),
         eq(payPeriods.endDate, data.endDate),
@@ -497,12 +482,13 @@ export const createPayPeriod = async (data: any) => {
     throw error;
   }
 
+  const { organizationId: _omitOrg, ...periodData } = data;
   const result = await db.transaction(async (tx) => {
     // Create pay period
     const [newPeriod] = await tx
       .insert(payPeriods)
       .values({
-        ...data,
+        ...periodData,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -510,7 +496,6 @@ export const createPayPeriod = async (data: any) => {
 
     // Create audit log
     await tx.insert(payrollAuditLog).values({
-      organizationId: data.organizationId,
       referenceType: "pay_period",
       referenceId: newPeriod!.id,
       action: "created",
@@ -529,10 +514,7 @@ export const createPayPeriod = async (data: any) => {
 export const updatePayPeriod = async (id: string, data: any) => {
   // Check if period is locked
   const period = await db
-    .select({ 
-      lockStatus: payPeriods.lockStatus,
-      organizationId: payPeriods.organizationId,
-    })
+    .select({ lockStatus: payPeriods.lockStatus })
     .from(payPeriods)
     .where(eq(payPeriods.id, id))
     .limit(1);
@@ -550,12 +532,13 @@ export const updatePayPeriod = async (id: string, data: any) => {
   // Get old values for audit
   const oldValues = await getPayPeriodById(id);
 
+  const { organizationId: _omitOrg, ...updateData } = data || {};
   const result = await db.transaction(async (tx) => {
     // Update pay period
     const [updatedPeriod] = await tx
       .update(payPeriods)
       .set({
-        ...data,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(eq(payPeriods.id, id))
@@ -564,7 +547,6 @@ export const updatePayPeriod = async (id: string, data: any) => {
     // Create audit log
     if (period[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: period[0].organizationId,
         referenceType: "pay_period",
         referenceId: id,
         action: "updated",
@@ -589,9 +571,7 @@ export const deletePayPeriod = async (id: string) => {
   // For now, we'll just do a basic check
 
   const period = await db
-    .select({ 
-      organizationId: payPeriods.organizationId,
-    })
+    .select({ id: payPeriods.id })
     .from(payPeriods)
     .where(eq(payPeriods.id, id))
     .limit(1);
@@ -617,7 +597,6 @@ export const deletePayPeriod = async (id: string) => {
     // Create audit log
     if (period[0]) {
       await tx.insert(payrollAuditLog).values({
-        organizationId: period[0].organizationId,
         referenceType: "pay_period",
         referenceId: id,
         action: "deleted",
@@ -635,10 +614,7 @@ export const deletePayPeriod = async (id: string) => {
 };
 
 // Employee Leave Balances Services
-export const getEmployeeLeaveBalances = async (
-  employeeId: number,
-  organizationId: string
-) => {
+export const getEmployeeLeaveBalances = async (employeeId: number) => {
   const data = await db
     .select({
       id: employeeLeaveBalances.id,
@@ -656,7 +632,6 @@ export const getEmployeeLeaveBalances = async (
     .where(
       and(
         eq(employeeLeaveBalances.employeeId, employeeId),
-        eq(employeeLeaveBalances.organizationId, organizationId),
         eq(employeeLeaveBalances.isDeleted, false)
       )
     )
@@ -684,10 +659,7 @@ export const getEmployeeBenefits = async (
   limit: number,
   filters: EmployeeBenefitFilters
 ) => {
-  let whereConditions = [
-    eq(employeeBenefits.organizationId, filters.organizationId),
-    eq(employeeBenefits.isDeleted, false),
-  ];
+  let whereConditions = [eq(employeeBenefits.isDeleted, false)];
 
   // Add filters
   if (filters.employeeId) {
@@ -751,6 +723,7 @@ export const getEmployeeBenefits = async (
 };
 
 export const createEmployeeBenefit = async (data: any) => {
+  const { organizationId: _omitOrg, ...benefitData } = data || {};
   // Check for duplicate benefits
   const existingBenefit = await db
     .select({ id: employeeBenefits.id })
@@ -774,7 +747,7 @@ export const createEmployeeBenefit = async (data: any) => {
   const result = await db
     .insert(employeeBenefits)
     .values({
-      ...data,
+      ...benefitData,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -784,10 +757,11 @@ export const createEmployeeBenefit = async (data: any) => {
 };
 
 export const updateEmployeeBenefit = async (id: string, data: any) => {
+  const { organizationId: _omitOrg, ...updateData } = data || {};
   const result = await db
     .update(employeeBenefits)
     .set({
-      ...data,
+      ...updateData,
       updatedAt: new Date(),
     })
     .where(eq(employeeBenefits.id, id))

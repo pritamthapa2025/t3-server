@@ -8,6 +8,7 @@ import {
   clockIn,
   clockOut,
   approveTimesheet,
+  canApproveTimesheet,
   rejectTimesheet,
   getTimesheetsByEmployee,
   getWeeklyTimesheetsByEmployee,
@@ -15,6 +16,7 @@ import {
   createTimesheetWithClockData,
   getTimesheetKPIs,
 } from "../services/timesheet.service.js";
+import { syncPayrollFromApprovedTimesheet } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
 
 export const getTimesheetsHandler = async (req: Request, res: Response) => {
@@ -535,7 +537,24 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Role-based approval: Technician → Manager/Executive; Manager → Executive only
+    const approvalCheck = await canApproveTimesheet(approvedBy, timesheetId);
+    if (!approvalCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: approvalCheck.message ?? "You are not allowed to approve this timesheet",
+      });
+    }
+
     const timesheet = await approveTimesheet(timesheetId, approvedBy, notes);
+
+    // Sync hourly payroll for this week (create or update payroll entry from approved timesheets)
+    try {
+      await syncPayrollFromApprovedTimesheet(timesheetId);
+    } catch (payrollError: any) {
+      logger.warn(`Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`);
+      // Approval still succeeds; payroll can be fixed or synced later
+    }
 
     logger.info(`Timesheet ${timesheetId} approved by ${approvedBy}`);
     return res.status(200).json({

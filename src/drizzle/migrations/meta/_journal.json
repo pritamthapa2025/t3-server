@@ -498,6 +498,13 @@
       "when": 1770367047736,
       "tag": "0070_brainy_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1770372925444,
+      "tag": "0071_natural_frank_castle",
+      "breakpoints": true
     }
   ]
 }
