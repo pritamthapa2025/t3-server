@@ -8,6 +8,7 @@ import {
   ilike,
   inArray,
   gte,
+  lte,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
@@ -24,6 +25,11 @@ import {
 } from "../drizzle/schema/timesheet.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
+import {
+  dispatchAssignments,
+  dispatchTasks,
+} from "../drizzle/schema/dispatch.schema.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
 
@@ -1027,4 +1033,124 @@ export const getUnassignedDrivers = async () => {
     createdAt: row.createdAt ?? null,
     updatedAt: row.updatedAt ?? null,
   }));
+};
+
+/**
+ * Get jobs and dispatch tasks assigned to an employee for a given date (date mandatory).
+ * Returns unique jobs and list of dispatch tasks (with job details) for that date.
+ */
+export const getEmployeeJobsAndDispatchForDate = async (
+  employeeId: number,
+  date: string,
+) => {
+  const dateObj = new Date(date);
+  if (isNaN(dateObj.getTime())) {
+    throw new Error("Invalid date format");
+  }
+  const startOfDay = new Date(dateObj);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(dateObj);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const rows = await db
+    .select({
+      dispatchTaskId: dispatchTasks.id,
+      dispatchTitle: dispatchTasks.title,
+      dispatchTaskType: dispatchTasks.taskType,
+      dispatchPriority: dispatchTasks.priority,
+      dispatchStatus: dispatchTasks.status,
+      dispatchStartTime: dispatchTasks.startTime,
+      dispatchEndTime: dispatchTasks.endTime,
+      dispatchJobId: dispatchTasks.jobId,
+      jobId: jobs.id,
+      jobNumber: jobs.jobNumber,
+      jobStatus: jobs.status,
+      jobType: jobs.jobType,
+      scheduledStartDate: jobs.scheduledStartDate,
+      scheduledEndDate: jobs.scheduledEndDate,
+      siteAddress: jobs.siteAddress,
+    })
+    .from(dispatchAssignments)
+    .innerJoin(
+      dispatchTasks,
+      and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchTasks.isDeleted, false),
+        lte(dispatchTasks.startTime, endOfDay),
+        gte(dispatchTasks.endTime, startOfDay),
+      ),
+    )
+    .innerJoin(jobs, eq(dispatchTasks.jobId, jobs.id))
+    .where(
+      and(
+        eq(dispatchAssignments.technicianId, employeeId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .orderBy(dispatchTasks.startTime);
+
+  const jobMap = new Map<
+    string,
+    {
+      id: string;
+      jobNumber: string | null;
+      status: string | null;
+      jobType: string | null;
+      scheduledStartDate: string | null;
+      scheduledEndDate: string | null;
+      siteAddress: string | null;
+    }
+  >();
+  const dispatchTasksList: Array<{
+    id: string;
+    title: string | null;
+    taskType: string | null;
+    priority: string | null;
+    status: string | null;
+    startTime: Date | null;
+    endTime: Date | null;
+    jobId: string | null;
+    jobDetails: {
+      id: string;
+      jobNumber: string | null;
+      status: string | null;
+      jobType: string | null;
+      scheduledStartDate: string | null;
+      scheduledEndDate: string | null;
+      siteAddress: string | null;
+    } | null;
+  }> = [];
+
+  for (const row of rows) {
+    const jId = row.jobId;
+    if (jId && !jobMap.has(jId)) {
+      jobMap.set(jId, {
+        id: jId,
+        jobNumber: row.jobNumber ?? null,
+        status: row.jobStatus ?? null,
+        jobType: row.jobType ?? null,
+        scheduledStartDate: row.scheduledStartDate ?? null,
+        scheduledEndDate: row.scheduledEndDate ?? null,
+        siteAddress: row.siteAddress ?? null,
+      });
+    }
+    const jobDetails = jId ? jobMap.get(jId) ?? null : null;
+    dispatchTasksList.push({
+      id: row.dispatchTaskId,
+      title: row.dispatchTitle ?? null,
+      taskType: row.dispatchTaskType ?? null,
+      priority: row.dispatchPriority ?? null,
+      status: row.dispatchStatus ?? null,
+      startTime: row.dispatchStartTime ?? null,
+      endTime: row.dispatchEndTime ?? null,
+      jobId: row.dispatchJobId ?? null,
+      jobDetails,
+    });
+  }
+
+  return {
+    date,
+    jobs: Array.from(jobMap.values()),
+    dispatchTasks: dispatchTasksList,
+  };
 };

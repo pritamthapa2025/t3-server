@@ -136,3 +136,25 @@ export const deleteEmployeeSchema = z.object({
   }),
 });
 
+// Get jobs and dispatch for employee by date (date is mandatory)
+export const getEmployeeJobsAndDispatchSchema = z.object({
+  params: z.object({
+    id: z
+      .string()
+      .transform((val) => parseInt(val, 10))
+      .pipe(z.number().int().positive("Invalid employee ID")),
+  }),
+  query: z.object({
+    date: z
+      .string()
+      .min(1, "Date is required")
+      .refine(
+        (val) => {
+          const d = new Date(val);
+          return !isNaN(d.getTime());
+        },
+        { message: "Invalid date format. Use YYYY-MM-DD." },
+      ),
+  }),
+});
+

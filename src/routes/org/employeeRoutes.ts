@@ -5,6 +5,7 @@ import {
   getEmployeesSimpleHandler,
   createEmployeeHandler,
   getEmployeeByIdHandler,
+  getEmployeeJobsAndDispatchHandler,
   updateEmployeeHandler,
   deleteEmployeeHandler,
   getEmployeeKPIsHandler,
@@ -25,6 +26,7 @@ import {
   getEmployeesQuerySchema,
   getEmployeesSimpleQuerySchema,
   getEmployeeByIdSchema,
+  getEmployeeJobsAndDispatchSchema,
   createEmployeeSchema,
   updateEmployeeSchema,
   deleteEmployeeSchema,
@@ -120,6 +122,12 @@ router
     validate(createEmployeeSchema),
     createEmployeeHandler,
   );
+
+router.get(
+  "/employees/:id/jobs-and-dispatch",
+  validate(getEmployeeJobsAndDispatchSchema),
+  getEmployeeJobsAndDispatchHandler,
+);
 
 router
   .route("/employees/:id")

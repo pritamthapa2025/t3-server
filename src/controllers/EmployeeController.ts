@@ -8,6 +8,7 @@ import {
   getTechnicians,
   getUnassignedDrivers,
   getEmployeeKPIs,
+  getEmployeeJobsAndDispatchForDate,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -180,6 +181,34 @@ export const getEmployeeByIdHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error fetching employee details", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getEmployeeJobsAndDispatchHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const date = req.query.date as string;
+
+    const result = await getEmployeeJobsAndDispatchForDate(id, date);
+
+    logger.info("Employee jobs and dispatch fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError(
+      "Error fetching employee jobs and dispatch",
+      error,
+      req,
+    );
     return res.status(500).json({
       success: false,
       message: "Internal server error",
