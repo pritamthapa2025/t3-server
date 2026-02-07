@@ -2,6 +2,8 @@ import http from "http";
 import app from "./app.js";
 import { initDB, pool } from "./config/db.js";
 import redis from "./config/redis.js";
+import { setupSocketIO } from "./config/socket.js";
+import { closeQueue } from "./queues/notification.queue.js";
 
 import dotenv from "dotenv";
 
@@ -16,7 +18,7 @@ if (!process.env.DATABASE_URL) {
 if (!process.env.REDIS_URL) {
   console.error("❌ REDIS_URL environment variable is not set!");
   console.error(
-    "Redis is required for 2FA, password reset, and email change features.",
+    "Redis is required for 2FA, password reset, email change features, and Socket.IO notifications.",
   );
   process.exit(1);
 }
@@ -32,6 +34,14 @@ const gracefulShutdown = async (signal: string) => {
   // Stop accepting new connections
   server.close(async () => {
     console.log("HTTP server closed");
+
+    try {
+      // Close notification queue
+      await closeQueue();
+      console.log("Notification queue closed");
+    } catch (error) {
+      console.error("Error closing notification queue:", error);
+    }
 
     try {
       // Close database connection pool
@@ -85,8 +95,14 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Initialize database connection before starting server
 initDB()
   .then(async () => {
+    // Initialize Socket.IO for real-time notifications
+    await setupSocketIO(server);
+    console.log("✅ Socket.IO initialized successfully");
+
     server.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
+      console.log(`✅ REST API: http://localhost:${PORT}/api/v1`);
+      console.log(`✅ Socket.IO: ws://localhost:${PORT}`);
     });
 
     // Handle server errors

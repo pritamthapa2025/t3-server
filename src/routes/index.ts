@@ -25,6 +25,7 @@ import invoiceRoutes from "./org/invoiceRoutes.js";
 import paymentRoutes from "./org/paymentRoutes.js";
 import reviewRoutes from "./org/reviewRoutes.js";
 import dashboardRoutes from "./org/dashboardRoutes.js";
+import notificationRoutes from "./org/notificationRoutes.js";
 
 const router: IRouter = Router();
 
@@ -57,5 +58,6 @@ router.use("/org", invoiceRoutes);
 router.use("/org/payments", paymentRoutes);
 router.use("/org/reviews", reviewRoutes);
 router.use("/org/dashboard", dashboardRoutes);
+router.use("/org", notificationRoutes);
 
 export default router;

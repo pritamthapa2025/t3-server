@@ -505,6 +505,13 @@
       "when": 1770372925444,
       "tag": "0071_natural_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1770461390806,
+      "tag": "0072_crazy_famine",
+      "breakpoints": true
     }
   ]
 }
