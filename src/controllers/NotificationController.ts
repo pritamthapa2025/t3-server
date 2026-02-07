@@ -131,7 +131,7 @@ export class NotificationController {
   ): Promise<void> {
     try {
       const userId = req.user?.id;
-      const { id } = req.params;
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
 
       if (!userId) {
         res.status(401).json({
@@ -183,7 +183,7 @@ export class NotificationController {
   ): Promise<void> {
     try {
       const userId = req.user?.id;
-      const { id } = req.params;
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
 
       if (!userId) {
         res.status(401).json({
@@ -256,7 +256,7 @@ export class NotificationController {
   ): Promise<void> {
     try {
       const userId = req.user?.id;
-      const { id } = req.params;
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
 
       if (!userId) {
         res.status(401).json({
@@ -435,7 +435,7 @@ export class NotificationController {
   ): Promise<void> {
     try {
       // TODO: Add admin role check here
-      const { id } = req.params;
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
 
       if (!id) {
         res.status(400).json({
@@ -468,7 +468,7 @@ export class NotificationController {
   ): Promise<void> {
     try {
       // TODO: Add admin role check here
-      const { id } = req.params;
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
 
       if (!id) {
         res.status(400).json({

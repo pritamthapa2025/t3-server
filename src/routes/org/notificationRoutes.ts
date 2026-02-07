@@ -1,8 +1,9 @@
+import type { IRouter } from "express";
 import { Router } from "express";
 import { notificationController } from "../../controllers/NotificationController.js";
 import { authenticate } from "../../middleware/auth.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // All notification routes require authentication
 router.use(authenticate);
