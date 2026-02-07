@@ -50,6 +50,10 @@ import {
   getFleetDashboardKPIs,
 } from "../services/fleet.service.js";
 import {
+  createExpenseFromSource,
+  getDefaultExpenseCategoryId,
+} from "../services/expense.service.js";
+import {
   uploadToSpaces,
   deleteFromSpaces,
   getPresignedUploadUrl,
@@ -158,6 +162,8 @@ export const getVehicleByIdHandler = async (req: Request, res: Response) => {
 export const createVehicleHandler = async (req: Request, res: Response) => {
   try {
     const vehicleData = { ...req.body };
+    const isExpense = Boolean(vehicleData.isExpense);
+    delete (vehicleData as Record<string, unknown>).isExpense;
 
     // Upload vehicle image to Digital Ocean Spaces if file provided (field: "vehicle")
     if (req.file) {
@@ -184,6 +190,38 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Failed to create vehicle",
       });
+    }
+
+    if (
+      isExpense &&
+      req.user?.id &&
+      newVehicle.purchaseCost &&
+      parseFloat(newVehicle.purchaseCost) > 0
+    ) {
+      try {
+        const categoryId = await getDefaultExpenseCategoryId();
+        const purchaseDate = newVehicle.purchaseDate;
+        const expenseDate =
+          (typeof purchaseDate === "string"
+            ? purchaseDate.slice(0, 10)
+            : purchaseDate
+              ? new Date(purchaseDate as string | Date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0]) as string;
+        await createExpenseFromSource({
+          sourceId: newVehicle.id,
+          categoryId,
+          expenseType: "fleet_purchase",
+          amount: newVehicle.purchaseCost,
+          expenseDate,
+          description: `Vehicle: ${newVehicle.make} ${newVehicle.model} (${newVehicle.vehicleId})`,
+          title: "Fleet vehicle purchase",
+          vendor: newVehicle.dealer ?? null,
+          createdBy: req.user.id,
+          source: "fleet",
+        });
+      } catch (expenseErr) {
+        logger.logApiError("Error creating expense from vehicle creation", expenseErr, req);
+      }
     }
 
     logger.info(`Vehicle ${newVehicle.vehicleId} created successfully`);
@@ -510,7 +548,9 @@ export const updateMaintenanceRecordHandler = async (
         message: "Maintenance record ID is required",
       });
     }
-    const updateData = req.body;
+    const isExpense = Boolean(req.body?.isExpense);
+    const updateData = { ...req.body };
+    delete (updateData as Record<string, unknown>).isExpense;
 
     const updatedRecord = await updateMaintenanceRecord(id, updateData);
 
@@ -525,6 +565,39 @@ export const updateMaintenanceRecordHandler = async (
         success: false,
         message: "Maintenance record not found for this vehicle",
       });
+    }
+
+    if (
+      isExpense &&
+      updatedRecord.status === "approved" &&
+      updatedRecord.cost &&
+      parseFloat(updatedRecord.cost) > 0 &&
+      req.user?.id
+    ) {
+      try {
+        const categoryId = await getDefaultExpenseCategoryId();
+        const rawDate = updatedRecord.date;
+        const expenseDate =
+          (typeof rawDate === "string"
+            ? rawDate.slice(0, 10)
+            : rawDate
+              ? new Date(rawDate as string | Date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0]) as string;
+        await createExpenseFromSource({
+          sourceId: updatedRecord.id,
+          categoryId,
+          expenseType: "fleet_maintenance",
+          amount: updatedRecord.cost,
+          expenseDate,
+          description: updatedRecord.description ?? "Fleet maintenance",
+          title: updatedRecord.type ?? "Fleet maintenance",
+          vendor: updatedRecord.vendor ?? null,
+          createdBy: req.user.id,
+          source: "fleet",
+        });
+      } catch (expenseErr) {
+        logger.logApiError("Error creating expense from maintenance approval", expenseErr, req);
+      }
     }
 
     logger.info(`Maintenance record ${id} updated successfully`);
@@ -723,7 +796,9 @@ export const updateRepairRecordHandler = async (
         message: "Repair record ID is required",
       });
     }
-    const updateData = req.body;
+    const isExpense = Boolean(req.body?.isExpense);
+    const updateData = { ...req.body };
+    delete (updateData as Record<string, unknown>).isExpense;
 
     const updatedRecord = await updateRepairRecord(id, updateData);
 
@@ -738,6 +813,39 @@ export const updateRepairRecordHandler = async (
         success: false,
         message: "Repair record not found for this vehicle",
       });
+    }
+
+    if (
+      isExpense &&
+      updatedRecord.status === "approved" &&
+      updatedRecord.cost &&
+      parseFloat(updatedRecord.cost) > 0 &&
+      req.user?.id
+    ) {
+      try {
+        const categoryId = await getDefaultExpenseCategoryId();
+        const rawDate = updatedRecord.date;
+        const expenseDate =
+          (typeof rawDate === "string"
+            ? rawDate.slice(0, 10)
+            : rawDate
+              ? new Date(rawDate as string | Date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0]) as string;
+        await createExpenseFromSource({
+          sourceId: updatedRecord.id,
+          categoryId,
+          expenseType: "fleet_repair",
+          amount: updatedRecord.cost,
+          expenseDate,
+          description: updatedRecord.description ?? "Fleet repair",
+          title: updatedRecord.type ?? "Fleet repair",
+          vendor: updatedRecord.vendor ?? null,
+          createdBy: req.user.id,
+          source: "fleet",
+        });
+      } catch (expenseErr) {
+        logger.logApiError("Error creating expense from repair approval", expenseErr, req);
+      }
     }
 
     logger.info(`Repair record ${id} updated successfully`);

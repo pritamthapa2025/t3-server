@@ -2,6 +2,10 @@ import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import { logger } from "../utils/logger.js";
 import * as inventoryService from "../services/inventory/index.js";
+import {
+  createExpenseFromSource,
+  getDefaultExpenseCategoryId,
+} from "../services/expense.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 
 // ============================
@@ -177,10 +181,38 @@ export const createInventoryItemHandler = async (
       }
     }
 
+    const isExpense = Boolean(itemData.isExpense);
+    delete itemData.isExpense;
+
     const newItem = await inventoryService.createInventoryItem(
       itemData,
       userId,
     );
+
+    const itemId = newItem?.id;
+    if (isExpense && newItem?.unitCost && itemId) {
+      const qty = parseFloat(newItem.quantityOnHand ?? "0") || 0;
+      const amount = (parseFloat(newItem.unitCost) * qty).toString();
+      if (parseFloat(amount) > 0) {
+        try {
+          const categoryId = await getDefaultExpenseCategoryId();
+          await createExpenseFromSource({
+            sourceId: itemId,
+            categoryId,
+            expenseType: "inventory_purchase",
+            amount,
+            expenseDate: new Date().toISOString().slice(0, 10),
+            description: `Inventory item: ${newItem.name} (${newItem.itemCode})`,
+            title: `Inventory: ${newItem.name}`,
+            vendor: null,
+            createdBy: userId,
+            source: "inventory",
+          });
+        } catch (expenseErr) {
+          logger.logApiError("Error creating expense from inventory item", expenseErr, req);
+        }
+      }
+    }
 
     logger.info(`Inventory item ${newItem.id} created successfully`);
     res.status(201).json({
@@ -883,7 +915,8 @@ export const approvePurchaseOrderHandler = async (
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const approvedPO = await inventoryService.approvePurchaseOrder(id!, userId);
+    const isExpense = Boolean(req.body?.isExpense);
+    const approvedPO = await inventoryService.approvePurchaseOrder(id!, userId, isExpense);
 
     logger.info(`Purchase order ${id} approved successfully`);
     res.status(200).json({

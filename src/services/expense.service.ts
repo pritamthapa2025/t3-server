@@ -297,6 +297,19 @@ export async function createExpense(
   return row ?? null;
 }
 
+/**
+ * Get default expense category ID (first active category). Used by fleet, inventory, job flows.
+ */
+export async function getDefaultExpenseCategoryId(): Promise<string> {
+  const [row] = await db
+    .select({ id: expenseCategories.id })
+    .from(expenseCategories)
+    .where(eq(expenseCategories.isDeleted, false))
+    .limit(1);
+  if (!row?.id) throw new Error("No expense category found");
+  return row.id;
+}
+
 /** Map job expense type string to org.expenses expense_type_enum (job_* for source tracking) */
 function mapJobExpenseTypeToExpenseType(jobExpenseType: string): string {
   const lower = (jobExpenseType ?? "").toLowerCase();

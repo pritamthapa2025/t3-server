@@ -113,6 +113,7 @@ export const createVehicleSchema = z.object({
     vehicleDayRate: z.string().optional(),
     mpg: z.string().optional(),
     image: z.string().max(500).optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 
@@ -318,6 +319,7 @@ export const updateMaintenanceRecordSchema = z.object({
       .optional(),
     rejectionReason: z.string().optional(),
     note: z.string().optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 
@@ -443,6 +445,7 @@ export const updateMaintenanceRecordByVehicleSchema = z.object({
       .optional(),
     rejectionReason: z.string().optional(),
     note: z.string().optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 
@@ -577,6 +580,7 @@ export const updateRepairRecordSchema = z.object({
       .optional(),
     rejectionReason: z.string().optional(),
     notes: z.string().optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 
@@ -706,6 +710,7 @@ export const updateRepairRecordByVehicleSchema = z.object({
       .optional(),
     rejectionReason: z.string().optional(),
     notes: z.string().optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 

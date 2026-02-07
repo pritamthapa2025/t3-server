@@ -9,6 +9,10 @@ import {
 } from "../../drizzle/schema/inventory.schema.js";
 import { users } from "../../drizzle/schema/auth.schema.js";
 import { createTransaction } from "./inventory-transactions.service.js";
+import {
+  createExpenseFromSource,
+  getDefaultExpenseCategoryId,
+} from "../../services/expense.service.js";
 
 // ============================
 // Helper Functions
@@ -202,7 +206,8 @@ export const updatePurchaseOrder = async (
 
 export const approvePurchaseOrder = async (
   id: string,
-  userId: string
+  userId: string,
+  isExpense?: boolean
 ) => {
   const [approvedPO] = await db
     .update(inventoryPurchaseOrders)
@@ -215,6 +220,33 @@ export const approvePurchaseOrder = async (
     .returning();
 
   if (!approvedPO) throw new Error("Purchase order not found");
+
+  if (isExpense && approvedPO.totalAmount && parseFloat(approvedPO.totalAmount) > 0) {
+    try {
+      const categoryId = await getDefaultExpenseCategoryId();
+      const orderDate = approvedPO.orderDate;
+      const expenseDate =
+        (typeof orderDate === "string"
+          ? orderDate.slice(0, 10)
+          : orderDate
+            ? new Date(orderDate as string | Date).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0]) as string;
+      await createExpenseFromSource({
+        sourceId: approvedPO.id,
+        categoryId,
+        expenseType: "inventory_purchase",
+        amount: approvedPO.totalAmount,
+        expenseDate,
+        description: `Purchase order ${approvedPO.poNumber}`,
+        title: `PO ${approvedPO.poNumber}`,
+        vendor: null,
+        createdBy: userId,
+        source: "inventory",
+      });
+    } catch {
+      // Log but don't fail the approval
+    }
+  }
 
   return approvedPO;
 };

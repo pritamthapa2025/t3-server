@@ -134,6 +134,7 @@ export const createInventoryItemSchema = z.object({
     trackBySerialNumber: z.boolean().optional().default(false),
     trackByBatch: z.boolean().optional().default(false),
     notes: z.string().optional(),
+    isExpense: z.boolean().optional(),
   }),
 });
 
@@ -362,6 +363,11 @@ export const approvePurchaseOrderSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),
+  body: z
+    .object({
+      isExpense: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const receivePurchaseOrderSchema = z.object({
