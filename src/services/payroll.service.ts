@@ -22,6 +22,7 @@ import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { logger } from "../utils/logger.js";
 
 interface PayrollDashboardFilters {
   payPeriodId?: string | undefined;
@@ -1014,6 +1015,8 @@ export const getOrCreatePayrollRunForPeriod = async (payPeriodId: string) => {
   return created!;
 };
 
+export type SyncPayrollResult = { synced: boolean; reason?: string };
+
 /**
  * Sync payroll from an approved timesheet: create or update the payroll entry for that
  * employee. Hourly: week period, aggregate approved timesheets. Salary: month period,
@@ -1021,7 +1024,7 @@ export const getOrCreatePayrollRunForPeriod = async (payPeriodId: string) => {
  */
 export const syncPayrollFromApprovedTimesheet = async (
   timesheetId: number,
-): Promise<void> => {
+): Promise<SyncPayrollResult> => {
   const [timesheet] = await db
     .select({
       id: timesheets.id,
@@ -1035,7 +1038,9 @@ export const syncPayrollFromApprovedTimesheet = async (
     .where(eq(timesheets.id, timesheetId))
     .limit(1);
 
-  if (!timesheet || timesheet.status !== "approved") return;
+  if (!timesheet || timesheet.status !== "approved") {
+    return { synced: false, reason: "Timesheet not found or not approved" };
+  }
 
   const [row] = await db
     .select({
@@ -1051,7 +1056,10 @@ export const syncPayrollFromApprovedTimesheet = async (
     .where(eq(employees.id, timesheet.employeeId))
     .limit(1);
 
-  if (!row) return;
+  if (!row) {
+    logger.warn(`Payroll sync skipped: employee not found (timesheet ${timesheetId}, employeeId ${timesheet.employeeId})`);
+    return { synced: false, reason: "Employee not found" };
+  }
 
   const sheetDate =
     typeof timesheet.sheetDate === "string"
@@ -1067,11 +1075,32 @@ export const syncPayrollFromApprovedTimesheet = async (
 
   if (isSalary) {
     await syncSalaryPayrollForMonth(row.id, sheetDate, salaryAmount, timesheetId);
-    return;
+    return { synced: true };
   }
 
-  const payType = row.payType?.trim().toLowerCase();
-  if (payType === "salary" || !row.hourlyRate) return;
+  // Effective pay: employee overrides, else fall back to position (for existing records)
+  const payType = row.payType?.trim().toLowerCase() ?? positionPayType ?? null;
+  const employeeHourlyRate =
+    row.hourlyRate != null && Number(row.hourlyRate) > 0
+      ? parseFloat(String(row.hourlyRate))
+      : null;
+  const positionHourlyRate =
+    positionPayType === "hourly" &&
+    row.positionPayRate != null &&
+    Number(row.positionPayRate) > 0
+      ? parseFloat(String(row.positionPayRate))
+      : null;
+  const hourlyRate = employeeHourlyRate ?? positionHourlyRate ?? 0;
+  const hasHourlyRate = hourlyRate > 0;
+
+  if (payType === "salary" || !hasHourlyRate) {
+    const reason =
+      "Employee must be hourly with an hourly rate set to create payroll from timesheet";
+    logger.warn(
+      `Payroll sync skipped (timesheet ${timesheetId}, employeeId ${row.id}): ${reason}. payType=${row.payType ?? "null"}, hourlyRate=${row.hourlyRate ?? "null"}`,
+    );
+    return { synced: false, reason };
+  }
 
   const period = await getOrCreatePayPeriodForWeek(sheetDate);
   const run = await getOrCreatePayrollRunForPeriod(period.id);
@@ -1100,8 +1129,6 @@ export const syncPayrollFromApprovedTimesheet = async (
     regularHours += Math.max(0, total - ot);
     overtimeHours += ot;
   }
-
-  const hourlyRate = parseFloat(String(row.hourlyRate)) || 0;
   const defaultDeductionRate =
     parseFloat(process.env.T3_PAYROLL_DEFAULT_DEDUCTION_RATE || "0") || 0;
 
@@ -1169,7 +1196,7 @@ export const syncPayrollFromApprovedTimesheet = async (
         includedInPayroll: true,
       });
     }
-    return;
+    return { synced: true };
   }
 
   const entryNumber = await generatePayrollEntryNumber();
@@ -1202,6 +1229,7 @@ export const syncPayrollFromApprovedTimesheet = async (
       });
     }
   }
+  return { synced: true };
 };
 
 /** Sync monthly salary payroll: one entry per employee per month, gross = position pay rate. */

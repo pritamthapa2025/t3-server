@@ -551,12 +551,13 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
 
     const timesheet = await approveTimesheet(timesheetId, approvedBy, notes);
 
-    // Sync hourly payroll for this week (create or update payroll entry from approved timesheets)
+    // Sync payroll for this period (create or update payroll entry from approved timesheets)
+    let payrollSync: { synced: boolean; reason?: string } = { synced: false };
     try {
-      await syncPayrollFromApprovedTimesheet(timesheetId);
+      payrollSync = await syncPayrollFromApprovedTimesheet(timesheetId);
     } catch (payrollError: any) {
       logger.warn(`Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`);
-      // Approval still succeeds; payroll can be fixed or synced later
+      payrollSync = { synced: false, reason: payrollError?.message ?? "Payroll sync failed" };
     }
 
     logger.info(`Timesheet ${timesheetId} approved by ${approvedBy}`);
@@ -564,6 +565,7 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
       success: true,
       message: "Timesheet approved successfully",
       data: timesheet,
+      payrollSync,
     });
   } catch (error: any) {
     logger.logApiError("Approve timesheet error", error, req);

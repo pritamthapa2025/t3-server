@@ -672,6 +672,30 @@ export const getEmployeeKPIs = async (): Promise<{
   };
 };
 
+/**
+ * Get pay type and hourly rate from a position for copying into an employee.
+ * Position = default for the role; employee can override later.
+ */
+async function getPayDefaultsFromPosition(positionId: number): Promise<{
+  payType: string | null;
+  hourlyRate: string | null;
+}> {
+  const [pos] = await db
+    .select({ payType: positions.payType, payRate: positions.payRate })
+    .from(positions)
+    .where(eq(positions.id, positionId))
+    .limit(1);
+  if (!pos) return { payType: null, hourlyRate: null };
+  const payType = pos.payType?.trim().toLowerCase() ?? null;
+  const payRate = pos.payRate != null ? String(pos.payRate) : null;
+  // Hourly position: use payRate as hourly rate. Salary: employee.hourlyRate stays null.
+  const hourlyRate =
+    payType === "hourly" && payRate != null && Number(payRate) > 0
+      ? payRate
+      : null;
+  return { payType, hourlyRate };
+}
+
 export const createEmployee = async (data: {
   userId: string;
   employeeId?: string;
@@ -683,6 +707,14 @@ export const createEmployee = async (data: {
   // Auto-generate employeeId if not provided (T3 employees don't need organizationId)
   const employeeId = data.employeeId || (await generateEmployeeId());
 
+  let payType: string | null = null;
+  let hourlyRate: string | null = null;
+  if (data.positionId) {
+    const defaults = await getPayDefaultsFromPosition(data.positionId);
+    payType = defaults.payType;
+    hourlyRate = defaults.hourlyRate;
+  }
+
   const [employee] = await db
     .insert(employees)
     .values({
@@ -692,6 +724,8 @@ export const createEmployee = async (data: {
       positionId: data.positionId || null,
       reportsTo: data.reportsTo || null,
       startDate: data.startDate || null,
+      payType: payType ?? undefined,
+      hourlyRate: hourlyRate ?? undefined,
     })
     .returning();
   return employee;
@@ -719,6 +753,8 @@ export const updateEmployee = async (
     status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
     startDate?: Date | null;
     endDate?: Date | null;
+    payType?: string | null;
+    hourlyRate?: string | null;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -735,6 +771,12 @@ export const updateEmployee = async (
   }
   if (data.positionId !== undefined) {
     updateData.positionId = data.positionId || null;
+    // When position is set or changed, copy pay defaults from the new position
+    if (data.positionId != null) {
+      const defaults = await getPayDefaultsFromPosition(data.positionId);
+      updateData.payType = defaults.payType;
+      updateData.hourlyRate = defaults.hourlyRate;
+    }
   }
   if (data.reportsTo !== undefined) {
     updateData.reportsTo = data.reportsTo || null;
