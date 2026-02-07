@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>T3 Mechanical - Invoice #{{invoiceNumber}}</title>
+    <title>T3 Mechanical - Invoice</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -516,23 +516,23 @@
         <div class="bill-to-section">
             <div class="bill-to">
                 <h2>Bill To</h2>
-                <p>{{contactName}}</p>
-                <p>{{clientName}}</p>
-                <p>{{billingAddressLine1}}</p>
-                <p>{{billingCityStateZip}}</p>
+                <p>[Contact Name]</p>
+                <p>[Company Name]</p>
+                <p>[Address Line 1]</p>
+                <p>[City, State ZIP]</p>
             </div>
             <div class="invoice-meta">
                 <div class="meta-row">
                     <span class="meta-label">JOB TYPE</span>
-                    <span class="meta-value">{{jobType}}</span>
+                    <span class="meta-value">[Job Type]</span>
                 </div>
                 <div class="meta-row">
                     <span class="meta-label">INVOICE #</span>
-                    <span class="meta-value">{{invoiceNumber}}</span>
+                    <span class="meta-value">[Invoice Number]</span>
                 </div>
                 <div class="meta-row">
                     <span class="meta-label">DATE</span>
-                    <span class="meta-value">{{invoiceDate}}</span>
+                    <span class="meta-value">[Date]</span>
                 </div>
                 <div class="meta-row">
                     <span class="meta-label">TERMS</span>
@@ -540,7 +540,7 @@
                 </div>
                 <div class="meta-row">
                     <span class="meta-label">DUE DATE</span>
-                    <span class="meta-value">{{dueDate}}</span>
+                    <span class="meta-value">[Due Date]</span>
                 </div>
             </div>
         </div>
@@ -549,11 +549,11 @@
         <div class="po-section">
             <div class="po-item">
                 <strong>P.O. NO.</strong>
-                <span>{{poNumber}}</span>
+                <span>[PO Number]</span>
             </div>
             <div class="po-item">
                 <strong>SCOPE</strong>
-                <span>{{serviceDescription}}</span>
+                <span>[Service Description]</span>
             </div>
         </div>
 
@@ -567,13 +567,21 @@
                 </tr>
             </thead>
             <tbody>
-                {{#each lineItems}}
                 <tr>
-                    <td>{{this.date}}</td>
-                    <td>{{this.description}}</td>
-                    <td>$ {{this.totalPrice}}</td>
+                    <td>[Date]</td>
+                    <td>[Work description and details of services performed]</td>
+                    <td>$ [Amount]</td>
                 </tr>
-                {{/each}}
+                <tr>
+                    <td>[Date]</td>
+                    <td>Material: [Material description]</td>
+                    <td>$ [Amount]</td>
+                </tr>
+                <tr>
+                    <td>[Date]</td>
+                    <td>Travel</td>
+                    <td>$ [Amount]</td>
+                </tr>
             </tbody>
         </table>
 
@@ -582,7 +590,7 @@
             <div class="balance-row">
                 <span class="balance-label">BALANCE DUE</span>
                 <span class="dollar">$</span>
-                <span class="balance-amount">{{totalAmount}}</span>
+                <span class="balance-amount">[Total Amount]</span>
             </div>
         </div>
 

@@ -728,9 +728,9 @@
                         <td class="label">PM Rep</td>
                     </tr>
                     <tr>
-                        <td class="value">{{date}}</td>
-                        <td class="value">{{quoteNumber}}</td>
-                        <td class="value">{{pmRepName}}</td>
+                        <td class="value">[Date]</td>
+                        <td class="value">[Quote #]</td>
+                        <td class="value">[PM Rep]</td>
                     </tr>
                 </table>
             </div>
@@ -746,33 +746,33 @@
         <div class="info-grid">
             <div class="info-box">
                 <div class="info-label">Company</div>
-                <div class="info-content">{{companyName}}</div>
+                <div class="info-content">[Company Name]</div>
             </div>
             <div class="info-box">
                 <div class="info-label">Site Address</div>
-                <div class="info-content">{{siteAddress}}</div>
+                <div class="info-content">[Site Address]</div>
             </div>
         </div>
 
         <div class="info-grid">
             <div class="info-box">
                 <div class="info-label">Attn</div>
-                <div class="info-content">{{contactName}}</div>
+                <div class="info-content">[Contact Name]</div>
             </div>
             <div class="info-box">
                 <div class="info-label">Scope</div>
-                <div class="info-content">{{scope}}</div>
+                <div class="info-content">[Scope of Work]</div>
             </div>
         </div>
 
         <div class="info-grid">
             <div class="info-box">
                 <div class="info-label">Email</div>
-                <div class="info-content">{{email}}</div>
+                <div class="info-content">[Email Address]</div>
             </div>
             <div class="info-box">
                 <div class="info-label">Client Address</div>
-                <div class="info-content">{{clientAddress}}</div>
+                <div class="info-content">[Client Address]</div>
             </div>
         </div>
 
@@ -782,7 +782,7 @@
         </div>
 
         <div class="proposal-note">
-            {{proposalNote}}
+            This proposal was based on Clients RFP, job walk information from [Date], and revised plans dated [Date] by [Engineering Firm]
         </div>
 
         <!-- Work Items Table -->
@@ -794,12 +794,26 @@
                 </tr>
             </thead>
             <tbody>
-                {{#each workItems}}
                 <tr>
-                    <td>{{this.index}}</td>
-                    <td>{{this.description}}</td>
+                    <td>1</td>
+                    <td>[Work item description 1]</td>
                 </tr>
-                {{/each}}
+                <tr>
+                    <td>2</td>
+                    <td>[Work item description 2]</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>[Work item description 3]</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>[Work item description 4]</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>[Work item description 5]</td>
+                </tr>
             </tbody>
         </table>
 
@@ -807,7 +821,7 @@
         <div class="total-cost">
             <div class="total-cost-inner">
                 <div class="total-label">Total job cost</div>
-                <div class="total-value">$ {{totalAmount}}</div>
+                <div class="total-value">$ [Total Amount]</div>
             </div>
         </div>
 
@@ -836,7 +850,7 @@
         <div class="terms-section">
             <div class="section-header">TERMS AND CONDITIONS</div>
             <div class="section-content">
-                Terms are Net 30 days from the date of invoice. Due to market volatility, this quotation is valid for 30 days and will expire on {{expirationDate}}.
+                Terms are Net 30 days from the date of invoice. Due to market volatility, this quotation is valid for 30 days and will expire on [Expiration Date].
             </div>
         </div>
 
@@ -893,7 +907,7 @@
 
             <!-- Footer Info -->
             <div class="footer-info">
-                {{companyName}} | {{siteAddress}} | Bid #{{quoteNumber}}<br>
+                [Company Name] | [Site Address] | Bid #[Bid Number]<br>
                 T3 Mechanical Inc. | CA License #1038631 | 1.888.488.2312 | info@t3mechanicalinc.com
             </div>
         </div>

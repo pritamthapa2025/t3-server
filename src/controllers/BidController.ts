@@ -105,6 +105,7 @@ import {
   prepareQuoteDataForPDF,
   generateQuotePDF,
 } from "../services/pdf.service.js";
+import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service.js";
 
 // ============================
 // Main Bid Operations
@@ -3416,6 +3417,191 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to preview quote PDF",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Send quote (bid) to client via email
+ * POST /bids/:id/send
+ */
+export const sendQuoteEmail = async (req: Request, res: Response) => {
+  try {
+    const id = asSingleString(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Bid ID is required",
+      });
+    }
+
+    const bid = await getBidById(id);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const primaryContact = bid.primaryContact ?? null;
+    if (!primaryContact?.email) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No primary contact with email found for this bid. Please set a primary contact with an email address before sending the quote.",
+      });
+    }
+
+    const organizationId = bid.organizationId;
+    const client = await getOrganizationById(organizationId);
+    if (!client?.organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Client organization not found",
+      });
+    }
+
+    const financialBreakdown = await getBidFinancialBreakdown(
+      id,
+      organizationId,
+    );
+
+    const pdfData = prepareQuoteDataForPDF(
+      bid,
+      client.organization,
+      financialBreakdown,
+      primaryContact,
+      bid.property ?? null,
+    );
+
+    const pdfBuffer = await generateQuotePDF(pdfData);
+
+    const { subject, message } = req.body as { subject?: string; message?: string };
+
+    await sendQuoteEmailService(
+      primaryContact.email,
+      subject || `Quote ${bid.bidNumber} from T3 Mechanical`,
+      message,
+      {
+        content: Buffer.from(pdfBuffer),
+        filename: `quote-${bid.bidNumber}.pdf`,
+      },
+    );
+
+    logger.info(`Quote ${id} sent successfully to ${primaryContact.email}`);
+    res.json({
+      success: true,
+      data: {
+        sentAt: new Date().toISOString(),
+        sentTo: primaryContact.email,
+        contactName: primaryContact.fullName ?? primaryContact.email,
+        note: "Quote email sent to primary contact",
+      },
+      message: "Quote sent successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error sending quote", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send quote",
+      error: error.message,
+    });
+  }
+};
+
+const TEST_QUOTE_EMAIL = "pritam.thapa@quixta.in";
+
+/**
+ * Send quote via email to test address (pritam.thapa@quixta.in). Does not send to client.
+ * POST /bids/:id/send-test
+ */
+export const sendQuoteEmailTest = async (req: Request, res: Response) => {
+  try {
+    const id = asSingleString(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Bid ID is required",
+      });
+    }
+
+    const bid = await getBidById(id);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const organizationId = bid.organizationId;
+    const client = await getOrganizationById(organizationId);
+    if (!client?.organization) {
+      return res.status(500).json({
+        success: false,
+        message: "Client organization not found for this bid",
+      });
+    }
+
+    const financialBreakdown = await getBidFinancialBreakdown(
+      id,
+      organizationId,
+    );
+    const primaryContact = bid.primaryContact ?? null;
+
+    const pdfData = prepareQuoteDataForPDF(
+      bid,
+      client.organization,
+      financialBreakdown,
+      primaryContact,
+      bid.property ?? null,
+    );
+
+    let pdfAttachment: { content: Buffer; filename: string } | undefined;
+    let pdfError: string | undefined;
+    try {
+      const pdfBuffer = await generateQuotePDF(pdfData);
+      pdfAttachment = {
+        content: Buffer.from(pdfBuffer),
+        filename: `quote-${bid.bidNumber}.pdf`,
+      };
+    } catch (err: any) {
+      pdfError = err?.message ?? String(err);
+      logger.warn(
+        `Send-test quote: Failed to generate PDF: ${pdfError}`,
+        { stack: err?.stack },
+      );
+    }
+
+    const body = req.body as { subject?: string; message?: string } | undefined;
+    const subject =
+      body?.subject ?? `[TEST] Quote ${bid.bidNumber} from T3 Mechanical`;
+    const message = body?.message;
+
+    await sendQuoteEmailService(
+      TEST_QUOTE_EMAIL,
+      subject,
+      message,
+      pdfAttachment,
+    );
+
+    logger.info(`Quote ${id} test sent to ${TEST_QUOTE_EMAIL}`);
+    res.json({
+      success: true,
+      data: {
+        sentAt: new Date().toISOString(),
+        sentTo: TEST_QUOTE_EMAIL,
+        pdfAttached: !!pdfAttachment,
+        ...(pdfError && { pdfError }),
+        note: "Test quote email sent. Client was not emailed.",
+      },
+      message: "Test quote email sent successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error sending test quote", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send test quote",
       error: error.message,
     });
   }

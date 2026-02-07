@@ -269,9 +269,6 @@ export const paymentAllocations = org.table(
   "payment_allocations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     paymentId: uuid("payment_id")
       .notNull()
       .references(() => payments.id),
@@ -298,7 +295,6 @@ export const paymentAllocations = org.table(
       table.paymentId,
       table.invoiceId,
     ),
-    index("idx_payment_allocations_org").on(table.organizationId),
     index("idx_payment_allocations_payment").on(table.paymentId),
     index("idx_payment_allocations_invoice").on(table.invoiceId),
   ],
@@ -312,9 +308,6 @@ export const invoiceDocuments = org.table(
   "invoice_documents",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
@@ -337,7 +330,6 @@ export const invoiceDocuments = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_invoice_documents_org").on(table.organizationId),
     index("idx_invoice_documents_invoice").on(table.invoiceId),
     index("idx_invoice_documents_type").on(table.documentType),
     index("idx_invoice_documents_uploaded_by").on(table.uploadedBy),
@@ -352,9 +344,6 @@ export const paymentDocuments = org.table(
   "payment_documents",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     paymentId: uuid("payment_id")
       .notNull()
       .references(() => payments.id),
@@ -377,7 +366,6 @@ export const paymentDocuments = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_payment_documents_org").on(table.organizationId),
     index("idx_payment_documents_payment").on(table.paymentId),
     index("idx_payment_documents_type").on(table.documentType),
     index("idx_payment_documents_uploaded_by").on(table.uploadedBy),
@@ -425,9 +413,6 @@ export const paymentHistory = org.table(
   "payment_history",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     paymentId: uuid("payment_id")
       .notNull()
       .references(() => payments.id),
@@ -446,7 +431,6 @@ export const paymentHistory = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_payment_history_org").on(table.organizationId),
     index("idx_payment_history_payment").on(table.paymentId),
     index("idx_payment_history_performed_by").on(table.performedBy),
     index("idx_payment_history_created_at").on(table.createdAt),
@@ -462,9 +446,6 @@ export const invoiceReminders = org.table(
   "invoice_reminders",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     invoiceId: uuid("invoice_id")
       .notNull()
       .references(() => invoices.id),
@@ -489,7 +470,6 @@ export const invoiceReminders = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_invoice_reminders_org").on(table.organizationId),
     index("idx_invoice_reminders_invoice").on(table.invoiceId),
     index("idx_invoice_reminders_sent_date").on(table.sentDate),
     index("idx_invoice_reminders_type").on(table.reminderType),
@@ -507,9 +487,6 @@ export const creditNotes = org.table(
     creditNoteNumber: varchar("credit_note_number", { length: 100 }).notNull(),
 
     // Relationships
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     clientId: uuid("client_id")
       .notNull()
       .references(() => organizations.id),
@@ -551,12 +528,7 @@ export const creditNotes = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    // Unique constraint: creditNoteNumber unique per organization
-    unique("unique_credit_note_number_per_org").on(
-      table.organizationId,
-      table.creditNoteNumber,
-    ),
-    index("idx_credit_notes_org").on(table.organizationId),
+    unique("unique_credit_note_number").on(table.creditNoteNumber),
     index("idx_credit_notes_client").on(table.clientId),
     index("idx_credit_notes_invoice").on(table.invoiceId),
     index("idx_credit_notes_payment").on(table.paymentId),
@@ -573,9 +545,6 @@ export const creditNoteApplications = org.table(
   "credit_note_applications",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     creditNoteId: uuid("credit_note_id")
       .notNull()
       .references(() => creditNotes.id),
@@ -602,7 +571,6 @@ export const creditNoteApplications = org.table(
       table.creditNoteId,
       table.invoiceId,
     ),
-    index("idx_credit_note_applications_org").on(table.organizationId),
     index("idx_credit_note_applications_credit_note").on(table.creditNoteId),
     index("idx_credit_note_applications_invoice").on(table.invoiceId),
   ],

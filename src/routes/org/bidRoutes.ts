@@ -56,6 +56,8 @@ import {
   deleteBidDocumentHandler,
   downloadBidQuotePDF,
   previewBidQuotePDF,
+  sendQuoteEmail,
+  sendQuoteEmailTest,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -117,6 +119,8 @@ import {
   deleteBidDocumentSchema,
   downloadBidQuotePDFSchema,
   previewBidQuotePDFSchema,
+  sendQuoteSchema,
+  sendQuoteTestSchema,
 } from "../../validations/bid.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
@@ -422,6 +426,22 @@ router.get(
   authorizeFeature("bids", "view"),
   validate(previewBidQuotePDFSchema),
   previewBidQuotePDF,
+);
+
+// Send quote to client via email
+router.post(
+  "/bids/:id/send",
+  authorizeFeature("bids", "create"),
+  validate(sendQuoteSchema),
+  sendQuoteEmail,
+);
+
+// Send quote to test email only (pritam.thapa@quixta.in)
+router.post(
+  "/bids/:id/send-test",
+  authorizeFeature("bids", "create"),
+  validate(sendQuoteTestSchema),
+  sendQuoteEmailTest,
 );
 
 export default router;

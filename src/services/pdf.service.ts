@@ -4,19 +4,49 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { uploadToSpaces } from "./storage.service.js";
 
-// Get current directory for template path
+// Get current directory for template path (works from dist/ or src/)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/** Resolve template path: try project src/templates first (tsx dev), then next to this file (dist/templates or src/templates) */
+function resolveTemplatePath(templateName: string): string {
+  const candidates = [
+    path.join(process.cwd(), "src", "templates", templateName),
+    path.join(__dirname, "..", "templates", templateName),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(
+    `Template not found: ${templateName}. Tried: ${candidates.join("; ")}`,
+  );
+}
 
 // Browser instance management
 let browserInstance: Browser | null = null;
 
+/** Resolve Chrome/Edge path: env var, or common Windows locations so PDF works without running `npx puppeteer browsers install chrome` */
+function getChromeExecutablePath(): string | undefined {
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+  if (process.platform !== "win32") return undefined;
+  const candidates = [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  ];
+  return candidates.find((p) => fs.existsSync(p));
+}
+
 /**
- * Get or create browser instance (singleton pattern for performance)
+ * Get or create browser instance (singleton pattern for performance).
+ * Uses PUPPETEER_EXECUTABLE_PATH or system Chrome/Edge on Windows if Puppeteer's bundled Chrome is not installed.
  */
 const getBrowser = async (): Promise<Browser> => {
   if (!browserInstance || !browserInstance.isConnected()) {
-    browserInstance = await puppeteer.launch({
+    const executablePath = getChromeExecutablePath();
+    const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
       headless: true,
       args: [
         "--no-sandbox",
@@ -28,7 +58,11 @@ const getBrowser = async (): Promise<Browser> => {
         "--disable-backgrounding-occluded-windows",
         "--disable-renderer-backgrounding",
       ],
-    });
+    };
+    if (executablePath) {
+      launchOptions.executablePath = executablePath;
+    }
+    browserInstance = await puppeteer.launch(launchOptions);
   }
   return browserInstance;
 };
@@ -125,12 +159,19 @@ export interface InvoicePDFData {
 
   // Client Info
   clientName: string;
+  contactName: string;
   billingAddressLine1: string;
   billingAddressLine2?: string;
   billingCity: string;
   billingState: string;
   billingZipCode: string;
+  billingCityStateZip: string;
   billingCountry: string;
+
+  // Job / scope (for docs template)
+  jobType: string;
+  poNumber: string;
+  serviceDescription: string;
 
   // Job Info (optional)
   jobId?: string;
@@ -141,6 +182,7 @@ export interface InvoicePDFData {
 
   // Line Items
   lineItems: Array<{
+    date: string;
     description: string;
     details?: string;
     quantity: number;
@@ -194,13 +236,8 @@ export const generateInvoicePDF = async (
   let page: Page | null = null;
 
   try {
-    // Load template
-    const templatePath = path.join(
-      __dirname,
-      "..",
-      "templates",
-      "invoice-template.html",
-    );
+    // Load template (from dist/templates or src/templates)
+    const templatePath = resolveTemplatePath("invoice-template.html");
     const template = fs.readFileSync(templatePath, "utf-8");
 
     // Render template with data
@@ -210,9 +247,9 @@ export const generateInvoicePDF = async (
     const browser = await getBrowser();
     page = await browser.newPage();
 
-    // Set content and generate PDF
+    // Set content and generate PDF (domcontentloaded avoids timeout on external images e.g. logo)
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
       timeout: 30000,
     });
 
@@ -290,6 +327,14 @@ export const generateAndSaveInvoicePDF = async (
 };
 
 /**
+ * Options for preparing invoice PDF data (e.g. when sending email with job/contact context)
+ */
+export interface PrepareInvoicePDFOptions {
+  primaryContact?: { fullName?: string | null } | null;
+  job?: { jobType?: string | null; description?: string | null } | null;
+}
+
+/**
  * Prepare invoice data for PDF generation from database invoice
  */
 export const prepareInvoiceDataForPDF = (
@@ -297,6 +342,7 @@ export const prepareInvoiceDataForPDF = (
   organization: any,
   client: any,
   lineItems: any[],
+  options?: PrepareInvoicePDFOptions,
 ): InvoicePDFData => {
   // Map status to CSS class
   const statusClassMap: Record<string, string> = {
@@ -307,31 +353,55 @@ export const prepareInvoiceDataForPDF = (
     void: "void",
   };
 
+  const invoiceDateStr = new Date(invoice.invoiceDate).toLocaleDateString();
+  const billingCity = invoice.billingCity || client.city || "";
+  const billingState = invoice.billingState || client.state || "";
+  const billingZip = invoice.billingZipCode || client.zipCode || "";
+  const billingCityStateZip = [billingCity, billingState, billingZip]
+    .filter(Boolean)
+    .join(", ");
+
   return {
     // Company Info
-    companyName: organization.name || "Company Name",
-    companyAddress: organization.address || "",
-    companyCity: organization.city || "",
-    companyState: organization.state || "",
-    companyZip: organization.zipCode || "",
-    companyPhone: organization.phone || "",
-    companyEmail: organization.email || "",
+    companyName: organization?.name || "Company Name",
+    companyAddress: organization?.address || "",
+    companyCity: organization?.city || "",
+    companyState: organization?.state || "",
+    companyZip: organization?.zipCode || "",
+    companyPhone: organization?.phone || "",
+    companyEmail: organization?.email || "",
 
     // Invoice Details
     invoiceNumber: invoice.invoiceNumber,
-    invoiceDate: new Date(invoice.invoiceDate).toLocaleDateString(),
+    invoiceDate: invoiceDateStr,
     dueDate: new Date(invoice.dueDate).toLocaleDateString(),
-    status: invoice.status.toUpperCase(),
+    status: invoice.status?.toUpperCase() || "DRAFT",
     statusClass: statusClassMap[invoice.status] || "draft",
 
     // Client Info
-    clientName: client.name || "",
-    billingAddressLine1: invoice.billingAddressLine1 || client.address || "",
+    clientName: client?.name || "",
+    contactName:
+      options?.primaryContact?.fullName?.trim() || client?.primaryContactName || "",
+    billingAddressLine1: invoice.billingAddressLine1 || client?.address || "",
     billingAddressLine2: invoice.billingAddressLine2 || "",
-    billingCity: invoice.billingCity || client.city || "",
-    billingState: invoice.billingState || client.state || "",
-    billingZipCode: invoice.billingZipCode || client.zipCode || "",
-    billingCountry: invoice.billingCountry || client.country || "USA",
+    billingCity,
+    billingState,
+    billingZipCode: billingZip,
+    billingCityStateZip: billingCityStateZip || "—",
+    billingCountry: invoice.billingCountry || client?.country || "USA",
+
+    // Job / scope (for docs template)
+    jobType:
+      options?.job?.jobType?.trim() ||
+      options?.job?.description?.trim() ||
+      invoice.job?.jobType ||
+      invoice.job?.description ||
+      "—",
+    poNumber: invoice.poNumber?.trim() || "—",
+    serviceDescription:
+      options?.job?.description?.trim() ||
+      invoice.job?.description?.trim() ||
+      "—",
 
     // Job Info
     jobId: invoice.jobId,
@@ -340,8 +410,9 @@ export const prepareInvoiceDataForPDF = (
     // Payment Info
     paymentTerms: invoice.paymentTerms,
 
-    // Line Items
+    // Line Items (with date for docs template)
     lineItems: lineItems.map((item) => ({
+      date: invoiceDateStr,
       description: item.description || "",
       details: item.details || "",
       quantity: Number(item.quantity) || 0,
@@ -492,12 +563,7 @@ export const generateQuotePDF = async (
   let page: Page | null = null;
 
   try {
-    const templatePath = path.join(
-      __dirname,
-      "..",
-      "templates",
-      "quote-template.html",
-    );
+    const templatePath = resolveTemplatePath("quote-template.html");
     const template = fs.readFileSync(templatePath, "utf-8");
     const html = renderTemplate(template, quoteData);
 

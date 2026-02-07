@@ -6,8 +6,8 @@
   "main": "dist/server.js",
   "scripts": {
     "prebuild": "node scripts/prebuild.js",
-    "build": "tsc",
-    "build:skip-lint": "tsc",
+    "build": "tsc && node scripts/copy-templates.js",
+    "build:skip-lint": "tsc && node scripts/copy-templates.js",
     "dev": "nodemon",
     "start": "node dist/server.js",
     "start:dev": "tsx src/server.ts",
@@ -17,6 +17,7 @@
     "lint:fix": "eslint src --ext .ts,.js --fix",
     "seed": "tsx src/drizzle/seed/index.ts",
     "seed:features": "tsx src/drizzle/seed/featurePermissions.seed.ts",
+    "seed:notification-rules": "tsx src/drizzle/seed/notificationRules.seed.ts",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx node_modules/drizzle-kit/bin.cjs migrate",
     "db:verify": "tsx scripts/verify-migration.ts",

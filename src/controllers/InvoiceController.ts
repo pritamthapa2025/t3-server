@@ -31,7 +31,8 @@ export const getInvoices = async (req: Request, res: Response) => {
       options.limit = parseInt(req.query.limit as string, 10);
     }
 
-    const result = await invoicingService.getInvoices(undefined, options);
+    const organizationId = req.query.organizationId as string | undefined;
+    const result = await invoicingService.getInvoices(organizationId, options);
 
     logger.info("Invoices fetched successfully");
     res.json({
@@ -1092,18 +1093,36 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
       bid,
     );
 
-    // Get email options from request body
-    const { subject, message, attachPdf, cc, bcc } = req.body;
+    // Get email options from request body (body may be undefined if Content-Type not set or empty body)
+    const body = req.body ?? {};
+    const { subject, message, attachPdf, cc, bcc } = body;
 
     // Generate PDF if requested
     let pdfAttachment = undefined;
     if (attachPdf !== false) {
       try {
+        const pdfOptions =
+          primaryContact || job
+            ? {
+                ...(primaryContact && {
+                  primaryContact: {
+                    fullName: primaryContact.fullName ?? null,
+                  },
+                }),
+                ...(job && {
+                  job: {
+                    jobType: (job as any).jobType ?? null,
+                    description: (job as any).description ?? null,
+                  },
+                }),
+              }
+            : undefined;
         const invoiceData = prepareInvoiceDataForPDF(
           invoice,
           organization,
           organization, // client is same as organization
           invoice.lineItems || [],
+          pdfOptions,
         );
         const pdfBuffer = await generateInvoicePDF(invoiceData);
         pdfAttachment = {
@@ -1165,6 +1184,197 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to send invoice",
+      error: error.message,
+    });
+  }
+};
+
+const TEST_INVOICE_EMAIL = "pritam.thapa@quixta.in";
+
+/**
+ * Send invoice via email to test address (pritam.thapa@quixta.in). Does not update invoice status.
+ * POST /invoices/:id/send-test
+ */
+export const sendInvoiceEmailTest = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    const id = asSingleString(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID is required",
+      });
+    }
+
+    const invoice = await invoicingService.getInvoiceById(id, undefined, {
+      includeLineItems: true,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    if (!invoice.jobId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice must be associated with a job",
+      });
+    }
+
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.id, invoice.jobId), eq(jobs.isDeleted, false)))
+      .limit(1);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job associated with invoice not found",
+      });
+    }
+
+    if (!job.bidId) {
+      return res.status(400).json({
+        success: false,
+        message: "Job must be associated with a bid",
+      });
+    }
+
+    const [bid] = await db
+      .select()
+      .from(bidsTable)
+      .where(eq(bidsTable.id, job.bidId))
+      .limit(1);
+
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid associated with job not found",
+      });
+    }
+
+    if (!bid.organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Bid must be associated with an organization",
+      });
+    }
+
+    const [organization] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, bid.organizationId))
+      .limit(1);
+
+    const [primaryContact] = await db
+      .select()
+      .from(clientContacts)
+      .where(
+        and(
+          eq(clientContacts.organizationId, bid.organizationId),
+          eq(clientContacts.isPrimary, true),
+          eq(clientContacts.isDeleted, false),
+        ),
+      )
+      .limit(1);
+
+    const organizationWithContact = organization
+      ? {
+          ...organization,
+          primaryContact: primaryContact ?? undefined,
+        }
+      : null;
+
+    const invoiceHTML = generateInvoiceHTML(
+      invoice,
+      organizationWithContact,
+      job,
+      bid,
+    );
+
+    const body = req.body ?? {};
+    const { subject, message, attachPdf, cc, bcc } = body;
+
+    let pdfAttachment: { content: Buffer; filename: string } | undefined;
+    let pdfError: string | undefined;
+    if (attachPdf !== false) {
+      try {
+        const pdfOptions =
+          primaryContact || job
+            ? {
+                ...(primaryContact && {
+                  primaryContact: {
+                    fullName: primaryContact.fullName ?? null,
+                  },
+                }),
+                ...(job && {
+                  job: {
+                    jobType: (job as any).jobType ?? null,
+                    description: (job as any).description ?? null,
+                  },
+                }),
+              }
+            : undefined;
+        const invoiceData = prepareInvoiceDataForPDF(
+          invoice,
+          organization ?? undefined,
+          organization ?? undefined,
+          invoice.lineItems || [],
+          pdfOptions,
+        );
+        const pdfBuffer = await generateInvoicePDF(invoiceData);
+        pdfAttachment = {
+          content: pdfBuffer,
+          filename: `Invoice-${invoice.invoiceNumber}.pdf`,
+        };
+      } catch (err: any) {
+        pdfError = err?.message ?? String(err);
+        logger.warn(
+          `Send-test: Failed to generate PDF attachment: ${pdfError}`,
+          { stack: err?.stack },
+        );
+      }
+    }
+
+    await sendInvoiceEmailService(
+      TEST_INVOICE_EMAIL,
+      invoiceHTML,
+      subject || `[TEST] Invoice ${invoice.invoiceNumber} from T3 Mechanical`,
+      message,
+      pdfAttachment,
+      cc,
+      bcc,
+    );
+
+    logger.info(`Invoice ${id} test sent to ${TEST_INVOICE_EMAIL}`);
+    res.json({
+      success: true,
+      data: {
+        sentAt: new Date().toISOString(),
+        sentTo: TEST_INVOICE_EMAIL,
+        pdfAttached: !!pdfAttachment,
+        ...(pdfError && { pdfError }),
+        note: "Test email sent. Invoice status was not updated.",
+      },
+      message: "Test invoice email sent successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error sending test invoice", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send test invoice",
       error: error.message,
     });
   }

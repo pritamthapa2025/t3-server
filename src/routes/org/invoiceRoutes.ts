@@ -8,6 +8,7 @@ import {
   createInvoiceSchema,
   updateInvoiceByIdSchema,
   sendInvoiceByIdSchema,
+  sendInvoiceTestByIdSchema,
   markInvoicePaidByIdSchema,
   voidInvoiceByIdSchema,
   deleteInvoiceByIdSchema,
@@ -53,6 +54,13 @@ router.post(
   "/invoices/:id/send",
   validate(sendInvoiceByIdSchema),
   invoiceController.sendInvoiceEmail,
+);
+
+// Send invoice to test email (pritam.thapa@quixta.in), does not update invoice status
+router.post(
+  "/invoices/:id/send-test",
+  validate(sendInvoiceTestByIdSchema),
+  invoiceController.sendInvoiceEmailTest,
 );
 
 // Mark invoice as paid

@@ -150,3 +150,40 @@ export async function sendInvoiceEmail(
 
   await api.sendTransacEmail(sendSmtpEmail);
 }
+
+/**
+ * Send quote (bid) email with optional PDF attachment
+ */
+export async function sendQuoteEmail(
+  toEmail: string,
+  subject: string,
+  messageBody?: string,
+  pdfAttachment?: InvoiceEmailAttachment,
+  cc?: string[],
+  bcc?: string[],
+): Promise<void> {
+  const api = getTransactionalApi();
+  if (!api) return;
+
+  const htmlContent =
+    messageBody ||
+    "<p>Please find your quote attached. Contact us if you have any questions.</p>";
+
+  const sendSmtpEmail = new SendSmtpEmail();
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = htmlContent;
+  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
+  sendSmtpEmail.to = [{ email: toEmail }];
+  if (cc?.length) sendSmtpEmail.cc = cc.map((email) => ({ email }));
+  if (bcc?.length) sendSmtpEmail.bcc = bcc.map((email) => ({ email }));
+  if (pdfAttachment) {
+    sendSmtpEmail.attachment = [
+      {
+        name: pdfAttachment.filename,
+        content: pdfAttachment.content.toString("base64"),
+      },
+    ];
+  }
+
+  await api.sendTransacEmail(sendSmtpEmail);
+}

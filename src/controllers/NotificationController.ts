@@ -363,11 +363,24 @@ export class NotificationController {
       // TODO: Add admin role check here
       // For now, allow authenticated users to trigger notifications
 
-      await notificationService.triggerNotification(req.body);
+      const { createdCount, reason } = await notificationService.triggerNotification(req.body);
+
+      const hintByReason: Record<string, string> = {
+        no_rule:
+          "No notification rule for this event type. Run: pnpm run seed:notification-rules",
+        conditions_not_met: "Rule conditions were not met for this event data.",
+        no_recipients:
+          "No recipients resolved. Check that the user ID exists in auth.users (e.g. assignedTechnicianId).",
+      };
 
       res.json({
         success: true,
         message: "Notification event triggered",
+        data: {
+          createdCount,
+          ...(reason && { reason }),
+          ...(createdCount === 0 && reason && { hint: hintByReason[reason] }),
+        },
       });
     } catch (error) {
       logger.error("Error triggering notification:", error);

@@ -1347,7 +1347,6 @@ export const createPayment = async (data: any, createdBy: string) => {
     if (data.allocations && data.allocations.length > 0) {
       for (const allocation of data.allocations) {
         await tx.insert(paymentAllocations).values({
-          organizationId,
           paymentId: payment.id,
           invoiceId: allocation.invoiceId,
           allocatedAmount: allocation.allocatedAmount,
@@ -1357,7 +1356,6 @@ export const createPayment = async (data: any, createdBy: string) => {
     } else {
       // Default allocation to the invoice
       await tx.insert(paymentAllocations).values({
-        organizationId,
         paymentId: payment.id,
         invoiceId: data.invoiceId,
         allocatedAmount: data.amount,
@@ -1442,7 +1440,6 @@ export const createPaymentAllocation = async (
   const [inserted] = await db
     .insert(paymentAllocations)
     .values({
-      organizationId: paymentOrg.organizationId,
       paymentId,
       invoiceId: data.invoiceId,
       allocatedAmount: data.allocatedAmount,

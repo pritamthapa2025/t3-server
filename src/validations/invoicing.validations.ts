@@ -96,7 +96,7 @@ const lineItemSchema = z.object({
 
 // Get Invoices Query Schema
 export const getInvoicesQuerySchema = z.object({
-  organizationId: uuidString,
+  organizationId: uuidString.optional(),
   page: z
     .string()
     .optional()
@@ -477,6 +477,10 @@ export const updateInvoiceByIdSchema = z.object({
   body: updateInvoiceSchema.shape.body,
 });
 export const sendInvoiceByIdSchema = z.object({
+  params: z.object({ id: uuidString }),
+  body: sendInvoiceEmailSchema.shape.body.optional(),
+});
+export const sendInvoiceTestByIdSchema = z.object({
   params: z.object({ id: uuidString }),
   body: sendInvoiceEmailSchema.shape.body.optional(),
 });

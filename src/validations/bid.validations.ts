@@ -1350,3 +1350,24 @@ export const downloadBidQuotePDFSchema = z.object({
 export const previewBidQuotePDFSchema = z.object({
   params: z.object({ id: uuidSchema }),
 });
+
+export const sendQuoteSchema = z.object({
+  params: z.object({ id: uuidSchema }),
+  body: z
+    .object({
+      subject: z.string().optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
+});
+
+/** Send quote to test email only (POST /bids/:id/send-test) */
+export const sendQuoteTestSchema = z.object({
+  params: z.object({ id: uuidSchema }),
+  body: z
+    .object({
+      subject: z.string().optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
+});

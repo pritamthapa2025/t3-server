@@ -1,6 +1,10 @@
+import { fileURLToPath } from "url";
+import path from "path";
 import { db } from "../../config/db.js";
 import { notificationRules } from "../schema/notifications.schema.js";
 import { logger } from "../../utils/logger.js";
+
+const __filename = fileURLToPath(import.meta.url);
 
 /**
  * Seed notification rules based on T3 Notification checklist CSV
@@ -611,8 +615,9 @@ export async function seedNotificationRules() {
   }
 }
 
-// Run seeder if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run seeder when this file is the entry point (works on Windows and Unix)
+const isEntry = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isEntry) {
   seedNotificationRules()
     .then(() => {
       logger.info("Notification rules seeding complete");

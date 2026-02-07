@@ -142,7 +142,8 @@ export async function resolveRecipients(
       }
     }
 
-    // Fetch user details for all collected user IDs
+    // Fetch user details for all collected user IDs (include inactive so explicitly
+    // specified recipients e.g. assignedTechnicianId still receive notifications)
     if (userIds.size > 0) {
       const usersList = await db
         .select({
@@ -152,9 +153,7 @@ export async function resolveRecipients(
           fullName: users.fullName,
         })
         .from(users)
-        .where(
-          and(inArray(users.id, Array.from(userIds)), eq(users.isActive, true))
-        );
+        .where(inArray(users.id, Array.from(userIds)));
 
       recipients.push(
         ...usersList.map((u) => ({

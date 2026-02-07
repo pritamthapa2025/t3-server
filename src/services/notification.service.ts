@@ -28,8 +28,11 @@ export class NotificationService {
   /**
    * Main entry point: Trigger a notification event
    * This is called when something happens in the system that requires notification
+   * @returns createdCount and optional reason when 0
    */
-  async triggerNotification(event: NotificationEvent): Promise<void> {
+  async triggerNotification(
+    event: NotificationEvent
+  ): Promise<{ createdCount: number; reason?: "no_rule" | "conditions_not_met" | "no_recipients" }> {
     try {
       logger.info(`📢 Triggering notification event: ${event.type}`);
 
@@ -40,7 +43,7 @@ export class NotificationService {
         logger.warn(
           `No active notification rule found for event type: ${event.type}`
         );
-        return;
+        return { createdCount: 0, reason: "no_rule" };
       }
 
       // 2. Evaluate conditions (if any)
@@ -49,7 +52,7 @@ export class NotificationService {
         logger.info(
           `Conditions not met for notification event: ${event.type}`
         );
-        return;
+        return { createdCount: 0, reason: "conditions_not_met" };
       }
 
       // 3. Resolve recipients based on rule
@@ -57,7 +60,7 @@ export class NotificationService {
 
       if (recipients.length === 0) {
         logger.warn(`No recipients resolved for event type: ${event.type}`);
-        return;
+        return { createdCount: 0, reason: "no_recipients" };
       }
 
       logger.info(
@@ -137,6 +140,7 @@ export class NotificationService {
       logger.info(
         `✅ Successfully processed notification event: ${event.type}`
       );
+      return { createdCount: createdNotifications.length };
     } catch (error) {
       logger.error(`❌ Error triggering notification event: ${event.type}`, error);
       throw error;
