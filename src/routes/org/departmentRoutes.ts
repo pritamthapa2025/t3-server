@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getDepartmentsHandler,
   createDepartmentHandler,
@@ -21,7 +21,7 @@ import {
 } from "../../validations/department.validations.js";
 import { getUsersByRolesSchema } from "../../validations/user.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all department routes
 router.use(authenticate);

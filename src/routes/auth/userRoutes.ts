@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getUsersHandler,
@@ -18,7 +18,7 @@ import {
   deleteUserSchema,
 } from "../../validations/user.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for memory storage (we'll upload directly to DO Spaces)
 // Only process file field, allow other fields to pass through

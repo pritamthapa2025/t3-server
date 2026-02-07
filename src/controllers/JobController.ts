@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 
 // Access control: use USER data (req.user.id), not organization.
 // Organization = CLIENT data (see .cursorrules). For job handlers, get client org from the job (job.organizationId from bid).
@@ -147,7 +148,7 @@ export const getJobsHandler = async (req: Request, res: Response) => {
 export const getJobByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -294,7 +295,7 @@ export const createJobHandler = async (req: Request, res: Response) => {
 export const updateJobHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -390,7 +391,7 @@ export const updateJobHandler = async (req: Request, res: Response) => {
 export const deleteJobHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -438,7 +439,7 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
 export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const roleName = req.query.roleName as string | undefined;
 
     const userId = validateUserAccess(req, res);
@@ -465,7 +466,7 @@ export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
 export const addJobTeamMemberHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -522,7 +523,8 @@ export const removeJobTeamMemberHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId", "employeeId"])) return;
-    const { jobId, employeeId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const employeeId = asSingleString(req.params.employeeId);
 
     const _userId = validateUserAccess(req, res);
     if (!_userId) return;
@@ -572,7 +574,7 @@ export const getJobFinancialSummaryHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -606,7 +608,7 @@ export const updateJobFinancialSummaryHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -666,7 +668,7 @@ export const getJobFinancialBreakdownHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -726,7 +728,7 @@ export const updateJobFinancialBreakdownHandler = async (
 export const getJobMaterialsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -760,7 +762,8 @@ export const getJobMaterialByIdHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId", "materialId"])) return;
-    const { jobId, materialId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const materialId = asSingleString(req.params.materialId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -791,7 +794,7 @@ export const getJobMaterialByIdHandler = async (
 export const createJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -845,7 +848,8 @@ export const createJobMaterialHandler = async (req: Request, res: Response) => {
 export const updateJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "jobId"])) return;
-    const { materialId, jobId } = req.params;
+    const materialId = asSingleString(req.params.materialId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -894,7 +898,8 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
 export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "jobId"])) return;
-    const { materialId, jobId } = req.params;
+    const materialId = asSingleString(req.params.materialId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -953,7 +958,7 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
 export const getJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -984,7 +989,8 @@ export const getJobLaborHandler = async (req: Request, res: Response) => {
 export const getJobLaborByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "laborId"])) return;
-    const { jobId, laborId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const laborId = asSingleString(req.params.laborId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1015,7 +1021,7 @@ export const getJobLaborByIdHandler = async (req: Request, res: Response) => {
 export const createJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1089,8 +1095,8 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
 export const updateJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["laborId", "jobId"])) return;
-    const { laborId } = req.params;
-    const { jobId } = req.params;
+    const laborId = asSingleString(req.params.laborId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1138,8 +1144,8 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
 export const deleteJobLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["laborId", "jobId"])) return;
-    const { laborId } = req.params;
-    const { jobId } = req.params;
+    const laborId = asSingleString(req.params.laborId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1190,7 +1196,7 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
 export const getJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1221,7 +1227,8 @@ export const getJobTravelHandler = async (req: Request, res: Response) => {
 export const getJobTravelByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "travelId"])) return;
-    const { jobId, travelId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const travelId = asSingleString(req.params.travelId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1252,7 +1259,7 @@ export const getJobTravelByIdHandler = async (req: Request, res: Response) => {
 export const createJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1306,8 +1313,8 @@ export const createJobTravelHandler = async (req: Request, res: Response) => {
 export const updateJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["travelId", "jobId"])) return;
-    const { travelId } = req.params;
-    const { jobId } = req.params;
+    const travelId = asSingleString(req.params.travelId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1360,8 +1367,8 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
 export const deleteJobTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["travelId", "jobId"])) return;
-    const { travelId } = req.params;
-    const { jobId } = req.params;
+    const travelId = asSingleString(req.params.travelId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1415,7 +1422,7 @@ export const getJobOperatingExpensesHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1472,7 +1479,7 @@ export const updateJobOperatingExpensesHandler = async (
 export const getJobTimelineHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1506,7 +1513,7 @@ export const createJobTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1564,7 +1571,8 @@ export const getJobTimelineEventByIdHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId", "eventId"])) return;
-    const { jobId, eventId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const eventId = asSingleString(req.params.eventId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1598,8 +1606,8 @@ export const updateJobTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "jobId"])) return;
-    const { eventId } = req.params;
-    const { jobId } = req.params;
+    const eventId = asSingleString(req.params.eventId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1655,8 +1663,8 @@ export const deleteJobTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "jobId"])) return;
-    const { eventId } = req.params;
-    const { jobId } = req.params;
+    const eventId = asSingleString(req.params.eventId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1707,7 +1715,7 @@ export const deleteJobTimelineEventHandler = async (
 export const getJobNotesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1738,7 +1746,7 @@ export const getJobNotesHandler = async (req: Request, res: Response) => {
 export const createJobNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1793,7 +1801,8 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
 export const getJobNoteByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "noteId"])) return;
-    const { jobId, noteId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const noteId = asSingleString(req.params.noteId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1824,8 +1833,8 @@ export const getJobNoteByIdHandler = async (req: Request, res: Response) => {
 export const updateJobNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["noteId", "jobId"])) return;
-    const { noteId } = req.params;
-    const { jobId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1873,8 +1882,8 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
 export const deleteJobNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["noteId", "jobId"])) return;
-    const { noteId } = req.params;
-    const { jobId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1925,7 +1934,7 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
 export const getJobHistoryHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1958,7 +1967,7 @@ export const getJobHistoryHandler = async (req: Request, res: Response) => {
 export const getJobTasksHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1989,7 +1998,7 @@ export const getJobTasksHandler = async (req: Request, res: Response) => {
 export const createJobTaskHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -2038,7 +2047,8 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
 export const getJobTaskByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "taskId"])) return;
-    const { jobId, taskId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -2069,8 +2079,8 @@ export const getJobTaskByIdHandler = async (req: Request, res: Response) => {
 export const updateJobTaskHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["taskId", "jobId"])) return;
-    const { taskId } = req.params;
-    const { jobId } = req.params;
+    const taskId = asSingleString(req.params.taskId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2118,8 +2128,8 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
 export const deleteJobTaskHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["taskId", "jobId"])) return;
-    const { taskId } = req.params;
-    const { jobId } = req.params;
+    const taskId = asSingleString(req.params.taskId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2170,7 +2180,7 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
 export const getJobExpensesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2199,7 +2209,8 @@ export const getJobExpensesHandler = async (req: Request, res: Response) => {
 export const getJobExpenseByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "expenseId"])) return;
-    const { jobId, expenseId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const expenseId = asSingleString(req.params.expenseId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -2230,7 +2241,7 @@ export const getJobExpenseByIdHandler = async (req: Request, res: Response) => {
 export const createJobExpenseHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -2301,8 +2312,8 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
 export const updateJobExpenseHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["expenseId", "jobId"])) return;
-    const { expenseId } = req.params;
-    const { jobId } = req.params;
+    const expenseId = asSingleString(req.params.expenseId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2375,8 +2386,8 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
 export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["expenseId", "jobId"])) return;
-    const { expenseId } = req.params;
-    const { jobId } = req.params;
+    const expenseId = asSingleString(req.params.expenseId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2427,7 +2438,7 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
 export const getJobDocumentsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     // Get job to retrieve bidId
     const job = await getJobById(jobId!);
@@ -2462,7 +2473,7 @@ export const createJobDocumentsHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["jobId"])) return;
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2587,7 +2598,8 @@ export const getJobDocumentByIdHandler = async (
   try {
     if (!validateParams(req, res, ["jobId", "documentId"])) return;
 
-    const { jobId, documentId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const documentId = asSingleString(req.params.documentId);
 
     // Get job to retrieve bidId
     const job = await getJobById(jobId!);
@@ -2627,7 +2639,8 @@ export const updateJobDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "documentId"])) return;
 
-    const { jobId, documentId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
+    const documentId = asSingleString(req.params.documentId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2722,7 +2735,8 @@ export const updateJobDocumentHandler = async (req: Request, res: Response) => {
 export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["documentId", "jobId"])) return;
-    const { documentId, jobId } = req.params;
+    const documentId = asSingleString(req.params.documentId);
+    const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2788,7 +2802,7 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
 export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 

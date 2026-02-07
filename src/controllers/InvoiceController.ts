@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import * as invoicingService from "../services/invoicing.service.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -56,7 +57,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     // organizationId is optional - can be provided in query params for filtering, or derived from invoice
     const organizationId = req.query.organizationId as string | undefined;
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -157,7 +158,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -228,7 +229,7 @@ export const deleteInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -970,7 +971,7 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1184,7 +1185,7 @@ export const markInvoiceAsPaid = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1248,7 +1249,7 @@ export const voidInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1306,7 +1307,7 @@ export const getInvoiceLineItems = async (req: Request, res: Response) => {
     // organizationId is optional - can be provided in query params or derived from invoice
     const organizationId = req.query.organizationId as string | undefined;
 
-    const { invoiceId } = req.params;
+    const invoiceId = asSingleString(req.params.invoiceId);
     if (!invoiceId) {
       return res.status(400).json({
         success: false,
@@ -1357,7 +1358,8 @@ export const getInvoiceLineItems = async (req: Request, res: Response) => {
 export const getInvoiceLineItem = async (req: Request, res: Response) => {
   try {
     const organizationId = req.query.organizationId as string | undefined;
-    const { invoiceId, lineItemId } = req.params;
+    const invoiceId = asSingleString(req.params.invoiceId);
+    const lineItemId = asSingleString(req.params.lineItemId);
     if (!invoiceId || !lineItemId) {
       return res.status(400).json({
         success: false,
@@ -1413,7 +1415,7 @@ export const createInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    const { invoiceId } = req.params;
+    const invoiceId = asSingleString(req.params.invoiceId);
     if (!invoiceId) {
       return res.status(400).json({
         success: false,
@@ -1494,7 +1496,8 @@ export const updateInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    const { invoiceId, lineItemId } = req.params;
+    const invoiceId = asSingleString(req.params.invoiceId);
+    const lineItemId = asSingleString(req.params.lineItemId);
     if (!invoiceId || !lineItemId) {
       return res.status(400).json({
         success: false,
@@ -1574,7 +1577,8 @@ export const deleteInvoiceLineItem = async (req: Request, res: Response) => {
       });
     }
 
-    const { invoiceId, lineItemId } = req.params;
+    const invoiceId = asSingleString(req.params.invoiceId);
+    const lineItemId = asSingleString(req.params.lineItemId);
     if (!invoiceId || !lineItemId) {
       return res.status(400).json({
         success: false,
@@ -1661,7 +1665,7 @@ export const getInvoiceKPIs = async (req: Request, res: Response) => {
  */
 export const downloadInvoicePDF = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const { save } = req.query; // Optional: save to storage
 
     if (!id) {
@@ -1754,7 +1758,7 @@ export const downloadInvoicePDF = async (req: Request, res: Response) => {
  */
 export const previewInvoicePDF = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({

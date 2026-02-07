@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getPropertiesHandler,
@@ -35,7 +35,7 @@ import {
   createServiceHistorySchema,
 } from "../../validations/property.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for document uploads
 const uploadDocument = multer({

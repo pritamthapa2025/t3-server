@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import * as SettingsController from "../../controllers/SettingsController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -17,7 +17,7 @@ import {
   updateInvoiceSettingsSchema,
 } from "../../validations/settings.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 /**
  * ============================================================================

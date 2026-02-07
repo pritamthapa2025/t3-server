@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getDashboardKPIsHandler,
   getComplianceCasesHandler,
@@ -26,7 +26,7 @@ import {
   createEmployeeViolationSchema,
 } from "../../validations/compliance.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import * as reviewService from "../services/review.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -31,7 +32,7 @@ export const getReviews = async (req: Request, res: Response) => {
  */
 export const getReviewById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -102,7 +103,7 @@ export const createReview = async (req: Request, res: Response) => {
  */
 export const updateReview = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -143,7 +144,7 @@ export const updateReview = async (req: Request, res: Response) => {
  */
 export const deleteReview = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -181,7 +182,7 @@ export const deleteReview = async (req: Request, res: Response) => {
  */
 export const getEmployeeReviews = async (req: Request, res: Response) => {
   try {
-    const { employeeId } = req.params;
+    const employeeId = asSingleString(req.params.employeeId);
     if (!employeeId) {
       return res.status(400).json({
         success: false,
@@ -215,7 +216,7 @@ export const getEmployeeReviews = async (req: Request, res: Response) => {
  */
 export const createEmployeeReview = async (req: Request, res: Response) => {
   try {
-    const { employeeId } = req.params;
+    const employeeId = asSingleString(req.params.employeeId);
     if (!employeeId) {
       return res.status(400).json({
         success: false,
@@ -259,7 +260,8 @@ export const createEmployeeReview = async (req: Request, res: Response) => {
  */
 export const updateEmployeeReview = async (req: Request, res: Response) => {
   try {
-    const { employeeId, reviewId } = req.params;
+    const employeeId = asSingleString(req.params.employeeId);
+    const reviewId = asSingleString(req.params.reviewId);
     if (!employeeId || !reviewId) {
       return res.status(400).json({
         success: false,
@@ -316,7 +318,7 @@ export const updateEmployeeReview = async (req: Request, res: Response) => {
  */
 export const getEmployeeReviewSummary = async (req: Request, res: Response) => {
   try {
-    const { employeeId } = req.params;
+    const employeeId = asSingleString(req.params.employeeId);
     if (!employeeId) {
       return res.status(400).json({
         success: false,

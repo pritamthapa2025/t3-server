@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router, type IRouter } from 'express';
 import { checkDatabaseHealth } from '../../utils/db-health.js';
 import { pool } from '../../config/db.js';
 
-const router = Router();
+const router: IRouter = Router();
 
 /**
  * Authentication performance monitoring endpoint

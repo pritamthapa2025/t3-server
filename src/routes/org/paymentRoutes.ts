@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as paymentController from "../../controllers/PaymentController.js";
 import { authenticate } from "../../middleware/auth.js";
@@ -15,7 +15,7 @@ import {
   getPaymentSummaryQuerySchema,
 } from "../../validations/invoicing.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);

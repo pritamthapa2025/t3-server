@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getExpenseCategories,
   getExpenseCategoryById,
@@ -102,7 +103,7 @@ export const getExpenseCategoryByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -179,7 +180,7 @@ export const updateExpenseCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -225,7 +226,7 @@ export const deleteExpenseCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -329,7 +330,7 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
 
 export const getExpenseByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -417,7 +418,7 @@ export const updateExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -450,7 +451,7 @@ export const updateExpenseHandler = async (req: Request, res: Response) => {
 
 export const deleteExpenseHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -491,7 +492,7 @@ export const submitExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -535,7 +536,7 @@ export const approveExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -579,7 +580,7 @@ export const rejectExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -663,14 +664,14 @@ export const getEmployeeExpenseSummaryHandler = async (
   res: Response,
 ) => {
   try {
-    const employeeIdParam = req.params.employeeId;
+    const employeeIdParam = asSingleString(req.params.employeeId);
     if (!employeeIdParam) {
       return res.status(400).json({
         success: false,
         message: "Employee ID is required",
       });
     }
-    const employeeId = parseInt(employeeIdParam);
+    const employeeId = parseInt(employeeIdParam, 10);
     if (isNaN(employeeId)) {
       return res.status(400).json({
         success: false,

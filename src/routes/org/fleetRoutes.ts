@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getFleetDashboardKPIsHandler,
@@ -45,6 +45,7 @@ import {
   deleteVehicleMediaHandler,
   getVehicleDocumentsHandler,
   getVehicleDocumentByIdHandler,
+  getVehicleDocumentPresignedUrlHandler,
   createVehicleDocumentHandler,
   updateVehicleDocumentHandler,
   deleteVehicleDocumentHandler,
@@ -96,13 +97,14 @@ import {
   deleteVehicleMediaByVehicleSchema,
   getVehicleDocumentsByVehicleQuerySchema,
   getVehicleDocumentByVehicleByIdSchema,
+  getVehicleDocumentPresignedUrlSchema,
   createVehicleDocumentByVehicleSchema,
   updateVehicleDocumentByVehicleSchema,
   deleteVehicleDocumentByVehicleSchema,
 } from "../../validations/fleet.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for single vehicle image upload (field name: "vehicle")
 const uploadVehicle = multer({
@@ -200,7 +202,7 @@ const uploadVehicleMedia = multer({
   },
 }).single("file");
 
-// Multer for vehicle documents (PDF, images)
+// Multer for vehicle documents (PDF, images) - accept "file" or "document" field name
 const uploadVehicleDocument = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
@@ -215,7 +217,19 @@ const uploadVehicleDocument = multer({
         ),
       );
   },
-}).single("file");
+}).fields([
+  { name: "file", maxCount: 1 },
+  { name: "document", maxCount: 1 },
+]);
+
+// Normalize vehicle document upload: set req.file from whichever field was used
+const normalizeVehicleDocumentFile = (req: any, _res: any, next: any) => {
+  if (req.file) return next();
+  const files = req.files as { file?: Express.Multer.File[]; document?: Express.Multer.File[] } | undefined;
+  if (files?.file?.[0]) req.file = files.file[0];
+  else if (files?.document?.[0]) req.file = files.document[0];
+  next();
+};
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -438,6 +452,13 @@ router
 // Vehicle Documents Routes (by vehicle)
 // ============================
 
+// Presigned URL for direct upload (faster: client uploads to storage, then registers document)
+router.post(
+  "/vehicles/:vehicleId/documents/presigned-url",
+  validate(getVehicleDocumentPresignedUrlSchema),
+  getVehicleDocumentPresignedUrlHandler,
+);
+
 router
   .route("/vehicles/:vehicleId/documents")
   .get(
@@ -446,6 +467,7 @@ router
   )
   .post(
     uploadVehicleDocument,
+    normalizeVehicleDocumentFile,
     handleMulterError,
     validate(createVehicleDocumentByVehicleSchema),
     createVehicleDocumentHandler,
@@ -459,6 +481,7 @@ router
   )
   .put(
     uploadVehicleDocument,
+    normalizeVehicleDocumentFile,
     handleMulterError,
     validate(updateVehicleDocumentByVehicleSchema),
     updateVehicleDocumentHandler,

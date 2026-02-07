@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import { logger } from "../utils/logger.js";
 import * as inventoryService from "../services/inventory/index.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -87,7 +88,7 @@ export const getInventoryItemByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const validId = validateParam(id, "Item ID", res);
     if (!validId) return;
 
@@ -202,7 +203,7 @@ export const updateInventoryItemHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const validId = validateParam(id, "Item ID", res);
     if (!validId) return;
 
@@ -236,7 +237,7 @@ export const deleteInventoryItemHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -261,7 +262,7 @@ export const deleteInventoryItemHandler = async (
 
 export const getItemHistoryHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const history = await inventoryService.getItemHistory(id!);
 
@@ -464,7 +465,7 @@ export const getItemTransactionsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const transactions = await inventoryService.getItemTransactions(id!);
 
@@ -528,7 +529,7 @@ export const getAllocationsHandler = async (req: Request, res: Response) => {
 
 export const getAllocationByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const allocation = await inventoryService.getAllocationById(id!);
 
@@ -585,7 +586,7 @@ export const createAllocationHandler = async (req: Request, res: Response) => {
 
 export const updateAllocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedAllocation = await inventoryService.updateAllocation(
       id!,
@@ -610,7 +611,7 @@ export const updateAllocationHandler = async (req: Request, res: Response) => {
 
 export const issueAllocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -638,7 +639,7 @@ export const issueAllocationHandler = async (req: Request, res: Response) => {
 
 export const returnAllocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -667,7 +668,7 @@ export const returnAllocationHandler = async (req: Request, res: Response) => {
 
 export const cancelAllocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const cancelledAllocation = await inventoryService.cancelAllocation(id!);
 
@@ -692,7 +693,7 @@ export const getAllocationsByJobHandler = async (
   res: Response,
 ) => {
   try {
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     const allocations = await inventoryService.getAllocationsByJob(jobId!);
 
@@ -722,7 +723,7 @@ export const getAllocationsByBidHandler = async (
   res: Response,
 ) => {
   try {
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const allocations = await inventoryService.getAllocationsByBid(bidId!);
 
@@ -794,7 +795,7 @@ export const getPurchaseOrderByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const po = await inventoryService.getPurchaseOrderById(id!);
 
@@ -852,7 +853,7 @@ export const updatePurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedPO = await inventoryService.updatePurchaseOrder(id!, req.body);
 
@@ -877,7 +878,7 @@ export const approvePurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -902,7 +903,7 @@ export const approvePurchaseOrderHandler = async (
 
 export const sendPurchaseOrderHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const sentPO = await inventoryService.sendPurchaseOrder(id!);
 
@@ -927,7 +928,7 @@ export const cancelPurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const { reason } = req.body;
 
     const cancelledPO = await inventoryService.cancelPurchaseOrder(id!, reason);
@@ -953,7 +954,7 @@ export const closePurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -981,7 +982,7 @@ export const receivePartialPurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1013,7 +1014,7 @@ export const receivePurchaseOrderHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1049,7 +1050,7 @@ export const addPurchaseOrderItemHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params; // PO ID
+    const id = asSingleString(req.params.id); // PO ID
 
     const newItem = await inventoryService.addPurchaseOrderItem(id!, req.body);
 
@@ -1074,7 +1075,7 @@ export const updatePurchaseOrderItemHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params; // PO Item ID
+    const id = asSingleString(req.params.id); // PO Item ID
 
     const updatedItem = await inventoryService.updatePurchaseOrderItem(
       id!,
@@ -1102,7 +1103,7 @@ export const deletePurchaseOrderItemHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params; // PO Item ID
+    const id = asSingleString(req.params.id); // PO Item ID
 
     const deletedItem = await inventoryService.deletePurchaseOrderItem(id!);
 
@@ -1127,7 +1128,7 @@ export const getPurchaseOrderItemsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const items = await inventoryService.getPurchaseOrderItems(id!);
 
@@ -1194,7 +1195,7 @@ export const getSuppliersHandler = async (req: Request, res: Response) => {
 
 export const getSupplierByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const supplier = await inventoryService.getSupplierById(id!);
 
@@ -1243,7 +1244,7 @@ export const createSupplierHandler = async (req: Request, res: Response) => {
 
 export const updateSupplierHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedSupplier = await inventoryService.updateSupplier(
       id!,
@@ -1268,7 +1269,7 @@ export const updateSupplierHandler = async (req: Request, res: Response) => {
 
 export const deleteSupplierHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const deletedSupplier = await inventoryService.deleteSupplier(id!);
 
@@ -1326,7 +1327,7 @@ export const getLocationsHandler = async (req: Request, res: Response) => {
 
 export const getLocationByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const location = await inventoryService.getLocationById(id!);
 
@@ -1375,7 +1376,7 @@ export const createLocationHandler = async (req: Request, res: Response) => {
 
 export const updateLocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedLocation = await inventoryService.updateLocation(
       id!,
@@ -1400,7 +1401,7 @@ export const updateLocationHandler = async (req: Request, res: Response) => {
 
 export const deleteLocationHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const deletedLocation = await inventoryService.deleteLocation(id!);
 
@@ -1466,7 +1467,7 @@ export const createCategoryHandler = async (req: Request, res: Response) => {
 
 export const updateCategoryHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedCategory = await inventoryService.updateCategory(
       parseInt(id!),
@@ -1491,7 +1492,7 @@ export const updateCategoryHandler = async (req: Request, res: Response) => {
 
 export const deleteCategoryHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const deletedCategory = await inventoryService.deleteCategory(
       parseInt(id!),
@@ -1569,7 +1570,7 @@ export const createUnitHandler = async (req: Request, res: Response) => {
 
 export const updateUnitHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const updatedUnit = await inventoryService.updateUnit(
       parseInt(id!),
@@ -1594,7 +1595,7 @@ export const updateUnitHandler = async (req: Request, res: Response) => {
 
 export const deleteUnitHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const deletedUnit = await inventoryService.deleteUnit(parseInt(id!));
 
@@ -1675,7 +1676,7 @@ export const getUnresolvedAlertsHandler = async (
 
 export const acknowledgeAlertHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1703,7 +1704,7 @@ export const acknowledgeAlertHandler = async (req: Request, res: Response) => {
 
 export const resolveAlertHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1776,7 +1777,7 @@ export const getCountsHandler = async (req: Request, res: Response) => {
 
 export const getCountByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const count = await inventoryService.getCountById(id!);
 
@@ -1828,7 +1829,7 @@ export const createCountHandler = async (req: Request, res: Response) => {
 
 export const updateCountHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1864,7 +1865,7 @@ export const updateCountHandler = async (req: Request, res: Response) => {
 
 export const startCountHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const startedCount = await inventoryService.startCount(id!);
 
@@ -1886,7 +1887,7 @@ export const startCountHandler = async (req: Request, res: Response) => {
 
 export const completeCountHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1911,7 +1912,7 @@ export const completeCountHandler = async (req: Request, res: Response) => {
 
 export const getCountItemsHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const items = await inventoryService.getCountItems(id!);
 
@@ -1933,7 +1934,8 @@ export const getCountItemsHandler = async (req: Request, res: Response) => {
 
 export const recordCountItemHandler = async (req: Request, res: Response) => {
   try {
-    const { countId, itemId } = req.params;
+    const countId = asSingleString(req.params.countId);
+    const itemId = asSingleString(req.params.itemId);
     const { countedQuantity, notes } = req.body;
 
     const recordedItem = await inventoryService.recordCountItem(

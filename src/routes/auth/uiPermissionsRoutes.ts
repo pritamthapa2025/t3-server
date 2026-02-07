@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getUserInterfaceHandler,
   getModuleUIHandler,
@@ -14,7 +14,7 @@ import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { z } from "zod";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication to all routes
 router.use(authenticate);

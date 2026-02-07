@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   parseDatabaseError,
   isDatabaseError,
@@ -79,7 +80,7 @@ export const getDispatchTaskByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -186,7 +187,7 @@ export const updateDispatchTaskHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -264,7 +265,7 @@ export const deleteDispatchTaskHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -341,7 +342,7 @@ export const getDispatchAssignmentByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -408,7 +409,7 @@ export const updateDispatchAssignmentHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -446,7 +447,7 @@ export const deleteDispatchAssignmentHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -482,7 +483,7 @@ export const getAssignmentsByTaskIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { taskId } = req.params;
+    const taskId = asSingleString(req.params.taskId);
     if (!taskId) {
       return res.status(400).json({
         success: false,
@@ -511,7 +512,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { technicianId } = req.params;
+    const technicianId = asSingleString(req.params.technicianId);
     const { date, startDate, endDate, status } = req.query;
 
     if (!technicianId) {

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getPayrollDashboardHandler,
   getPayrollEntriesHandler,
@@ -30,7 +30,7 @@ import {
   processPayrollRunSchema,
 } from "../../validations/payroll.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Payroll KPIs Routes
 router

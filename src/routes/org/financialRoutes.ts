@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getFinancialSummaryHandler,
   createFinancialSummaryHandler,
@@ -59,7 +59,7 @@ import {
 } from "../../validations/financial.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all financial routes
 router.use(authenticate);

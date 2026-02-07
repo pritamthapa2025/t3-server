@@ -1304,6 +1304,13 @@ export const getVehicleDocumentByVehicleByIdSchema = z.object({
   params: z.object({ vehicleId: uuidSchema, id: uuidSchema }),
 });
 
+export const getVehicleDocumentPresignedUrlSchema = z.object({
+  params: z.object({ vehicleId: uuidSchema }),
+  body: z.object({
+    fileName: z.string().min(1).max(255), // required for presigned URL (used for key and content-type)
+  }),
+});
+
 export const createVehicleDocumentByVehicleSchema = z.object({
   params: z.object({ vehicleId: uuidSchema }),
   body: z.object({

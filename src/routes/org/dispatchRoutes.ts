@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getDispatchTasksHandler,
@@ -36,7 +36,7 @@ import {
 } from "../../validations/dispatch.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for dispatch task attachment uploads (attachments_0, attachments_1, ...)
 const uploadDispatchAttachments = multer({

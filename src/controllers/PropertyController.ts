@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getProperties,
   getPropertyById,
@@ -87,7 +88,7 @@ export const getPropertiesHandler = async (req: Request, res: Response) => {
 // Get property by ID with full details
 export const getPropertyByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -143,7 +144,7 @@ export const createPropertyHandler = async (req: Request, res: Response) => {
 // Update property
 export const updatePropertyHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -176,7 +177,7 @@ export const updatePropertyHandler = async (req: Request, res: Response) => {
 // Delete property (soft delete)
 export const deletePropertyHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -212,7 +213,7 @@ export const createPropertyContactHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["propertyId"])) return;
-    const { propertyId } = req.params;
+    const propertyId = asSingleString(req.params.propertyId);
 
     const contactData = {
       propertyId: propertyId!,
@@ -248,7 +249,7 @@ export const getPropertyEquipmentHandler = async (
   res: Response
 ) => {
   try {
-    const { propertyId } = req.params;
+    const propertyId = asSingleString(req.params.propertyId);
 
     if (!propertyId) {
       return res
@@ -277,7 +278,7 @@ export const getPropertyEquipmentByIdHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -312,7 +313,7 @@ export const createPropertyEquipmentHandler = async (
   res: Response
 ) => {
   try {
-    const { propertyId } = req.params;
+    const propertyId = asSingleString(req.params.propertyId);
     const equipmentData = {
       ...req.body,
       propertyId,
@@ -340,7 +341,7 @@ export const updatePropertyEquipmentHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -376,7 +377,7 @@ export const deletePropertyEquipmentHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -413,7 +414,7 @@ export const createPropertyDocumentHandler = async (
   let uploadedFilePath: string | null = null;
   try {
     if (!validateParams(req, res, ["propertyId"])) return;
-    const { propertyId } = req.params;
+    const propertyId = asSingleString(req.params.propertyId);
 
     // Get user ID for uploadedBy
     const uploadedBy = req.user?.id;
@@ -518,7 +519,7 @@ export const createServiceHistoryHandler = async (
   res: Response
 ) => {
   try {
-    const { propertyId } = req.params;
+    const propertyId = asSingleString(req.params.propertyId);
     const serviceData = {
       ...req.body,
       propertyId,

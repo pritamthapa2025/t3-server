@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getVehicles,
   getVehicleById,
@@ -51,6 +52,7 @@ import {
 import {
   uploadToSpaces,
   deleteFromSpaces,
+  getPresignedUploadUrl,
 } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -122,7 +124,7 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
 
 export const getVehicleByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -201,7 +203,7 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
 
 export const updateVehicleHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -267,7 +269,7 @@ export const updateVehicleHandler = async (req: Request, res: Response) => {
 
 export const deleteVehicleHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -307,7 +309,7 @@ export const getVehicleSettingsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -339,7 +341,7 @@ export const updateVehicleSettingsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -420,7 +422,8 @@ export const getMaintenanceRecordByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -499,7 +502,8 @@ export const updateMaintenanceRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -543,7 +547,8 @@ export const deleteMaintenanceRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -631,7 +636,8 @@ export const getRepairRecordByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -709,7 +715,8 @@ export const updateRepairRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -753,7 +760,8 @@ export const deleteRepairRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -836,7 +844,8 @@ export const getSafetyInspectionByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -951,7 +960,8 @@ export const updateSafetyInspectionHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1032,7 +1042,8 @@ export const deleteSafetyInspectionHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1078,7 +1089,7 @@ export const getSafetyInspectionItemsHandler = async (
   res: Response,
 ) => {
   try {
-    const { inspectionId } = req.params; // works for both /inspections/:inspectionId/items and /vehicles/:vehicleId/inspections/:inspectionId/items
+    const inspectionId = asSingleString(req.params.inspectionId); // works for both /inspections/:inspectionId/items and /vehicles/:vehicleId/inspections/:inspectionId/items
     if (!inspectionId) {
       return res.status(400).json({
         success: false,
@@ -1175,7 +1186,8 @@ export const getFuelRecordsHandler = async (req: Request, res: Response) => {
 
 export const getFuelRecordByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1247,7 +1259,8 @@ export const createFuelRecordHandler = async (req: Request, res: Response) => {
 
 export const updateFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1288,7 +1301,8 @@ export const updateFuelRecordHandler = async (req: Request, res: Response) => {
 
 export const deleteFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1371,7 +1385,8 @@ export const getCheckInOutRecordByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1449,7 +1464,8 @@ export const updateCheckInOutRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1493,7 +1509,8 @@ export const deleteCheckInOutRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -1539,7 +1556,13 @@ export const getAssignmentHistoryHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -1578,7 +1601,13 @@ export const getAssignmentHistoryHandler = async (
 
 export const getVehicleMetricsHandler = async (req: Request, res: Response) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
     const metrics = await getVehicleMetrics(vehicleId);
     if (!metrics) {
       return res.status(404).json({
@@ -1605,7 +1634,13 @@ export const getVehicleMetricsHandler = async (req: Request, res: Response) => {
 
 export const getVehicleMediaHandler = async (req: Request, res: Response) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -1636,7 +1671,8 @@ export const getVehicleMediaByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const media = await getVehicleMediaById(id!);
     if (!media) {
       return res.status(404).json({
@@ -1665,7 +1701,7 @@ export const createVehicleMediaHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
     const uploadedBy = req.user?.id;
     if (!uploadedBy) {
       return res.status(401).json({
@@ -1732,7 +1768,8 @@ export const updateVehicleMediaHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const media = await getVehicleMediaById(id!);
     if (!media) {
       return res.status(404).json({
@@ -1792,7 +1829,8 @@ export const deleteVehicleMediaHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const media = await getVehicleMediaById(id!);
     if (!media) {
       return res.status(404).json({
@@ -1836,7 +1874,13 @@ export const getVehicleDocumentsHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -1872,7 +1916,8 @@ export const getVehicleDocumentByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const doc = await getVehicleDocumentById(id!);
     if (!doc) {
       return res.status(404).json({
@@ -1896,12 +1941,52 @@ export const getVehicleDocumentByIdHandler = async (
   }
 };
 
+/**
+ * Get a presigned URL for direct upload to storage. Client uploads file to uploadUrl
+ * (PUT with Content-Type header), then POSTs to create document with filePath set to key.
+ */
+export const getVehicleDocumentPresignedUrlHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    const { fileName } = req.body as { fileName: string };
+    const result = await getPresignedUploadUrl(
+      fileName,
+      "vehicle-documents",
+      3600,
+    );
+    return res.status(200).json({
+      success: true,
+      data: {
+        uploadUrl: result.uploadUrl,
+        filePath: result.key,
+        url: result.url,
+        contentType: result.contentType,
+        expiresIn: result.expiresIn,
+      },
+    });
+  } catch (error: any) {
+    logger.logApiError("Error getting vehicle document presigned URL", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
 export const createVehicleDocumentHandler = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const vehicleId = req.params.vehicleId!;
+    const vehicleId = asSingleString(req.params.vehicleId);
     const uploadedBy = req.user?.id;
     if (!uploadedBy) {
       return res.status(401).json({
@@ -1976,7 +2061,8 @@ export const updateVehicleDocumentHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const doc = await getVehicleDocumentById(id!);
     if (!doc) {
       return res.status(404).json({
@@ -2035,7 +2121,8 @@ export const deleteVehicleDocumentHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, vehicleId: vehicleIdParam } = req.params;
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
     const doc = await getVehicleDocumentById(id!);
     if (!doc) {
       return res.status(404).json({

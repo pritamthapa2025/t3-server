@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   changePasswordHandler,
   confirmPasswordResetHandler,
@@ -34,7 +34,7 @@ import {
   setupNewPasswordSchema,
 } from "../../validations/auth.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Public routes (no authentication required)
 router.route("/login").post(validate(loginSchema), loginUserHandler);

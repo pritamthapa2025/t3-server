@@ -16,7 +16,10 @@ import {
   createTimesheetWithClockData,
   getTimesheetKPIs,
 } from "../services/timesheet.service.js";
-import { syncPayrollFromApprovedTimesheet } from "../services/payroll.service.js";
+import {
+  syncPayrollFromApprovedTimesheet,
+  recalcPayrollForEmployeeWeek,
+} from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
 
 export const getTimesheetsHandler = async (req: Request, res: Response) => {
@@ -599,6 +602,20 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
       rejectionReason,
       notes
     );
+
+    // Recalc payroll for this employee/week so the rejected day is excluded (hourly only)
+    if (timesheet && existingTimesheet?.employeeId != null && existingTimesheet?.sheetDate) {
+      try {
+        await recalcPayrollForEmployeeWeek(
+          Number(existingTimesheet.employeeId),
+          existingTimesheet.sheetDate,
+        );
+      } catch (payrollError: any) {
+        logger.warn(
+          `Payroll recalc after timesheet reject failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`,
+        );
+      }
+    }
 
     logger.info(`Timesheet ${timesheetId} rejected by ${rejectedBy}`);
     return res.status(200).json({

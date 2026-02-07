@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as reviewController from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
@@ -16,7 +16,7 @@ import {
   bulkCreateReviewsSchema,
 } from "../../validations/review.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);

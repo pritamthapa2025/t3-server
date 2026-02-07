@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import * as DashboardController from "../../controllers/DashboardController.js";
 import { authenticate } from "../../middleware/auth.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 /**
  * ============================================================================

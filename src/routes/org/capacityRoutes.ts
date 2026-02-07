@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as capacityController from "../../controllers/CapacityController.js";
 import { authenticate } from "../../middleware/auth.js";
@@ -22,7 +22,7 @@ import {
   createDepartmentCapacityMetricSchema,
 } from "../../validations/capacity.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);

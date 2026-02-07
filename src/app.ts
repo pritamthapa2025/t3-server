@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
@@ -7,7 +7,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 
 dotenv.config();
 
-const app = express();
+const app: Express = express();
 
 app.use(
   cors({

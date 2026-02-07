@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import dotenv from "dotenv";
@@ -31,6 +32,14 @@ const s3Client = new S3Client({
 export interface UploadResult {
   filePath: string;
   url: string;
+}
+
+export interface PresignedUploadResult {
+  uploadUrl: string;
+  key: string;
+  url: string;
+  contentType: string;
+  expiresIn: number;
 }
 
 /**
@@ -131,6 +140,47 @@ const getContentType = (extension: string): string => {
   };
 
   return contentTypes[extension.toLowerCase()] || "application/octet-stream";
+};
+
+/** Default expiry for presigned upload URLs (1 hour) */
+const PRESIGNED_EXPIRES_IN = 3600;
+
+/**
+ * Get a presigned URL for direct client upload to Spaces.
+ * Client PUTs the file to uploadUrl with header Content-Type: contentType,
+ * then registers the document with filePath set to key (or the public url).
+ * Avoids sending the file through the server for faster uploads.
+ */
+export const getPresignedUploadUrl = async (
+  originalName: string,
+  folder: string = "uploads",
+  expiresIn: number = PRESIGNED_EXPIRES_IN
+): Promise<PresignedUploadResult> => {
+  const fileExtension = path.extname(originalName);
+  const fileName = `${uuidv4()}${fileExtension}`;
+  const key = `${folder}/${fileName}`;
+  const contentType = getContentType(fileExtension);
+
+  const command = new PutObjectCommand({
+    Bucket: spacesBucket,
+    Key: key,
+    ContentType: contentType,
+    ACL: "public-read",
+  });
+
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn });
+
+  const url = spacesCdnUrl
+    ? `${spacesCdnUrl}/${key}`
+    : `https://${spacesBucket}.${spacesRegion}.digitaloceanspaces.com/${key}`;
+
+  return {
+    uploadUrl,
+    key,
+    url,
+    contentType,
+    expiresIn,
+  };
 };
 
 /**

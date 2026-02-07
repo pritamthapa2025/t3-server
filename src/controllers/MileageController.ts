@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getMileageLogs,
   getMileageLogById,
@@ -76,7 +77,7 @@ export const getMileageLogsHandler = async (req: Request, res: Response) => {
 
 export const getMileageLogByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -147,7 +148,7 @@ export const createMileageLogHandler = async (req: Request, res: Response) => {
 
 export const updateMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -189,7 +190,7 @@ export const updateMileageLogHandler = async (req: Request, res: Response) => {
 
 export const deleteMileageLogHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -239,7 +240,7 @@ export const verifyMileageLogHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,

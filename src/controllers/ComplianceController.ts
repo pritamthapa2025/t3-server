@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getDashboardKPIs,
   getComplianceCases,
@@ -101,7 +102,7 @@ export const getComplianceCaseByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -176,7 +177,7 @@ export const updateComplianceCaseHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -215,7 +216,7 @@ export const deleteComplianceCaseHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -249,7 +250,7 @@ export const deleteComplianceCaseHandler = async (
 // Update Case Status Handler
 export const updateCaseStatusHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,

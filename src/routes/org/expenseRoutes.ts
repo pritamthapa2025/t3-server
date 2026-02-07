@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getExpenseCategoriesHandler,
@@ -82,7 +82,7 @@ import {
   deleteExpenseReceiptSchema,
 } from "../../validations/expenses.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for receipt uploads
 const upload = multer({

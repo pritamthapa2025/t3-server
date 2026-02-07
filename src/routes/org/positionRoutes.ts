@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getPositionsHandler,
   createPositionHandler,
@@ -18,7 +18,7 @@ import {
   deletePositionSchema,
 } from "../../validations/position.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all position routes
 router.use(authenticate);

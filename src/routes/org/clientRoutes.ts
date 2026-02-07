@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getClientsHandler,
@@ -82,7 +82,7 @@ import {
   updateClientSettingsSchema,
 } from "../../validations/client.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for memory storage (for company logo + contact pictures upload)
 // Using .any() to accept dynamic number of files with pattern matching

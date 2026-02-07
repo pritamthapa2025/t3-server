@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getRolesHandler,
   getRoleByIdHandler,
@@ -19,7 +19,7 @@ import {
   checkRoleNameSchema,
 } from "../../validations/role.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Authentication will be applied per route instead of globally to avoid conflicts
 

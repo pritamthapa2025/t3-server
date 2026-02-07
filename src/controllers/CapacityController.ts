@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import * as capacityService from "../services/capacity.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -6,11 +7,9 @@ import { logger } from "../utils/logger.js";
 export const getDashboardKPIs = async (req: Request, res: Response) => {
   try {
     // T3 employees see all capacity data - organizationId not needed
-    const { date } = req.query;
-
     const kpis = await capacityService.getDashboardKPIs(
       undefined, // T3 employees see all data
-      date as string,
+      asSingleString(req.query.date as string | string[] | undefined) as string,
     );
 
     logger.info("Capacity dashboard KPIs fetched successfully");
@@ -182,7 +181,7 @@ export const updateEmployeeAvailability = async (
       });
     }
 
-    const { employeeId } = req.params;
+    const employeeId = asSingleString(req.params.employeeId);
     const updateData = req.body;
 
     if (!employeeId) {
@@ -314,7 +313,7 @@ export const updateResourceAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { allocationId } = req.params;
+    const allocationId = asSingleString(req.params.allocationId);
     const updateData = req.body;
 
     if (!allocationId) {
@@ -438,7 +437,7 @@ export const updateEmployeeShift = async (req: Request, res: Response) => {
   try {
     // T3 employees see all capacity data - organizationId not needed
 
-    const { shiftId } = req.params;
+    const shiftId = asSingleString(req.params.shiftId);
     const updateData = req.body;
 
     if (!shiftId) {
@@ -477,7 +476,7 @@ export const deleteEmployeeShift = async (req: Request, res: Response) => {
   try {
     // T3 employees see all capacity data - organizationId not needed
 
-    const { shiftId } = req.params;
+    const shiftId = asSingleString(req.params.shiftId);
 
     if (!shiftId) {
       return res.status(400).json({

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 
 // Access control: use USER data (req.user.id), not organization.
 // Organization = CLIENT data (see .cursorrules). For bid handlers, get client org from the bid (bid.organizationId) when needed.
@@ -165,7 +166,7 @@ export const getBidsHandler = async (req: Request, res: Response) => {
 export const getBidByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     // Validate user access
     const userId = validateUserAccess(req, res);
@@ -432,7 +433,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
 export const updateBidHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -802,7 +803,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
 export const deleteBidHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -870,7 +871,7 @@ export const getBidFinancialBreakdownHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -903,7 +904,7 @@ export const updateBidFinancialBreakdownHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -963,7 +964,7 @@ export const getBidOperatingExpensesHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -999,7 +1000,7 @@ export const createBidOperatingExpensesHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1056,7 +1057,7 @@ export const updateBidOperatingExpensesHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1109,7 +1110,7 @@ export const deleteBidOperatingExpensesHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1162,7 +1163,7 @@ export const deleteBidOperatingExpensesHandler = async (
 export const getBidMaterialsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1195,7 +1196,8 @@ export const getBidMaterialByIdHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId", "materialId"])) return;
-    const { bidId, materialId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const materialId = asSingleString(req.params.materialId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1240,7 +1242,7 @@ export const getBidMaterialByIdHandler = async (
 export const createBidMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1295,7 +1297,8 @@ export const createBidMaterialHandler = async (req: Request, res: Response) => {
 export const updateBidMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "bidId"])) return;
-    const { materialId, bidId } = req.params;
+    const materialId = asSingleString(req.params.materialId);
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1351,7 +1354,8 @@ export const updateBidMaterialHandler = async (req: Request, res: Response) => {
 export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["materialId", "bidId"])) return;
-    const { materialId, bidId } = req.params;
+    const materialId = asSingleString(req.params.materialId);
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1406,7 +1410,7 @@ export const deleteBidMaterialHandler = async (req: Request, res: Response) => {
 export const getBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1429,7 +1433,8 @@ export const getBidLaborHandler = async (req: Request, res: Response) => {
 export const getBidLaborByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
-    const { bidId, laborId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const laborId = asSingleString(req.params.laborId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1468,7 +1473,7 @@ export const getBidLaborByIdHandler = async (req: Request, res: Response) => {
 export const createBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1522,8 +1527,8 @@ export const createBidLaborHandler = async (req: Request, res: Response) => {
 export const updateBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["laborId", "bidId"])) return;
-    const { laborId } = req.params;
-    const { bidId } = req.params;
+    const laborId = asSingleString(req.params.laborId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1571,8 +1576,8 @@ export const updateBidLaborHandler = async (req: Request, res: Response) => {
 export const deleteBidLaborHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["laborId", "bidId"])) return;
-    const { laborId } = req.params;
-    const { bidId } = req.params;
+    const laborId = asSingleString(req.params.laborId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1622,7 +1627,8 @@ export const deleteBidLaborHandler = async (req: Request, res: Response) => {
 export const getBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
-    const { bidId, laborId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const laborId = asSingleString(req.params.laborId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -1661,7 +1667,7 @@ export const getBidTravelHandler = async (req: Request, res: Response) => {
 export const getAllBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1685,7 +1691,8 @@ export const getAllBidTravelHandler = async (req: Request, res: Response) => {
 export const getBidTravelByIdHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
-    const { bidId, travelId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const travelId = asSingleString(req.params.travelId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1728,7 +1735,7 @@ export const createBidTravelDirectHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1801,7 +1808,8 @@ export const updateBidTravelDirectHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
-    const { bidId, travelId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const travelId = asSingleString(req.params.travelId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1871,7 +1879,8 @@ export const deleteBidTravelDirectHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId", "travelId"])) return;
-    const { bidId, travelId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const travelId = asSingleString(req.params.travelId);
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
@@ -1937,7 +1946,8 @@ export const deleteBidTravelDirectHandler = async (
 export const createBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId"])) return;
-    const { bidId, laborId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const laborId = asSingleString(req.params.laborId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2007,7 +2017,9 @@ export const createBidTravelHandler = async (req: Request, res: Response) => {
 export const updateBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId", "travelId"])) return;
-    const { bidId, laborId, travelId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const laborId = asSingleString(req.params.laborId);
+    const travelId = asSingleString(req.params.travelId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2071,7 +2083,9 @@ export const updateBidTravelHandler = async (req: Request, res: Response) => {
 export const deleteBidTravelHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "laborId", "travelId"])) return;
-    const { bidId, laborId, travelId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const laborId = asSingleString(req.params.laborId);
+    const travelId = asSingleString(req.params.travelId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2141,7 +2155,7 @@ export const createBulkLaborAndTravelHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2220,7 +2234,7 @@ export const createBulkLaborAndTravelHandler = async (
 export const getBidSurveyDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2252,7 +2266,7 @@ export const updateBidSurveyDataHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2303,7 +2317,7 @@ export const getBidPlanSpecDataHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2335,7 +2349,7 @@ export const updateBidPlanSpecDataHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2390,7 +2404,7 @@ export const getBidDesignBuildDataHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2422,7 +2436,7 @@ export const updateBidDesignBuildDataHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2478,7 +2492,7 @@ export const updateBidDesignBuildDataHandler = async (
 export const getBidTimelineHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2509,7 +2523,7 @@ export const createBidTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2567,8 +2581,8 @@ export const updateBidTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "bidId"])) return;
-    const { eventId } = req.params;
-    const { bidId } = req.params;
+    const eventId = asSingleString(req.params.eventId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2619,8 +2633,8 @@ export const deleteBidTimelineEventHandler = async (
 ) => {
   try {
     if (!validateParams(req, res, ["eventId", "bidId"])) return;
-    const { eventId } = req.params;
-    const { bidId } = req.params;
+    const eventId = asSingleString(req.params.eventId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2671,7 +2685,7 @@ export const deleteBidTimelineEventHandler = async (
 export const getBidNotesHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2699,7 +2713,7 @@ export const getBidNotesHandler = async (req: Request, res: Response) => {
 export const createBidNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2753,8 +2767,8 @@ export const createBidNoteHandler = async (req: Request, res: Response) => {
 export const updateBidNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["noteId", "bidId"])) return;
-    const { noteId } = req.params;
-    const { bidId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2802,8 +2816,8 @@ export const updateBidNoteHandler = async (req: Request, res: Response) => {
 export const deleteBidNoteHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["noteId", "bidId"])) return;
-    const { noteId } = req.params;
-    const { bidId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2854,7 +2868,7 @@ export const deleteBidNoteHandler = async (req: Request, res: Response) => {
 export const getBidHistoryHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2886,7 +2900,7 @@ export const getBidHistoryHandler = async (req: Request, res: Response) => {
 export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["id"])) return;
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2916,7 +2930,7 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
 export const getRelatedBidsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -2956,7 +2970,7 @@ export const createBidDocumentsHandler = async (
   try {
     if (!validateParams(req, res, ["bidId"])) return;
 
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -3057,7 +3071,7 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
 
-    const { bidId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
 
     // Verify bid exists
     const bid = await getBidById(bidId!);
@@ -3091,7 +3105,8 @@ export const getBidDocumentByIdHandler = async (
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
 
-    const { bidId, documentId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
 
     // Verify bid exists
     const bid = await getBidById(bidId!);
@@ -3137,7 +3152,8 @@ export const updateBidDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
 
-    const { bidId, documentId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -3229,7 +3245,8 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["bidId", "documentId"])) return;
 
-    const { bidId, documentId } = req.params;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
@@ -3280,7 +3297,7 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
  */
 export const downloadBidQuotePDF = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -3345,7 +3362,7 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
  */
 export const previewBidQuotePDF = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,

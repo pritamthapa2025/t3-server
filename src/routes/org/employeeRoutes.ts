@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getEmployeesHandler,
@@ -38,7 +38,7 @@ import {
   getEmployeeReviewSummarySchema,
 } from "../../validations/review.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for memory storage (for profile picture upload)
 const upload = multer({

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getBidsHandler,
@@ -120,7 +120,7 @@ import {
 } from "../../validations/bid.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for bid document uploads (multiple files with dynamic field names)
 const uploadBidDocuments = multer({

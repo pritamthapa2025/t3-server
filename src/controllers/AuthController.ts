@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
@@ -903,7 +904,7 @@ export const revokeTrustedDeviceHandler = async (
       });
     }
 
-    const { deviceId } = req.params;
+    const deviceId = asSingleString(req.params.deviceId);
 
     if (!deviceId) {
       return res.status(400).json({

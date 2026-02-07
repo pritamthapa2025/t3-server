@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getFinancialSummary,
   createFinancialSummary,
@@ -72,7 +73,7 @@ export const updateFinancialSummaryHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -134,7 +135,7 @@ export const getJobFinancialSummaryHandler = async (
   res: Response
 ) => {
   try {
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     if (!jobId) {
       return res.status(400).json({ error: "Job ID parameter is required" });
@@ -178,7 +179,7 @@ export const updateJobFinancialSummaryHandler = async (
   res: Response
 ) => {
   try {
-    const { jobId } = req.params;
+    const jobId = asSingleString(req.params.jobId);
 
     if (!jobId) {
       return res.status(400).json({ error: "Job ID parameter is required" });
@@ -235,7 +236,7 @@ export const updateFinancialCostCategoryHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -262,7 +263,7 @@ export const deleteFinancialCostCategoryHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -349,7 +350,7 @@ export const updateCashFlowProjectionHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -375,7 +376,7 @@ export const getCashFlowScenariosHandler = async (
   res: Response
 ) => {
   try {
-    const { projectionId } = req.params;
+    const projectionId = asSingleString(req.params.projectionId);
 
     if (!projectionId) {
       return res
@@ -412,7 +413,7 @@ export const updateCashFlowScenarioHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -469,7 +470,7 @@ export const updateRevenueForecastHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -531,7 +532,7 @@ export const updateFinancialReportHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });
@@ -556,7 +557,7 @@ export const deleteFinancialReportHandler = async (
   res: Response
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({ error: "ID parameter is required" });

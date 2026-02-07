@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getJobsHandler,
@@ -119,7 +119,7 @@ import {
 } from "../../validations/job.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for job document uploads (multiple files with dynamic field names)
 // Note: Job documents are stored in bid_documents table via job.bidId

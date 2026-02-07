@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getEmployeeCompensationsHandler,
   getEmployeeCompensationByIdHandler,
@@ -40,7 +40,7 @@ import {
   deleteEmployeeBenefitSchema,
 } from "../../validations/compensation.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Employee Compensation Routes
 router.get(

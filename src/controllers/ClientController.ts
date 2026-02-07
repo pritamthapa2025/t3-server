@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 // Import client types for better type safety
 // import type { ... } from "../types/client.types.js";
 
@@ -168,7 +169,7 @@ export const getClientsHandler = async (req: Request, res: Response) => {
 // Get client by ID with full details
 export const getClientByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -362,7 +363,7 @@ export const createClientHandler = async (req: Request, res: Response) => {
 export const updateClientHandler = async (req: Request, res: Response) => {
   let uploadedLogoUrl: string | null = null;
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -549,7 +550,7 @@ export const updateClientHandler = async (req: Request, res: Response) => {
 // Delete client (soft delete)
 export const deleteClientHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -581,7 +582,7 @@ export const deleteClientHandler = async (req: Request, res: Response) => {
 // Get all client contacts
 export const getClientContactsHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -610,7 +611,7 @@ export const getClientContactByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { contactId } = req.params;
+    const contactId = asSingleString(req.params.contactId);
 
     if (!contactId) {
       return res
@@ -646,7 +647,7 @@ export const createClientContactHandler = async (
 ) => {
   let uploadedPictureUrl: string | null = null;
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     // Parse contact data - either from JSON body or from form-data field
     let contactData: any;
@@ -717,7 +718,7 @@ export const updateClientContactHandler = async (
 ) => {
   let uploadedPictureUrl: string | null = null;
   try {
-    const { contactId } = req.params;
+    const contactId = asSingleString(req.params.contactId);
 
     if (!contactId) {
       return res
@@ -847,7 +848,7 @@ export const deleteClientContactHandler = async (
   res: Response,
 ) => {
   try {
-    const { contactId } = req.params;
+    const contactId = asSingleString(req.params.contactId);
 
     if (!contactId) {
       return res
@@ -879,7 +880,7 @@ export const deleteClientContactHandler = async (
 // Get all client notes
 export const getClientNotesHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const page = parseInt(req.query.page as string) || 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
     const offset = (page - 1) * limit;
@@ -915,7 +916,7 @@ export const getClientNotesHandler = async (req: Request, res: Response) => {
 // Get single client note
 export const getClientNoteByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { noteId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
 
     if (!noteId) {
       return res
@@ -947,7 +948,7 @@ export const getClientNoteByIdHandler = async (req: Request, res: Response) => {
 // Create client note
 export const createClientNoteHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     const noteData = {
       ...req.body,
       organizationId: id,
@@ -973,7 +974,7 @@ export const createClientNoteHandler = async (req: Request, res: Response) => {
 // Update client note
 export const updateClientNoteHandler = async (req: Request, res: Response) => {
   try {
-    const { noteId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
 
     if (!noteId) {
       return res
@@ -1017,7 +1018,7 @@ export const updateClientNoteHandler = async (req: Request, res: Response) => {
 // Delete client note
 export const deleteClientNoteHandler = async (req: Request, res: Response) => {
   try {
-    const { noteId } = req.params;
+    const noteId = asSingleString(req.params.noteId);
 
     if (!noteId) {
       return res
@@ -1089,7 +1090,7 @@ export const getClientTypesHandler = async (req: Request, res: Response) => {
 
 export const getClientTypeByIdHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1191,7 +1192,7 @@ export const createClientTypeHandler = async (req: Request, res: Response) => {
 
 export const updateClientTypeHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1275,7 +1276,7 @@ export const updateClientTypeHandler = async (req: Request, res: Response) => {
 
 export const deleteClientTypeHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1362,7 +1363,7 @@ export const getIndustryClassificationByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1481,7 +1482,7 @@ export const updateIndustryClassificationHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1581,7 +1582,7 @@ export const deleteIndustryClassificationHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1669,7 +1670,7 @@ export const getDocumentCategoryByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1758,7 +1759,7 @@ export const updateDocumentCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1821,7 +1822,7 @@ export const deleteDocumentCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -1882,7 +1883,7 @@ export const assignDocumentCategoriesHandler = async (
   res: Response,
 ) => {
   try {
-    const { documentId } = req.params;
+    const documentId = asSingleString(req.params.documentId);
     const { categoryIds } = req.body;
 
     if (!documentId) {
@@ -1915,7 +1916,7 @@ export const createClientDocumentHandler = async (
 ) => {
   let uploadedFileUrl: string | null = null;
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res.status(400).json({
@@ -2023,7 +2024,7 @@ export const getClientDocumentsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id: organizationId } = req.params;
+    const organizationId = asSingleString(req.params.id);
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = (page - 1) * limit;
@@ -2063,7 +2064,7 @@ export const getClientDocumentByIdHandler = async (
   res: Response,
 ) => {
   try {
-    const { documentId } = req.params;
+    const documentId = asSingleString(req.params.documentId);
 
     if (!documentId) {
       return res.status(400).json({
@@ -2102,7 +2103,7 @@ export const updateClientDocumentHandler = async (
 ) => {
   let uploadedFileUrl: string | null = null;
   try {
-    const { documentId } = req.params;
+    const documentId = asSingleString(req.params.documentId);
 
     if (!documentId) {
       return res.status(400).json({
@@ -2223,7 +2224,7 @@ export const deleteClientDocumentHandler = async (
   res: Response,
 ) => {
   try {
-    const { documentId } = req.params;
+    const documentId = asSingleString(req.params.documentId);
 
     if (!documentId) {
       return res.status(400).json({
@@ -2287,7 +2288,8 @@ export const createCategoryAndAssignToDocumentHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, documentId } = req.params;
+    const id = asSingleString(req.params.id);
+    const documentId = asSingleString(req.params.documentId);
     const categoryData = req.body;
 
     if (!id) {
@@ -2363,7 +2365,8 @@ export const getClientDocumentCategoriesHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, documentId } = req.params;
+    const id = asSingleString(req.params.id);
+    const documentId = asSingleString(req.params.documentId);
 
     if (!id) {
       return res.status(400).json({
@@ -2400,7 +2403,9 @@ export const removeDocumentCategoryHandler = async (
   res: Response,
 ) => {
   try {
-    const { id, documentId, categoryId } = req.params;
+    const id = asSingleString(req.params.id);
+    const documentId = asSingleString(req.params.documentId);
+    const categoryId = asSingleString(req.params.categoryId);
 
     if (!id) {
       return res.status(400).json({
@@ -2472,7 +2477,7 @@ export const removeDocumentCategoryHandler = async (
 // Get client settings
 export const getClientSettingsHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res
@@ -2511,7 +2516,7 @@ export const updateClientSettingsHandler = async (
   res: Response,
 ) => {
   try {
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
 
     if (!id) {
       return res

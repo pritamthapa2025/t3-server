@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import * as invoicingService from "../services/invoicing.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -40,7 +41,7 @@ export const getPaymentById = async (req: Request, res: Response) => {
     // organizationId is optional - can be provided in query params for filtering, or derived from payment
     const organizationId = req.query.organizationId as string | undefined;
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -144,7 +145,7 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -214,7 +215,7 @@ export const deletePayment = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -253,7 +254,7 @@ export const processPayment = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -327,7 +328,7 @@ export const markPaymentAsCleared = async (req: Request, res: Response) => {
       });
     }
 
-    const { id } = req.params;
+    const id = asSingleString(req.params.id);
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -395,7 +396,7 @@ export const getPaymentAllocations = async (req: Request, res: Response) => {
     // organizationId is optional - can be provided in query params or derived from payment
     const organizationId = req.query.organizationId as string | undefined;
 
-    const { paymentId } = req.params;
+    const paymentId = asSingleString(req.params.paymentId);
     if (!paymentId) {
       return res.status(400).json({
         success: false,
@@ -453,7 +454,7 @@ export const createPaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { paymentId } = req.params;
+    const paymentId = asSingleString(req.params.paymentId);
     if (!paymentId) {
       return res.status(400).json({
         success: false,
@@ -526,7 +527,8 @@ export const updatePaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { paymentId, allocationId } = req.params;
+    const paymentId = asSingleString(req.params.paymentId);
+    const allocationId = asSingleString(req.params.allocationId);
     if (!paymentId || !allocationId) {
       return res.status(400).json({
         success: false,
@@ -583,7 +585,8 @@ export const deletePaymentAllocation = async (req: Request, res: Response) => {
       });
     }
 
-    const { paymentId, allocationId } = req.params;
+    const paymentId = asSingleString(req.params.paymentId);
+    const allocationId = asSingleString(req.params.allocationId);
     if (!paymentId || !allocationId) {
       return res.status(400).json({
         success: false,

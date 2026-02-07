@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import {
   getTimesheetsHandler,
   createTimesheetHandler,
@@ -33,7 +33,7 @@ import {
   getTimesheetKPIsQuerySchema,
 } from "../../validations/timesheet.validations.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Apply authentication middleware to all timesheet routes
 router.use(authenticate);

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import { RoleRepository } from "../repositories/RoleRepository.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -48,7 +49,7 @@ export const getRolesHandler = async (req: Request, res: Response) => {
 // Get role by ID
 export const getRoleByIdHandler = async (req: Request, res: Response) => {
   try {
-    const roleId = parseInt(req.params.id || '0');
+    const roleId = parseInt(asSingleString(req.params.id) || "0", 10);
     
     const role = await RoleRepository.getRoleById(roleId);
     
@@ -137,7 +138,7 @@ export const createRoleHandler = async (req: Request, res: Response) => {
 // Update a role
 export const updateRoleHandler = async (req: Request, res: Response) => {
   try {
-    const roleId = parseInt(req.params.id || '0');
+    const roleId = parseInt(asSingleString(req.params.id) || "0", 10);
     const { name, description } = req.body;
 
     // Check if role exists
@@ -215,7 +216,7 @@ export const updateRoleHandler = async (req: Request, res: Response) => {
 // Delete a role (soft delete)
 export const deleteRoleHandler = async (req: Request, res: Response) => {
   try {
-    const roleId = parseInt(req.params.id || '0');
+    const roleId = parseInt(asSingleString(req.params.id) || "0", 10);
 
     const deletedRole = await RoleRepository.deleteRole(roleId);
     

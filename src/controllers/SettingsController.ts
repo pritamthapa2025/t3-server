@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import * as SettingsService from "../services/settings.service.js";
 import { successResponse, errorResponse } from "../utils/response.js";
 
@@ -47,7 +48,7 @@ export const getLaborRates = async (req: Request, res: Response) => {
 
 export const getLaborRateById = async (req: Request, res: Response) => {
   try {
-    const laborRatesId = req.params.laborRatesId;
+    const laborRatesId = asSingleString(req.params.laborRatesId);
     if (laborRatesId === undefined) {
       return errorResponse(res, "laborRatesId is required", 400);
     }
@@ -63,7 +64,7 @@ export const getLaborRateById = async (req: Request, res: Response) => {
 
 export const updateLaborRate = async (req: Request, res: Response) => {
   try {
-    const laborRatesId = req.params.laborRatesId;
+    const laborRatesId = asSingleString(req.params.laborRatesId);
     if (laborRatesId === undefined) {
       return errorResponse(res, "laborRatesId is required", 400);
     }
@@ -84,7 +85,7 @@ export const updateLaborRate = async (req: Request, res: Response) => {
 
 export const deleteLaborRate = async (req: Request, res: Response) => {
   try {
-    const laborRatesId = req.params.laborRatesId;
+    const laborRatesId = asSingleString(req.params.laborRatesId);
     if (laborRatesId === undefined) {
       return errorResponse(res, "laborRatesId is required", 400);
     }
@@ -162,7 +163,7 @@ export const getTravelOrigins = async (req: Request, res: Response) => {
 
 export const getTravelOriginById = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -188,7 +189,7 @@ export const createTravelOrigin = async (req: Request, res: Response) => {
 
 export const updateTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -206,7 +207,7 @@ export const updateTravelOrigin = async (req: Request, res: Response) => {
 
 export const deleteTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -219,7 +220,7 @@ export const deleteTravelOrigin = async (req: Request, res: Response) => {
 
 export const setDefaultTravelOrigin = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -295,7 +296,7 @@ export const getProposalBasisTemplateById = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -335,7 +336,7 @@ export const updateProposalBasisTemplate = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -356,7 +357,7 @@ export const deleteProposalBasisTemplate = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -394,7 +395,7 @@ export const getTermsConditionsTemplateById = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -438,7 +439,7 @@ export const updateTermsConditionsTemplate = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -463,7 +464,7 @@ export const deleteTermsConditionsTemplate = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }
@@ -479,7 +480,7 @@ export const setDefaultTermsConditionsTemplate = async (
   res: Response,
 ) => {
   try {
-    const id = req.params.id;
+    const id = asSingleString(req.params.id);
     if (id === undefined) {
       return errorResponse(res, "id is required", 400);
     }

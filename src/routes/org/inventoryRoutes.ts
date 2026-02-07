@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getInventoryItemsHandler,
@@ -117,7 +117,7 @@ import {
 } from "../../validations/inventory.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Configure multer for memory storage (for item image upload)
 const upload = multer({

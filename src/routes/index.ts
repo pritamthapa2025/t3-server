@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type IRouter } from "express";
 import authRoutes from "./auth/authRoutes.js";
 import userRoutes from "./auth/userRoutes.js";
 import roleRoutes from "./auth/roleRoutes.js";
@@ -26,7 +26,7 @@ import paymentRoutes from "./org/paymentRoutes.js";
 import reviewRoutes from "./org/reviewRoutes.js";
 import dashboardRoutes from "./org/dashboardRoutes.js";
 
-const router = Router();
+const router: IRouter = Router();
 
 // Mount auth routes - authRoutes should be mounted first to handle public routes
 router.use("/auth", authRoutes);

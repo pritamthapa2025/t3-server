@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { asSingleString } from "../utils/request-helpers.js";
 import {
   getModuleUIConfig,
   getSimpleUIConfig,
@@ -56,7 +57,7 @@ export const getModuleUIHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { module } = req.params;
+    const module = asSingleString(req.params.module);
     if (!module) {
       return res.status(400).json({
         success: false,
@@ -92,7 +93,7 @@ export const getSimpleUIHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { module } = req.params;
+    const module = asSingleString(req.params.module);
     if (!module) {
       return res.status(400).json({
         success: false,
@@ -184,7 +185,7 @@ export const getButtonPermissionsHandler = async (req: Request, res: Response) =
       });
     }
 
-    const { module } = req.params;
+    const module = asSingleString(req.params.module);
     if (!module) {
       return res.status(400).json({
         success: false,
@@ -220,7 +221,7 @@ export const filterDataHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { module } = req.params;
+    const module = asSingleString(req.params.module);
     const { data } = req.body;
 
     if (!module) {
@@ -265,7 +266,8 @@ export const checkFeatureAccessHandler = async (req: Request, res: Response) => 
       });
     }
 
-    const { module, feature } = req.params;
+    const module = asSingleString(req.params.module);
+    const feature = asSingleString(req.params.feature);
     
     if (!module || !feature) {
       return res.status(400).json({
