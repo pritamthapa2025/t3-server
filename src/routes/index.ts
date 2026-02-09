@@ -26,8 +26,12 @@ import paymentRoutes from "./org/paymentRoutes.js";
 import reviewRoutes from "./org/reviewRoutes.js";
 import dashboardRoutes from "./org/dashboardRoutes.js";
 import notificationRoutes from "./org/notificationRoutes.js";
+import configRoutes from "./config/configRoutes.js";
 
 const router: IRouter = Router();
+
+// Mount public config routes (no auth required - for client initialization)
+router.use("/config", configRoutes);
 
 // Mount auth routes - authRoutes should be mounted first to handle public routes
 router.use("/auth", authRoutes);

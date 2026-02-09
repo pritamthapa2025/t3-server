@@ -93,7 +93,7 @@ export async function sendNewUserPasswordSetupEmail(
   const api = getTransactionalApi();
   if (!api) return;
 
-  const setupUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const setupUrl = process.env.CLIENT_URL || "http://localhost:3000";
   const link = `${setupUrl}/set-password?token=${encodeURIComponent(setupToken)}`;
 
   const sendSmtpEmail = new SendSmtpEmail();
