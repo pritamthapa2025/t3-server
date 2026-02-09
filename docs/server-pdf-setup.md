@@ -4,13 +4,12 @@ Quote and invoice PDFs are generated with **Puppeteer** (headless Chrome). It wo
 
 ## Easy Panel + Nixpacks (GitHub deploy)
 
-This repo includes a **`nixpacks.toml`** that installs Chromium during the Nixpacks build, so PDFs work after deploy.
+This repo includes a **`nixpacks.toml`** that installs Chromium during the Nixpacks build via **Nix** (`nixPkgs`), so PDFs work after deploy. Ubuntu Jammy no longer provides the `chromium` apt package (it’s snap-only), so we use Nix’s Chromium instead.
 
-- Commit and push `nixpacks.toml` (already in the repo).
-- Redeploy your app on Easy Panel so the new build runs.
-- No extra env vars are required; the app looks for `/usr/bin/chromium` automatically.
+- Commit and push the latest `nixpacks.toml` and redeploy on Easy Panel.
+- No extra env vars are required; the app finds Chromium in standard paths and on `PATH` (e.g. Nix profile bin).
 
-If the build fails with “package chromium not found”, your Nixpacks base image may be Ubuntu (where Chromium is often snap-only). In that case, in Easy Panel set an env var **`PUPPETEER_EXECUTABLE_PATH`** = `/usr/bin/chromium` and try adding `chromium-browser` in `nixpacks.toml` under `aptPkgs` instead of `chromium`, or use a custom Dockerfile that installs Chromium.
+If the build fails (e.g. Nix package name differs), set **`PUPPETEER_EXECUTABLE_PATH`** in Easy Panel to the full path of the `chromium` binary in your image.
 
 ## Fix: Install Chromium on the server (manual / VPS)
 

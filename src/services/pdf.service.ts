@@ -44,7 +44,7 @@ function getChromeExecutablePath(): string | undefined {
     ];
     return candidates.find((p) => fs.existsSync(p));
   }
-  // Linux (e.g. server/Docker): use system Chromium/Chrome if installed
+  // Linux: fixed paths first, then resolve from PATH (e.g. Nixpacks/Nix installs to profile bin)
   const linuxCandidates = [
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
@@ -52,7 +52,17 @@ function getChromeExecutablePath(): string | undefined {
     "/usr/bin/google-chrome-stable",
     "/snap/bin/chromium",
   ];
-  return linuxCandidates.find((p) => fs.existsSync(p));
+  const fromList = linuxCandidates.find((p) => fs.existsSync(p));
+  if (fromList) return fromList;
+  const pathEnv = process.env.PATH ?? "";
+  const pathDirs = pathEnv.split(path.delimiter);
+  for (const dir of pathDirs) {
+    for (const name of ["chromium", "chromium-browser"]) {
+      const full = path.join(dir, name);
+      if (fs.existsSync(full)) return full;
+    }
+  }
+  return undefined;
 }
 
 /**
