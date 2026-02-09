@@ -1,0 +1,10 @@
+# Nixpacks config for Easy Panel / GitHub deploys
+# Installs Chromium so quote & invoice PDF generation (Puppeteer) works on the server.
+
+[phases.setup]
+# "..." keeps default provider packages; add Chromium for PDF generation
+aptPkgs = ["...", "chromium"]
+
+# Optional: skip Puppeteer's Chrome download since we use system Chromium (saves build time)
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"

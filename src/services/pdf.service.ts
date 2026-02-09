@@ -25,23 +25,39 @@ function resolveTemplatePath(templateName: string): string {
 // Browser instance management
 let browserInstance: Browser | null = null;
 
-/** Resolve Chrome/Edge path: env var, or common Windows locations so PDF works without running `npx puppeteer browsers install chrome` */
+/**
+ * Resolve Chrome/Chromium path for PDF generation.
+ * 1. PUPPETEER_EXECUTABLE_PATH env (e.g. on server: /usr/bin/chromium)
+ * 2. On Windows: common Chrome/Edge install paths
+ * 3. On Linux: common Chromium/Chrome paths (so server can use system-installed browser)
+ * If none found, Puppeteer uses its cache (requires: npx puppeteer browsers install chrome).
+ */
 function getChromeExecutablePath(): string | undefined {
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
-  if (process.platform !== "win32") return undefined;
-  const candidates = [
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    ];
+    return candidates.find((p) => fs.existsSync(p));
+  }
+  // Linux (e.g. server/Docker): use system Chromium/Chrome if installed
+  const linuxCandidates = [
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/snap/bin/chromium",
   ];
-  return candidates.find((p) => fs.existsSync(p));
+  return linuxCandidates.find((p) => fs.existsSync(p));
 }
 
 /**
  * Get or create browser instance (singleton pattern for performance).
- * Uses PUPPETEER_EXECUTABLE_PATH or system Chrome/Edge on Windows if Puppeteer's bundled Chrome is not installed.
+ * Uses PUPPETEER_EXECUTABLE_PATH, or system Chrome/Edge (Windows) / Chromium (Linux) when available.
  */
 const getBrowser = async (): Promise<Browser> => {
   if (!browserInstance || !browserInstance.isConnected()) {

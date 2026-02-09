@@ -9,6 +9,7 @@ import {
   fieldPermissions,
 } from "../schema/features.schema.js";
 import type { permissionModuleEnum, accessLevelEnum, uiElementTypeEnum } from "../enums/auth.enums.js";
+import { runSeedOnce } from "../../utils/seed-tracker.js";
 
 // Type helpers for enum values
 type ModuleType = (typeof permissionModuleEnum.enumValues)[number];
@@ -195,6 +196,16 @@ const FEATURES_DATA = [
   { module: "reports", featureCode: "view_reports", featureName: "View Reports", description: "View system reports" },
   { module: "reports", featureCode: "generate_reports", featureName: "Generate Reports", description: "Generate custom reports" },
   { module: "reports", featureCode: "export_reports", featureName: "Export Reports", description: "Export reports to various formats" },
+
+  // === SETTINGS MODULE (Executive only) ===
+  { module: "settings", featureCode: "view_settings", featureName: "View Settings", description: "Access settings module" },
+  { module: "settings", featureCode: "edit_general", featureName: "Edit General Settings", description: "Edit company info and announcements" },
+  { module: "settings", featureCode: "edit_labor_rates", featureName: "Edit Labor Rates", description: "Manage labor rate templates" },
+  { module: "settings", featureCode: "edit_vehicle_travel", featureName: "Edit Vehicle & Travel", description: "Manage vehicle and travel defaults" },
+  { module: "settings", featureCode: "edit_operating_expenses", featureName: "Edit Operating Expenses", description: "Manage operating expense defaults" },
+  { module: "settings", featureCode: "edit_proposal_templates", featureName: "Edit Proposal Templates", description: "Manage proposal basis templates" },
+  { module: "settings", featureCode: "edit_terms_conditions", featureName: "Edit Terms & Conditions", description: "Manage terms and conditions templates" },
+  { module: "settings", featureCode: "edit_invoice_settings", featureName: "Edit Invoice Settings", description: "Manage invoice settings" },
 
   // Performance & Compliance Features
   { module: "performance", featureCode: "view_own_reviews", featureName: "View Own Reviews", description: "View own performance reviews" },
@@ -470,6 +481,16 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.TECHNICIAN, module: "reports", featureCode: "generate_reports", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "reports", featureCode: "export_reports", accessLevel: "none" },
 
+  // Settings - No access (Executive only)
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "view_settings", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_general", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_labor_rates", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_vehicle_travel", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_operating_expenses", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_proposal_templates", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "none" },
+
   // === MANAGER (Role ID: 2) - Full operational access, limited financial ===
   
   // Dashboard - Full view except financial details
@@ -636,6 +657,16 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "reports", featureCode: "generate_reports", accessLevel: "create" },
   { roleId: ROLES.MANAGER, module: "reports", featureCode: "export_reports", accessLevel: "create" },
 
+  // Settings - No access (Executive only)
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "view_settings", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_general", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_labor_rates", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_vehicle_travel", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_operating_expenses", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_proposal_templates", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "none" },
+
   // === EXECUTIVE (Role ID: 1) - Full admin access ===
   
   // Dashboard - Full access
@@ -801,6 +832,16 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.EXECUTIVE, module: "reports", featureCode: "view_reports", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "reports", featureCode: "generate_reports", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "reports", featureCode: "export_reports", accessLevel: "admin" },
+
+  // Settings - Full access (Executive only)
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "view_settings", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_general", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_labor_rates", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_vehicle_travel", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_operating_expenses", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_proposal_templates", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "admin" },
 
   // OLD DATA - TO BE CLEANED UP LATER
   // Clients - Full access except financial details
@@ -1208,9 +1249,9 @@ const ROLE_UI_ELEMENTS_DATA = [
 ];
 
 /**
- * Seed function to populate all feature-based permission data
+ * Internal seed function to populate all feature-based permission data
  */
-export async function seedFeaturePermissions() {
+async function seedFeaturePermissionsInternal(): Promise<number> {
   try {
     console.log("🌱 Starting feature permissions seed...");
 
@@ -1315,10 +1356,22 @@ export async function seedFeaturePermissions() {
     console.log(`   Data Filters: ${DATA_FILTERS_DATA.length}`);
     console.log(`   Field Permissions: ${FIELD_PERMISSIONS_DATA.length}`);
 
+    return FEATURES_DATA.length;
   } catch (error) {
     console.error("❌ Error seeding feature permissions:", error);
     throw error;
   }
+}
+
+/**
+ * Public seed function with tracking
+ */
+export async function seedFeaturePermissions() {
+  await runSeedOnce(
+    "feature_permissions",
+    seedFeaturePermissionsInternal,
+    "1.0.0"
+  );
 }
 
 // Export for use in main seed script

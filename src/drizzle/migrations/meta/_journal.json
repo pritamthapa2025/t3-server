@@ -519,6 +519,13 @@
       "when": 1770477481229,
       "tag": "0073_charming_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1770631345185,
+      "tag": "0074_condemned_prowler",
+      "breakpoints": true
     }
   ]
 }

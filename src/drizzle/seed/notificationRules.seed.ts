@@ -3,6 +3,7 @@ import path from "path";
 import { db } from "../../config/db.js";
 import { notificationRules } from "../schema/notifications.schema.js";
 import { logger } from "../../utils/logger.js";
+import { runSeedOnce } from "../../utils/seed-tracker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -10,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
  * Seed notification rules based on T3 Notification checklist CSV
  * This creates the rules for all 95+ notification events
  */
-export async function seedNotificationRules() {
+async function seedNotificationRulesInternal(): Promise<number> {
   logger.info("Seeding notification rules...");
 
   const rules = [
@@ -600,19 +601,31 @@ export async function seedNotificationRules() {
   ];
 
   try {
-    // Insert rules (ignore conflicts if they already exist)
+    // Insert rules (will fail on duplicate event_type due to unique constraint)
     for (const rule of rules) {
       await db
         .insert(notificationRules)
         .values(rule as any)
-        .onConflictDoNothing();
+        .onConflictDoNothing({ target: notificationRules.eventType });
     }
 
     logger.info(`✅ Successfully seeded ${rules.length} notification rules`);
+    return rules.length;
   } catch (error) {
     logger.error("❌ Error seeding notification rules:", error);
     throw error;
   }
+}
+
+/**
+ * Public seed function with tracking
+ */
+export async function seedNotificationRules() {
+  await runSeedOnce(
+    "notification_rules",
+    seedNotificationRulesInternal,
+    "1.0.0"
+  );
 }
 
 // Run seeder when this file is the entry point (works on Windows and Unix)

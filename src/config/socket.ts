@@ -58,10 +58,28 @@ export async function setupSocketIO(httpServer: any): Promise<Server> {
   }
 
   // Authentication middleware
+  // Accept token from: auth object, query string, or headers (Authorization: Bearer / token / x-auth-token)
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token;
-      
+      const authToken = socket.handshake.auth?.token;
+      const queryToken =
+        typeof socket.handshake.query?.token === "string"
+          ? socket.handshake.query.token
+          : undefined;
+      const headers = socket.handshake.headers || {};
+      const authHeader = headers.authorization || headers.Authorization;
+      const bearerToken =
+        typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+          ? authHeader.slice(7).trim()
+          : undefined;
+      const headerToken =
+        bearerToken ??
+        (typeof (headers.token ?? headers["x-auth-token"]) === "string"
+          ? (headers.token ?? headers["x-auth-token"])
+          : undefined);
+
+      const token = authToken ?? queryToken ?? headerToken;
+
       if (!token) {
         logger.warn("Socket.IO: Connection attempt without token");
         return next(new Error("Authentication token required"));

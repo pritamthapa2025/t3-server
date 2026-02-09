@@ -7,6 +7,7 @@ import {
   timestamp,
   jsonb,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 
@@ -146,6 +147,10 @@ export const notificationRules = notificationSchema.table(
     enabledIdx: index("notification_rules_enabled_idx").on(table.enabled),
     categoryEventIdx: index("notification_rules_category_event_idx").on(
       table.category,
+      table.eventType
+    ),
+    // Unique constraint to prevent duplicate event types
+    uniqueEventType: unique("notification_rules_event_type_unique").on(
       table.eventType
     ),
   })

@@ -76,9 +76,27 @@ export async function resolveRecipients(
       }
 
       case "supervisor": {
-        // Get all supervisors
-        const supervisors = await getUsersByRole("supervisor");
-        supervisors.forEach((u) => userIds.add(u.id));
+        // Get the assigned technician's direct supervisor (reportsTo)
+        if (event.data.assignedTechnicianId) {
+          const technicianEmployee = await db
+            .select({ reportsTo: employees.reportsTo })
+            .from(employees)
+            .where(eq(employees.userId, event.data.assignedTechnicianId))
+            .limit(1);
+
+          if (technicianEmployee[0]?.reportsTo) {
+            userIds.add(technicianEmployee[0].reportsTo);
+          } else {
+            // No direct supervisor assigned - don't send to anyone (technician already gets it via "assigned_technician" role)
+            logger.info(
+              `No direct supervisor found for technician ${event.data.assignedTechnicianId}, skipping supervisor notification`
+            );
+          }
+        } else {
+          // If no specific technician, send to all supervisors
+          const supervisors = await getUsersByRole("supervisor");
+          supervisors.forEach((u) => userIds.add(u.id));
+        }
         break;
       }
 
