@@ -1865,6 +1865,8 @@ export const getBidWithAllData = async (id: string) => {
     history,
     clientInfo,
     operatingExpenses,
+    documents,
+    media,
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
@@ -1877,6 +1879,8 @@ export const getBidWithAllData = async (id: string) => {
     getBidHistory(id),
     getOrganizationById(organizationId),
     getBidOperatingExpenses(id, organizationId),
+    getBidDocuments(id),
+    getBidMedia(id),
   ]);
 
   // Get travel for each labor entry
@@ -1890,6 +1894,8 @@ export const getBidWithAllData = async (id: string) => {
     materials,
     labor,
     travel,
+    documents,
+    media,
     surveyData,
     planSpecData,
     designBuildData,

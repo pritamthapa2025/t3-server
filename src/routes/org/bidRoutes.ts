@@ -275,10 +275,14 @@ router
     deleteBidHandler,
   );
 
-// Get bid with all related data
+// Get bid with all related data (bid, financialBreakdown, operatingExpenses, materials, labor, travel, documents, clientInfo, timeline, notes, history, job-type data)
 router
   .route("/bids/:id/complete")
-  .get(validate(getBidWithAllDataSchema), getBidWithAllDataHandler);
+  .get(
+    authorizeFeature("bids", "view"),
+    validate(getBidWithAllDataSchema),
+    getBidWithAllDataHandler,
+  );
 
 // Get all bids for the same organization (related bids)
 router

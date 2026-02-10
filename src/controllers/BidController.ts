@@ -178,30 +178,28 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    // Return same shape as POST create: bid, financialBreakdown, operatingExpenses, materials, labor, travel, documents, clientInfo
-    const bidData = await getBidWithAllData(id!);
+    const bid = await getBidByIdSimple(id!);
 
-    if (!bidData) {
+    if (!bid) {
       return res.status(404).json({
         success: false,
         message: "Bid not found",
       });
     }
 
-    const documents = await getBidDocuments(id!);
+    // Get documents and client (organization) info for the bid
+    const [documents, clientInfo] = await Promise.all([
+      getBidDocuments(id!),
+      getOrganizationById(bid.organizationId),
+    ]);
 
     logger.info("Bid fetched successfully");
     return res.status(200).json({
       success: true,
       data: {
-        bid: bidData.bid,
-        financialBreakdown: bidData.financialBreakdown,
-        operatingExpenses: bidData.operatingExpenses,
-        materials: bidData.materials,
-        labor: bidData.labor,
-        travel: bidData.travel,
+        ...bid,
         documents,
-        clientInfo: bidData.clientInfo,
+        clientInfo: clientInfo?.organization ?? null,
       },
     });
   } catch (error) {
@@ -2921,10 +2919,15 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Same format as POST create: bid fields at top level of data (no nested bid object), plus financialBreakdown, materials, labor, travel, documents, media, etc.
+    const { bid, ...rest } = bidData;
     logger.info("Bid with all data fetched successfully");
     return res.status(200).json({
       success: true,
-      data: bidData,
+      data: {
+        ...bid,
+        ...rest,
+      },
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
