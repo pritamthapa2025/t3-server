@@ -679,7 +679,13 @@ export const getEmployeesWithAssignedTasks = async (
 ) => {
   const employeeConditions = [eq(employees.isDeleted, false)];
   if (filters?.status) {
-    employeeConditions.push(eq(employees.status, filters.status as any));
+    if (filters.status === "active") {
+      employeeConditions.push(
+        inArray(employees.status, ["available", "on_leave", "in_field"]),
+      );
+    } else {
+      employeeConditions.push(eq(employees.status, filters.status as any));
+    }
   }
 
   const totalResult = await db

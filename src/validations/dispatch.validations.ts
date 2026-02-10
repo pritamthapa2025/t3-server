@@ -226,7 +226,7 @@ export const getEmployeesWithAssignedTasksQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     status: z
-      .enum(["available", "on_leave", "in_field", "terminated", "suspended"])
+      .enum(["available", "on_leave", "in_field", "terminated", "suspended", "active"])
       .optional(),
   }),
 });
