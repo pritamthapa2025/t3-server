@@ -644,6 +644,9 @@ export const createInvoice = async (data: {
       });
     }
 
+    // Recalculate invoice totals after adding line items
+    await recalculateInvoiceTotals(invoice.id);
+
     return { invoiceId: invoice.id, organizationId };
   });
 };
@@ -1648,14 +1651,14 @@ export const getInvoiceKPIs = async (
   const avgInvoice = totalInvoices > 0 ? totalAmount / totalInvoices : 0;
 
   return {
-    totalInvoiced: totalAmount.toFixed(2),
+    totalInvoiced: parseFloat(totalAmount.toFixed(2)),
     invoiceCount: totalInvoices,
-    totalPaid: totalPaid.toFixed(2),
-    collectionRate: collectionRate.toFixed(1),
-    outstanding: totalOutstanding.toFixed(2),
-    overdue: overdueAmount.toFixed(2),
+    totalPaid: parseFloat(totalPaid.toFixed(2)),
+    collectionRate: parseFloat(collectionRate.toFixed(1)),
+    outstanding: parseFloat(totalOutstanding.toFixed(2)),
+    overdue: parseFloat(overdueAmount.toFixed(2)),
     overdueCount: overdueCount,
-    avgInvoice: avgInvoice.toFixed(2),
+    avgInvoice: parseFloat(avgInvoice.toFixed(2)),
   };
 };
 
