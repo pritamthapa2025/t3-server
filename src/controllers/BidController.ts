@@ -99,6 +99,11 @@ import {
   getBidDocumentById,
   updateBidDocument,
   deleteBidDocument,
+  createBidMedia,
+  getBidMedia,
+  getBidMediaById,
+  updateBidMedia,
+  deleteBidMedia,
 } from "../services/bid.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import {
@@ -3292,6 +3297,326 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
   }
 };
 
+// ============================
+// Bid Media Handlers
+// ============================
+
+export const createBidMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Extract files with pattern media_0, media_1, etc.
+    const files = (req.files as Express.Multer.File[]) || [];
+    const mediaFiles = files.filter((file) => file.fieldname.startsWith("media_"));
+
+    if (mediaFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No files provided. Files must be uploaded with field names like 'media_0', 'media_1', etc.",
+      });
+    }
+
+    // Upload files and create media records
+    const uploadedMedia = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < mediaFiles.length; i++) {
+      const file = mediaFiles[i];
+      if (!file) continue;
+
+      try {
+        // Upload file to storage
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-media",
+        );
+
+        // Determine media type from MIME type
+        let mediaType = "other";
+        if (file.mimetype.startsWith("image/")) {
+          mediaType = "photo";
+        } else if (file.mimetype.startsWith("video/")) {
+          mediaType = "video";
+        } else if (file.mimetype.startsWith("audio/")) {
+          mediaType = "audio";
+        }
+
+        // Create media record
+        const media = await createBidMedia({
+          bidId: bidId!,
+          fileName: file.originalname,
+          filePath: uploadResult.filePath,
+          fileUrl: uploadResult.url,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          mediaType,
+          caption: req.body.caption || undefined,
+          uploadedBy: userId!,
+        });
+
+        uploadedMedia.push(media);
+      } catch (uploadError: any) {
+        logger.logApiError(`File upload error for ${file.originalname}`, uploadError, req);
+        errors.push(`Failed to upload ${file.originalname}: ${uploadError.message}`);
+      }
+    }
+
+    if (uploadedMedia.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "All file uploads failed",
+        errors,
+      });
+    }
+
+    logger.info(`${uploadedMedia.length} media files uploaded for bid ${bidId}`);
+    return res.status(201).json({
+      success: true,
+      data: uploadedMedia,
+      message: `${uploadedMedia.length} file(s) uploaded successfully`,
+      ...(errors.length > 0 && { errors }),
+    });
+  } catch (error: unknown) {
+    logger.logApiError("Bid media upload error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined,
+    });
+  }
+};
+
+export const getBidMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const media = await getBidMedia(bidId!);
+
+    logger.info(`Bid media fetched successfully for bid ${bidId}`);
+    return res.status(200).json({
+      success: true,
+      data: media,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getBidMediaByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "mediaId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const mediaId = asSingleString(req.params.mediaId);
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const media = await getBidMediaById(mediaId!);
+
+    if (!media) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    // Verify media belongs to the bid
+    if (media.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    logger.info(`Bid media ${mediaId} fetched successfully`);
+    return res.status(200).json({
+      success: true,
+      data: media,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "mediaId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const mediaId = asSingleString(req.params.mediaId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Verify media exists and belongs to bid
+    const existingMedia = await getBidMediaById(mediaId!);
+    if (!existingMedia || existingMedia.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    // Handle file upload if provided
+    let uploadedFileUrl: string | null = null;
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-media",
+        );
+        uploadedFileUrl = uploadResult.url;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new media file. Please try again.",
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    if (req.body.fileName) updateData.fileName = req.body.fileName;
+    if (req.body.mediaType) updateData.mediaType = req.body.mediaType;
+    if (req.body.caption) updateData.caption = req.body.caption;
+    if (uploadedFileUrl) {
+      updateData.fileUrl = uploadedFileUrl;
+      updateData.filePath = uploadedFileUrl; // Assuming filePath stores the same URL
+    }
+
+    const updatedMedia = await updateBidMedia(mediaId!, updateData);
+
+    if (!updatedMedia) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    logger.info(`Bid media ${mediaId} updated successfully`);
+    return res.status(200).json({
+      success: true,
+      data: updatedMedia,
+      message: "Media updated successfully",
+    });
+  } catch (error: unknown) {
+    logger.logApiError("Bid media update error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined,
+    });
+  }
+};
+
+export const deleteBidMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "mediaId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const mediaId = asSingleString(req.params.mediaId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Verify bid exists
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    // Verify media exists and belongs to bid
+    const existingMedia = await getBidMediaById(mediaId!);
+    if (!existingMedia || existingMedia.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    const deletedMedia = await deleteBidMedia(mediaId!);
+
+    if (!deletedMedia) {
+      return res.status(404).json({
+        success: false,
+        message: "Media not found",
+      });
+    }
+
+    logger.info(`Bid media ${mediaId} deleted successfully`);
+    return res.status(200).json({
+      success: true,
+      message: "Media deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 /**
  * Download quote (bid) as PDF
  * GET /bids/:id/pdf
@@ -3328,11 +3653,18 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       organizationId,
     );
 
+    // Use bid's primary contact if available, else fall back to organization's primary contact
+    const contactForQuote = bid.primaryContact ?? (
+      client.organization.primaryContact && client.organization.email
+        ? { fullName: client.organization.primaryContact, email: client.organization.email }
+        : null
+    );
+
     const pdfData = prepareQuoteDataForPDF(
       bid,
       client.organization,
       financialBreakdown,
-      bid.primaryContact ?? null,
+      contactForQuote,
       bid.property ?? null,
     );
 
@@ -3393,11 +3725,18 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       organizationId,
     );
 
+    // Use bid's primary contact if available, else fall back to organization's primary contact
+    const contactForQuote = bid.primaryContact ?? (
+      client.organization.primaryContact && client.organization.email
+        ? { fullName: client.organization.primaryContact, email: client.organization.email }
+        : null
+    );
+
     const pdfData = prepareQuoteDataForPDF(
       bid,
       client.organization,
       financialBreakdown,
-      bid.primaryContact ?? null,
+      contactForQuote,
       bid.property ?? null,
     );
 
@@ -3444,21 +3783,27 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       });
     }
 
-    const primaryContact = bid.primaryContact ?? null;
-    if (!primaryContact?.email) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "No primary contact with email found for this bid. Please set a primary contact with an email address before sending the quote.",
-      });
-    }
-
     const organizationId = bid.organizationId;
     const client = await getOrganizationById(organizationId);
     if (!client?.organization) {
       return res.status(500).json({
         success: false,
         message: "Client organization not found",
+      });
+    }
+
+    // Use bid's primary contact if available, else fall back to organization's primary contact
+    const primaryContact = bid.primaryContact ?? (
+      client.organization.primaryContact && client.organization.email
+        ? { fullName: client.organization.primaryContact, email: client.organization.email }
+        : null
+    );
+
+    if (!primaryContact?.email) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No primary contact with email found for this bid. Please set a primary contact with an email address before sending the quote.",
       });
     }
 
@@ -3547,7 +3892,13 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       id,
       organizationId,
     );
-    const primaryContact = bid.primaryContact ?? null;
+
+    // Use bid's primary contact if available, else fall back to organization's primary contact
+    const primaryContact = bid.primaryContact ?? (
+      client.organization.primaryContact && client.organization.email
+        ? { fullName: client.organization.primaryContact, email: client.organization.email }
+        : null
+    );
 
     const pdfData = prepareQuoteDataForPDF(
       bid,

@@ -54,6 +54,11 @@ import {
   getBidDocumentByIdHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
+  createBidMediaHandler,
+  getBidMediaHandler,
+  getBidMediaByIdHandler,
+  updateBidMediaHandler,
+  deleteBidMediaHandler,
   downloadBidQuotePDF,
   previewBidQuotePDF,
   sendQuoteEmail,
@@ -117,6 +122,11 @@ import {
   getBidDocumentByIdSchema,
   updateBidDocumentSchema,
   deleteBidDocumentSchema,
+  createBidMediaSchema,
+  getBidMediaSchema,
+  getBidMediaByIdSchema,
+  updateBidMediaSchema,
+  deleteBidMediaSchema,
   downloadBidQuotePDFSchema,
   previewBidQuotePDFSchema,
   sendQuoteSchema,
@@ -137,6 +147,36 @@ const uploadBidDocuments = multer({
     cb(null, true);
   },
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
+
+// Configure multer for bid media uploads (images, videos, audio)
+const uploadBidMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit per file for media
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept images, videos, and audio files
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/svg+xml",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "audio/mpeg",
+      "audio/wav",
+      "audio/ogg",
+    ];
+    
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type: ${file.mimetype}. Only images, videos, and audio files are allowed.`));
+    }
+  },
+}).any(); // Accept any files - controller will handle media_0, media_1, etc. pattern
 
 // Multer error handler middleware
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
@@ -413,6 +453,29 @@ router
     updateBidDocumentHandler,
   )
   .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
+
+// Media Routes
+
+router
+  .route("/bids/:bidId/media")
+  .get(validate(getBidMediaSchema), getBidMediaHandler)
+  .post(
+    uploadBidMedia,
+    handleMulterError,
+    validate(createBidMediaSchema),
+    createBidMediaHandler,
+  );
+
+router
+  .route("/bids/:bidId/media/:mediaId")
+  .get(validate(getBidMediaByIdSchema), getBidMediaByIdHandler)
+  .put(
+    uploadBidMedia,
+    handleMulterError,
+    validate(updateBidMediaSchema),
+    updateBidMediaHandler,
+  )
+  .delete(validate(deleteBidMediaSchema), deleteBidMediaHandler);
 
 // Quote PDF routes
 router.get(

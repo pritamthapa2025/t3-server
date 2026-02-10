@@ -8,6 +8,7 @@ import {
   generateInvoicePDF,
 } from "../services/pdf.service.js";
 import { getOrganizationById } from "../services/client.service.js";
+import { getBidFinancialBreakdown } from "../services/bid.service.js";
 import { sendInvoiceEmail as sendInvoiceEmailService } from "../services/email.service.js";
 import { db } from "../config/db.js";
 import { eq, and } from "drizzle-orm";
@@ -1097,6 +1098,12 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
     const body = req.body ?? {};
     const { subject, message, attachPdf, cc, bcc } = body;
 
+    // Get financial breakdown from bid
+    const financialBreakdown = await getBidFinancialBreakdown(
+      job.bidId,
+      bid.organizationId,
+    );
+
     // Generate PDF if requested
     let pdfAttachment = undefined;
     if (attachPdf !== false) {
@@ -1119,9 +1126,10 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
             : undefined;
         const invoiceData = prepareInvoiceDataForPDF(
           invoice,
-          organization,
+          organization, // T3 Mechanical company info (stays as is from direct db query)
           organization, // client is same as organization
           invoice.lineItems || [],
+          financialBreakdown,
           pdfOptions,
         );
         const pdfBuffer = await generateInvoicePDF(invoiceData);
@@ -1304,6 +1312,12 @@ export const sendInvoiceEmailTest = async (req: Request, res: Response) => {
       bid,
     );
 
+    // Get financial breakdown from bid
+    const financialBreakdown = await getBidFinancialBreakdown(
+      job.bidId,
+      bid.organizationId,
+    );
+
     const body = req.body ?? {};
     const { subject, message, attachPdf, cc, bcc } = body;
 
@@ -1327,11 +1341,24 @@ export const sendInvoiceEmailTest = async (req: Request, res: Response) => {
                 }),
               }
             : undefined;
+
+        // T3 Mechanical company info
+        const t3MechanicalInfo = {
+          name: "T3 Mechanical Inc.",
+          address: "4749 Bennett Drive, Suite H",
+          city: "Livermore",
+          state: "CA",
+          zipCode: "94551",
+          phone: "(888) 488-2312",
+          email: "info@t3mechanicalinc.com",
+        };
+
         const invoiceData = prepareInvoiceDataForPDF(
           invoice,
-          organization ?? undefined,
-          organization ?? undefined,
+          t3MechanicalInfo, // T3 Mechanical info for header
+          organization ?? {}, // Client organization for Bill To
           invoice.lineItems || [],
+          financialBreakdown,
           pdfOptions,
         );
         const pdfBuffer = await generateInvoicePDF(invoiceData);
@@ -1906,21 +1933,63 @@ export const downloadInvoicePDF = async (req: Request, res: Response) => {
       });
     }
 
-    // Get organization data for company info
-    const organization = await getOrganizationById(organizationId);
-    if (!organization) {
+    // Get client organization data for Bill To section
+    const clientOrg = await getOrganizationById(organizationId);
+    if (!clientOrg) {
       return res.status(500).json({
         success: false,
         message: "Organization data not found",
       });
     }
 
+    // Get job and financial breakdown
+    let financialBreakdown = null;
+    let job = null;
+    if (invoice.jobId) {
+      const [jobRecord] = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.id, invoice.jobId), eq(jobs.isDeleted, false)))
+        .limit(1);
+      
+      job = jobRecord;
+      if (job?.bidId) {
+        financialBreakdown = await getBidFinancialBreakdown(
+          job.bidId,
+          organizationId,
+        );
+      }
+    }
+
+    // Prepare PDF options with job type
+    const pdfOptions = job
+      ? {
+          job: {
+            jobType: job.jobType ?? null,
+            description: job.description ?? null,
+          },
+        }
+      : undefined;
+
+    // T3 Mechanical company info (hardcoded for now, can be moved to config)
+    const t3MechanicalInfo = {
+      name: "T3 Mechanical Inc.",
+      address: "4749 Bennett Drive, Suite H",
+      city: "Livermore",
+      state: "CA",
+      zipCode: "94551",
+      phone: "(888) 488-2312",
+      email: "info@t3mechanicalinc.com",
+    };
+
     // Prepare data for PDF generation
     const pdfData = prepareInvoiceDataForPDF(
       invoice,
-      organization,
-      invoice.client || {},
+      t3MechanicalInfo, // T3 Mechanical info for header
+      clientOrg.organization, // Client organization for Bill To
       invoice.lineItems || [],
+      financialBreakdown,
+      pdfOptions,
     );
 
     // Generate PDF
@@ -1998,21 +2067,63 @@ export const previewInvoicePDF = async (req: Request, res: Response) => {
       });
     }
 
-    // Get organization data
-    const organization = await getOrganizationById(organizationId);
-    if (!organization) {
+    // Get client organization data for Bill To section
+    const clientOrg = await getOrganizationById(organizationId);
+    if (!clientOrg) {
       return res.status(500).json({
         success: false,
         message: "Organization data not found",
       });
     }
 
+    // Get job and financial breakdown
+    let financialBreakdown = null;
+    let job = null;
+    if (invoice.jobId) {
+      const [jobRecord] = await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.id, invoice.jobId), eq(jobs.isDeleted, false)))
+        .limit(1);
+      
+      job = jobRecord;
+      if (job?.bidId) {
+        financialBreakdown = await getBidFinancialBreakdown(
+          job.bidId,
+          organizationId,
+        );
+      }
+    }
+
+    // Prepare PDF options with job type
+    const pdfOptions = job
+      ? {
+          job: {
+            jobType: job.jobType ?? null,
+            description: job.description ?? null,
+          },
+        }
+      : undefined;
+
+    // T3 Mechanical company info (hardcoded for now, can be moved to config)
+    const t3MechanicalInfo = {
+      name: "T3 Mechanical Inc.",
+      address: "4749 Bennett Drive, Suite H",
+      city: "Livermore",
+      state: "CA",
+      zipCode: "94551",
+      phone: "(888) 488-2312",
+      email: "info@t3mechanicalinc.com",
+    };
+
     // Prepare data for PDF generation
     const pdfData = prepareInvoiceDataForPDF(
       invoice,
-      organization,
-      invoice.client || {},
+      t3MechanicalInfo, // T3 Mechanical info for header
+      clientOrg.organization, // Client organization for Bill To
       invoice.lineItems || [],
+      financialBreakdown,
+      pdfOptions,
     );
 
     // Generate PDF

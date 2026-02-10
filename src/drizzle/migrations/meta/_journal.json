@@ -526,6 +526,13 @@
       "when": 1770631345185,
       "tag": "0074_condemned_prowler",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1770712936970,
+      "tag": "0075_amazing_manta",
+      "breakpoints": true
     }
   ]
 }

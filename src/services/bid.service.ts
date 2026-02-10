@@ -25,6 +25,7 @@ import {
   bidNotes,
   bidHistory,
   bidDocuments,
+  bidMedia,
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
@@ -2005,4 +2006,153 @@ export const deleteBidDocument = async (documentId: string) => {
     )
     .returning();
   return document || null;
+};
+
+// ============================
+// Bid Media Operations
+// ============================
+
+export const getBidMedia = async (bidId: string) => {
+  const mediaResult = await db
+    .select({
+      media: bidMedia,
+      uploadedByName: users.fullName,
+    })
+    .from(bidMedia)
+    .leftJoin(users, eq(bidMedia.uploadedBy, users.id))
+    .where(and(eq(bidMedia.bidId, bidId), eq(bidMedia.isDeleted, false)))
+    .orderBy(desc(bidMedia.createdAt));
+
+  return mediaResult.map((item) => ({
+    ...item.media,
+    uploadedByName: item.uploadedByName || null,
+  }));
+};
+
+export const getBidMediaById = async (mediaId: string) => {
+  const [result] = await db
+    .select({
+      media: bidMedia,
+      uploadedByName: users.fullName,
+    })
+    .from(bidMedia)
+    .leftJoin(users, eq(bidMedia.uploadedBy, users.id))
+    .where(and(eq(bidMedia.id, mediaId), eq(bidMedia.isDeleted, false)));
+
+  if (!result) return null;
+
+  return {
+    ...result.media,
+    uploadedByName: result.uploadedByName || null,
+  };
+};
+
+export const createBidMedia = async (data: {
+  bidId: string;
+  fileName: string;
+  filePath: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileSize?: number;
+  mediaType?: string;
+  thumbnailPath?: string;
+  thumbnailUrl?: string;
+  caption?: string;
+  uploadedBy: string;
+}) => {
+  const [media] = await db
+    .insert(bidMedia)
+    .values({
+      bidId: data.bidId,
+      fileName: data.fileName,
+      filePath: data.filePath,
+      fileUrl: data.fileUrl || undefined,
+      fileType: data.fileType || undefined,
+      fileSize: data.fileSize || undefined,
+      mediaType: data.mediaType || undefined,
+      thumbnailPath: data.thumbnailPath || undefined,
+      thumbnailUrl: data.thumbnailUrl || undefined,
+      caption: data.caption || undefined,
+      uploadedBy: data.uploadedBy,
+    })
+    .returning();
+  return media;
+};
+
+export const createMultipleBidMedia = async (
+  bidId: string,
+  mediaFiles: Array<{
+    fileName: string;
+    filePath: string;
+    fileUrl?: string;
+    fileType?: string;
+    fileSize?: number;
+    mediaType?: string;
+    thumbnailPath?: string;
+    thumbnailUrl?: string;
+    caption?: string;
+    uploadedBy: string;
+  }>,
+) => {
+  if (mediaFiles.length === 0) {
+    return [];
+  }
+
+  const insertedMedia = await db
+    .insert(bidMedia)
+    .values(
+      mediaFiles.map((media) => ({
+        bidId,
+        fileName: media.fileName,
+        filePath: media.filePath,
+        fileUrl: media.fileUrl || undefined,
+        fileType: media.fileType || undefined,
+        fileSize: media.fileSize || undefined,
+        mediaType: media.mediaType || undefined,
+        thumbnailPath: media.thumbnailPath || undefined,
+        thumbnailUrl: media.thumbnailUrl || undefined,
+        caption: media.caption || undefined,
+        uploadedBy: media.uploadedBy,
+      })),
+    )
+    .returning();
+
+  return insertedMedia;
+};
+
+export const updateBidMedia = async (
+  mediaId: string,
+  data: Partial<{
+    fileName: string;
+    filePath: string;
+    fileUrl: string;
+    fileType: string;
+    fileSize: number;
+    mediaType: string;
+    thumbnailPath: string;
+    thumbnailUrl: string;
+    caption: string;
+  }>,
+) => {
+  const [media] = await db
+    .update(bidMedia)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(bidMedia.id, mediaId), eq(bidMedia.isDeleted, false)))
+    .returning();
+  return media || null;
+};
+
+export const deleteBidMedia = async (mediaId: string) => {
+  const [media] = await db
+    .update(bidMedia)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(bidMedia.id, mediaId), eq(bidMedia.isDeleted, false)))
+    .returning();
+  return media || null;
 };

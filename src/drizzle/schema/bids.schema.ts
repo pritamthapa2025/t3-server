@@ -524,6 +524,42 @@ export const bidDocuments = org.table(
 );
 
 /**
+ * Bid Media Table
+ * Stores media files (images, videos, audio) associated with bids
+ */
+export const bidMedia = org.table(
+  "bid_media",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id),
+
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    filePath: varchar("file_path", { length: 500 }).notNull(),
+    fileUrl: varchar("file_url", { length: 500 }),
+    fileType: varchar("file_type", { length: 50 }), // image/jpeg, image/png, video/mp4, etc.
+    fileSize: integer("file_size"),
+    mediaType: varchar("media_type", { length: 50 }), // photo, video, audio, etc.
+    thumbnailPath: varchar("thumbnail_path", { length: 500 }),
+    thumbnailUrl: varchar("thumbnail_url", { length: 500 }),
+    caption: text("caption"),
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_bid_media_bid_id").on(table.bidId),
+    index("idx_bid_media_type").on(table.mediaType),
+    index("idx_bid_media_uploaded_by").on(table.uploadedBy),
+  ],
+);
+
+/**
  * Bid Plan Spec Files Table
  * Specific files for plan-spec type bids
  */

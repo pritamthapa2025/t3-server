@@ -1343,6 +1343,57 @@ export const deleteBidDocumentSchema = z.object({
   }),
 });
 
+// ============================
+// Bid Media Validations
+// ============================
+
+export const createBidMediaSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    caption: z.string().optional(),
+  }).optional(),
+});
+
+export const getBidMediaSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const getBidMediaByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    mediaId: uuidSchema,
+  }),
+});
+
+export const updateBidMediaSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    mediaId: uuidSchema,
+  }),
+  body: z.object({
+    fileName: z
+      .string()
+      .max(255, "File name is too long (maximum 255 characters)")
+      .optional(),
+    mediaType: z
+      .string()
+      .max(50, "Media type is too long (maximum 50 characters)")
+      .optional(),
+    caption: z.string().optional(),
+  }),
+});
+
+export const deleteBidMediaSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    mediaId: uuidSchema,
+  }),
+});
+
 export const downloadBidQuotePDFSchema = z.object({
   params: z.object({ id: uuidSchema }),
 });

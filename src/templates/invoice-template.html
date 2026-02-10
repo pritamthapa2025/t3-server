@@ -567,13 +567,28 @@
                 </tr>
             </thead>
             <tbody>
-                {{#each lineItems}}
                 <tr>
-                    <td>{{this.date}}</td>
-                    <td>{{this.description}}</td>
-                    <td>$ {{this.totalPrice}}</td>
+                    <td>{{invoiceDate}}</td>
+                    <td>Materials</td>
+                    <td>$ {{materialsCost}}</td>
                 </tr>
-                {{/each}}
+                <tr>
+                    <td>{{invoiceDate}}</td>
+                    <td>Labour</td>
+                    <td>$ {{laborCost}}</td>
+                </tr>
+                <tr>
+                    <td>{{invoiceDate}}</td>
+                    <td>Travel</td>
+                    <td>$ {{travelCost}}</td>
+                </tr>
+                {{#if hasOperatingExpenses}}
+                <tr>
+                    <td>{{invoiceDate}}</td>
+                    <td>Operating Expenses</td>
+                    <td>$ {{operatingExpensesCost}}</td>
+                </tr>
+                {{/if}}
             </tbody>
         </table>
 

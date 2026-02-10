@@ -206,7 +206,7 @@ export interface InvoicePDFData {
   // Payment Info
   paymentTerms?: string;
 
-  // Line Items
+  // Line Items (kept for compatibility, but financial breakdown is preferred)
   lineItems: Array<{
     date: string;
     description: string;
@@ -215,6 +215,13 @@ export interface InvoicePDFData {
     unitPrice: string;
     totalPrice: string;
   }>;
+
+  // Financial breakdown (from bid)
+  materialsCost: string;
+  laborCost: string;
+  travelCost: string;
+  operatingExpensesCost: string;
+  hasOperatingExpenses: boolean;
 
   // Totals
   subtotal: string;
@@ -248,6 +255,12 @@ export interface QuotePDFData {
   clientAddress: string;
   proposalNote: string;
   workItems: Array<{ index: number; description: string }>;
+  // Financial breakdown
+  materialsCost: string;
+  laborCost: string;
+  travelCost: string;
+  operatingExpensesCost: string;
+  hasOperatingExpenses: boolean;
   totalAmount: string;
   expirationDate: string;
 }
@@ -368,6 +381,12 @@ export const prepareInvoiceDataForPDF = (
   organization: any,
   client: any,
   lineItems: any[],
+  financialBreakdown?: {
+    materialsEquipment?: string | number | null;
+    labor?: string | number | null;
+    travel?: string | number | null;
+    operatingExpenses?: string | number | null;
+  } | null,
   options?: PrepareInvoicePDFOptions,
 ): InvoicePDFData => {
   // Map status to CSS class
@@ -446,8 +465,33 @@ export const prepareInvoiceDataForPDF = (
       totalPrice: Number(item.totalPrice || 0).toFixed(2),
     })),
 
-    // Totals
-    subtotal: Number(invoice.subtotal || 0).toFixed(2),
+    // Financial breakdown (from bid)
+    materialsCost: financialBreakdown?.materialsEquipment
+      ? Number(financialBreakdown.materialsEquipment).toFixed(2)
+      : "0.00",
+    laborCost: financialBreakdown?.labor
+      ? Number(financialBreakdown.labor).toFixed(2)
+      : "0.00",
+    travelCost: financialBreakdown?.travel
+      ? Number(financialBreakdown.travel).toFixed(2)
+      : "0.00",
+    operatingExpensesCost: financialBreakdown?.operatingExpenses
+      ? Number(financialBreakdown.operatingExpenses).toFixed(2)
+      : "0.00",
+    hasOperatingExpenses: Boolean(
+      financialBreakdown?.operatingExpenses &&
+      Number(financialBreakdown.operatingExpenses) > 0
+    ),
+
+    // Totals - use financial breakdown if available, otherwise use invoice totals
+    subtotal: financialBreakdown
+      ? (
+          Number(financialBreakdown.materialsEquipment || 0) +
+          Number(financialBreakdown.labor || 0) +
+          Number(financialBreakdown.travel || 0) +
+          Number(financialBreakdown.operatingExpenses || 0)
+        ).toFixed(2)
+      : Number(invoice.subtotal || 0).toFixed(2),
     discountAmount: invoice.discountAmount
       ? Number(invoice.discountAmount).toFixed(2)
       : "0.00",
@@ -458,13 +502,26 @@ export const prepareInvoiceDataForPDF = (
     ...(invoice.taxRate && {
       taxRate: (Number(invoice.taxRate) * 100).toFixed(2),
     }),
-    totalAmount: Number(invoice.totalAmount || 0).toFixed(2),
+    totalAmount: financialBreakdown
+      ? (
+          Number(financialBreakdown.materialsEquipment || 0) +
+          Number(financialBreakdown.labor || 0) +
+          Number(financialBreakdown.travel || 0) +
+          Number(financialBreakdown.operatingExpenses || 0)
+        ).toFixed(2)
+      : Number(invoice.totalAmount || 0).toFixed(2),
     amountPaid: invoice.amountPaid
       ? Number(invoice.amountPaid).toFixed(2)
       : undefined,
-    balanceDue: Number(invoice.balanceDue || invoice.totalAmount || 0).toFixed(
-      2,
-    ),
+    balanceDue: financialBreakdown
+      ? (
+          Number(financialBreakdown.materialsEquipment || 0) +
+          Number(financialBreakdown.labor || 0) +
+          Number(financialBreakdown.travel || 0) +
+          Number(financialBreakdown.operatingExpenses || 0) -
+          Number(invoice.amountPaid || 0)
+        ).toFixed(2)
+      : Number(invoice.balanceDue || invoice.totalAmount || 0).toFixed(2),
 
     // Notes
     notes: invoice.notes,
@@ -516,7 +573,13 @@ export const prepareQuoteDataForPDF = (
     state?: string | null;
     zipCode?: string | null;
   },
-  financialBreakdown: { totalPrice?: string | number | null } | null,
+  financialBreakdown: {
+    materialsEquipment?: string | number | null;
+    labor?: string | number | null;
+    travel?: string | number | null;
+    operatingExpenses?: string | number | null;
+    totalPrice?: string | number | null;
+  } | null,
   primaryContact: { fullName?: string | null; email?: string | null } | null,
   property: {
     addressLine1?: string | null;
@@ -558,6 +621,24 @@ export const prepareQuoteDataForPDF = (
       ? `This proposal was based on Clients RFP, job walk information from ${bid.referenceDate ?? "—"}, and revised plans dated ${bid.referenceDate ?? "—"} by ${bid.proposalBasis ?? "—"}.`
       : "This proposal was based on the client RFP and job walk information.";
 
+  // Format financial breakdown costs
+  const materialsCost = financialBreakdown?.materialsEquipment
+    ? Number(financialBreakdown.materialsEquipment).toFixed(2)
+    : "0.00";
+  const laborCost = financialBreakdown?.labor
+    ? Number(financialBreakdown.labor).toFixed(2)
+    : "0.00";
+  const travelCost = financialBreakdown?.travel
+    ? Number(financialBreakdown.travel).toFixed(2)
+    : "0.00";
+  const operatingExpensesCost = financialBreakdown?.operatingExpenses
+    ? Number(financialBreakdown.operatingExpenses).toFixed(2)
+    : "0.00";
+  const hasOperatingExpenses = Boolean(
+    financialBreakdown?.operatingExpenses &&
+    Number(financialBreakdown.operatingExpenses) > 0
+  );
+
   return {
     date: createdDate.toLocaleDateString(),
     quoteNumber: bid.bidNumber,
@@ -574,6 +655,11 @@ export const prepareQuoteDataForPDF = (
     clientAddress: clientAddress || "—",
     proposalNote,
     workItems: buildQuoteWorkItems(bid.scopeOfWork),
+    materialsCost,
+    laborCost,
+    travelCost,
+    operatingExpensesCost,
+    hasOperatingExpenses,
     totalAmount,
     expirationDate: endDate ? endDate.toLocaleDateString() : "—",
   };

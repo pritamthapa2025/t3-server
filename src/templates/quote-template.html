@@ -417,6 +417,12 @@
                 print-color-adjust: exact;
             }
 
+            .exclusions-section {
+                page-break-before: always !important;
+                break-before: page !important;
+                margin-top: 40px !important;
+            }
+
             .quote-container {
                 padding: 15mm 20mm;
                 margin: 0;
@@ -791,15 +797,32 @@
                 <tr>
                     <th>Item</th>
                     <th>Work description and services included in this proposal</th>
+                    <th style="text-align: right; width: 150px;">Total Cost</th>
                 </tr>
             </thead>
             <tbody>
-                {{#each workItems}}
                 <tr>
-                    <td>{{this.index}}</td>
-                    <td>{{this.description}}</td>
+                    <td>1</td>
+                    <td>Materials</td>
+                    <td style="text-align: right; font-weight: 700;">$ {{materialsCost}}</td>
                 </tr>
-                {{/each}}
+                <tr>
+                    <td>2</td>
+                    <td>Labour</td>
+                    <td style="text-align: right; font-weight: 700;">$ {{laborCost}}</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>Travel</td>
+                    <td style="text-align: right; font-weight: 700;">$ {{travelCost}}</td>
+                </tr>
+                {{#if hasOperatingExpenses}}
+                <tr>
+                    <td>4</td>
+                    <td>Operating Expenses</td>
+                    <td style="text-align: right; font-weight: 700;">$ {{operatingExpensesCost}}</td>
+                </tr>
+                {{/if}}
             </tbody>
         </table>
 
