@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, sql, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, asc, sql, or, ilike, max } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   jobs,
@@ -721,7 +721,7 @@ export const getJobWithAllData = async (jobId: string) => {
 // ============================
 
 // Generate next job number
-// Format: JOB-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
+// Format: JOB-2025-0001 (name-year-4digit, auto-expands to 5, 6+ as needed)
 const generateJobNumber = async (organizationId: string): Promise<string> => {
   const year = new Date().getFullYear();
 
@@ -1711,32 +1711,47 @@ export const createJobHistoryEntry = async (data: {
 };
 
 // ============================
-// Job Tasks Operations (Placeholder)
+// Job Tasks Operations
 // ============================
 
-export const getJobTasks = async (jobId: string) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
+// Generate next task number: TASK-YYYY-NNNN (name-year-4digit, auto-expands)
+const generateTaskNumber = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  const [result] = await db
     .select({
-      jobId: jobs.id,
-      organizationId: bidsTable.organizationId,
+      maxTaskNumber: max(jobTasks.taskNumber),
     })
+    .from(jobTasks)
+    .where(sql`${jobTasks.taskNumber} ~ ${`^TASK-${year}-\\d+$`}`);
+
+  const maxTaskNumber = result?.maxTaskNumber;
+  let nextNumber = 1;
+  if (maxTaskNumber) {
+    const match = String(maxTaskNumber).match(/TASK-\d+-(\d+)/);
+    if (match?.[1]) {
+      nextNumber = parseInt(match[1], 10) + 1;
+    }
+  }
+  const padding = Math.max(4, nextNumber.toString().length);
+  return `TASK-${year}-${nextNumber.toString().padStart(padding, "0")}`;
+};
+
+export const getJobTasks = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ jobId: jobs.id })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
-  if (!jobData) {
+  if (!jobRow) {
     return null;
   }
 
-  // Get tasks for this job
   const tasks = await db
     .select()
     .from(jobTasks)
     .where(
       and(
         eq(jobTasks.jobId, jobId),
-        eq(jobTasks.organizationId, jobData.organizationId),
         eq(jobTasks.isDeleted, false),
       ),
     )
@@ -1746,21 +1761,15 @@ export const getJobTasks = async (jobId: string) => {
 };
 
 export const getJobTaskById = async (jobId: string, taskId: string) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
-    .select({
-      jobId: jobs.id,
-      organizationId: bidsTable.organizationId,
-    })
+  const [jobRow] = await db
+    .select({ jobId: jobs.id })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
-  if (!jobData) {
+  if (!jobRow) {
     return null;
   }
 
-  // Get the task from the job_tasks table
   const [task] = await db
     .select()
     .from(jobTasks)
@@ -1768,7 +1777,6 @@ export const getJobTaskById = async (jobId: string, taskId: string) => {
       and(
         eq(jobTasks.id, taskId),
         eq(jobTasks.jobId, jobId),
-        eq(jobTasks.organizationId, jobData.organizationId),
         eq(jobTasks.isDeleted, false),
       ),
     );
@@ -1787,8 +1795,7 @@ export const createJobTask = async (data: {
   estimatedHours?: string;
   sortOrder?: number;
   createdBy: string;
-}) => {
-  // Get job with bid info to retrieve the bid's organizationId
+}): Promise<{ task: typeof jobTasks.$inferSelect; organizationId: string } | null> => {
   const [jobData] = await db
     .select({
       jobId: jobs.id,
@@ -1802,12 +1809,13 @@ export const createJobTask = async (data: {
     return null;
   }
 
-  // Create the task in the database
+  const taskNumber = await generateTaskNumber();
+
   const [task] = await db
     .insert(jobTasks)
     .values({
       jobId: data.jobId,
-      organizationId: jobData.organizationId,
+      taskNumber,
       taskName: data.taskName,
       description: data.description,
       status: (data.status as any) || "pending",
@@ -1815,18 +1823,19 @@ export const createJobTask = async (data: {
       assignedTo: data.assignedTo || null,
       dueDate: data.dueDate || null,
       estimatedHours: data.estimatedHours || null,
-      sortOrder: data.sortOrder || 0,
+      sortOrder: data.sortOrder ?? 0,
       createdBy: data.createdBy,
     })
     .returning();
 
-  return task;
+  if (!task) return null;
+  return { task, organizationId: jobData.organizationId };
 };
 
 export const updateJobTask = async (
   id: string,
   jobId: string,
-  organizationId: string,
+  _organizationId: string,
   data: Partial<{
     taskName: string;
     description: string;
@@ -1840,21 +1849,15 @@ export const updateJobTask = async (
     sortOrder: number;
   }>,
 ) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
-    .select({
-      jobId: jobs.id,
-      organizationId: bidsTable.organizationId,
-    })
+  const [jobRow] = await db
+    .select({ jobId: jobs.id })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
-  if (!jobData) {
+  if (!jobRow) {
     return null;
   }
 
-  // Update the task in the database
   const [task] = await db
     .update(jobTasks)
     .set({
@@ -1865,7 +1868,6 @@ export const updateJobTask = async (
       and(
         eq(jobTasks.id, id),
         eq(jobTasks.jobId, jobId),
-        eq(jobTasks.organizationId, jobData.organizationId),
         eq(jobTasks.isDeleted, false),
       ),
     )
@@ -1879,21 +1881,15 @@ export const deleteJobTask = async (
   jobId: string,
   _organizationId: string,
 ) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
-    .select({
-      jobId: jobs.id,
-      organizationId: bidsTable.organizationId,
-    })
+  const [jobRow] = await db
+    .select({ jobId: jobs.id })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
-  if (!jobData) {
+  if (!jobRow) {
     return null;
   }
 
-  // Soft delete the task
   const [task] = await db
     .update(jobTasks)
     .set({
@@ -1904,7 +1900,6 @@ export const deleteJobTask = async (
       and(
         eq(jobTasks.id, id),
         eq(jobTasks.jobId, jobId),
-        eq(jobTasks.organizationId, jobData.organizationId),
         eq(jobTasks.isDeleted, false),
       ),
     )

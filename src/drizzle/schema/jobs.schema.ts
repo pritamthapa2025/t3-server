@@ -14,7 +14,6 @@ import {
 
 // Import related tables
 import { users } from "./auth.schema.js";
-import { organizations } from "./client.schema.js";
 import { employees, positions } from "./org.schema.js";
 import { bidsTable } from "./bids.schema.js";
 
@@ -32,7 +31,7 @@ export const jobs: any = org.table(
   "jobs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    jobNumber: varchar("job_number", { length: 100 }).notNull(), // JOB-2025-000001 (auto-expands)
+    jobNumber: varchar("job_number", { length: 100 }).notNull(), // JOB-2025-0001 (name-year-4digit, auto-expands)
 
     // Relationships
     bidId: uuid("bid_id")
@@ -144,9 +143,7 @@ export const jobTasks = org.table(
   "job_tasks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
+    taskNumber: varchar("task_number", { length: 100 }).notNull(), // TASK-2025-0001 (auto-generated, name-year-4digit)
     jobId: uuid("job_id")
       .notNull()
       .references(() => jobs.id),
@@ -173,7 +170,6 @@ export const jobTasks = org.table(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_job_tasks_org").on(table.organizationId),
     index("idx_job_tasks_job_id").on(table.jobId),
     index("idx_job_tasks_status").on(table.status),
     index("idx_job_tasks_assigned_to").on(table.assignedTo),

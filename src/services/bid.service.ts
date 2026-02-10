@@ -1737,7 +1737,7 @@ export const createBidHistoryEntry = async (data: {
 // ============================
 
 // Generate next bid number using atomic database function
-// Format: BID-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
+// Format: BID-2025-0001 (name-year-4digit, auto-expands to 5, 6+ as needed)
 // This is THREAD-SAFE and prevents race conditions
 const generateBidNumber = async (organizationId: string): Promise<string> => {
   const year = new Date().getFullYear();

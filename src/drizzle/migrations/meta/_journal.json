@@ -533,6 +533,13 @@
       "when": 1770712936970,
       "tag": "0075_amazing_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1770721400320,
+      "tag": "0076_mute_vanisher",
+      "breakpoints": true
     }
   ]
 }

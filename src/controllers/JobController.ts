@@ -2011,19 +2011,21 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
       createdBy: performedBy,
     };
 
-    const task = await createJobTask(taskData);
+    const result = await createJobTask(taskData);
 
-    if (!task) {
+    if (!result) {
       return res.status(500).json({
         success: false,
         message: "Failed to create task",
       });
     }
 
+    const { task, organizationId } = result;
+
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: task.organizationId,
+      organizationId,
       action: "task_added",
       description: `Task "${task.taskName}" was added`,
       createdBy: performedBy,
