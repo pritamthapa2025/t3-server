@@ -178,28 +178,30 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const bid = await getBidByIdSimple(id!);
+    // Return same shape as POST create: bid, financialBreakdown, operatingExpenses, materials, labor, travel, documents, clientInfo
+    const bidData = await getBidWithAllData(id!);
 
-    if (!bid) {
+    if (!bidData) {
       return res.status(404).json({
         success: false,
         message: "Bid not found",
       });
     }
 
-    // Get documents and client (organization) info for the bid
-    const [documents, clientInfo] = await Promise.all([
-      getBidDocuments(id!),
-      getOrganizationById(bid.organizationId),
-    ]);
+    const documents = await getBidDocuments(id!);
 
     logger.info("Bid fetched successfully");
     return res.status(200).json({
       success: true,
       data: {
-        ...bid,
+        bid: bidData.bid,
+        financialBreakdown: bidData.financialBreakdown,
+        operatingExpenses: bidData.operatingExpenses,
+        materials: bidData.materials,
+        labor: bidData.labor,
+        travel: bidData.travel,
         documents,
-        clientInfo: clientInfo?.organization ?? null,
+        clientInfo: bidData.clientInfo,
       },
     });
   } catch (error) {

@@ -612,18 +612,35 @@ export const updateBid = async (
     priority: string;
     projectName: string;
     siteAddress: string;
+    buildingSuiteNumber: string;
+    acrossValuations: string;
     scopeOfWork: string;
+    specialRequirements: string;
     description: string;
     endDate: string;
     plannedStartDate: string;
     estimatedCompletion: string;
     removalDate: string;
     bidAmount: string;
+    estimatedDuration: number;
+    profitMargin: string;
+    paymentTerms: string;
+    warrantyPeriod: string;
+    warrantyPeriodLabor: string;
+    warrantyDetails: string;
+    specialTerms: string;
+    exclusions: string;
+    proposalBasis: string;
+    referenceDate: string;
+    templateSelection: string;
     primaryContactId: string | null;
     propertyId: string | null;
     supervisorManager: number;
     primaryTechnicianId: number;
     assignedTo: string;
+    qtyNumber: string;
+    marked: string;
+    convertToJob: boolean;
   }>,
 ) => {
   // Validate endDate: cannot be before bid's created date
@@ -650,7 +667,10 @@ export const updateBid = async (
       priority: data.priority as any,
       projectName: data.projectName,
       siteAddress: data.siteAddress,
+      buildingSuiteNumber: data.buildingSuiteNumber,
+      acrossValuations: data.acrossValuations,
       scopeOfWork: data.scopeOfWork,
+      specialRequirements: data.specialRequirements,
       description: data.description,
       endDate: data.endDate
         ? new Date(data.endDate).toISOString().split("T")[0]
@@ -665,11 +685,25 @@ export const updateBid = async (
         ? new Date(data.removalDate).toISOString().split("T")[0]
         : undefined,
       bidAmount: data.bidAmount,
+      estimatedDuration: data.estimatedDuration,
+      profitMargin: data.profitMargin,
+      paymentTerms: data.paymentTerms,
+      warrantyPeriod: data.warrantyPeriod,
+      warrantyPeriodLabor: data.warrantyPeriodLabor,
+      warrantyDetails: data.warrantyDetails,
+      specialTerms: data.specialTerms,
+      exclusions: data.exclusions,
+      proposalBasis: data.proposalBasis,
+      referenceDate: data.referenceDate,
+      templateSelection: data.templateSelection,
       primaryContactId: data.primaryContactId ?? undefined,
       propertyId: data.propertyId ?? undefined,
       supervisorManager: data.supervisorManager ?? undefined,
       primaryTechnicianId: data.primaryTechnicianId ?? undefined,
       assignedTo: data.assignedTo,
+      qtyNumber: data.qtyNumber,
+      marked: data.marked,
+      convertToJob: data.convertToJob,
       updatedAt: new Date(),
     })
     .where(
