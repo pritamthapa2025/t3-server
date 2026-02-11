@@ -2204,6 +2204,23 @@ export const createJobSurvey = async (data: {
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
   if (!jobRow) return null;
 
+  if (
+    rest.technicianId != null &&
+    typeof rest.technicianId === "number"
+  ) {
+    const [emp] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.id, rest.technicianId));
+    if (!emp) {
+      const err = new Error(
+        "The employee you selected does not exist. Please choose a valid employee.",
+      ) as Error & { code?: string };
+      err.code = "INVALID_TECHNICIAN";
+      throw err;
+    }
+  }
+
   const [inserted] = await db
     .insert(jobSurveys)
     .values({
@@ -2221,6 +2238,23 @@ export const updateJobSurvey = async (
   jobId: string,
   data: JobSurveyInsert,
 ) => {
+  if (
+    data.technicianId != null &&
+    typeof data.technicianId === "number"
+  ) {
+    const [emp] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.id, data.technicianId));
+    if (!emp) {
+      const err = new Error(
+        "The employee you selected does not exist. Please choose a valid employee.",
+      ) as Error & { code?: string };
+      err.code = "INVALID_TECHNICIAN";
+      throw err;
+    }
+  }
+
   const [updated] = await db
     .update(jobSurveys)
     .set({ ...data, updatedAt: new Date() })

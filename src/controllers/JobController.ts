@@ -2434,11 +2434,24 @@ export const createJobSurveyHandler = async (req: Request, res: Response) => {
     }
     logger.info("Job survey created successfully");
     return res.status(201).json({ success: true, data: survey });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Job error", error, req);
+    if (error?.code === "INVALID_TECHNICIAN") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    if (isDatabaseError(error)) {
+      const parsed = parseDatabaseError(error);
+      return res.status(parsed.statusCode).json({
+        success: false,
+        message: parsed.userMessage,
+      });
+    }
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error?.message || "Internal server error",
     });
   }
 };
@@ -2460,11 +2473,24 @@ export const updateJobSurveyHandler = async (req: Request, res: Response) => {
     }
     logger.info("Job survey updated successfully");
     return res.status(200).json({ success: true, data: survey });
-  } catch (error) {
+  } catch (error: any) {
     logger.logApiError("Job error", error, req);
+    if (error?.code === "INVALID_TECHNICIAN") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    if (isDatabaseError(error)) {
+      const parsed = parseDatabaseError(error);
+      return res.status(parsed.statusCode).json({
+        success: false,
+        message: parsed.userMessage,
+      });
+    }
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error?.message || "Internal server error",
     });
   }
 };
