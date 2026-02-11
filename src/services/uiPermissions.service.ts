@@ -211,9 +211,9 @@ export const getNavigationConfig = async (userId: string) => {
   const modulePermissions: Record<string, ModuleUIConfig> = {};
   
   const modules = [
-    "dashboard", "bids", "jobs", "clients", "properties", "fleet", 
-    "team", "timesheet", "tasks", "dispatch", "inventory", 
-    "expenses", "invoicing", "documents", "performance",
+    "dashboard", "bids", "jobs", "clients", "properties", "fleet",
+    "team", "timesheet", "tasks", "dispatch", "inventory",
+    "expenses", "invoicing", "documents", "performance", "files",
     "financial", "payroll", "reports", "settings"
   ];
 
@@ -271,6 +271,7 @@ export const getNavigationConfig = async (userId: string) => {
     expenses: { label: "Expenses", icon: "receipt", category: "main" },
     invoicing: { label: "Invoicing", icon: "file-invoice", category: "financial" },
     documents: { label: "Documents", icon: "folder", category: "main" },
+    files: { label: "Files", icon: "folder-open", category: "main" },
     performance: { label: "Performance", icon: "chart-line", category: "main" },
     financial: { label: "Financial", icon: "dollar-sign", category: "financial" },
     payroll: { label: "Payroll", icon: "money-bill", category: "financial" },
