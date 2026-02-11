@@ -540,6 +540,13 @@
       "when": 1770721400320,
       "tag": "0076_mute_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1770788244203,
+      "tag": "0077_low_white_tiger",
+      "breakpoints": true
     }
   ]
 }

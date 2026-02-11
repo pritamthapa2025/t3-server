@@ -309,6 +309,12 @@ const FEATURES_DATA = [
   { module: "documents", featureCode: "upload", featureName: "Upload Documents", description: "Upload documents" },
   { module: "documents", featureCode: "edit", featureName: "Edit Documents", description: "Edit documents" },
   { module: "documents", featureCode: "delete", featureName: "Delete Documents", description: "Delete documents" },
+
+  // === FILES MODULE (Executive only) ===
+  { module: "files", featureCode: "view", featureName: "View Files", description: "View file library" },
+  { module: "files", featureCode: "upload", featureName: "Upload Files", description: "Upload files" },
+  { module: "files", featureCode: "edit", featureName: "Edit Files", description: "Edit file metadata" },
+  { module: "files", featureCode: "delete", featureName: "Delete Files", description: "Delete files" },
 ];
 
 /**
@@ -491,6 +497,12 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "none" },
 
+  // Files - No access (Executive only)
+  { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "view", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "upload", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "edit", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "delete", accessLevel: "none" },
+
   // === MANAGER (Role ID: 2) - Full operational access, limited financial ===
   
   // Dashboard - Full view except financial details
@@ -667,6 +679,12 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "none" },
   { roleId: ROLES.MANAGER, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "none" },
 
+  // Files - No access (Executive only)
+  { roleId: ROLES.MANAGER, module: "files", featureCode: "view", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "files", featureCode: "upload", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "files", featureCode: "edit", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "files", featureCode: "delete", accessLevel: "none" },
+
   // === EXECUTIVE (Role ID: 1) - Full admin access ===
   
   // Dashboard - Full access
@@ -842,6 +860,12 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_proposal_templates", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_terms_conditions", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "settings", featureCode: "edit_invoice_settings", accessLevel: "admin" },
+
+  // Files - Full access (Executive only)
+  { roleId: ROLES.EXECUTIVE, module: "files", featureCode: "view", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "files", featureCode: "upload", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "files", featureCode: "edit", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "files", featureCode: "delete", accessLevel: "admin" },
 
   // OLD DATA - TO BE CLEANED UP LATER
   // Clients - Full access except financial details
@@ -1147,6 +1171,11 @@ const UI_ELEMENTS_DATA = [
   // Financial UI Elements (Executive only)
   { module: "financial", elementCode: "financial_dashboard", elementName: "Financial Dashboard", elementType: "section" },
   { module: "payroll", elementCode: "payroll_processing", elementName: "Payroll Processing", elementType: "section" },
+
+  // Files UI Elements (Executive only)
+  { module: "files", elementCode: "files_library", elementName: "Files Library", elementType: "section" },
+  { module: "files", elementCode: "upload_file_button", elementName: "Upload File Button", elementType: "button" },
+  { module: "files", elementCode: "delete_file_button", elementName: "Delete File Button", elementType: "button" },
 ];
 
 /**
@@ -1173,6 +1202,10 @@ const ROLE_UI_ELEMENTS_DATA = [
   { roleId: ROLES.TECHNICIAN, elementCode: "salary_field", isVisible: false, isEnabled: false },
   { roleId: ROLES.TECHNICIAN, elementCode: "add_vehicle_button", isVisible: false, isEnabled: false },
   { roleId: ROLES.TECHNICIAN, elementCode: "view_costs_button", isVisible: false, isEnabled: false },
+
+  { roleId: ROLES.TECHNICIAN, elementCode: "files_library", isVisible: false, isEnabled: false },
+  { roleId: ROLES.TECHNICIAN, elementCode: "upload_file_button", isVisible: false, isEnabled: false },
+  { roleId: ROLES.TECHNICIAN, elementCode: "delete_file_button", isVisible: false, isEnabled: false },
 
   // Manager UI - Full operational access, limited financial
   { roleId: ROLES.MANAGER, elementCode: "my_tasks_card", isVisible: true, isEnabled: true },
@@ -1204,6 +1237,10 @@ const ROLE_UI_ELEMENTS_DATA = [
 
   { roleId: ROLES.MANAGER, elementCode: "add_vehicle_button", isVisible: false, isEnabled: false },
   { roleId: ROLES.MANAGER, elementCode: "view_costs_button", isVisible: false, isEnabled: false },
+
+  { roleId: ROLES.MANAGER, elementCode: "files_library", isVisible: false, isEnabled: false },
+  { roleId: ROLES.MANAGER, elementCode: "upload_file_button", isVisible: false, isEnabled: false },
+  { roleId: ROLES.MANAGER, elementCode: "delete_file_button", isVisible: false, isEnabled: false },
 
   // Executive UI - Full access to everything
   { roleId: ROLES.EXECUTIVE, elementCode: "my_tasks_card", isVisible: true, isEnabled: true },
@@ -1246,6 +1283,10 @@ const ROLE_UI_ELEMENTS_DATA = [
 
   { roleId: ROLES.EXECUTIVE, elementCode: "financial_dashboard", isVisible: true, isEnabled: true },
   { roleId: ROLES.EXECUTIVE, elementCode: "payroll_processing", isVisible: true, isEnabled: true },
+
+  { roleId: ROLES.EXECUTIVE, elementCode: "files_library", isVisible: true, isEnabled: true },
+  { roleId: ROLES.EXECUTIVE, elementCode: "upload_file_button", isVisible: true, isEnabled: true },
+  { roleId: ROLES.EXECUTIVE, elementCode: "delete_file_button", isVisible: true, isEnabled: true },
 ];
 
 /**

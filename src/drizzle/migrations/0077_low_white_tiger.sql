@@ -1,0 +1,1 @@
+ALTER TYPE "public"."permission_module_enum" ADD VALUE IF NOT EXISTS 'files';

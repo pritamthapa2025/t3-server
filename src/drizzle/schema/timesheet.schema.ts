@@ -67,6 +67,9 @@ export const timesheets = org.table(
   ]
 );
 
+/** Alias for reports.service compatibility (uses timesheets table: sheetDate, totalHours, overtimeHours) */
+export const timesheetEntries = timesheets;
+
 /**
  * Timesheet Approvals Table
  * Tracks approval actions on timesheets
