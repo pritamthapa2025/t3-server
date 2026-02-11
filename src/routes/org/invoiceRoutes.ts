@@ -29,7 +29,7 @@ router.use(authenticate);
 
 // ==================== INVOICE ROUTES ====================
 
-// Get invoices (list) with pagination and filters, Create new invoice
+// Get invoices (list): organizationId is optional; response includes organizationName (jobId → bidId → organizationId → name)
 router
   .route("/invoices")
   .get(validate(getInvoicesSchema), invoiceController.getInvoices)

@@ -70,100 +70,76 @@ interface InvoicingReportFilter extends DateRangeFilter {
   paymentStatus?: string | undefined;
 }
 
+/** Build date range conditions array (no undefineds) for a date column */
+function dateRangeConditions(
+  filters: DateRangeFilter | undefined,
+  column: Parameters<typeof gte>[0],
+  valueTransform: (s: string) => string | Date = (s) => s
+): ReturnType<typeof gte>[] {
+  const conds: ReturnType<typeof gte>[] = [];
+  if (filters?.startDate) conds.push(gte(column, valueTransform(filters.startDate)));
+  if (filters?.endDate) conds.push(lte(column, valueTransform(filters.endDate)));
+  return conds;
+}
+
 export const getCompanySummaryKPIs = async (
-  organizationId: string,
   filters?: DateRangeFilter
 ) => {
-  // Build date filter for time-based queries
-  const dateConditions = [];
-  if (filters?.startDate) {
-    dateConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
-  }
-  if (filters?.endDate) {
-    dateConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
-  }
+  // Date conditions for jobs (createdAt - timestamp)
+  const jobDateConditions = dateRangeConditions(filters, jobs.createdAt, (s) => new Date(s));
 
-  // 1. Total Revenue - sum of all paid invoices
+  // 1. Total Revenue - sum of invoices in date range
+  const revenueConditions = [
+    eq(invoices.isDeleted, false),
+    ...dateRangeConditions(filters, invoices.invoiceDate),
+  ];
   const revenueQuery = await db
     .select({
       totalRevenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
     })
     .from(invoices)
-    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(invoices.isDeleted, false),
-        ...(filters?.startDate || filters?.endDate ? [
-          and(
-            filters?.startDate ? gte(invoices.invoiceDate, filters.startDate) : undefined,
-            filters?.endDate ? lte(invoices.invoiceDate, filters.endDate) : undefined
-          )
-        ] : [])
-      )
-    );
+    .where(and(...revenueConditions));
 
-  // 2. Total Cost - sum of all expenses
+  // 2. Total Cost - sum of expenses in date range
+  const costConditions = [
+    eq(expenses.isDeleted, false),
+    ...dateRangeConditions(filters, expenses.expenseDate),
+  ];
   const costQuery = await db
     .select({
       totalCost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
     })
     .from(expenses)
-    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(expenses.isDeleted, false),
-        ...(filters?.startDate || filters?.endDate ? [
-          and(
-            filters?.startDate ? gte(expenses.expenseDate, filters.startDate) : undefined,
-            filters?.endDate ? lte(expenses.expenseDate, filters.endDate) : undefined
-          )
-        ] : [])
-      )
-    );
+    .where(and(...costConditions));
 
   const totalRevenue = parseFloat(revenueQuery[0]?.totalRevenue || "0");
   const totalCost = parseFloat(costQuery[0]?.totalCost || "0");
-  const profitThisMonth = totalRevenue - totalCost;
+  const profit = totalRevenue - totalCost;
 
-  // 3. Jobs Completed
+  // 3. Jobs Completed - in date range
   const completedJobsQuery = await db
     .select({ count: count() })
     .from(jobs)
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.status, "completed"),
         eq(jobs.isDeleted, false),
-        ...(dateConditions.length > 0 ? dateConditions : [])
+        ...jobDateConditions
       )
     );
 
-  // 4. Invoice Collection Rate
+  // 4. Invoice Collection Rate - in date range
+  const invoiceStatsConditions = [
+    eq(invoices.isDeleted, false),
+    ...dateRangeConditions(filters, invoices.invoiceDate),
+  ];
   const invoiceStatsQuery = await db
     .select({
       totalInvoiced: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
       totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
     })
     .from(invoices)
-    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(invoices.isDeleted, false),
-        ...(filters?.startDate || filters?.endDate ? [
-          and(
-            filters?.startDate ? gte(invoices.invoiceDate, filters.startDate) : undefined,
-            filters?.endDate ? lte(invoices.invoiceDate, filters.endDate) : undefined
-          )
-        ] : [])
-      )
-    );
+    .where(and(...invoiceStatsConditions));
 
   const totalInvoiced = parseFloat(invoiceStatsQuery[0]?.totalInvoiced || "0");
   const totalPaid = parseFloat(invoiceStatsQuery[0]?.totalPaid || "0");
@@ -175,7 +151,7 @@ export const getCompanySummaryKPIs = async (
   const fleetStatsQuery = await db
     .select({
       total: count(),
-      operational: sql<number>`COUNT(CASE WHEN ${vehicles.status} = 'operational' THEN 1 END)`,
+      operational: sql<number>`COUNT(CASE WHEN ${vehicles.status} = 'active' THEN 1 END)`,
     })
     .from(vehicles)
     .where(
@@ -202,28 +178,23 @@ export const getCompanySummaryKPIs = async (
       )
     );
 
-  // 7. Technician Efficiency (timesheet hours; job count from jobs)
+  // 7. Technician Efficiency (timesheet hours; job count from jobs) - in date range
+  const timesheetDateConditions = dateRangeConditions(filters, timesheetEntries.sheetDate);
   const [hoursRow] = await db
     .select({
       totalHours: sql<number>`COALESCE(SUM(CAST(${timesheetEntries.totalHours} AS NUMERIC) + COALESCE(CAST(${timesheetEntries.overtimeHours} AS NUMERIC), 0)), 0)`,
     })
     .from(timesheetEntries)
     .where(
-      and(
-        ...(filters?.startDate ? [gte(timesheetEntries.sheetDate, filters.startDate)] : []),
-        ...(filters?.endDate ? [lte(timesheetEntries.sheetDate, filters.endDate)] : [])
-      )
+      timesheetDateConditions.length > 0 ? and(...timesheetDateConditions) : sql`1=1`
     );
   const [jobsRow] = await db
     .select({ completedJobs: sql<number>`COUNT(${jobs.id})` })
     .from(jobs)
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false),
-        ...(filters?.startDate ? [gte(jobs.createdAt, new Date(filters.startDate))] : []),
-        ...(filters?.endDate ? [lte(jobs.createdAt, new Date(filters.endDate))] : [])
+        ...jobDateConditions
       )
     );
   const technicianEfficiencyQuery = [{ totalHours: hoursRow?.totalHours ?? 0, completedJobs: jobsRow?.completedJobs ?? 0 }];
@@ -238,7 +209,7 @@ export const getCompanySummaryKPIs = async (
   return {
     totalRevenue,
     totalCost,
-    profitThisMonth,
+    profit,
     jobsCompleted: completedJobsQuery[0]?.count || 0,
     invoiceCollectionRate,
     fleetAvailability,
@@ -252,7 +223,6 @@ export const getCompanySummaryKPIs = async (
 // ============================
 
 export const getMonthlyRevenueTrend = async (
-  organizationId: string,
   filters?: DateRangeFilter
 ) => {
   // Get monthly data for the last 6 months
@@ -263,11 +233,8 @@ export const getMonthlyRevenueTrend = async (
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
     })
     .from(invoices)
-    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(invoices.isDeleted, false),
         ...(filters?.startDate ? [gte(invoices.invoiceDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(invoices.invoiceDate, filters.endDate)] : [])
@@ -284,11 +251,8 @@ export const getMonthlyRevenueTrend = async (
       cost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
     })
     .from(expenses)
-    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(expenses.isDeleted, false),
         ...(filters?.startDate ? [gte(expenses.expenseDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(expenses.expenseDate, filters.endDate)] : [])
@@ -319,7 +283,6 @@ export const getMonthlyRevenueTrend = async (
 // ============================
 
 export const getJobPerformanceData = async (
-  organizationId: string,
   filters?: DateRangeFilter
 ) => {
   const dateConditions = [];
@@ -336,10 +299,8 @@ export const getJobPerformanceData = async (
       count: count(),
     })
     .from(jobs)
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(jobs.isDeleted, false),
         ...(dateConditions.length > 0 ? dateConditions : [])
       )
@@ -367,7 +328,6 @@ export const getJobPerformanceData = async (
 // ============================
 
 export const getClientRevenueDistribution = async (
-  organizationId: string,
   filters?: DateRangeFilter
 ) => {
   const clientRevenue = await db
@@ -382,7 +342,6 @@ export const getClientRevenueDistribution = async (
     .leftJoin(clients, eq(bidsTable.clientId, clients.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
         eq(invoices.isDeleted, false),
         ...(filters?.startDate ? [gte(invoices.invoiceDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(invoices.invoiceDate, filters.endDate)] : [])

@@ -90,6 +90,16 @@ import {
   createJobTask,
   updateJobTask,
   deleteJobTask,
+  getTaskComments,
+  getTaskCommentById,
+  createTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+  getJobSurveys,
+  getJobSurveyById,
+  createJobSurvey,
+  updateJobSurvey,
+  deleteJobSurvey,
   getJobExpenses,
   getJobExpenseById,
   createJobExpense,
@@ -2165,6 +2175,319 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Task deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Task Comments Operations
+// ============================
+
+export const getTaskCommentsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const comments = await getTaskComments(jobId!, taskId!);
+
+    if (comments === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job or task not found",
+      });
+    }
+
+    logger.info("Task comments fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: comments,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getTaskCommentByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
+    const commentId = asSingleString(req.params.id);
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const comment = await getTaskCommentById(jobId!, taskId!, commentId!);
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    logger.info("Task comment fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: comment,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createTaskCommentHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const comment = await createTaskComment({
+      jobId: jobId!,
+      taskId: taskId!,
+      comment: req.body.comment,
+      createdBy: userId,
+    });
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Job or task not found",
+      });
+    }
+
+    logger.info("Task comment created successfully");
+    return res.status(201).json({
+      success: true,
+      data: comment,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateTaskCommentHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
+    const commentId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const comment = await updateTaskComment(
+      commentId!,
+      jobId!,
+      taskId!,
+      req.body,
+    );
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    logger.info("Task comment updated successfully");
+    return res.status(200).json({
+      success: true,
+      data: comment,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const deleteTaskCommentHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "taskId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const taskId = asSingleString(req.params.taskId);
+    const commentId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteTaskComment(commentId!, jobId!, taskId!);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    logger.info("Task comment deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Task comment deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Job Survey Operations
+// ============================
+
+export const getJobSurveysHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const surveys = await getJobSurveys(jobId!);
+    if (surveys === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+    logger.info("Job surveys fetched successfully");
+    return res.status(200).json({ success: true, data: surveys });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getJobSurveyByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const surveyId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const survey = await getJobSurveyById(jobId!, surveyId!);
+    if (!survey) {
+      return res.status(404).json({
+        success: false,
+        message: "Survey not found",
+      });
+    }
+    logger.info("Job survey fetched successfully");
+    return res.status(200).json({ success: true, data: survey });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createJobSurveyHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const survey = await createJobSurvey({
+      jobId: jobId!,
+      createdBy: userId,
+      ...(req.body && typeof req.body === "object" ? req.body : {}),
+    });
+    if (!survey) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+    logger.info("Job survey created successfully");
+    return res.status(201).json({ success: true, data: survey });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateJobSurveyHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const surveyId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const survey = await updateJobSurvey(surveyId!, jobId!, req.body || {});
+    if (!survey) {
+      return res.status(404).json({
+        success: false,
+        message: "Survey not found",
+      });
+    }
+    logger.info("Job survey updated successfully");
+    return res.status(200).json({ success: true, data: survey });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const deleteJobSurveyHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const surveyId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteJobSurvey(surveyId!, jobId!);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Survey not found",
+      });
+    }
+    logger.info("Job survey deleted successfully");
+    return res.status(200).json({
+      success: true,
+      message: "Job survey deleted successfully",
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);

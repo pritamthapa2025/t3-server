@@ -159,8 +159,9 @@ export const getInvoiceByIdQuerySchema = z.object({
 // Create Invoice Schema
 export const createInvoiceSchema = z.object({
   body: z.object({
-    organizationId: uuidString,
-    clientId: uuidString,
+    // organizationId and clientId are optional - will be derived from jobId/bidId
+    organizationId: uuidString.optional(),
+    clientId: uuidString.optional(),
     jobId: uuidString.optional(),
     bidId: uuidString.optional(),
     invoiceType: invoiceTypeEnum.optional().default("standard"),
@@ -168,9 +169,28 @@ export const createInvoiceSchema = z.object({
     dueDate: dateString,
     paymentTerms: z.string().max(100).optional(),
     paymentTermsDays: z.number().int().positive().optional(),
+    
+    // Financial fields - all passed from body (no auto-calculation)
+    lineItemSubTotal: decimalString.optional(),
+    poSubTotal: decimalString.optional(),
+    jobSubtotal: decimalString.optional(),
     taxRate: decimalString.optional(),
+    taxAmount: decimalString.optional(),
+    discountAmount: decimalString.optional(),
     discountType: z.enum(["percentage", "fixed"]).optional(),
     discountValue: decimalString.optional(),
+    totalAmount: decimalString.optional(),
+    amountPaid: decimalString.optional(),
+    balanceDue: decimalString.optional(),
+    
+    // Linked IDs - all passed from body
+    purchaseOrderIds: z.array(uuidString).optional().nullable(),
+    purchaseOrderItemIds: z.array(uuidString).optional().nullable(),
+    jobMaterialIds: z.array(uuidString).optional().nullable(),
+    laborIds: z.array(uuidString).optional().nullable(),
+    travelIds: z.array(uuidString).optional().nullable(),
+    operatingExpenseIds: z.array(uuidString).optional().nullable(),
+    
     notes: z.string().optional(),
     termsAndConditions: z.string().optional(),
     internalNotes: z.string().optional(),
@@ -197,7 +217,11 @@ export const createInvoiceSchema = z.object({
     lineItems: z
       .array(lineItemSchema)
       .min(1, "At least one line item is required"),
-  }),
+  })
+    .refine((data) => data.jobId || data.bidId, {
+      message: "Either jobId or bidId must be provided",
+      path: ["jobId"],
+    }),
 });
 
 // Update Invoice Schema
@@ -214,6 +238,29 @@ export const updateInvoiceSchema = z.object({
     notes: z.string().optional(),
     termsAndConditions: z.string().optional(),
     internalNotes: z.string().optional(),
+    // Financial (all from body)
+    lineItemSubTotal: decimalString.optional(),
+    poSubTotal: decimalString.optional(),
+    jobSubtotal: decimalString.optional(),
+    taxAmount: decimalString.optional(),
+    discountAmount: decimalString.optional(),
+    totalAmount: decimalString.optional(),
+    amountPaid: decimalString.optional(),
+    balanceDue: decimalString.optional(),
+    // Billing address
+    billingAddressLine1: z.string().max(255).optional(),
+    billingAddressLine2: z.string().max(255).optional(),
+    billingCity: z.string().max(100).optional(),
+    billingState: z.string().max(100).optional(),
+    billingZipCode: z.string().max(20).optional(),
+    billingCountry: z.string().max(100).optional(),
+    // Linked IDs
+    purchaseOrderIds: z.array(uuidString).optional().nullable(),
+    purchaseOrderItemIds: z.array(uuidString).optional().nullable(),
+    jobMaterialIds: z.array(uuidString).optional().nullable(),
+    laborIds: z.array(uuidString).optional().nullable(),
+    travelIds: z.array(uuidString).optional().nullable(),
+    operatingExpenseIds: z.array(uuidString).optional().nullable(),
   }),
 });
 

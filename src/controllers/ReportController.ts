@@ -44,15 +44,9 @@ export const getCompanySummaryKPIsHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
-
     const { startDate, endDate } = req.query;
 
-    const kpis = await getCompanySummaryKPIs(organizationId, {
+    const kpis = await getCompanySummaryKPIs({
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
     });
@@ -77,15 +71,9 @@ export const getMonthlyRevenueTrendHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
-
     const { startDate, endDate } = req.query;
 
-    const trend = await getMonthlyRevenueTrend(organizationId, {
+    const trend = await getMonthlyRevenueTrend({
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
     });
@@ -110,15 +98,9 @@ export const getJobPerformanceDataHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
-
     const { startDate, endDate } = req.query;
 
-    const performance = await getJobPerformanceData(organizationId, {
+    const performance = await getJobPerformanceData({
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
     });
@@ -143,15 +125,9 @@ export const getClientRevenueDistributionHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
-
     const { startDate, endDate } = req.query;
 
-    const distribution = await getClientRevenueDistribution(organizationId, {
+    const distribution = await getClientRevenueDistribution({
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
     });

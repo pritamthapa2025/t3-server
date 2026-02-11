@@ -26,6 +26,7 @@ import {
 } from "../drizzle/schema/invoicing.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -208,7 +209,7 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
   await db
     .update(invoices)
     .set({
-      subtotal: finalSubtotal.toFixed(2),
+      lineItemSubTotal: finalSubtotal.toFixed(2),
       taxAmount: finalTax.toFixed(2),
       discountAmount: discountAmount.toFixed(2),
       totalAmount: totalAmount.toFixed(2),
@@ -310,7 +311,7 @@ export const getInvoices = async (
   const createdByUser = alias(users, "created_by_user");
   const approvedByUser = alias(users, "approved_by_user");
 
-  // Select invoices with user names
+  // Select invoices with user names and organization name (job → bid → organization)
   const [invoicesResult, totalResult] = await Promise.all([
     db
       .select({
@@ -318,11 +319,15 @@ export const getInvoices = async (
           ...invoices,
           createdByName: createdByUser.fullName,
           approvedByName: approvedByUser.fullName,
+          organizationName: organizations.name,
         },
       })
       .from(invoices)
       .leftJoin(createdByUser, eq(invoices.createdBy, createdByUser.id))
       .leftJoin(approvedByUser, eq(invoices.approvedBy, approvedByUser.id))
+      .leftJoin(jobs, eq(invoices.jobId, jobs.id))
+      .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
       .where(whereClause)
       .orderBy(desc(invoices.createdAt))
       .limit(limit)
@@ -332,11 +337,12 @@ export const getInvoices = async (
 
   // Extract invoices from wrapped result
   const invoicesList = invoicesResult.map((item) => {
-    const { createdByName, approvedByName, ...invoice } = item.invoice;
+    const { createdByName, approvedByName, organizationName, ...invoice } = item.invoice;
     return {
       ...invoice,
       createdByName: createdByName ?? null,
       approvedByName: approvedByName ?? null,
+      organizationName: organizationName ?? null,
     };
   });
 
@@ -388,15 +394,17 @@ export const getInvoiceById = async (
     includeHistory?: boolean;
   },
 ) => {
-  // Get organizationId from invoice's job → bid
+  // Get organizationId and organization name from invoice's job → bid → organization
   const invoiceWithOrg = await db
     .select({
       invoice: invoices,
       organizationId: bidsTable.organizationId,
+      organizationName: organizations.name,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(and(eq(invoices.id, invoiceId), eq(invoices.isDeleted, false)))
     .limit(1);
 
@@ -411,6 +419,7 @@ export const getInvoiceById = async (
 
   const _invoice = invoiceWithOrg[0].invoice;
   const invoiceOrganizationId = invoiceWithOrg[0].organizationId;
+  const organizationName = invoiceWithOrg[0].organizationName ?? null;
 
   // Aliases for joining users table multiple times
   const createdByUser = alias(users, "created_by_user");
@@ -440,6 +449,7 @@ export const getInvoiceById = async (
     createdByName: createdByName ?? null,
     approvedByName: approvedByName ?? null,
     organizationId: invoiceOrganizationId,
+    organizationName,
   };
 
   if (options?.includeLineItems !== false) {
@@ -509,15 +519,28 @@ export const getInvoiceById = async (
  * Create invoice
  */
 export const createInvoice = async (data: {
-  jobId: string;
+  organizationId?: string;
+  clientId?: string;
+  jobId?: string;
+  bidId?: string;
   invoiceType?: string;
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
   paymentTermsDays?: number;
+  // Financial fields - all passed from body (no auto-calculation)
+  lineItemSubTotal?: string;
+  poSubTotal?: string;
+  jobSubtotal?: string;
   taxRate?: string;
+  taxAmount?: string;
+  discountAmount?: string;
   discountType?: "percentage" | "fixed";
   discountValue?: string;
+  totalAmount?: string;
+  amountPaid?: string;
+  balanceDue?: string;
+  
   notes?: string;
   termsAndConditions?: string;
   internalNotes?: string;
@@ -531,6 +554,12 @@ export const createInvoice = async (data: {
   recurringFrequency?: string;
   recurringStartDate?: string;
   recurringEndDate?: string;
+  purchaseOrderIds?: string[] | null;
+  purchaseOrderItemIds?: string[] | null;
+  jobMaterialIds?: string[] | null;
+  laborIds?: string[] | null;
+  travelIds?: string[] | null;
+  operatingExpenseIds?: string[] | null;
   lineItems: Array<{
     title: string;
     description: string;
@@ -544,30 +573,66 @@ export const createInvoice = async (data: {
   createdBy: string;
 }) => {
   return await db.transaction(async (tx) => {
-    // Get organizationId from job → bid → organizationId
-    const [job] = await tx
-      .select({ bidId: jobs.bidId })
-      .from(jobs)
-      .where(eq(jobs.id, data.jobId))
-      .limit(1);
+    let organizationId = data.organizationId;
+    let clientId = data.clientId;
+    let finalJobId = data.jobId;
 
-    if (!job?.bidId) {
-      throw new Error("Job not found or job does not have a valid bidId");
+    // Derive organizationId and clientId if not provided
+    if (!organizationId || !clientId) {
+      if (data.jobId) {
+        // Get from job → bid
+        const [job] = await tx
+          .select({ bidId: jobs.bidId })
+          .from(jobs)
+          .where(eq(jobs.id, data.jobId))
+          .limit(1);
+
+        if (!job?.bidId) {
+          throw new Error("Job not found or job does not have a valid bidId");
+        }
+
+        const [bid] = await tx
+          .select({ organizationId: bidsTable.organizationId })
+          .from(bidsTable)
+          .where(eq(bidsTable.id, job.bidId))
+          .limit(1);
+
+        if (!bid?.organizationId) {
+          throw new Error(
+            "Bid not found or bid does not have a valid organizationId",
+          );
+        }
+
+        organizationId = bid.organizationId;
+        clientId = bid.organizationId; // In this system, organizationId from bid IS the clientId
+      } else if (data.bidId) {
+        // Get from bid directly
+        const [bid] = await tx
+          .select({ organizationId: bidsTable.organizationId })
+          .from(bidsTable)
+          .where(eq(bidsTable.id, data.bidId))
+          .limit(1);
+
+        if (!bid?.organizationId) {
+          throw new Error(
+            "Bid not found or bid does not have a valid organizationId",
+          );
+        }
+
+        organizationId = bid.organizationId;
+        clientId = bid.organizationId; // In this system, organizationId from bid IS the clientId
+      } else {
+        throw new Error(
+          "Either jobId or bidId must be provided to derive organizationId and clientId",
+        );
+      }
     }
 
-    const [bid] = await tx
-      .select({ organizationId: bidsTable.organizationId })
-      .from(bidsTable)
-      .where(eq(bidsTable.id, job.bidId))
-      .limit(1);
-
-    if (!bid?.organizationId) {
+    if (!organizationId) {
       throw new Error(
-        "Bid not found or bid does not have a valid organizationId",
+        "Unable to determine organizationId. Please provide jobId, bidId, or organizationId explicitly.",
       );
     }
-
-    const organizationId = bid.organizationId;
 
     // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber(organizationId);
@@ -577,16 +642,33 @@ export const createInvoice = async (data: {
       .insert(invoices)
       .values({
         invoiceNumber,
-        jobId: data.jobId,
+        jobId: finalJobId || null,
         invoiceType: (data.invoiceType as any) || "standard",
         status: "draft",
         invoiceDate: data.invoiceDate,
         dueDate: data.dueDate,
         paymentTerms: data.paymentTerms || null,
         paymentTermsDays: data.paymentTermsDays || null,
+        
+        // All financial and linked IDs from body (no auto-calculation)
+        lineItemSubTotal: data.lineItemSubTotal || "0",
+        poSubTotal: data.poSubTotal || "0",
+        jobSubtotal: data.jobSubtotal || "0",
         taxRate: data.taxRate || "0",
+        taxAmount: data.taxAmount || "0",
+        discountAmount: data.discountAmount || "0",
         discountType: data.discountType || null,
         discountValue: data.discountValue || null,
+        totalAmount: data.totalAmount || "0",
+        amountPaid: data.amountPaid || "0",
+        balanceDue: data.balanceDue || "0",
+        purchaseOrderIds: data.purchaseOrderIds ?? null,
+        purchaseOrderItemIds: data.purchaseOrderItemIds ?? null,
+        jobMaterialIds: data.jobMaterialIds ?? null,
+        laborIds: data.laborIds ?? null,
+        travelIds: data.travelIds ?? null,
+        operatingExpenseIds: data.operatingExpenseIds ?? null,
+        
         notes: data.notes || null,
         termsAndConditions: data.termsAndConditions || null,
         internalNotes: data.internalNotes || null,
@@ -601,12 +683,6 @@ export const createInvoice = async (data: {
         recurringStartDate: data.recurringStartDate || null,
         recurringEndDate: data.recurringEndDate || null,
         createdBy: data.createdBy,
-        subtotal: "0",
-        taxAmount: "0",
-        discountAmount: "0",
-        totalAmount: "0",
-        amountPaid: "0",
-        balanceDue: "0",
       })
       .returning();
 
@@ -644,8 +720,7 @@ export const createInvoice = async (data: {
       });
     }
 
-    // Recalculate invoice totals after adding line items
-    await recalculateInvoiceTotals(invoice.id);
+    // No auto-calculation: all data is passed from body
 
     return { invoiceId: invoice.id, organizationId };
   });

@@ -491,7 +491,7 @@ export const prepareInvoiceDataForPDF = (
           Number(financialBreakdown.travel || 0) +
           Number(financialBreakdown.operatingExpenses || 0)
         ).toFixed(2)
-      : Number(invoice.subtotal || 0).toFixed(2),
+      : Number(invoice.lineItemSubTotal || 0).toFixed(2),
     discountAmount: invoice.discountAmount
       ? Number(invoice.discountAmount).toFixed(2)
       : "0.00",

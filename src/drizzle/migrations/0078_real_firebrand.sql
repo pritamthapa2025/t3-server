@@ -1,0 +1,2 @@
+ALTER TABLE "org"."invoices" ADD COLUMN "purchaseorder_id" uuid;--> statement-breakpoint
+ALTER TABLE "org"."invoices" ADD CONSTRAINT "invoices_purchaseorder_id_inventory_purchase_orders_id_fk" FOREIGN KEY ("purchaseorder_id") REFERENCES "org"."inventory_purchase_orders"("id") ON DELETE no action ON UPDATE no action;

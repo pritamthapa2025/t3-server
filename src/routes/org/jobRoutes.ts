@@ -46,6 +46,16 @@ import {
   createJobTaskHandler,
   updateJobTaskHandler,
   deleteJobTaskHandler,
+  getTaskCommentsHandler,
+  getTaskCommentByIdHandler,
+  createTaskCommentHandler,
+  updateTaskCommentHandler,
+  deleteTaskCommentHandler,
+  getJobSurveysHandler,
+  getJobSurveyByIdHandler,
+  createJobSurveyHandler,
+  updateJobSurveyHandler,
+  deleteJobSurveyHandler,
   getJobExpensesHandler,
   getJobExpenseByIdHandler,
   createJobExpenseHandler,
@@ -105,6 +115,16 @@ import {
   createJobTaskSchema,
   updateJobTaskSchema,
   deleteJobTaskSchema,
+  getTaskCommentsSchema,
+  getTaskCommentByIdSchema,
+  createTaskCommentSchema,
+  updateTaskCommentSchema,
+  deleteTaskCommentSchema,
+  getJobSurveysSchema,
+  getJobSurveyByIdSchema,
+  createJobSurveySchema,
+  updateJobSurveySchema,
+  deleteJobSurveySchema,
   getJobExpensesSchema,
   getJobExpenseByIdSchema,
   createJobExpenseSchema,
@@ -354,6 +374,30 @@ router
   .get(validate(getJobTaskByIdSchema), getJobTaskByIdHandler)
   .put(validate(updateJobTaskSchema), updateJobTaskHandler)
   .delete(validate(deleteJobTaskSchema), deleteJobTaskHandler);
+
+// Task Comments Routes
+router
+  .route("/jobs/:jobId/tasks/:taskId/comments")
+  .get(validate(getTaskCommentsSchema), getTaskCommentsHandler)
+  .post(validate(createTaskCommentSchema), createTaskCommentHandler);
+
+router
+  .route("/jobs/:jobId/tasks/:taskId/comments/:id")
+  .get(validate(getTaskCommentByIdSchema), getTaskCommentByIdHandler)
+  .put(validate(updateTaskCommentSchema), updateTaskCommentHandler)
+  .delete(validate(deleteTaskCommentSchema), deleteTaskCommentHandler);
+
+// Survey Routes: /org/jobs/:jobId/survey and /org/jobs/:jobId/survey/:id
+router
+  .route("/jobs/:jobId/survey")
+  .get(validate(getJobSurveysSchema), getJobSurveysHandler)
+  .post(validate(createJobSurveySchema), createJobSurveyHandler);
+
+router
+  .route("/jobs/:jobId/survey/:id")
+  .get(validate(getJobSurveyByIdSchema), getJobSurveyByIdHandler)
+  .put(validate(updateJobSurveySchema), updateJobSurveyHandler)
+  .delete(validate(deleteJobSurveySchema), deleteJobSurveyHandler);
 
 // Expenses Routes (POST/PUT support form-data: receipt file + data JSON)
 router

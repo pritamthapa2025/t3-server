@@ -10,6 +10,7 @@ import {
   date,
   unique,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // Import related tables
@@ -54,7 +55,16 @@ export const invoices: any = org.table(
     lastReminderDate: timestamp("last_reminder_date"),
 
     // Financial
-    subtotal: numeric("subtotal", { precision: 15, scale: 2 })
+    lineItemSubTotal: numeric("line_item_sub_total", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    poSubTotal: numeric("po_sub_total", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
+    jobSubtotal: numeric("job_subtotal", { precision: 15, scale: 2 })
       .notNull()
       .default("0"),
     taxRate: numeric("tax_rate", { precision: 5, scale: 4 })
@@ -82,6 +92,15 @@ export const invoices: any = org.table(
     paymentTerms: varchar("payment_terms", { length: 100 }), // "Net 30", "Due on Receipt", etc.
     paymentTermsDays: integer("payment_terms_days"), // Number of days (e.g., 30 for Net 30)
     notes: text("notes"),
+
+    // Linked IDs (all data passed from body; no auto-calculation)
+    purchaseOrderIds: jsonb("purchase_order_ids"), // Array of purchase order UUIDs
+    purchaseOrderItemIds: jsonb("purchase_order_item_ids"), // Array of PO line item IDs
+    jobMaterialIds: jsonb("job_material_ids"), // Material IDs for selected job
+    laborIds: jsonb("labor_ids"), // Labor IDs for selected job
+    travelIds: jsonb("travel_ids"), // Travel IDs for selected job
+    operatingExpenseIds: jsonb("operating_expense_ids"), // Operating expense IDs for selected job
+
     termsAndConditions: text("terms_and_conditions"),
     internalNotes: text("internal_notes"), // Internal-only notes
 

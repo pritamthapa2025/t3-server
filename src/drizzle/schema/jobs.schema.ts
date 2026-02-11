@@ -10,6 +10,7 @@ import {
   date,
   unique,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // Import related tables
@@ -178,6 +179,33 @@ export const jobTasks = org.table(
 );
 
 /**
+ * Task Comments Table
+ * One task, many comments (referenced to job_tasks)
+ */
+export const taskComments = org.table(
+  "task_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobTaskId: uuid("job_task_id")
+      .notNull()
+      .references(() => jobTasks.id),
+
+    comment: text("comment").notNull(),
+
+    createdBy: uuid("created_by").references(() => users.id),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_task_comments_job_task_id").on(table.jobTaskId),
+    index("idx_task_comments_created_by").on(table.createdBy),
+    index("idx_task_comments_is_deleted").on(table.isDeleted),
+  ],
+);
+
+/**
  * Job Expenses Table
  * Actual expenses incurred on jobs (separate from budgeted materials/labor/travel)
  */
@@ -218,5 +246,96 @@ export const jobExpenses = org.table(
     index("idx_job_expenses_type").on(table.expenseType),
     index("idx_job_expenses_date").on(table.expenseDate),
     index("idx_job_expenses_approved_by").on(table.approvedBy),
+  ],
+);
+
+/**
+ * Job Surveys Table
+ * Survey/assessment data for a job (unit info, condition, filter/blower, cooling/heating, photos, notes, status)
+ */
+export const jobSurveys = org.table(
+  "job_surveys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id),
+
+    // Survey Information (Create New Survey)
+    buildingNumber: varchar("building_number", { length: 100 }),
+    unitTagLabel: varchar("unit_tag_label", { length: 100 }),
+    unitLocation: varchar("unit_location", { length: 255 }),
+    technicianId: integer("technician_id").references(() => employees.id),
+    make: varchar("make", { length: 255 }),
+    modelNumber: varchar("model_number", { length: 255 }),
+    serialNumber: varchar("serial_number", { length: 255 }),
+    systemType: varchar("system_type", { length: 100 }),
+    powerStatus: varchar("power_status", { length: 100 }),
+    voltagePhase: varchar("voltage_phase", { length: 100 }),
+
+    // Unit Condition Assessment
+    overallUnitCondition: varchar("overall_unit_condition", { length: 100 }),
+    physicalConditionNotes: text("physical_condition_notes"),
+    corrosionOrRust: boolean("corrosion_or_rust").default(false),
+    debrisOrBlockage: boolean("debris_or_blockage").default(false),
+    refrigerantLineCondition: varchar("refrigerant_line_condition", {
+      length: 255,
+    }),
+    electricalComponentsCondition: varchar("electrical_components_condition", {
+      length: 255,
+    }),
+    ductingCondition: varchar("ducting_condition", { length: 255 }),
+    condensateLineCondition: varchar("condensate_line_condition", {
+      length: 100,
+    }),
+    cabinetIntegrity: varchar("cabinet_integrity", { length: 255 }),
+
+    // Filter Assessment & Blower Motor & Airflow
+    filterPresent: boolean("filter_present").default(false),
+    filterSize: varchar("filter_size", { length: 100 }),
+    filterCondition: varchar("filter_condition", { length: 100 }),
+    blowerMotorStatus: varchar("blower_motor_status", { length: 255 }),
+    blowerMotorCondition: varchar("blower_motor_condition", { length: 255 }),
+    airflowOutput: varchar("airflow_output", { length: 100 }),
+    beltCondition: varchar("belt_condition", { length: 255 }),
+
+    // Cooling Performance Data
+    temperatureSplitSupplyF: numeric("temperature_split_supply_f", {
+      precision: 8,
+      scale: 2,
+    }),
+    temperatureSplitReturnF: numeric("temperature_split_return_f", {
+      precision: 8,
+      scale: 2,
+    }),
+    coolingCoilCondition: varchar("cooling_coil_condition", { length: 255 }),
+    compressorStatus: varchar("compressor_status", { length: 255 }),
+    refrigerantLineTemperatureF: numeric("refrigerant_line_temperature_f", {
+      precision: 8,
+      scale: 2,
+    }),
+    coolingFunctionality: varchar("cooling_functionality", { length: 100 }),
+
+    // Heating Performance Data
+    heatingFunctionality: varchar("heating_functionality", { length: 100 }),
+    gasValveCondition: varchar("gas_valve_condition", { length: 255 }),
+    heatingCoilCondition: varchar("heating_coil_condition", { length: 255 }),
+
+    // Photos & Media (array of file refs/URLs), Detailed Notes, Status
+    photosMedia: jsonb("photos_media"), // Array of file paths/IDs
+    pros: text("pros"),
+    cons: text("cons"),
+    status: varchar("status", { length: 50 }).default("draft"), // draft, submitted, completed
+
+    createdBy: uuid("created_by").references(() => users.id),
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_job_surveys_job_id").on(table.jobId),
+    index("idx_job_surveys_technician").on(table.technicianId),
+    index("idx_job_surveys_status").on(table.status),
+    index("idx_job_surveys_is_deleted").on(table.isDeleted),
   ],
 );

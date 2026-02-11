@@ -615,6 +615,135 @@ export const deleteJobTaskSchema = z.object({
 });
 
 // ============================
+// Task Comments Validations
+// ============================
+
+export const getTaskCommentsSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+  }),
+});
+
+export const getTaskCommentByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+    id: uuidSchema,
+  }),
+});
+
+export const createTaskCommentSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+  }),
+  body: z.object({
+    comment: z.string().min(1, "Comment is required"),
+  }),
+});
+
+export const updateTaskCommentSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+    id: uuidSchema,
+  }),
+  body: z.object({
+    comment: z.string().min(1).optional(),
+  }),
+});
+
+export const deleteTaskCommentSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    taskId: uuidSchema,
+    id: uuidSchema,
+  }),
+});
+
+// ============================
+// Job Survey Validations
+// ============================
+
+const jobSurveyBodySchema = z.object({
+  buildingNumber: z.string().max(100).optional(),
+  unitTagLabel: z.string().max(100).optional(),
+  unitLocation: z.string().max(255).optional(),
+  technicianId: z.coerce.number().int().optional(),
+  make: z.string().max(255).optional(),
+  modelNumber: z.string().max(255).optional(),
+  serialNumber: z.string().max(255).optional(),
+  systemType: z.string().max(100).optional(),
+  powerStatus: z.string().max(100).optional(),
+  voltagePhase: z.string().max(100).optional(),
+  overallUnitCondition: z.string().max(100).optional(),
+  physicalConditionNotes: z.string().optional(),
+  corrosionOrRust: z.boolean().optional(),
+  debrisOrBlockage: z.boolean().optional(),
+  refrigerantLineCondition: z.string().max(255).optional(),
+  electricalComponentsCondition: z.string().max(255).optional(),
+  ductingCondition: z.string().max(255).optional(),
+  condensateLineCondition: z.string().max(100).optional(),
+  cabinetIntegrity: z.string().max(255).optional(),
+  filterPresent: z.boolean().optional(),
+  filterSize: z.string().max(100).optional(),
+  filterCondition: z.string().max(100).optional(),
+  blowerMotorStatus: z.string().max(255).optional(),
+  blowerMotorCondition: z.string().max(255).optional(),
+  airflowOutput: z.string().max(100).optional(),
+  beltCondition: z.string().max(255).optional(),
+  temperatureSplitSupplyF: numericStringSchema.optional(),
+  temperatureSplitReturnF: numericStringSchema.optional(),
+  coolingCoilCondition: z.string().max(255).optional(),
+  compressorStatus: z.string().max(255).optional(),
+  refrigerantLineTemperatureF: numericStringSchema.optional(),
+  coolingFunctionality: z.string().max(100).optional(),
+  heatingFunctionality: z.string().max(100).optional(),
+  gasValveCondition: z.string().max(255).optional(),
+  heatingCoilCondition: z.string().max(255).optional(),
+  photosMedia: z.array(z.string()).optional().nullable(),
+  pros: z.string().optional(),
+  cons: z.string().optional(),
+  status: z.enum(["draft", "submitted", "completed"]).optional(),
+});
+
+export const getJobSurveysSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+  }),
+});
+
+export const getJobSurveyByIdSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    id: uuidSchema,
+  }),
+});
+
+export const createJobSurveySchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+  }),
+  body: jobSurveyBodySchema.optional(),
+});
+
+export const updateJobSurveySchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    id: uuidSchema,
+  }),
+  body: jobSurveyBodySchema,
+});
+
+export const deleteJobSurveySchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+    id: uuidSchema,
+  }),
+});
+
+// ============================
 // Expenses Validations
 // ============================
 

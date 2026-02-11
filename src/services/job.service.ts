@@ -1,10 +1,13 @@
 import { count, eq, and, desc, asc, sql, or, ilike, max } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
   jobs,
   jobTeamMembers,
   jobTasks,
+  taskComments,
   jobExpenses,
+  jobSurveys,
 } from "../drizzle/schema/jobs.schema.js";
 import {
   bidsTable,
@@ -1906,6 +1909,346 @@ export const deleteJobTask = async (
     .returning();
 
   return task || null;
+};
+
+// ============================
+// Task Comments Operations
+// ============================
+
+const taskCommentCreatedByUser = alias(users, "task_comment_created_by");
+
+/** Ensure task exists and belongs to job; return taskId or null */
+const ensureTaskBelongsToJob = async (
+  jobId: string,
+  taskId: string,
+): Promise<string | null> => {
+  const [row] = await db
+    .select({ id: jobTasks.id })
+    .from(jobTasks)
+    .where(
+      and(
+        eq(jobTasks.id, taskId),
+        eq(jobTasks.jobId, jobId),
+        eq(jobTasks.isDeleted, false),
+      ),
+    );
+  return row?.id ?? null;
+};
+
+export const getTaskComments = async (
+  jobId: string,
+  taskId: string,
+): Promise<Array<{
+  id: string;
+  jobTaskId: string;
+  comment: string;
+  createdBy: string | null;
+  createdByName: string | null;
+  isDeleted: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}> | null> => {
+  const tid = await ensureTaskBelongsToJob(jobId, taskId);
+  if (!tid) return null;
+
+  const rows = await db
+    .select({
+      id: taskComments.id,
+      jobTaskId: taskComments.jobTaskId,
+      comment: taskComments.comment,
+      createdBy: taskComments.createdBy,
+      createdByName: taskCommentCreatedByUser.fullName,
+      isDeleted: taskComments.isDeleted,
+      createdAt: taskComments.createdAt,
+      updatedAt: taskComments.updatedAt,
+    })
+    .from(taskComments)
+    .leftJoin(
+      taskCommentCreatedByUser,
+      eq(taskComments.createdBy, taskCommentCreatedByUser.id),
+    )
+    .where(
+      and(eq(taskComments.jobTaskId, tid), eq(taskComments.isDeleted, false)),
+    )
+    .orderBy(desc(taskComments.createdAt));
+
+  return rows.map((r) => ({
+    ...r,
+    createdByName: r.createdByName ?? null,
+    isDeleted: r.isDeleted ?? false,
+  }));
+};
+
+export const getTaskCommentById = async (
+  jobId: string,
+  taskId: string,
+  commentId: string,
+) => {
+  const tid = await ensureTaskBelongsToJob(jobId, taskId);
+  if (!tid) return null;
+
+  const [row] = await db
+    .select({
+      id: taskComments.id,
+      jobTaskId: taskComments.jobTaskId,
+      comment: taskComments.comment,
+      createdBy: taskComments.createdBy,
+      createdByName: taskCommentCreatedByUser.fullName,
+      isDeleted: taskComments.isDeleted,
+      createdAt: taskComments.createdAt,
+      updatedAt: taskComments.updatedAt,
+    })
+    .from(taskComments)
+    .leftJoin(
+      taskCommentCreatedByUser,
+      eq(taskComments.createdBy, taskCommentCreatedByUser.id),
+    )
+    .where(
+      and(
+        eq(taskComments.id, commentId),
+        eq(taskComments.jobTaskId, tid),
+        eq(taskComments.isDeleted, false),
+      ),
+    );
+
+  if (!row) return null;
+  return {
+    ...row,
+    createdByName: row.createdByName ?? null,
+  };
+};
+
+export const createTaskComment = async (data: {
+  jobId: string;
+  taskId: string;
+  comment: string;
+  createdBy: string;
+}) => {
+  const tid = await ensureTaskBelongsToJob(data.jobId, data.taskId);
+  if (!tid) return null;
+
+  const [inserted] = await db
+    .insert(taskComments)
+    .values({
+      jobTaskId: tid,
+      comment: data.comment,
+      createdBy: data.createdBy,
+    })
+    .returning();
+
+  if (!inserted) return null;
+  return getTaskCommentById(data.jobId, data.taskId, inserted.id);
+};
+
+export const updateTaskComment = async (
+  commentId: string,
+  jobId: string,
+  taskId: string,
+  data: { comment?: string },
+) => {
+  const tid = await ensureTaskBelongsToJob(jobId, taskId);
+  if (!tid) return null;
+
+  const [updated] = await db
+    .update(taskComments)
+    .set({ ...data, updatedAt: new Date() })
+    .where(
+      and(
+        eq(taskComments.id, commentId),
+        eq(taskComments.jobTaskId, tid),
+        eq(taskComments.isDeleted, false),
+      ),
+    )
+    .returning();
+
+  if (!updated) return null;
+  return getTaskCommentById(jobId, taskId, commentId);
+};
+
+export const deleteTaskComment = async (
+  commentId: string,
+  jobId: string,
+  taskId: string,
+) => {
+  const tid = await ensureTaskBelongsToJob(jobId, taskId);
+  if (!tid) return null;
+
+  const [softDeleted] = await db
+    .update(taskComments)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(taskComments.id, commentId),
+        eq(taskComments.jobTaskId, tid),
+        eq(taskComments.isDeleted, false),
+      ),
+    )
+    .returning();
+
+  return softDeleted ?? null;
+};
+
+// ============================
+// Job Survey Operations
+// ============================
+
+const surveyCreatedByUser = alias(users, "survey_created_by");
+const surveyTechnicianUser = alias(users, "survey_technician_user");
+
+export const getJobSurveys = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const rows = await db
+    .select({
+      survey: jobSurveys,
+      createdByName: surveyCreatedByUser.fullName,
+      technicianName: surveyTechnicianUser.fullName,
+    })
+    .from(jobSurveys)
+    .leftJoin(surveyCreatedByUser, eq(jobSurveys.createdBy, surveyCreatedByUser.id))
+    .leftJoin(employees, eq(jobSurveys.technicianId, employees.id))
+    .leftJoin(surveyTechnicianUser, eq(employees.userId, surveyTechnicianUser.id))
+    .where(
+      and(eq(jobSurveys.jobId, jobId), eq(jobSurveys.isDeleted, false)),
+    )
+    .orderBy(desc(jobSurveys.createdAt));
+
+  return rows.map((r) => ({
+    ...r.survey,
+    createdByName: r.createdByName ?? null,
+    technicianName: r.technicianName ?? null,
+  }));
+};
+
+export const getJobSurveyById = async (jobId: string, surveyId: string) => {
+  const [row] = await db
+    .select({
+      survey: jobSurveys,
+      createdByName: surveyCreatedByUser.fullName,
+      technicianName: surveyTechnicianUser.fullName,
+    })
+    .from(jobSurveys)
+    .leftJoin(surveyCreatedByUser, eq(jobSurveys.createdBy, surveyCreatedByUser.id))
+    .leftJoin(employees, eq(jobSurveys.technicianId, employees.id))
+    .leftJoin(surveyTechnicianUser, eq(employees.userId, surveyTechnicianUser.id))
+    .where(
+      and(
+        eq(jobSurveys.id, surveyId),
+        eq(jobSurveys.jobId, jobId),
+        eq(jobSurveys.isDeleted, false),
+      ),
+    );
+
+  if (!row) return null;
+  return {
+    ...row.survey,
+    createdByName: row.createdByName ?? null,
+    technicianName: row.technicianName ?? null,
+  };
+};
+
+type JobSurveyInsert = Partial<{
+  buildingNumber: string;
+  unitTagLabel: string;
+  unitLocation: string;
+  technicianId: number;
+  make: string;
+  modelNumber: string;
+  serialNumber: string;
+  systemType: string;
+  powerStatus: string;
+  voltagePhase: string;
+  overallUnitCondition: string;
+  physicalConditionNotes: string;
+  corrosionOrRust: boolean;
+  debrisOrBlockage: boolean;
+  refrigerantLineCondition: string;
+  electricalComponentsCondition: string;
+  ductingCondition: string;
+  condensateLineCondition: string;
+  cabinetIntegrity: string;
+  filterPresent: boolean;
+  filterSize: string;
+  filterCondition: string;
+  blowerMotorStatus: string;
+  blowerMotorCondition: string;
+  airflowOutput: string;
+  beltCondition: string;
+  temperatureSplitSupplyF: string;
+  temperatureSplitReturnF: string;
+  coolingCoilCondition: string;
+  compressorStatus: string;
+  refrigerantLineTemperatureF: string;
+  coolingFunctionality: string;
+  heatingFunctionality: string;
+  gasValveCondition: string;
+  heatingCoilCondition: string;
+  photosMedia: unknown;
+  pros: string;
+  cons: string;
+  status: string;
+}>;
+
+export const createJobSurvey = async (data: {
+  jobId: string;
+  createdBy: string;
+} & JobSurveyInsert) => {
+  const { jobId, createdBy, ...rest } = data;
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const [inserted] = await db
+    .insert(jobSurveys)
+    .values({
+      jobId,
+      createdBy,
+      ...rest,
+    })
+    .returning();
+  if (!inserted) return null;
+  return getJobSurveyById(jobId, inserted.id);
+};
+
+export const updateJobSurvey = async (
+  surveyId: string,
+  jobId: string,
+  data: JobSurveyInsert,
+) => {
+  const [updated] = await db
+    .update(jobSurveys)
+    .set({ ...data, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobSurveys.id, surveyId),
+        eq(jobSurveys.jobId, jobId),
+        eq(jobSurveys.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+  return getJobSurveyById(jobId, surveyId);
+};
+
+export const deleteJobSurvey = async (surveyId: string, jobId: string) => {
+  const [softDeleted] = await db
+    .update(jobSurveys)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobSurveys.id, surveyId),
+        eq(jobSurveys.jobId, jobId),
+        eq(jobSurveys.isDeleted, false),
+      ),
+    )
+    .returning();
+  return softDeleted ?? null;
 };
 
 // ============================

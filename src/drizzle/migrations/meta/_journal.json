@@ -547,6 +547,27 @@
       "when": 1770788244203,
       "tag": "0077_low_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1770797718567,
+      "tag": "0078_real_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1770801292100,
+      "tag": "0079_confused_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1770810534697,
+      "tag": "0080_needy_king_bedlam",
+      "breakpoints": true
     }
   ]
 }
