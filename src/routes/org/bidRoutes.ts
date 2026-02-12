@@ -63,6 +63,7 @@ import {
   previewBidQuotePDF,
   sendQuoteEmail,
   sendQuoteEmailTest,
+  getBidsKPIsHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -237,6 +238,13 @@ router.use(loadModulePermissions("bids"));
 router.use(generalTransformer);
 
 // Main Bid Routes
+
+// KPIs Route (must be before /bids/:id to avoid parameter conflicts)
+router.get(
+  "/bids/kpis",
+  authorizeFeature("bids", "view"),
+  getBidsKPIsHandler,
+);
 
 router
   .route("/bids")

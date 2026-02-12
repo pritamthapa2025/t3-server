@@ -19,6 +19,7 @@ import {
   createExpenseReceipt,
   updateExpenseReceipt,
   deleteExpenseReceipt,
+  getExpensesKPIs,
 } from "../services/expense.service.js";
 import {
   getExpenseSummary,
@@ -970,6 +971,28 @@ export const deleteExpenseReceiptHandler = async (
     return res.status(500).json({
       success: false,
       message: "Failed to delete receipt",
+    });
+  }
+};
+
+// ============================
+// Expenses KPIs Handler
+// ============================
+
+export const getExpensesKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    const kpis = await getExpensesKPIs();
+
+    logger.info("Expenses KPIs fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching expenses KPIs", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
     });
   }
 };

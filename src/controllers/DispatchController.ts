@@ -20,6 +20,7 @@ import {
   getAssignmentsByTechnicianId,
   getAvailableEmployeesForDispatch,
   getEmployeesWithAssignedTasks,
+  getDispatchKPIs,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -622,6 +623,28 @@ export const getEmployeesWithAssignedTasksHandler = async (
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// DISPATCH KPIs
+// ============================
+
+export const getDispatchKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    const kpis = await getDispatchKPIs();
+
+    logger.info("Dispatch KPIs fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching dispatch KPIs", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
     });
   }
 };

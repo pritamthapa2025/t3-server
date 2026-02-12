@@ -2196,3 +2196,75 @@ export const deleteBidMedia = async (mediaId: string) => {
     .returning();
   return media || null;
 };
+
+// ============================
+// Bids KPIs
+// ============================
+
+export const getBidsKPIs = async () => {
+  // Total bid value (sum of all bid amounts)
+  const [totalBidValueRow] = await db
+    .select({
+      totalBidValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.bidAmount} AS NUMERIC)), 0)`,
+    })
+    .from(bidsTable)
+    .where(eq(bidsTable.isDeleted, false));
+
+  // Active bids (status: submitted, in_progress)
+  const [activeBidsRow] = await db
+    .select({ count: count() })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.isDeleted, false),
+        or(
+          eq(bidsTable.status, "submitted"),
+          eq(bidsTable.status, "in_progress")
+        )
+      )
+    );
+
+  // Pending bids (status: draft, pending)
+  const [pendingBidsRow] = await db
+    .select({ count: count() })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.isDeleted, false),
+        or(
+          eq(bidsTable.status, "draft"),
+          eq(bidsTable.status, "pending")
+        )
+      )
+    );
+
+  // Won bids (status: accepted, won)
+  const [wonBidsRow] = await db
+    .select({ count: count() })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.isDeleted, false),
+        or(
+          eq(bidsTable.status, "accepted"),
+          eq(bidsTable.status, "won")
+        )
+      )
+    );
+
+  // Average profit margin
+  const [avgProfitMarginRow] = await db
+    .select({
+      avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
+    })
+    .from(bidsTable)
+    .where(eq(bidsTable.isDeleted, false));
+
+  return {
+    totalBidValue: Number(totalBidValueRow?.totalBidValue || 0),
+    activeBids: activeBidsRow?.count || 0,
+    pendingBids: pendingBidsRow?.count || 0,
+    wonBids: wonBidsRow?.count || 0,
+    avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin || 0),
+  };
+};

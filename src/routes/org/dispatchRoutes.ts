@@ -15,6 +15,7 @@ import {
   getAssignmentsByTechnicianIdHandler,
   getAvailableEmployeesHandler,
   getEmployeesWithAssignedTasksHandler,
+  getDispatchKPIsHandler,
 } from "../../controllers/DispatchController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -101,6 +102,9 @@ router.use(generalTransformer);
 // ============================
 // Dispatch Tasks Routes
 // ============================
+
+// KPIs Route
+router.get("/dispatch/kpis", getDispatchKPIsHandler);
 
 router
   .route("/tasks")

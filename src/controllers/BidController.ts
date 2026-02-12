@@ -98,6 +98,7 @@ import {
   getBidDocuments,
   getBidDocumentById,
   updateBidDocument,
+  getBidsKPIs,
   deleteBidDocument,
   createBidMedia,
   getBidMedia,
@@ -3958,6 +3959,32 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to send test quote",
+      error: error.message,
+    });
+  }
+};
+
+// ============================
+// Bids KPIs Handler
+// ============================
+
+export const getBidsKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    // Validate user access
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const kpis = await getBidsKPIs();
+
+    res.json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching bids KPIs", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch bids KPIs",
       error: error.message,
     });
   }

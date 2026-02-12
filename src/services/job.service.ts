@@ -2839,3 +2839,86 @@ export const getJobLaborCostTracking = async (jobId: string) => {
     doubleOTHoursNumeric: parseFloat(doubleOTHours.toFixed(2)),
   };
 };
+
+// ============================
+// Jobs KPIs
+// ============================
+
+export const getJobsKPIs = async () => {
+  // Active jobs (status: in_progress)
+  const [activeJobsRow] = await db
+    .select({ count: count() })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        eq(jobs.status, "in_progress")
+      )
+    );
+
+  // Pending invoices (count invoices where status is pending or sent)
+  const [pendingInvoicesRow] = await db
+    .select({ count: count() })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.isDeleted, false),
+        or(
+          eq(invoices.status, "pending"),
+          eq(invoices.status, "sent")
+        )
+      )
+    );
+
+  // Total completed jobs (status: completed)
+  const [completedJobsRow] = await db
+    .select({ count: count() })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        eq(jobs.status, "completed")
+      )
+    );
+
+  // Average profit margin - get from bidsTable
+  const [avgProfitMarginRow] = await db
+    .select({
+      avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        eq(bidsTable.isDeleted, false)
+      )
+    );
+
+  // Overdue jobs (scheduledEndDate < today and status not completed/closed/cancelled)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [overdueJobsRow] = await db
+    .select({ count: count() })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        lte(jobs.scheduledEndDate, today.toISOString().split('T')[0]),
+        or(
+          eq(jobs.status, "planned"),
+          eq(jobs.status, "scheduled"),
+          eq(jobs.status, "in_progress"),
+          eq(jobs.status, "on_hold")
+        )
+      )
+    );
+
+  return {
+    activeJobs: activeJobsRow?.count || 0,
+    pendingInvoices: pendingInvoicesRow?.count || 0,
+    totalCompletedJobs: completedJobsRow?.count || 0,
+    avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin || 0),
+    overdueJobs: overdueJobsRow?.count || 0,
+  };
+};

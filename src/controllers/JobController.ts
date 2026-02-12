@@ -108,6 +108,7 @@ import {
   getJobWithAllData,
   getJobInvoiceKPIs,
   getJobLaborCostTracking,
+  getJobsKPIs,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -3665,6 +3666,28 @@ export const getJobLaborCostTrackingHandler = async (
   } catch (error: any) {
     logger.logApiError("Error fetching job labor cost tracking", error, req);
     return res.status(error.message === "Job not found" ? 404 : 500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/**
+ * Get jobs KPIs
+ * GET /jobs/kpis
+ */
+export const getJobsKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    const kpis = await getJobsKPIs();
+
+    logger.info("Jobs KPIs fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching jobs KPIs", error, req);
+    return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
     });

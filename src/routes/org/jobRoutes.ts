@@ -69,6 +69,7 @@ import {
   getJobWithAllDataHandler,
   getJobInvoiceKPIsHandler,
   getJobLaborCostTrackingHandler,
+  getJobsKPIsHandler,
 } from "../../controllers/JobController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -234,6 +235,9 @@ router.use(authenticate);
 router.use(generalTransformer);
 
 // Main Job Routes
+
+// KPIs Route (must be before /jobs/:id to avoid parameter conflicts)
+router.get("/jobs/kpis", getJobsKPIsHandler);
 
 router
   .route("/jobs")

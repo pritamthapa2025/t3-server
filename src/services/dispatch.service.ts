@@ -801,3 +801,88 @@ export const getEmployeesWithAssignedTasks = async (
     },
   };
 };
+
+// ============================
+// Dispatch KPIs
+// ============================
+
+export const getDispatchKPIs = async () => {
+  // Active tasks (status: assigned, in_progress)
+  const [activeTasksRow] = await db
+    .select({ count: count() })
+    .from(dispatchTasks)
+    .where(
+      and(
+        eq(dispatchTasks.isDeleted, false),
+        or(
+          eq(dispatchTasks.status, "assigned"),
+          eq(dispatchTasks.status, "in_progress")
+        )
+      )
+    );
+
+  // Completed today (status: completed and endTime is today)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const [completedTodayRow] = await db
+    .select({ count: count() })
+    .from(dispatchTasks)
+    .where(
+      and(
+        eq(dispatchTasks.isDeleted, false),
+        eq(dispatchTasks.status, "completed"),
+        gte(dispatchTasks.endTime, today),
+        lte(dispatchTasks.endTime, tomorrow)
+      )
+    );
+
+  // Available technicians (employees with status = 'available')
+  const [availableTechniciansRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(employees.status, "available")
+      )
+    );
+
+  // In field (employees with status = 'in_field')
+  const [inFieldRow] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(employees.status, "in_field")
+      )
+    );
+
+  // Overdue tasks (endTime < now and status not completed/cancelled)
+  const now = new Date();
+  const [overdueTasksRow] = await db
+    .select({ count: count() })
+    .from(dispatchTasks)
+    .where(
+      and(
+        eq(dispatchTasks.isDeleted, false),
+        lte(dispatchTasks.endTime, now),
+        or(
+          eq(dispatchTasks.status, "pending"),
+          eq(dispatchTasks.status, "assigned"),
+          eq(dispatchTasks.status, "in_progress")
+        )
+      )
+    );
+
+  return {
+    activeTasks: activeTasksRow?.count || 0,
+    completedToday: completedTodayRow?.count || 0,
+    availableTechnicians: availableTechniciansRow?.count || 0,
+    inField: inFieldRow?.count || 0,
+    overdueTasks: overdueTasksRow?.count || 0,
+  };
+};

@@ -21,6 +21,7 @@ import {
   createExpenseReceiptHandler,
   updateExpenseReceiptHandler,
   deleteExpenseReceiptHandler,
+  getExpensesKPIsHandler,
 } from "../../controllers/ExpenseController.js";
 import {
   getExpenseReportsHandler,
@@ -150,6 +151,9 @@ router
 // ============================
 // EXPENSES ROUTES
 // ============================
+
+// KPIs Route (must be before /expenses/:id to avoid parameter conflicts)
+router.get("/expenses/kpis", getExpensesKPIsHandler);
 
 router
   .route("/expenses")
