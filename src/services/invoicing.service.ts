@@ -35,53 +35,6 @@ import { alias } from "drizzle-orm/pg-core";
 // ============================
 
 /**
- * Calculate left to be paid percentage for a specific item type
- * Returns the remaining percentage that hasn't been billed yet
- */
-const calculateLeftToBePaidPercentage = async (
-  jobId: string,
-  itemType: string,
-  title?: string,
-): Promise<number> => {
-  // Get all non-deleted invoices for this job
-  const jobInvoices = await db
-    .select({ id: invoices.id })
-    .from(invoices)
-    .where(and(eq(invoices.jobId, jobId), eq(invoices.isDeleted, false)));
-
-  if (jobInvoices.length === 0) {
-    return 100; // Nothing billed yet
-  }
-
-  const invoiceIds = jobInvoices.map((inv) => inv.id);
-
-  // Build where conditions
-  const whereConditions = [
-    inArray(invoiceLineItems.invoiceId, invoiceIds),
-    eq(invoiceLineItems.itemType, itemType),
-    eq(invoiceLineItems.isDeleted, false),
-  ];
-
-  // If title is provided, filter by title as well
-  if (title) {
-    whereConditions.push(eq(invoiceLineItems.title, title));
-  }
-
-  // Sum up all billing percentages for this item type (and title if provided)
-  const result = await db
-    .select({
-      totalBilled: sql<string>`COALESCE(SUM(${invoiceLineItems.billingPercentage}), 0)`,
-    })
-    .from(invoiceLineItems)
-    .where(and(...whereConditions));
-
-  const totalBilled = parseFloat(result[0]?.totalBilled || "0");
-  const remaining = Math.max(0, 100 - totalBilled);
-
-  return parseFloat(remaining.toFixed(2));
-};
-
-/**
  * Generate invoice number using atomic database function
  * Format: INV-YYYY-#####
  */
@@ -382,32 +335,9 @@ export const getInvoices = async (
         )
         .orderBy(invoiceLineItems.sortOrder);
 
-      // Enrich each line item with leftToBePaidPercentage if it has a jobId and itemType
-      let enrichedLineItems = lineItems;
-      if (invoice.jobId) {
-        enrichedLineItems = await Promise.all(
-          lineItems.map(async (item: any) => {
-            let leftToBePaidPercentage = null;
-            
-            if (item.itemType) {
-              leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
-                invoice.jobId!,
-                item.itemType,
-                item.title,
-              );
-            }
-
-            return {
-              ...item,
-              leftToBePaidPercentage,
-            };
-          }),
-        );
-      }
-
       return {
         ...invoice,
-        lineItems: enrichedLineItems,
+        lineItems,
       };
     }),
   );
@@ -498,7 +428,7 @@ export const getInvoiceById = async (
   };
 
   if (options?.includeLineItems !== false) {
-    const lineItems = await db
+    result.lineItems = await db
       .select()
       .from(invoiceLineItems)
       .where(
@@ -508,30 +438,6 @@ export const getInvoiceById = async (
         ),
       )
       .orderBy(invoiceLineItems.sortOrder);
-
-    // Enrich each line item with leftToBePaidPercentage if it has a jobId and itemType
-    if (invoiceData.jobId) {
-      result.lineItems = await Promise.all(
-        lineItems.map(async (item: any) => {
-          let leftToBePaidPercentage = null;
-          
-          if (item.itemType) {
-            leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
-              invoiceData.jobId!,
-              item.itemType,
-              item.title,
-            );
-          }
-
-          return {
-            ...item,
-            leftToBePaidPercentage,
-          };
-        }),
-      );
-    } else {
-      result.lineItems = lineItems;
-    }
   }
 
   if (options?.includePayments !== false) {
@@ -635,6 +541,8 @@ export const createInvoice = async (data: {
     itemType?: string;
     quantity?: string;
     quotedPrice: string;
+    billingPercentage?: string;
+    billedTotal?: string;
     notes?: string;
     sortOrder?: number;
   }>;
@@ -760,7 +668,7 @@ export const createInvoice = async (data: {
       throw new Error("Failed to create invoice");
     }
 
-    // Create line items
+    // Create line items (store exactly what is passed, no calculation)
     for (const item of data.lineItems) {
       await tx.insert(invoiceLineItems).values({
         invoiceId: invoice.id,
@@ -770,7 +678,8 @@ export const createInvoice = async (data: {
         itemType: item.itemType || null,
         quantity: item.quantity || "1",
         quotedPrice: item.quotedPrice,
-        billedTotal: item.quotedPrice,
+        billingPercentage: item.billingPercentage ?? "100",
+        billedTotal: item.billedTotal ?? item.quotedPrice,
         notes: item.notes || null,
         sortOrder: item.sortOrder || 0,
       });
@@ -863,20 +772,6 @@ export const createInvoiceLineItem = async (
     .returning();
 
   await recalculateInvoiceTotals(invoiceId);
-
-  // Enrich with leftToBePaidPercentage if we have jobId and itemType
-  if (inserted && invoice.jobId && inserted.itemType) {
-    const leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
-      invoice.jobId,
-      inserted.itemType,
-      inserted.title,
-    );
-    return {
-      ...inserted,
-      leftToBePaidPercentage,
-    };
-  }
-
   return inserted ?? null;
 };
 
@@ -944,20 +839,6 @@ export const updateInvoiceLineItem = async (
     .returning();
 
   await recalculateInvoiceTotals(invoiceId);
-
-  // Enrich with leftToBePaidPercentage if we have jobId and itemType
-  if (updated && invoice.jobId && updated.itemType) {
-    const leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
-      invoice.jobId,
-      updated.itemType,
-      updated.title,
-    );
-    return {
-      ...updated,
-      leftToBePaidPercentage,
-    };
-  }
-
   return updated ?? null;
 };
 

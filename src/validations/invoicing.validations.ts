@@ -85,6 +85,8 @@ const lineItemSchema = z.object({
   itemType: itemTypeEnum.optional(),
   quantity: decimalString.optional().default("1"),
   quotedPrice: decimalString,
+  billingPercentage: decimalString.optional(),
+  billedTotal: decimalString.optional(),
   jobId: uuidString.optional(),
   bidId: uuidString.optional(),
   inventoryItemId: uuidString.optional(),
