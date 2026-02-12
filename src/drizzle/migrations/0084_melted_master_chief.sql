@@ -1,0 +1,1 @@
+ALTER TABLE "org"."inventory_purchase_orders" ADD COLUMN "title" varchar(255);

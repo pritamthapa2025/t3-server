@@ -487,7 +487,7 @@ export const inventoryPurchaseOrders = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
 
     poNumber: varchar("po_number", { length: 100 }).notNull(), // PO-2025-0001
-
+    title: varchar("title", { length: 255 }),
     // Supplier
     supplierId: uuid("supplier_id")
       .notNull()

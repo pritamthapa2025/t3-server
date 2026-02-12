@@ -322,6 +322,10 @@ export const getPurchaseOrderByIdSchema = z.object({
 
 export const createPurchaseOrderSchema = z.object({
   body: z.object({
+    title: z
+      .string()
+      .max(255, "Title is too long (maximum 255 characters)")
+      .optional(),
     supplierId: uuidSchema,
     orderDate: z.string(),
     expectedDeliveryDate: z.string().optional(),
@@ -348,6 +352,10 @@ export const updatePurchaseOrderSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    title: z
+      .string()
+      .max(255, "Title is too long (maximum 255 characters)")
+      .optional(),
     expectedDeliveryDate: z.string().optional(),
     actualDeliveryDate: z.string().optional(),
     shipToLocationId: uuidSchema.optional(),

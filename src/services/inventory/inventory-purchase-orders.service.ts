@@ -143,6 +143,7 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
     .insert(inventoryPurchaseOrders)
     .values({
       poNumber,
+      title: data.title || null,
       supplierId: data.supplierId,
       orderDate: data.orderDate || new Date().toISOString().split('T')[0], // Required field
       expectedDeliveryDate: data.expectedDeliveryDate || null,
@@ -182,6 +183,7 @@ export const updatePurchaseOrder = async (
 ) => {
   const updateData: any = {};
 
+  if (data.title !== undefined) updateData.title = data.title;
   if (data.supplierId !== undefined) updateData.supplierId = data.supplierId;
   if (data.expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = data.expectedDeliveryDate;
   if (data.shipToLocationId !== undefined) updateData.shipToLocationId = data.shipToLocationId;
