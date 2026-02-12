@@ -3,7 +3,7 @@ import { z } from "zod";
 // Helper to validate decimal strings
 const decimalString = z
   .string()
-  .regex(/^\d+(\.\d{1,2})?$/, "Must be a valid decimal number");
+  .regex(/^\d+(\.\d{1,4})?$/, "Must be a valid decimal number");
 
 // Helper to validate date strings (YYYY-MM-DD)
 const dateString = z.string().refine((val) => !isNaN(Date.parse(val)), {
@@ -80,12 +80,11 @@ const itemTypeEnum = z.enum([
 // Line Item Schema
 const lineItemSchema = z.object({
   title: z.string().min(1, "Title is required"),
+  istitledisabled: z.boolean().optional().default(false),
   description: z.string().min(1, "Description is required"),
   itemType: itemTypeEnum.optional(),
   quantity: decimalString.optional().default("1"),
-  unitPrice: decimalString,
-  discountAmount: decimalString.optional().default("0"),
-  taxRate: decimalString.optional().default("0"),
+  quotedPrice: decimalString,
   jobId: uuidString.optional(),
   bidId: uuidString.optional(),
   inventoryItemId: uuidString.optional(),
@@ -158,66 +157,68 @@ export const getInvoiceByIdQuerySchema = z.object({
 
 // Create Invoice Schema
 export const createInvoiceSchema = z.object({
-  body: z.object({
-    // organizationId and clientId are optional - will be derived from jobId/bidId
-    organizationId: uuidString.optional(),
-    clientId: uuidString.optional(),
-    jobId: uuidString.optional(),
-    bidId: uuidString.optional(),
-    invoiceType: invoiceTypeEnum.optional().default("standard"),
-    invoiceDate: dateString,
-    dueDate: dateString,
-    paymentTerms: z.string().max(100).optional(),
-    paymentTermsDays: z.number().int().positive().optional(),
-    
-    // Financial fields - all passed from body (no auto-calculation)
-    lineItemSubTotal: decimalString.optional(),
-    poSubTotal: decimalString.optional(),
-    jobSubtotal: decimalString.optional(),
-    taxRate: decimalString.optional(),
-    taxAmount: decimalString.optional(),
-    discountAmount: decimalString.optional(),
-    discountType: z.enum(["percentage", "fixed"]).optional(),
-    discountValue: decimalString.optional(),
-    totalAmount: decimalString.optional(),
-    amountPaid: decimalString.optional(),
-    balanceDue: decimalString.optional(),
-    
-    // Linked IDs - all passed from body
-    purchaseOrderIds: z.array(uuidString).optional().nullable(),
-    purchaseOrderItemIds: z.array(uuidString).optional().nullable(),
-    jobMaterialIds: z.array(uuidString).optional().nullable(),
-    laborIds: z.array(uuidString).optional().nullable(),
-    travelIds: z.array(uuidString).optional().nullable(),
-    operatingExpenseIds: z.array(uuidString).optional().nullable(),
-    
-    notes: z.string().optional(),
-    termsAndConditions: z.string().optional(),
-    internalNotes: z.string().optional(),
-    billingAddressLine1: z.string().max(255).optional(),
-    billingAddressLine2: z.string().max(255).optional(),
-    billingCity: z.string().max(100).optional(),
-    billingState: z.string().max(100).optional(),
-    billingZipCode: z.string().max(20).optional(),
-    billingCountry: z.string().max(100).optional(),
-    isRecurring: z.boolean().optional().default(false),
-    recurringFrequency: z
-      .enum([
-        "weekly",
-        "biweekly",
-        "monthly",
-        "quarterly",
-        "semi_annually",
-        "annually",
-        "custom",
-      ])
-      .optional(),
-    recurringStartDate: dateString.optional(),
-    recurringEndDate: dateString.optional(),
-    lineItems: z
-      .array(lineItemSchema)
-      .min(1, "At least one line item is required"),
-  })
+  body: z
+    .object({
+      // organizationId and clientId are optional - will be derived from jobId/bidId
+      organizationId: uuidString.optional(),
+      clientId: uuidString.optional(),
+      jobId: uuidString.optional(),
+      bidId: uuidString.optional(),
+      invoiceType: invoiceTypeEnum.optional().default("standard"),
+      invoiceDate: dateString,
+      dueDate: dateString,
+      paymentTerms: z.string().max(100).optional(),
+      paymentTermsDays: z.number().int().positive().optional(),
+
+      // Financial fields - all passed from body (no auto-calculation)
+      lineItemSubTotal: decimalString.optional(),
+      poSubTotal: decimalString.optional(),
+      jobSubtotal: decimalString.optional(),
+      taxRate: decimalString.optional(),
+      taxAmount: decimalString.optional(),
+      discountAmount: decimalString.optional(),
+      discountType: z.enum(["percentage", "fixed"]).optional(),
+      discountValue: decimalString.optional(),
+      totalAmount: decimalString.optional(),
+      amountPaid: decimalString.optional(),
+      balanceDue: decimalString.optional(),
+
+      // Linked Purchase Orders
+      purchaseOrderIds: z.array(uuidString).optional().nullable(),
+
+      // Item Type Flags
+      isLabor: z.boolean().optional(),
+      isTravel: z.boolean().optional(),
+      isOperatingExpense: z.boolean().optional(),
+      isMaterial: z.boolean().optional(),
+
+      notes: z.string().optional(),
+      termsAndConditions: z.string().optional(),
+      internalNotes: z.string().optional(),
+      billingAddressLine1: z.string().max(255).optional(),
+      billingAddressLine2: z.string().max(255).optional(),
+      billingCity: z.string().max(100).optional(),
+      billingState: z.string().max(100).optional(),
+      billingZipCode: z.string().max(20).optional(),
+      billingCountry: z.string().max(100).optional(),
+      isRecurring: z.boolean().optional().default(false),
+      recurringFrequency: z
+        .enum([
+          "weekly",
+          "biweekly",
+          "monthly",
+          "quarterly",
+          "semi_annually",
+          "annually",
+          "custom",
+        ])
+        .optional(),
+      recurringStartDate: dateString.optional(),
+      recurringEndDate: dateString.optional(),
+      lineItems: z
+        .array(lineItemSchema)
+        .min(1, "At least one line item is required"),
+    })
     .refine((data) => data.jobId || data.bidId, {
       message: "Either jobId or bidId must be provided",
       path: ["jobId"],
@@ -254,13 +255,13 @@ export const updateInvoiceSchema = z.object({
     billingState: z.string().max(100).optional(),
     billingZipCode: z.string().max(20).optional(),
     billingCountry: z.string().max(100).optional(),
-    // Linked IDs
+    // Linked Purchase Orders
     purchaseOrderIds: z.array(uuidString).optional().nullable(),
-    purchaseOrderItemIds: z.array(uuidString).optional().nullable(),
-    jobMaterialIds: z.array(uuidString).optional().nullable(),
-    laborIds: z.array(uuidString).optional().nullable(),
-    travelIds: z.array(uuidString).optional().nullable(),
-    operatingExpenseIds: z.array(uuidString).optional().nullable(),
+    // Item Type Flags
+    isLabor: z.boolean().optional(),
+    isTravel: z.boolean().optional(),
+    isOperatingExpense: z.boolean().optional(),
+    isMaterial: z.boolean().optional(),
   }),
 });
 

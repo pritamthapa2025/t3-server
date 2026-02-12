@@ -35,6 +35,53 @@ import { alias } from "drizzle-orm/pg-core";
 // ============================
 
 /**
+ * Calculate left to be paid percentage for a specific item type
+ * Returns the remaining percentage that hasn't been billed yet
+ */
+const calculateLeftToBePaidPercentage = async (
+  jobId: string,
+  itemType: string,
+  title?: string,
+): Promise<number> => {
+  // Get all non-deleted invoices for this job
+  const jobInvoices = await db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(and(eq(invoices.jobId, jobId), eq(invoices.isDeleted, false)));
+
+  if (jobInvoices.length === 0) {
+    return 100; // Nothing billed yet
+  }
+
+  const invoiceIds = jobInvoices.map((inv) => inv.id);
+
+  // Build where conditions
+  const whereConditions = [
+    inArray(invoiceLineItems.invoiceId, invoiceIds),
+    eq(invoiceLineItems.itemType, itemType),
+    eq(invoiceLineItems.isDeleted, false),
+  ];
+
+  // If title is provided, filter by title as well
+  if (title) {
+    whereConditions.push(eq(invoiceLineItems.title, title));
+  }
+
+  // Sum up all billing percentages for this item type (and title if provided)
+  const result = await db
+    .select({
+      totalBilled: sql<string>`COALESCE(SUM(${invoiceLineItems.billingPercentage}), 0)`,
+    })
+    .from(invoiceLineItems)
+    .where(and(...whereConditions));
+
+  const totalBilled = parseFloat(result[0]?.totalBilled || "0");
+  const remaining = Math.max(0, 100 - totalBilled);
+
+  return parseFloat(remaining.toFixed(2));
+};
+
+/**
  * Generate invoice number using atomic database function
  * Format: INV-YYYY-#####
  */
@@ -111,30 +158,6 @@ const generatePaymentNumber = async (
 };
 
 /**
- * Calculate line item totals
- */
-const calculateLineItemTotal = (
-  quantity: string,
-  unitPrice: string,
-  discountAmount: string,
-  taxRate: string,
-): { lineTotal: string; taxAmount: string } => {
-  const qty = parseFloat(quantity || "1");
-  const price = parseFloat(unitPrice || "0");
-  const discount = parseFloat(discountAmount || "0");
-  const tax = parseFloat(taxRate || "0");
-
-  const subtotal = qty * price - discount;
-  const taxAmt = subtotal * tax;
-  const total = subtotal + taxAmt;
-
-  return {
-    lineTotal: total.toFixed(2),
-    taxAmount: taxAmt.toFixed(2),
-  };
-};
-
-/**
  * Recalculate invoice totals
  */
 const recalculateInvoiceTotals = async (invoiceId: string) => {
@@ -164,10 +187,9 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
 
   for (const item of lineItems) {
     const qty = parseFloat(item.quantity || "1");
-    const price = parseFloat(item.unitPrice || "0");
-    const discount = parseFloat(item.discountAmount || "0");
+    const price = parseFloat(item.quotedPrice || "0");
 
-    const itemSubtotal = qty * price - discount;
+    const itemSubtotal = qty * price;
     const itemTax = itemSubtotal * invoiceTaxRate;
 
     subtotal += itemSubtotal;
@@ -360,9 +382,32 @@ export const getInvoices = async (
         )
         .orderBy(invoiceLineItems.sortOrder);
 
+      // Enrich each line item with leftToBePaidPercentage if it has a jobId and itemType
+      let enrichedLineItems = lineItems;
+      if (invoice.jobId) {
+        enrichedLineItems = await Promise.all(
+          lineItems.map(async (item: any) => {
+            let leftToBePaidPercentage = null;
+            
+            if (item.itemType) {
+              leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
+                invoice.jobId!,
+                item.itemType,
+                item.title,
+              );
+            }
+
+            return {
+              ...item,
+              leftToBePaidPercentage,
+            };
+          }),
+        );
+      }
+
       return {
         ...invoice,
-        lineItems,
+        lineItems: enrichedLineItems,
       };
     }),
   );
@@ -453,7 +498,7 @@ export const getInvoiceById = async (
   };
 
   if (options?.includeLineItems !== false) {
-    result.lineItems = await db
+    const lineItems = await db
       .select()
       .from(invoiceLineItems)
       .where(
@@ -463,6 +508,30 @@ export const getInvoiceById = async (
         ),
       )
       .orderBy(invoiceLineItems.sortOrder);
+
+    // Enrich each line item with leftToBePaidPercentage if it has a jobId and itemType
+    if (invoiceData.jobId) {
+      result.lineItems = await Promise.all(
+        lineItems.map(async (item: any) => {
+          let leftToBePaidPercentage = null;
+          
+          if (item.itemType) {
+            leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
+              invoiceData.jobId!,
+              item.itemType,
+              item.title,
+            );
+          }
+
+          return {
+            ...item,
+            leftToBePaidPercentage,
+          };
+        }),
+      );
+    } else {
+      result.lineItems = lineItems;
+    }
   }
 
   if (options?.includePayments !== false) {
@@ -555,18 +624,17 @@ export const createInvoice = async (data: {
   recurringStartDate?: string;
   recurringEndDate?: string;
   purchaseOrderIds?: string[] | null;
-  purchaseOrderItemIds?: string[] | null;
-  jobMaterialIds?: string[] | null;
-  laborIds?: string[] | null;
-  travelIds?: string[] | null;
-  operatingExpenseIds?: string[] | null;
+  isLabor?: boolean;
+  isTravel?: boolean;
+  isOperatingExpense?: boolean;
+  isMaterial?: boolean;
   lineItems: Array<{
     title: string;
+    istitledisabled?: boolean;
     description: string;
     itemType?: string;
     quantity?: string;
-    unitPrice: string;
-    discountAmount?: string;
+    quotedPrice: string;
     notes?: string;
     sortOrder?: number;
   }>;
@@ -663,11 +731,10 @@ export const createInvoice = async (data: {
         amountPaid: data.amountPaid || "0",
         balanceDue: data.balanceDue || "0",
         purchaseOrderIds: data.purchaseOrderIds ?? null,
-        purchaseOrderItemIds: data.purchaseOrderItemIds ?? null,
-        jobMaterialIds: data.jobMaterialIds ?? null,
-        laborIds: data.laborIds ?? null,
-        travelIds: data.travelIds ?? null,
-        operatingExpenseIds: data.operatingExpenseIds ?? null,
+        isLabor: data.isLabor ?? false,
+        isTravel: data.isTravel ?? false,
+        isOperatingExpense: data.isOperatingExpense ?? false,
+        isMaterial: data.isMaterial ?? false,
         
         notes: data.notes || null,
         termsAndConditions: data.termsAndConditions || null,
@@ -693,28 +760,17 @@ export const createInvoice = async (data: {
       throw new Error("Failed to create invoice");
     }
 
-    // Get invoice tax rate (use invoice-level taxRate for all line items)
-    const invoiceTaxRate = data.taxRate || "0";
-
     // Create line items
     for (const item of data.lineItems) {
-      const { lineTotal, taxAmount } = calculateLineItemTotal(
-        item.quantity || "1",
-        item.unitPrice,
-        item.discountAmount || "0",
-        invoiceTaxRate,
-      );
-
       await tx.insert(invoiceLineItems).values({
         invoiceId: invoice.id,
         title: item.title,
+        istitledisabled: item.istitledisabled ?? false,
         description: item.description,
         itemType: item.itemType || null,
         quantity: item.quantity || "1",
-        unitPrice: item.unitPrice,
-        discountAmount: item.discountAmount || "0",
-        taxAmount,
-        lineTotal,
+        quotedPrice: item.quotedPrice,
+        billedTotal: item.quotedPrice,
         notes: item.notes || null,
         sortOrder: item.sortOrder || 0,
       });
@@ -769,11 +825,10 @@ export const createInvoiceLineItem = async (
   organizationId: string,
   data: {
     description: string;
+    istitledisabled?: boolean;
     itemType?: string;
     quantity?: string;
-    unitPrice: string;
-    discountAmount?: string;
-    taxRate?: string;
+    quotedPrice: string;
     notes?: string;
     sortOrder?: number;
   },
@@ -787,41 +842,41 @@ export const createInvoiceLineItem = async (
     return null;
   }
 
-  const [inv] = await db
-    .select({ taxRate: invoices.taxRate })
-    .from(invoices)
-    .where(eq(invoices.id, invoiceId));
-  const invoiceTaxRate = inv?.taxRate ?? "0";
-
   const title = (data.description || "").slice(0, 255) || "Line item";
   const quantity = data.quantity ?? "1";
-  const unitPrice = data.unitPrice;
-  const discountAmount = data.discountAmount ?? "0";
-  const { lineTotal, taxAmount } = calculateLineItemTotal(
-    quantity,
-    unitPrice,
-    discountAmount,
-    data.taxRate ?? invoiceTaxRate,
-  );
+  const quotedPrice = data.quotedPrice;
 
   const [inserted] = await db
     .insert(invoiceLineItems)
     .values({
       invoiceId,
       title,
+      istitledisabled: data.istitledisabled ?? false,
       description: data.description ?? null,
       itemType: data.itemType ?? null,
       quantity,
-      unitPrice,
-      discountAmount,
-      taxAmount,
-      lineTotal,
+      quotedPrice: quotedPrice,
+      billedTotal: quotedPrice,
       notes: data.notes ?? null,
       sortOrder: data.sortOrder ?? 0,
     })
     .returning();
 
   await recalculateInvoiceTotals(invoiceId);
+
+  // Enrich with leftToBePaidPercentage if we have jobId and itemType
+  if (inserted && invoice.jobId && inserted.itemType) {
+    const leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
+      invoice.jobId,
+      inserted.itemType,
+      inserted.title,
+    );
+    return {
+      ...inserted,
+      leftToBePaidPercentage,
+    };
+  }
+
   return inserted ?? null;
 };
 
@@ -834,11 +889,10 @@ export const updateInvoiceLineItem = async (
   organizationId: string,
   data: Partial<{
     description: string;
+    istitledisabled: boolean;
     itemType: string;
     quantity: string;
-    unitPrice: string;
-    discountAmount: string;
-    taxRate: string;
+    quotedPrice: string;
     notes: string;
     sortOrder: number;
   }>,
@@ -859,35 +913,20 @@ export const updateInvoiceLineItem = async (
     return null;
   }
 
-  const [inv] = await db
-    .select({ taxRate: invoices.taxRate })
-    .from(invoices)
-    .where(eq(invoices.id, invoiceId));
-  const invoiceTaxRate = inv?.taxRate ?? "0";
-
   const quantity = data.quantity ?? existing.quantity ?? "1";
-  const unitPrice = data.unitPrice ?? existing.unitPrice ?? "0";
-  const discountAmount = data.discountAmount ?? existing.discountAmount ?? "0";
-  const taxRateInput = data.taxRate ?? invoiceTaxRate;
-  const { lineTotal, taxAmount } = calculateLineItemTotal(
-    quantity,
-    unitPrice,
-    discountAmount,
-    taxRateInput,
-  );
+  const quotedPrice = data.quotedPrice ?? existing.quotedPrice ?? "0";
 
   const updatePayload: Record<string, unknown> = {
     quantity,
-    unitPrice,
-    discountAmount,
-    taxAmount,
-    lineTotal,
+    quotedPrice: quotedPrice,
+    billedTotal: quotedPrice,
     updatedAt: new Date(),
   };
   if (data.description !== undefined) {
     updatePayload.title = data.description.slice(0, 255) || existing.title;
     updatePayload.description = data.description;
   }
+  if (data.istitledisabled !== undefined) updatePayload.istitledisabled = data.istitledisabled;
   if (data.itemType !== undefined) updatePayload.itemType = data.itemType;
   if (data.notes !== undefined) updatePayload.notes = data.notes;
   if (data.sortOrder !== undefined) updatePayload.sortOrder = data.sortOrder;
@@ -905,6 +944,20 @@ export const updateInvoiceLineItem = async (
     .returning();
 
   await recalculateInvoiceTotals(invoiceId);
+
+  // Enrich with leftToBePaidPercentage if we have jobId and itemType
+  if (updated && invoice.jobId && updated.itemType) {
+    const leftToBePaidPercentage = await calculateLeftToBePaidPercentage(
+      invoice.jobId,
+      updated.itemType,
+      updated.title,
+    );
+    return {
+      ...updated,
+      leftToBePaidPercentage,
+    };
+  }
+
   return updated ?? null;
 };
 

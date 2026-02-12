@@ -212,7 +212,7 @@ export interface InvoicePDFData {
     description: string;
     details?: string;
     quantity: number;
-    unitPrice: string;
+    quotedPrice: string;
     totalPrice: string;
   }>;
 
@@ -461,7 +461,7 @@ export const prepareInvoiceDataForPDF = (
       description: item.description || "",
       details: item.details || "",
       quantity: Number(item.quantity) || 0,
-      unitPrice: Number(item.unitPrice || 0).toFixed(2),
+      quotedPrice: Number(item.quotedPrice || 0).toFixed(2),
       totalPrice: Number(item.totalPrice || 0).toFixed(2),
     })),
 

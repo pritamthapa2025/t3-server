@@ -1680,7 +1680,7 @@ export const createInvoiceLineItem = async (req: Request, res: Response) => {
       description: string;
       itemType?: string;
       quantity?: string;
-      unitPrice: string;
+      quotedPrice: string;
       discountAmount?: string;
       taxRate?: string;
       notes?: string;
@@ -1762,7 +1762,7 @@ export const updateInvoiceLineItem = async (req: Request, res: Response) => {
       description: string;
       itemType: string;
       quantity: string;
-      unitPrice: string;
+      quotedPrice: string;
       discountAmount: string;
       taxRate: string;
       notes: string;

@@ -568,6 +568,20 @@
       "when": 1770810534697,
       "tag": "0080_needy_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1770876010886,
+      "tag": "0081_jittery_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1770876981790,
+      "tag": "0082_glossy_tomas",
+      "breakpoints": true
     }
   ]
 }

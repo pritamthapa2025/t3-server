@@ -1,0 +1,1 @@
+ALTER TABLE "org"."invoice_line_items" ADD COLUMN "is_title_disabled" boolean DEFAULT false;
