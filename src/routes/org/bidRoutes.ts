@@ -254,6 +254,8 @@ router
     createBidHandler,
   );
 
+// GET/PUT/DELETE single bid by id. PUT updates the same related-record structure as POST create:
+// bid row + financialBreakdown + operatingExpenses + materials + laborAndTravel + type-specific data (survey/plan_spec/design_build) + documents.
 router
   .route("/bids/:id")
   .get(

@@ -120,6 +120,7 @@ export const updateJobSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
+    // Job fields
     status: jobStatusEnum.optional(),
     priority: jobPriorityEnum.optional(),
     jobType: z.string().max(100).optional(),
@@ -137,6 +138,340 @@ export const updateJobSchema = z.object({
     actualCost: numericStringSchema.optional(),
     completionNotes: z.string().optional(),
     completionPercentage: numericStringSchema.optional(),
+
+    // Nested bid data updates
+    bidData: z
+      .object({
+        status: z
+          .enum(
+            [
+              "draft",
+              "pending",
+              "submitted",
+              "under_review",
+              "approved",
+              "rejected",
+              "won",
+              "lost",
+              "cancelled",
+            ],
+            {
+              message:
+                "Bid status must be one of: draft, pending, submitted, under_review, approved, rejected, won, lost, or cancelled",
+            },
+          )
+          .optional(),
+        priority: z
+          .enum(["low", "medium", "high", "urgent"], {
+            message: "Bid priority must be one of: low, medium, high, or urgent",
+          })
+          .optional(),
+        primaryContactId: uuidSchema.optional().nullable(),
+        propertyId: uuidSchema.optional().nullable(),
+        projectName: z
+          .string()
+          .max(255, "Project name is too long (maximum 255 characters)")
+          .optional(),
+        siteAddress: z.string().optional(),
+        buildingSuiteNumber: z
+          .string()
+          .max(100, "Building/Suite number is too long (maximum 100 characters)")
+          .optional(),
+        acrossValuations: z
+          .string()
+          .max(255, "Across valuations is too long (maximum 255 characters)")
+          .optional(),
+        scopeOfWork: z.string().optional(),
+        specialRequirements: z.string().optional(),
+        description: z.string().optional(),
+        endDate: z
+          .string()
+          .regex(
+            /^\d{4}-\d{2}-\d{2}$/,
+            "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+          )
+          .optional(),
+        plannedStartDate: z
+          .string()
+          .regex(
+            /^\d{4}-\d{2}-\d{2}$/,
+            "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+          )
+          .optional(),
+        estimatedCompletion: z
+          .string()
+          .regex(
+            /^\d{4}-\d{2}-\d{2}$/,
+            "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+          )
+          .optional(),
+        removalDate: z
+          .string()
+          .regex(
+            /^\d{4}-\d{2}-\d{2}$/,
+            "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+          )
+          .optional(),
+        bidAmount: numericStringSchema.optional(),
+        estimatedDuration: z
+          .number()
+          .int("Estimated duration must be a whole number")
+          .positive("Estimated duration must be positive")
+          .optional(),
+        profitMargin: numericStringSchema.optional(),
+        paymentTerms: z.string().optional(),
+        warrantyPeriod: z
+          .string()
+          .max(50, "Warranty period is too long (maximum 50 characters)")
+          .optional(),
+        warrantyPeriodLabor: z
+          .string()
+          .max(50, "Warranty period labor is too long (maximum 50 characters)")
+          .optional(),
+        warrantyDetails: z.string().optional(),
+        specialTerms: z.string().optional(),
+        exclusions: z.string().optional(),
+        proposalBasis: z.string().optional(),
+        referenceDate: z
+          .string()
+          .max(50, "Reference date is too long (maximum 50 characters)")
+          .optional(),
+        templateSelection: z
+          .string()
+          .max(100, "Template selection is too long (maximum 100 characters)")
+          .optional(),
+        supervisorManager: z
+          .number()
+          .int("Supervisor manager ID must be a whole number")
+          .positive("Supervisor manager ID must be a positive number")
+          .optional(),
+        primaryTechnicianId: z
+          .number()
+          .int("Primary technician ID must be a whole number")
+          .positive("Primary technician ID must be a positive number")
+          .optional(),
+        assignedTo: uuidSchema.optional(),
+        qtyNumber: z
+          .string()
+          .max(50, "Quantity number is too long (maximum 50 characters)")
+          .optional(),
+        marked: z
+          .string()
+          .max(20, "Marked value is too long (maximum 20 characters)")
+          .optional(),
+      })
+      .optional(),
+
+    financialBreakdown: z
+      .object({
+        materialsEquipment: z.string().optional(),
+        labor: z.string().optional(),
+        travel: z.string().optional(),
+        operatingExpenses: z.string().optional(),
+        totalCost: z.string().optional(),
+        totalPrice: z.string().optional(),
+        grossProfit: z.string().optional(),
+      })
+      .optional(),
+
+    operatingExpenses: z
+      .object({
+        enabled: z.boolean().optional(),
+        grossRevenuePreviousYear: z.string().optional(),
+        currentBidAmount: z.string().optional(),
+        operatingCostPreviousYear: z.string().optional(),
+        inflationAdjustedOperatingCost: z.string().optional(),
+        inflationRate: z.string().optional(),
+        utilizationPercentage: z.string().optional(),
+        calculatedOperatingCost: z.string().optional(),
+        applyMarkup: z.boolean().optional(),
+        markupPercentage: z.string().optional(),
+        operatingPrice: z.string().optional(),
+      })
+      .optional(),
+
+    materials: z
+      .array(
+        z.object({
+          inventoryItemId: uuidSchema.optional(),
+          customName: z.string().optional(),
+          description: z.string(),
+          quantity: z.string(),
+          unitCost: z.string(),
+          markup: z.string().optional(),
+          totalCost: z.string(),
+        }),
+      )
+      .optional(),
+
+    laborAndTravel: z
+      .object({
+        labor: z.array(
+          z.object({
+            positionId: z.number().int().positive(),
+            days: z.number().int().positive(),
+            hoursPerDay: z.string(),
+            totalHours: z.string(),
+            costRate: z.string(),
+            billableRate: z.string(),
+            totalCost: z.string(),
+            totalPrice: z.string(),
+          }),
+        ),
+        travel: z.array(
+          z.object({
+            vehicleName: z.string().optional(),
+            roundTripMiles: z.string(),
+            mileageRate: z.string(),
+            vehicleDayRate: z.string(),
+            days: z.number().int().positive(),
+            mileageCost: z.string(),
+            vehicleCost: z.string(),
+            markup: z.string().optional(),
+            totalCost: z.string(),
+            totalPrice: z.string(),
+          }),
+        ),
+      })
+      .optional(),
+
+    planSpecData: z
+      .object({
+        plansReceivedDate: z.string().optional(),
+        planRevision: z.string().max(100).optional(),
+        planReviewNotes: z.string().optional(),
+        specificationsReceivedDate: z.string().optional(),
+        specificationRevision: z.string().max(100).optional(),
+        specificationReviewNotes: z.string().optional(),
+        complianceRequirements: z.string().optional(),
+        codeComplianceStatus: z
+          .enum(["pending", "compliant", "non_compliant", "under_review"])
+          .optional(),
+        addendaReceived: z.boolean().optional(),
+        addendaCount: z.number().int().min(0).optional(),
+        addendaNotes: z.string().optional(),
+        specifications: z.string().optional(),
+        designRequirements: z.string().optional(),
+      })
+      .optional(),
+
+    surveyData: z
+      .object({
+        buildingNumber: z.string().optional(),
+        siteLocation: z.string().optional(),
+        workType: z.string().optional(),
+        hasExistingUnit: z.boolean().optional(),
+        unitTag: z.string().optional(),
+        unitLocation: z.string().optional(),
+        make: z.string().optional(),
+        model: z.string().optional(),
+        serial: z.string().optional(),
+        systemType: z.string().optional(),
+        powerStatus: z.string().optional(),
+        voltagePhase: z.string().optional(),
+        overallCondition: z.string().optional(),
+        siteAccessNotes: z.string().optional(),
+        additionalNotes: z.string().optional(),
+        siteConditions: z.string().optional(),
+        clientRequirements: z.string().optional(),
+        termsAndConditions: z.string().optional(),
+        dateOfSurvey: z.string().optional(),
+        timeOfSurvey: z.string().optional(),
+      })
+      .optional(),
+
+    designBuildData: z
+      .object({
+        designPhase: z
+          .enum([
+            "conceptual",
+            "schematic",
+            "design_development",
+            "construction_documents",
+            "bidding",
+            "construction_admin",
+          ])
+          .optional(),
+        designStartDate: z.string().optional(),
+        designCompletionDate: z.string().optional(),
+        designTeamMembers: z.string().optional(),
+        conceptDescription: z.string().optional(),
+        designRequirements: z.string().optional(),
+        designDeliverables: z.string().optional(),
+        clientApprovalRequired: z.boolean().optional(),
+        designFeeBasis: z
+          .enum(["fixed", "hourly", "percentage", "lump_sum"])
+          .optional(),
+        designFees: z.string().optional(),
+        buildSpecifications: z.string().optional(),
+      })
+      .optional(),
+
+    timeline: z
+      .array(
+        z.object({
+          id: uuidSchema.optional(), // If provided, update existing; otherwise create new
+          event: z
+            .string()
+            .min(1, "Timeline event name is required")
+            .max(255, "Timeline event name is too long (maximum 255 characters)")
+            .trim(),
+          eventDate: z
+            .string()
+            .datetime(
+              "Invalid datetime format. Please use ISO 8601 format (e.g., 2024-01-15T10:30:00Z)",
+            ),
+          estimatedDuration: z
+            .number()
+            .int("Estimated duration must be a whole number")
+            .positive("Estimated duration must be positive"),
+          durationType: timelineDurationTypeEnum,
+          isCompleted: z.boolean().optional().default(false),
+          description: z.string().optional(),
+          sortOrder: z
+            .number()
+            .int("Sort order must be a whole number")
+            .optional()
+            .default(0),
+          _delete: z.boolean().optional(), // If true, delete this event
+        }),
+      )
+      .optional(),
+
+    notes: z
+      .array(
+        z.object({
+          id: uuidSchema.optional(), // If provided, update existing; otherwise create new
+          note: z.string().min(1, "Note content is required").trim(),
+          isInternal: z.boolean().optional().default(true),
+          _delete: z.boolean().optional(), // If true, delete this note
+        }),
+      )
+      .optional(),
+
+    // Document operations
+    documentIdsToUpdate: z.array(uuidSchema).optional(),
+    documentUpdates: z
+      .array(
+        z.object({
+          fileName: z.string().max(255).optional(),
+          documentType: z.string().max(50).optional(),
+        }),
+      )
+      .optional(),
+    documentIdsToDelete: z.array(uuidSchema).optional(),
+
+    // Media operations
+    mediaIdsToUpdate: z.array(uuidSchema).optional(),
+    mediaUpdates: z
+      .array(
+        z.object({
+          fileName: z.string().max(255).optional(),
+          mediaType: z.string().max(50).optional(),
+        }),
+      )
+      .optional(),
+    mediaIdsToDelete: z.array(uuidSchema).optional(),
   }),
 });
 

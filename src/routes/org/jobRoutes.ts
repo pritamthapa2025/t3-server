@@ -240,10 +240,17 @@ router
   .get(validate(getJobsQuerySchema), getJobsHandler)
   .post(validate(createJobSchema), createJobHandler);
 
+// PUT updates job data AND all associated bid data (materials, labor, travel, financial breakdown, operating expenses, type-specific data, timeline, notes, documents, media)
 router
   .route("/jobs/:id")
   .get(validate(getJobByIdSchema), getJobByIdHandler)
-  .put(validate(updateJobSchema), updateJobHandler)
+  .put(
+    uploadJobDocuments,
+    handleMulterError,
+    parseFormData,
+    validate(updateJobSchema),
+    updateJobHandler,
+  )
   .delete(validate(deleteJobSchema), deleteJobHandler);
 
 // Get job with all related data

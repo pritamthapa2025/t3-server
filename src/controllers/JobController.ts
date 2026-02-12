@@ -110,6 +110,7 @@ import {
   getJobLaborCostTracking,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
+import { uploadToSpaces } from "../services/storage.service.js";
 
 // ============================
 // Main Job Operations
@@ -324,6 +325,9 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       });
     }
 
+    const clientOrgId = originalJob.organizationId;
+    const bidId = originalJob.bidId;
+
     // Pre-validate unique fields before attempting to update
     const uniqueFieldChecks = [];
 
@@ -344,7 +348,29 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
-    const updatedJob = await updateJob(id!, req.body);
+    // Extract nested bid objects from request body
+    const {
+      bidData,
+      financialBreakdown,
+      operatingExpenses,
+      materials,
+      laborAndTravel,
+      surveyData,
+      planSpecData,
+      designBuildData,
+      timeline,
+      notes,
+      documentIdsToUpdate,
+      documentUpdates,
+      documentIdsToDelete,
+      mediaIdsToUpdate,
+      mediaUpdates,
+      mediaIdsToDelete,
+      ...jobFields
+    } = req.body;
+
+    // Update job with only job fields
+    const updatedJob = await updateJob(id!, jobFields);
 
     if (!updatedJob) {
       return res.status(404).json({
@@ -353,8 +379,402 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entries for changed fields
-    for (const [key, value] of Object.entries(req.body)) {
+    // Update related bid records if provided
+    const updatedRecords: any = {};
+
+    // Import bid service functions
+    const {
+      updateBid,
+      updateBidFinancialBreakdown,
+      updateBidOperatingExpenses,
+      getBidMaterials,
+      deleteBidMaterial,
+      createBidMaterial,
+      getBidLabor,
+      deleteBidLabor,
+      createBulkLaborAndTravel,
+      updateBidSurveyData,
+      updateBidPlanSpecData,
+      updateBidDesignBuildData,
+      createBidTimelineEvent,
+      updateBidTimelineEvent,
+      deleteBidTimelineEvent,
+      createBidNote,
+      updateBidNote,
+      deleteBidNote,
+      getBidDocumentById,
+      updateBidDocument,
+      deleteBidDocument,
+      getBidMediaById,
+      updateBidMedia,
+      deleteBidMedia,
+      getBidById,
+    } = await import("../services/bid.service.js");
+
+    // Get the bid to determine jobType
+    const bid = await getBidById(bidId);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Associated bid not found",
+      });
+    }
+
+    // Update bid data if provided
+    if (bidData) {
+      updatedRecords.bid = await updateBid(bidId, clientOrgId, bidData);
+    }
+
+    // Update financial breakdown if provided
+    if (financialBreakdown) {
+      updatedRecords.financialBreakdown = await updateBidFinancialBreakdown(
+        bidId,
+        clientOrgId,
+        financialBreakdown,
+      );
+    }
+
+    // Update operating expenses if provided
+    if (operatingExpenses) {
+      updatedRecords.operatingExpenses = await updateBidOperatingExpenses(
+        bidId,
+        clientOrgId,
+        operatingExpenses,
+      );
+    }
+
+    // Update materials if provided (delete existing and create new)
+    if (materials && Array.isArray(materials)) {
+      const existingMaterials = await getBidMaterials(bidId, clientOrgId);
+
+      // Delete all existing materials
+      for (const material of existingMaterials) {
+        await deleteBidMaterial(material.id, clientOrgId);
+      }
+
+      // Create new materials
+      if (materials.length > 0) {
+        updatedRecords.materials = [];
+        for (const material of materials) {
+          const createdMaterial = await createBidMaterial({
+            ...material,
+            bidId,
+          });
+          updatedRecords.materials.push(createdMaterial);
+        }
+      } else {
+        updatedRecords.materials = [];
+      }
+    }
+
+    // Update labor and travel if provided (delete existing and create new in bulk)
+    if (laborAndTravel) {
+      const { labor, travel } = laborAndTravel;
+      if (labor && travel && Array.isArray(labor) && Array.isArray(travel)) {
+        // Get existing labor entries
+        const existingLabor = await getBidLabor(bidId);
+
+        // Delete all existing labor (this will cascade delete travel)
+        for (const laborEntry of existingLabor) {
+          await deleteBidLabor(laborEntry.id);
+        }
+
+        // Create new labor and travel in bulk
+        if (labor.length === travel.length && labor.length > 0) {
+          const bulkResult = await createBulkLaborAndTravel(
+            bidId,
+            labor,
+            travel,
+          );
+          updatedRecords.labor = bulkResult.labor;
+          updatedRecords.travel = bulkResult.travel;
+        } else {
+          updatedRecords.labor = [];
+          updatedRecords.travel = [];
+        }
+      }
+    }
+
+    // Update type-specific data if provided
+    const jobType = bid.jobType;
+    if (surveyData && jobType === "survey") {
+      updatedRecords.surveyData = await updateBidSurveyData(
+        bidId,
+        clientOrgId,
+        surveyData,
+      );
+    } else if (planSpecData && jobType === "plan_spec") {
+      updatedRecords.planSpecData = await updateBidPlanSpecData(
+        bidId,
+        clientOrgId,
+        planSpecData,
+      );
+    } else if (designBuildData && jobType === "design_build") {
+      updatedRecords.designBuildData = await updateBidDesignBuildData(
+        bidId,
+        clientOrgId,
+        designBuildData,
+      );
+    }
+
+    // Handle timeline operations
+    if (timeline && Array.isArray(timeline)) {
+      updatedRecords.timeline = {
+        created: [],
+        updated: [],
+        deleted: [],
+      };
+
+      for (const timelineEvent of timeline) {
+        const { id: eventId, _delete, ...eventData } = timelineEvent;
+
+        if (_delete && eventId) {
+          // Delete existing event
+          const deleted = await deleteBidTimelineEvent(eventId);
+          if (deleted) updatedRecords.timeline.deleted.push(deleted);
+        } else if (eventId) {
+          // Update existing event
+          const updated = await updateBidTimelineEvent(eventId, eventData);
+          if (updated) updatedRecords.timeline.updated.push(updated);
+        } else {
+          // Create new event
+          const created = await createBidTimelineEvent({
+            ...eventData,
+            bidId,
+          });
+          updatedRecords.timeline.created.push(created);
+        }
+      }
+    }
+
+    // Handle notes operations
+    if (notes && Array.isArray(notes)) {
+      updatedRecords.notes = {
+        created: [],
+        updated: [],
+        deleted: [],
+      };
+
+      for (const noteItem of notes) {
+        const { id: noteId, _delete, ...noteData } = noteItem;
+
+        if (_delete && noteId) {
+          // Delete existing note
+          const deleted = await deleteBidNote(noteId);
+          if (deleted) updatedRecords.notes.deleted.push(deleted);
+        } else if (noteId) {
+          // Update existing note
+          const updated = await updateBidNote(noteId, noteData);
+          if (updated) updatedRecords.notes.updated.push(updated);
+        } else {
+          // Create new note
+          const created = await createBidNote({
+            ...noteData,
+            bidId,
+            createdBy: performedBy,
+          });
+          updatedRecords.notes.created.push(created);
+        }
+      }
+    }
+
+    // Handle document and media operations
+    const documentUpdatesResult: any = {};
+
+    // Handle new document uploads (document_0, document_1, etc.)
+    const files = (req.files as Express.Multer.File[]) || [];
+    const documentFiles = files.filter((file) =>
+      file.fieldname.startsWith("document_"),
+    );
+
+    if (documentFiles.length > 0) {
+      const { createBidDocument } = await import("../services/bid.service.js");
+      const uploadedDocuments = [];
+
+      for (let i = 0; i < documentFiles.length; i++) {
+        const file = documentFiles[i];
+        if (!file) continue;
+
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "bid-documents",
+          );
+
+          const document = await createBidDocument({
+            bidId,
+            fileName: file.originalname,
+            filePath: uploadResult.url,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            uploadedBy: performedBy,
+          });
+
+          uploadedDocuments.push(document);
+        } catch (uploadError: any) {
+          logger.error(
+            `Error uploading document ${file.originalname}:`,
+            uploadError,
+          );
+        }
+      }
+
+      if (uploadedDocuments.length > 0) {
+        documentUpdatesResult.added = uploadedDocuments;
+      }
+    }
+
+    // Handle new media uploads (media_0, media_1, etc.)
+    const mediaFiles = files.filter((file) =>
+      file.fieldname.startsWith("media_"),
+    );
+
+    const mediaUpdatesResult: any = {};
+
+    if (mediaFiles.length > 0) {
+      const { createBidMedia } = await import("../services/bid.service.js");
+      const uploadedMedia = [];
+
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const file = mediaFiles[i];
+        if (!file) continue;
+
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "bid-media",
+          );
+
+          const media = await createBidMedia({
+            bidId,
+            fileName: file.originalname,
+            filePath: uploadResult.url,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            uploadedBy: performedBy,
+          });
+
+          uploadedMedia.push(media);
+        } catch (uploadError: any) {
+          logger.error(`Error uploading media ${file.originalname}:`, uploadError);
+        }
+      }
+
+      if (uploadedMedia.length > 0) {
+        mediaUpdatesResult.added = uploadedMedia;
+      }
+    }
+
+    // Handle document updates
+    if (documentIdsToUpdate && Array.isArray(documentIdsToUpdate)) {
+      const documentUpdatesList = documentUpdates || [];
+      const updatedDocuments = [];
+
+      for (let i = 0; i < documentIdsToUpdate.length; i++) {
+        const documentId = documentIdsToUpdate[i];
+        const updateData = documentUpdatesList[i] || {};
+
+        try {
+          const existingDoc = await getBidDocumentById(documentId);
+          if (existingDoc && existingDoc.bidId === bidId) {
+            const updated = await updateBidDocument(documentId, {
+              fileName: updateData.fileName,
+              documentType: updateData.documentType,
+            });
+            if (updated) updatedDocuments.push(updated);
+          }
+        } catch (error: any) {
+          logger.error(`Error updating document ${documentId}:`, error);
+        }
+      }
+
+      if (updatedDocuments.length > 0) {
+        documentUpdatesResult.updated = updatedDocuments;
+      }
+    }
+
+    // Handle document deletions
+    if (documentIdsToDelete && Array.isArray(documentIdsToDelete)) {
+      const deletedDocuments = [];
+
+      for (const documentId of documentIdsToDelete) {
+        try {
+          const existingDoc = await getBidDocumentById(documentId);
+          if (existingDoc && existingDoc.bidId === bidId) {
+            const deleted = await deleteBidDocument(documentId);
+            if (deleted) deletedDocuments.push(deleted);
+          }
+        } catch (error: any) {
+          logger.error(`Error deleting document ${documentId}:`, error);
+        }
+      }
+
+      if (deletedDocuments.length > 0) {
+        documentUpdatesResult.deleted = deletedDocuments;
+      }
+    }
+
+    if (Object.keys(documentUpdatesResult).length > 0) {
+      updatedRecords.documents = documentUpdatesResult;
+    }
+
+    // Handle media updates (mediaUpdatesResult already initialized above)
+    if (mediaIdsToUpdate && Array.isArray(mediaIdsToUpdate)) {
+      const mediaUpdatesList = mediaUpdates || [];
+      const updatedMediaList = [];
+
+      for (let i = 0; i < mediaIdsToUpdate.length; i++) {
+        const mediaId = mediaIdsToUpdate[i];
+        const updateData = mediaUpdatesList[i] || {};
+
+        try {
+          const existingMedia = await getBidMediaById(mediaId);
+          if (existingMedia && existingMedia.bidId === bidId) {
+            const updated = await updateBidMedia(mediaId, {
+              fileName: updateData.fileName,
+              mediaType: updateData.mediaType,
+            });
+            if (updated) updatedMediaList.push(updated);
+          }
+        } catch (error: any) {
+          logger.error(`Error updating media ${mediaId}:`, error);
+        }
+      }
+
+      if (updatedMediaList.length > 0) {
+        mediaUpdatesResult.updated = updatedMediaList;
+      }
+    }
+
+    // Handle media deletions
+    if (mediaIdsToDelete && Array.isArray(mediaIdsToDelete)) {
+      const deletedMediaList = [];
+
+      for (const mediaId of mediaIdsToDelete) {
+        try {
+          const existingMedia = await getBidMediaById(mediaId);
+          if (existingMedia && existingMedia.bidId === bidId) {
+            const deleted = await deleteBidMedia(mediaId);
+            if (deleted) deletedMediaList.push(deleted);
+          }
+        } catch (error: any) {
+          logger.error(`Error deleting media ${mediaId}:`, error);
+        }
+      }
+
+      if (deletedMediaList.length > 0) {
+        mediaUpdatesResult.deleted = deletedMediaList;
+      }
+    }
+
+    if (Object.keys(mediaUpdatesResult).length > 0) {
+      updatedRecords.media = mediaUpdatesResult;
+    }
+
+    // Create history entries for changed job fields
+    for (const [key, value] of Object.entries(jobFields)) {
       const oldValue = (originalJob as any)[key];
       if (oldValue !== value) {
         await createJobHistoryEntry({
@@ -367,11 +787,25 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       }
     }
 
-    logger.info("Job updated successfully");
+    // Create history entry for bid data updates if any were made
+    if (Object.keys(updatedRecords).length > 0) {
+      await createJobHistoryEntry({
+        jobId: id!,
+        organizationId: originalJob.organizationId,
+        action: "bid_data_updated",
+        description: "Associated bid data was updated",
+        createdBy: performedBy,
+      });
+    }
+
+    logger.info("Job and associated bid data updated successfully");
     return res.status(200).json({
       success: true,
-      data: updatedJob,
-      message: "Job updated successfully",
+      data: {
+        job: updatedJob,
+        ...updatedRecords,
+      },
+      message: "Job and associated bid data updated successfully",
     });
   } catch (error: any) {
     logger.logApiError("Error updating job", error, req);
