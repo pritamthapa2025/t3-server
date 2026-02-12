@@ -570,3 +570,44 @@ export const downloadInvoicePDFSchema = z.object({
 export const previewInvoicePDFSchema = z.object({
   params: z.object({ id: uuidString }),
 });
+
+// ==================== INVOICE PAYMENT VALIDATIONS (Simplified) ====================
+
+// Create payment for invoice schema
+export const createInvoicePaymentSchema = z.object({
+  params: z.object({ invoiceId: uuidString }),
+  body: z.object({
+    amount: decimalString,
+    paymentDate: dateString,
+    paymentMethod: paymentMethodEnum,
+    referenceNumber: z.string().max(255).optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+// Update invoice payment schema
+export const updateInvoicePaymentSchema = z.object({
+  params: z.object({ invoiceId: uuidString, paymentId: uuidString }),
+  body: z.object({
+    amount: decimalString.optional(),
+    paymentDate: dateString.optional(),
+    paymentMethod: paymentMethodEnum.optional(),
+    referenceNumber: z.string().max(255).optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+// Get invoice payments schema
+export const getInvoicePaymentsSchema = z.object({
+  params: z.object({ invoiceId: uuidString }),
+});
+
+// Get invoice payment by ID schema
+export const getInvoicePaymentSchema = z.object({
+  params: z.object({ invoiceId: uuidString, paymentId: uuidString }),
+});
+
+// Delete invoice payment schema
+export const deleteInvoicePaymentSchema = z.object({
+  params: z.object({ invoiceId: uuidString, paymentId: uuidString }),
+});

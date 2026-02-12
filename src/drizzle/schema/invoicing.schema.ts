@@ -22,9 +22,7 @@ import { jobs } from "./jobs.schema.js";
 import {
   invoiceStatusEnum,
   invoiceTypeEnum,
-  paymentStatusEnum,
   invoicePaymentMethodEnum,
-  paymentTypeEnum,
   recurringFrequencyEnum,
 } from "../enums/invoicing.enums.js";
 
@@ -198,6 +196,7 @@ export const invoiceLineItems = org.table(
 /**
  * Payments Table
  * Records of payments received against invoices
+ * Simplified: amount, date, method, reference, notes
  */
 export const payments = org.table(
   "payments",
@@ -205,62 +204,22 @@ export const payments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     paymentNumber: varchar("payment_number", { length: 100 }).notNull(),
 
-    // Relationships
-    clientId: uuid("client_id")
+    // Relationship
+    invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => organizations.id), // Client organization (derived from invoice → job → bid)
-    invoiceId: uuid("invoice_id").references(() => invoices.id), // Optional for deposits/prepayments
+      .references(() => invoices.id),
 
     // Payment Details
-    paymentType: paymentTypeEnum("payment_type").notNull().default("full"),
-    paymentMethod: invoicePaymentMethodEnum("payment_method").notNull(),
-    status: paymentStatusEnum("status").notNull().default("pending"),
-
-    // Financial
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
-    currency: varchar("currency", { length: 3 }).default("USD"),
-    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 6 })
-      .notNull()
-      .default("1"),
-
-    // Payment Processing
     paymentDate: date("payment_date").notNull(),
-    receivedDate: timestamp("received_date"),
-    processedDate: timestamp("processed_date"),
-    clearedDate: timestamp("cleared_date"), // For checks/ACH
-
-    // Payment Method Specific
-    checkNumber: varchar("check_number", { length: 50 }),
-    transactionId: varchar("transaction_id", { length: 255 }), // For credit card, ACH, wire
-    referenceNumber: varchar("reference_number", { length: 255 }),
-    bankName: varchar("bank_name", { length: 255 }),
-    accountLastFour: varchar("account_last_four", { length: 4 }),
-
-    // Fees & Adjustments
-    processingFee: numeric("processing_fee", { precision: 15, scale: 2 })
-      .notNull()
-      .default("0"),
-    lateFee: numeric("late_fee", { precision: 15, scale: 2 })
-      .notNull()
-      .default("0"),
-    discountApplied: numeric("discount_applied", { precision: 15, scale: 2 })
-      .notNull()
-      .default("0"),
-    adjustmentAmount: numeric("adjustment_amount", { precision: 15, scale: 2 })
-      .notNull()
-      .default("0"),
-    adjustmentReason: text("adjustment_reason"),
-
-    // Notes
+    paymentMethod: invoicePaymentMethodEnum("payment_method").notNull(),
+    referenceNumber: varchar("reference_number", { length: 255 }), // Check number, transaction ID, etc.
     notes: text("notes"),
-    internalNotes: text("internal_notes"),
 
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
-    processedBy: uuid("processed_by").references(() => users.id),
-
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -269,54 +228,10 @@ export const payments = org.table(
     // Unique constraint: paymentNumber must be globally unique
     unique("unique_payment_number").on(table.paymentNumber),
     // Indexes for performance
-    index("idx_payments_client").on(table.clientId),
     index("idx_payments_invoice").on(table.invoiceId),
-    index("idx_payments_status").on(table.status),
-    index("idx_payments_method").on(table.paymentMethod),
     index("idx_payments_payment_date").on(table.paymentDate),
-    index("idx_payments_received_date").on(table.receivedDate),
     index("idx_payments_is_deleted").on(table.isDeleted),
     index("idx_payments_created_at").on(table.createdAt),
-  ],
-);
-
-/**
- * Payment Allocations Table
- * Tracks how payments are allocated across multiple invoices
- * (for partial payments or payments covering multiple invoices)
- */
-export const paymentAllocations = org.table(
-  "payment_allocations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    paymentId: uuid("payment_id")
-      .notNull()
-      .references(() => payments.id),
-    invoiceId: uuid("invoice_id")
-      .notNull()
-      .references(() => invoices.id),
-
-    // Allocation Details
-    allocatedAmount: numeric("allocated_amount", {
-      precision: 15,
-      scale: 2,
-    }).notNull(),
-    allocationDate: timestamp("allocation_date").defaultNow(),
-
-    // Notes
-    notes: text("notes"),
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => [
-    // Unique constraint: one allocation per payment-invoice pair
-    unique("unique_payment_invoice_allocation").on(
-      table.paymentId,
-      table.invoiceId,
-    ),
-    index("idx_payment_allocations_payment").on(table.paymentId),
-    index("idx_payment_allocations_invoice").on(table.invoiceId),
   ],
 );
 

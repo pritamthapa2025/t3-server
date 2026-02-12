@@ -2,11 +2,8 @@ import {
   count,
   eq,
   desc,
-  asc,
   and,
-  or,
   like,
-  ilike,
   gte,
   lte,
   sql,
@@ -18,11 +15,8 @@ import {
   invoices,
   invoiceLineItems,
   payments,
-  paymentAllocations,
   invoiceDocuments,
-  paymentDocuments,
   invoiceHistory,
-  paymentHistory,
 } from "../drizzle/schema/invoicing.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -163,7 +157,7 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
   const finalTax = totalTax;
   const totalAmount = finalSubtotal + finalTax;
 
-  // Get total payments
+  // Get total payments (all non-deleted payments count as completed)
   const paymentsResult = await db
     .select({
       totalPaid: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
@@ -173,7 +167,6 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
       and(
         eq(payments.invoiceId, invoiceId),
         eq(payments.isDeleted, false),
-        or(eq(payments.status, "completed"), eq(payments.status, "processing")),
       ),
     );
 
@@ -447,7 +440,6 @@ export const getInvoiceById = async (
         paymentNumber: payments.paymentNumber,
         amount: payments.amount,
         paymentDate: payments.paymentDate,
-        status: payments.status,
         paymentMethod: payments.paymentMethod,
       })
       .from(payments)
@@ -971,579 +963,6 @@ export const voidInvoice = async (
 // PAYMENT SERVICES
 // ============================
 
-/**
- * Get payments with pagination and filters
- */
-export const getPayments = async (
-  organizationId: string | undefined,
-  options: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    paymentMethod?: string;
-    paymentType?: string;
-    clientId?: string;
-    invoiceId?: string;
-    startDate?: string;
-    endDate?: string;
-    paymentDateStart?: string;
-    paymentDateEnd?: string;
-    search?: string;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-    includeDeleted?: boolean;
-  },
-) => {
-  const page = options.page || 1;
-  const limit = Math.min(options.limit || 10, 100);
-  const offset = (page - 1) * limit;
-
-  // Get invoice IDs for this organization through invoice → job → bid relationship
-  let whereConditions: any[] = [];
-
-  if (organizationId) {
-    // Validate organizationId is a valid UUID
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(organizationId)) {
-      throw new Error(
-        `Invalid organizationId format: "${organizationId}". Expected a valid UUID.`,
-      );
-    }
-
-    // Get job IDs for this organization
-    const jobIdsResult = await db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-      .where(eq(bidsTable.organizationId, organizationId));
-
-    const jobIds = jobIdsResult.map((j) => j.id);
-
-    if (jobIds.length > 0) {
-      // Get invoice IDs for these jobs
-      const invoiceIdsResult = await db
-        .select({ id: invoices.id })
-        .from(invoices)
-        .where(inArray(invoices.jobId, jobIds));
-
-      const invoiceIds = invoiceIdsResult.map((i) => i.id);
-
-      if (invoiceIds.length > 0) {
-        whereConditions.push(inArray(payments.invoiceId, invoiceIds));
-      } else {
-        // No invoices for this organization, return empty result
-        return {
-          payments: [],
-          pagination: {
-            page: 1,
-            limit,
-            total: 0,
-            totalPages: 0,
-          },
-        };
-      }
-    } else {
-      // No jobs for this organization, return empty result
-      return {
-        payments: [],
-        pagination: {
-          page: 1,
-          limit,
-          total: 0,
-          totalPages: 0,
-        },
-      };
-    }
-  }
-
-  if (!options.includeDeleted) {
-    whereConditions.push(eq(payments.isDeleted, false));
-  }
-
-  if (options.status) {
-    whereConditions.push(eq(payments.status, options.status as any));
-  }
-
-  if (options.paymentMethod) {
-    whereConditions.push(
-      eq(payments.paymentMethod, options.paymentMethod as any),
-    );
-  }
-
-  if (options.paymentType) {
-    whereConditions.push(eq(payments.paymentType, options.paymentType as any));
-  }
-
-  if (options.clientId) {
-    whereConditions.push(eq(payments.clientId, options.clientId));
-  }
-
-  if (options.invoiceId) {
-    whereConditions.push(eq(payments.invoiceId, options.invoiceId));
-  }
-
-  if (options.startDate) {
-    whereConditions.push(gte(payments.paymentDate, options.startDate));
-  }
-
-  if (options.endDate) {
-    whereConditions.push(lte(payments.paymentDate, options.endDate));
-  }
-
-  if (options.paymentDateStart) {
-    whereConditions.push(gte(payments.paymentDate, options.paymentDateStart));
-  }
-
-  if (options.paymentDateEnd) {
-    whereConditions.push(lte(payments.paymentDate, options.paymentDateEnd));
-  }
-
-  if (options.search) {
-    const searchTerm = `%${options.search}%`;
-    whereConditions.push(
-      or(
-        ilike(payments.paymentNumber, searchTerm),
-        ilike(payments.checkNumber, searchTerm),
-        ilike(payments.transactionId, searchTerm),
-      )!,
-    );
-  }
-
-  const orderBy =
-    options.sortBy === "paymentDate"
-      ? options.sortOrder === "asc"
-        ? asc(payments.paymentDate)
-        : desc(payments.paymentDate)
-      : options.sortBy === "receivedDate"
-        ? options.sortOrder === "asc"
-          ? asc(payments.receivedDate)
-          : desc(payments.receivedDate)
-        : options.sortBy === "amount"
-          ? options.sortOrder === "asc"
-            ? asc(payments.amount)
-            : desc(payments.amount)
-          : desc(payments.createdAt);
-
-  const [paymentsList, totalResult] = await Promise.all([
-    db
-      .select()
-      .from(payments)
-      .where(and(...whereConditions))
-      .orderBy(orderBy)
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ count: count() })
-      .from(payments)
-      .where(and(...whereConditions)),
-  ]);
-
-  const total = totalResult[0]?.count || 0;
-  const totalPages = Math.ceil(total / limit);
-
-  // Get unique creator IDs and fetch their names in batch
-  const creatorIds = Array.from(
-    new Set(
-      paymentsList.map((p) => p.createdBy).filter((id): id is string => !!id),
-    ),
-  );
-  const creators =
-    creatorIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            fullName: users.fullName,
-          })
-          .from(users)
-          .where(inArray(users.id, creatorIds))
-      : [];
-  const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
-
-  return {
-    payments: paymentsList.map((payment) => ({
-      ...payment,
-      createdByName: payment.createdBy
-        ? creatorMap.get(payment.createdBy) || null
-        : null,
-    })),
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages,
-    },
-  };
-};
-
-/**
- * Get payment by ID
- */
-export const getPaymentById = async (
-  paymentId: string,
-  organizationId?: string,
-  options?: {
-    includeAllocations?: boolean;
-    includeDocuments?: boolean;
-    includeHistory?: boolean;
-  },
-) => {
-  // Get payment and verify it belongs to the organization through invoice → job → bid
-  const [payment] = await db
-    .select({
-      payment: payments,
-      organizationId: bidsTable.organizationId,
-    })
-    .from(payments)
-    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
-    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(and(eq(payments.id, paymentId), eq(payments.isDeleted, false)))
-    .limit(1);
-
-  if (!payment || !payment.payment) return null;
-
-  // Verify organizationId matches if provided
-  if (organizationId && payment.organizationId !== organizationId) {
-    return null;
-  }
-
-  // Get createdBy user name
-  let createdByName: string | null = null;
-  if (payment.payment.createdBy) {
-    const [creator] = await db
-      .select({ fullName: users.fullName })
-      .from(users)
-      .where(eq(users.id, payment.payment.createdBy))
-      .limit(1);
-    createdByName = creator?.fullName || null;
-  }
-
-  const result: any = {
-    ...payment.payment,
-    createdByName,
-  };
-
-  if (options?.includeAllocations !== false) {
-    result.allocations = await db
-      .select()
-      .from(paymentAllocations)
-      .where(
-        and(
-          eq(paymentAllocations.paymentId, paymentId),
-          eq(paymentAllocations.isDeleted, false),
-        ),
-      );
-  }
-
-  if (options?.includeDocuments !== false) {
-    const documentsResult = await db
-      .select({
-        document: paymentDocuments,
-        uploadedByName: users.fullName,
-      })
-      .from(paymentDocuments)
-      .leftJoin(users, eq(paymentDocuments.uploadedBy, users.id))
-      .where(
-        and(
-          eq(paymentDocuments.paymentId, paymentId),
-          eq(paymentDocuments.isDeleted, false),
-        ),
-      )
-      .orderBy(desc(paymentDocuments.createdAt));
-
-    result.documents = documentsResult.map((doc) => ({
-      ...doc.document,
-      uploadedByName: doc.uploadedByName || null,
-    }));
-  }
-
-  if (options?.includeHistory) {
-    result.history = await db
-      .select()
-      .from(paymentHistory)
-      .where(eq(paymentHistory.paymentId, paymentId))
-      .orderBy(desc(paymentHistory.createdAt));
-  }
-
-  return result;
-};
-
-/**
- * Create payment
- */
-export const createPayment = async (data: any, createdBy: string) => {
-  return await db.transaction(async (tx) => {
-    // Get invoice to validate and get client/organization
-    const [invoice] = await tx
-      .select()
-      .from(invoices)
-      .where(eq(invoices.id, data.invoiceId));
-
-    if (!invoice) {
-      throw new Error("Invoice not found");
-    }
-
-    if (!invoice.jobId) {
-      throw new Error(
-        "Invoice must be associated with a job to create payment",
-      );
-    }
-
-    // Get organizationId and clientId from job's bid
-    const [job] = await tx
-      .select({ bidId: jobs.bidId })
-      .from(jobs)
-      .where(eq(jobs.id, invoice.jobId))
-      .limit(1);
-
-    if (!job?.bidId) {
-      throw new Error("Job must have a valid bid to create payment");
-    }
-
-    const [bid] = await tx
-      .select({ organizationId: bidsTable.organizationId })
-      .from(bidsTable)
-      .where(eq(bidsTable.id, job.bidId))
-      .limit(1);
-
-    if (!bid?.organizationId) {
-      throw new Error(
-        "Cannot determine organizationId. Bid must have a valid organizationId.",
-      );
-    }
-
-    const clientId = bid.organizationId; // Client is the organization
-    const organizationId = bid.organizationId; // For payment number generation
-
-    const paymentNumber = await generatePaymentNumber(organizationId);
-
-    const paymentResult = await tx
-      .insert(payments)
-      .values({
-        paymentNumber,
-        clientId,
-        invoiceId: data.invoiceId,
-        paymentType: data.paymentType || "full",
-        paymentMethod: data.paymentMethod,
-        status: "pending",
-        amount: data.amount,
-        currency: data.currency || "USD",
-        exchangeRate: data.exchangeRate || "1",
-        paymentDate: data.paymentDate,
-        receivedDate: data.receivedDate || null,
-        checkNumber: data.checkNumber || null,
-        transactionId: data.transactionId || null,
-        referenceNumber: data.referenceNumber || null,
-        bankName: data.bankName || null,
-        accountLastFour: data.accountLastFour || null,
-        processingFee: data.processingFee || "0",
-        lateFee: data.lateFee || "0",
-        discountApplied: data.discountApplied || "0",
-        adjustmentAmount: data.adjustmentAmount || "0",
-        adjustmentReason: data.adjustmentReason || null,
-        notes: data.notes || null,
-        internalNotes: data.internalNotes || null,
-        createdBy,
-      })
-      .returning();
-
-    const payment = Array.isArray(paymentResult)
-      ? paymentResult[0]
-      : (paymentResult as any);
-    if (!payment) {
-      throw new Error("Failed to create payment");
-    }
-
-    // Create allocations if provided
-    if (data.allocations && data.allocations.length > 0) {
-      for (const allocation of data.allocations) {
-        await tx.insert(paymentAllocations).values({
-          paymentId: payment.id,
-          invoiceId: allocation.invoiceId,
-          allocatedAmount: allocation.allocatedAmount,
-          notes: allocation.notes || null,
-        });
-      }
-    } else {
-      // Default allocation to the invoice
-      await tx.insert(paymentAllocations).values({
-        paymentId: payment.id,
-        invoiceId: data.invoiceId,
-        allocatedAmount: data.amount,
-      });
-    }
-
-    return payment.id;
-  });
-};
-
-/**
- * Update payment
- */
-export const updatePayment = async (
-  paymentId: string,
-  organizationId: string | undefined,
-  data: any,
-  _updatedBy: string,
-) => {
-  const updateData: any = { updatedAt: new Date() };
-  Object.keys(data).forEach((key) => {
-    if (data[key] !== undefined) {
-      updateData[key] = data[key];
-    }
-  });
-
-  await db.update(payments).set(updateData).where(eq(payments.id, paymentId));
-
-  return await getPaymentById(paymentId, organizationId);
-};
-
-/**
- * Delete payment (soft delete)
- */
-export const deletePayment = async (
-  paymentId: string,
-  _organizationId: string | undefined,
-  _deletedBy: string,
-) => {
-  await db
-    .update(payments)
-    .set({ isDeleted: true, updatedAt: new Date() })
-    .where(eq(payments.id, paymentId));
-
-  return { success: true };
-};
-
-/**
- * Get payment and organizationId (for allocation operations)
- */
-const getPaymentWithOrg = async (
-  paymentId: string,
-  organizationId?: string,
-): Promise<{ organizationId: string } | null> => {
-  const [row] = await db
-    .select({
-      organizationId: bidsTable.organizationId,
-    })
-    .from(payments)
-    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
-    .leftJoin(jobs, eq(invoices.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(and(eq(payments.id, paymentId), eq(payments.isDeleted, false)))
-    .limit(1);
-
-  if (!row?.organizationId) return null;
-  if (organizationId && row.organizationId !== organizationId) return null;
-  return { organizationId: row.organizationId };
-};
-
-/**
- * Create payment allocation
- */
-export const createPaymentAllocation = async (
-  paymentId: string,
-  organizationId: string | undefined,
-  data: { invoiceId: string; allocatedAmount: string; notes?: string },
-) => {
-  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
-  if (!paymentOrg) return null;
-
-  const [inserted] = await db
-    .insert(paymentAllocations)
-    .values({
-      paymentId,
-      invoiceId: data.invoiceId,
-      allocatedAmount: data.allocatedAmount,
-      notes: data.notes ?? null,
-    })
-    .returning();
-
-  return inserted ?? null;
-};
-
-/**
- * Update payment allocation
- */
-export const updatePaymentAllocation = async (
-  paymentId: string,
-  allocationId: string,
-  organizationId: string | undefined,
-  data: { allocatedAmount?: string; notes?: string },
-) => {
-  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
-  if (!paymentOrg) return null;
-
-  const [existing] = await db
-    .select()
-    .from(paymentAllocations)
-    .where(
-      and(
-        eq(paymentAllocations.id, allocationId),
-        eq(paymentAllocations.paymentId, paymentId),
-        eq(paymentAllocations.isDeleted, false),
-      ),
-    );
-
-  if (!existing) return null;
-
-  const updatePayload: Record<string, unknown> = {};
-  if (data.allocatedAmount !== undefined)
-    updatePayload.allocatedAmount = data.allocatedAmount;
-  if (data.notes !== undefined) updatePayload.notes = data.notes;
-
-  const [updated] = await db
-    .update(paymentAllocations)
-    .set(updatePayload as any)
-    .where(
-      and(
-        eq(paymentAllocations.id, allocationId),
-        eq(paymentAllocations.paymentId, paymentId),
-      ),
-    )
-    .returning();
-
-  return updated ?? null;
-};
-
-/**
- * Delete payment allocation (soft delete)
- */
-export const deletePaymentAllocation = async (
-  paymentId: string,
-  allocationId: string,
-  organizationId: string | undefined,
-) => {
-  const paymentOrg = await getPaymentWithOrg(paymentId, organizationId);
-  if (!paymentOrg) return null;
-
-  const [existing] = await db
-    .select()
-    .from(paymentAllocations)
-    .where(
-      and(
-        eq(paymentAllocations.id, allocationId),
-        eq(paymentAllocations.paymentId, paymentId),
-        eq(paymentAllocations.isDeleted, false),
-      ),
-    );
-
-  if (!existing) return null;
-
-  const [updated] = await db
-    .update(paymentAllocations)
-    .set({ isDeleted: true })
-    .where(
-      and(
-        eq(paymentAllocations.id, allocationId),
-        eq(paymentAllocations.paymentId, paymentId),
-      ),
-    )
-    .returning();
-
-  return updated ?? null;
-};
-
 // ============================
 // REPORTS
 // ============================
@@ -1728,10 +1147,6 @@ export const getPaymentSummary = async (
     whereConditions.push(lte(payments.paymentDate, options.endDate));
   }
 
-  if (options.clientId) {
-    whereConditions.push(eq(payments.clientId, options.clientId));
-  }
-
   if (options.paymentMethod) {
     whereConditions.push(
       eq(payments.paymentMethod, options.paymentMethod as any),
@@ -1747,4 +1162,269 @@ export const getPaymentSummary = async (
     .where(and(...whereConditions));
 
   return summary[0];
+};
+
+// ============================
+// SIMPLIFIED PAYMENT SERVICES (for Invoice-scoped payments)
+// ============================
+
+/**
+ * Get all payments for an invoice
+ */
+export const getPaymentsByInvoice = async (
+  invoiceId: string,
+  organizationId?: string,
+) => {
+  // Verify invoice exists and belongs to organization
+  const invoice = await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: false,
+    includePayments: false,
+    includeDocuments: false,
+    includeHistory: false,
+  });
+
+  if (!invoice) {
+    return null;
+  }
+
+  // Alias for createdBy user
+  const createdByUser = alias(users, "created_by_user");
+
+  const paymentsResult = await db
+    .select({
+      id: payments.id,
+      paymentNumber: payments.paymentNumber,
+      invoiceId: payments.invoiceId,
+      amount: payments.amount,
+      paymentDate: payments.paymentDate,
+      paymentMethod: payments.paymentMethod,
+      referenceNumber: payments.referenceNumber,
+      notes: payments.notes,
+      createdBy: payments.createdBy,
+      isDeleted: payments.isDeleted,
+      createdAt: payments.createdAt,
+      updatedAt: payments.updatedAt,
+      createdByName: createdByUser.fullName,
+    })
+    .from(payments)
+    .leftJoin(createdByUser, eq(payments.createdBy, createdByUser.id))
+    .where(and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)))
+    .orderBy(desc(payments.paymentDate));
+
+  return paymentsResult.map((p) => ({
+    ...p,
+    createdByName: p.createdByName ?? null,
+  }));
+};
+
+/**
+ * Create payment for an invoice
+ */
+export const createPaymentForInvoice = async (
+  invoiceId: string,
+  organizationId: string | undefined,
+  data: {
+    amount: string;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+  },
+  createdBy: string,
+) => {
+  return await db.transaction(async (tx) => {
+    // Get invoice to validate and get client/organization
+    const [invoice] = await tx
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId));
+
+    if (!invoice) {
+      throw new Error("Invoice not found");
+    }
+
+    if (!invoice.jobId) {
+      throw new Error("Invoice must be associated with a job to create payment");
+    }
+
+    // Get organizationId from job's bid
+    const [job] = await tx
+      .select({ bidId: jobs.bidId })
+      .from(jobs)
+      .where(eq(jobs.id, invoice.jobId))
+      .limit(1);
+
+    if (!job?.bidId) {
+      throw new Error("Job must have a valid bid to create payment");
+    }
+
+    const [bid] = await tx
+      .select({ organizationId: bidsTable.organizationId })
+      .from(bidsTable)
+      .where(eq(bidsTable.id, job.bidId))
+      .limit(1);
+
+    if (!bid?.organizationId) {
+      throw new Error("Cannot determine organizationId. Bid must have a valid organizationId.");
+    }
+
+    // Verify organization matches if provided
+    if (organizationId && bid.organizationId !== organizationId) {
+      throw new Error("Organization mismatch");
+    }
+
+    const paymentNumber = await generatePaymentNumber(bid.organizationId);
+
+    // Create payment
+    const [payment] = await tx
+      .insert(payments)
+      .values({
+        paymentNumber,
+        invoiceId,
+        amount: data.amount,
+        paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod as any,
+        referenceNumber: data.referenceNumber || null,
+        notes: data.notes || null,
+        createdBy,
+      })
+      .returning();
+
+    // Recalculate invoice totals
+    await recalculateInvoiceTotals(invoiceId);
+
+    return payment;
+  });
+};
+
+/**
+ * Get payment by ID (scoped to invoice)
+ */
+export const getPaymentByIdForInvoice = async (
+  paymentId: string,
+  invoiceId: string,
+  organizationId?: string,
+) => {
+  // Verify invoice exists and belongs to organization
+  const invoice = await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: false,
+    includePayments: false,
+    includeDocuments: false,
+    includeHistory: false,
+  });
+
+  if (!invoice) {
+    return null;
+  }
+
+  const createdByUser = alias(users, "created_by_user");
+
+  const [payment] = await db
+    .select({
+      id: payments.id,
+      paymentNumber: payments.paymentNumber,
+      invoiceId: payments.invoiceId,
+      amount: payments.amount,
+      paymentDate: payments.paymentDate,
+      paymentMethod: payments.paymentMethod,
+      referenceNumber: payments.referenceNumber,
+      notes: payments.notes,
+      createdBy: payments.createdBy,
+      isDeleted: payments.isDeleted,
+      createdAt: payments.createdAt,
+      updatedAt: payments.updatedAt,
+      createdByName: createdByUser.fullName,
+    })
+    .from(payments)
+    .leftJoin(createdByUser, eq(payments.createdBy, createdByUser.id))
+    .where(
+      and(
+        eq(payments.id, paymentId),
+        eq(payments.invoiceId, invoiceId),
+        eq(payments.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (!payment) {
+    return null;
+  }
+
+  return {
+    ...payment,
+    createdByName: payment.createdByName ?? null,
+  };
+};
+
+/**
+ * Update payment for an invoice
+ */
+export const updatePaymentForInvoice = async (
+  paymentId: string,
+  invoiceId: string,
+  organizationId: string | undefined,
+  data: Partial<{
+    amount: string;
+    paymentDate: string;
+    paymentMethod: string;
+    referenceNumber: string;
+    notes: string;
+  }>,
+) => {
+  return await db.transaction(async (tx) => {
+    // Verify payment exists and belongs to invoice
+    const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+
+    if (!payment) {
+      return null;
+    }
+
+    const updateData: any = { updatedAt: new Date() };
+    if (data.amount !== undefined) updateData.amount = data.amount;
+    if (data.paymentDate !== undefined) updateData.paymentDate = data.paymentDate;
+    if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
+    if (data.referenceNumber !== undefined) updateData.referenceNumber = data.referenceNumber;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+
+    const [updated] = await tx
+      .update(payments)
+      .set(updateData)
+      .where(eq(payments.id, paymentId))
+      .returning();
+
+    // Recalculate invoice totals if amount changed
+    if (data.amount !== undefined) {
+      await recalculateInvoiceTotals(invoiceId);
+    }
+
+    return updated;
+  });
+};
+
+/**
+ * Delete payment for an invoice (soft delete)
+ */
+export const deletePaymentForInvoice = async (
+  paymentId: string,
+  invoiceId: string,
+  organizationId: string | undefined,
+) => {
+  return await db.transaction(async (tx) => {
+    // Verify payment exists and belongs to invoice
+    const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+
+    if (!payment) {
+      return null;
+    }
+
+    await tx
+      .update(payments)
+      .set({ isDeleted: true, updatedAt: new Date() })
+      .where(eq(payments.id, paymentId));
+
+    // Recalculate invoice totals
+    await recalculateInvoiceTotals(invoiceId);
+
+    return { success: true };
+  });
 };

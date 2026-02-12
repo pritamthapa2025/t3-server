@@ -20,6 +20,11 @@ import {
   deleteInvoiceLineItemByIdSchema,
   downloadInvoicePDFSchema,
   previewInvoicePDFSchema,
+  createInvoicePaymentSchema,
+  updateInvoicePaymentSchema,
+  getInvoicePaymentsSchema,
+  getInvoicePaymentSchema,
+  deleteInvoicePaymentSchema,
 } from "../../validations/invoicing.validations.js";
 
 const router: IRouter = Router();
@@ -122,5 +127,20 @@ router.get(
   validate(previewInvoicePDFSchema),
   invoiceController.previewInvoicePDF,
 );
+
+// ==================== INVOICE PAYMENT ROUTES ====================
+
+// Get all payments for an invoice, Create payment for invoice
+router
+  .route("/invoices/:invoiceId/payments")
+  .get(validate(getInvoicePaymentsSchema), invoiceController.getInvoicePayments)
+  .post(validate(createInvoicePaymentSchema), invoiceController.createInvoicePayment);
+
+// Get payment by ID, Update payment, Delete payment
+router
+  .route("/invoices/:invoiceId/payments/:paymentId")
+  .get(validate(getInvoicePaymentSchema), invoiceController.getInvoicePayment)
+  .put(validate(updateInvoicePaymentSchema), invoiceController.updateInvoicePayment)
+  .delete(validate(deleteInvoicePaymentSchema), invoiceController.deleteInvoicePayment);
 
 export default router;

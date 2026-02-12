@@ -2148,3 +2148,221 @@ export const previewInvoicePDF = async (req: Request, res: Response) => {
     });
   }
 };
+
+// ============================
+// PAYMENT CONTROLLERS
+// ============================
+
+/**
+ * Get all payments for an invoice
+ * GET /org/invoices/:invoiceId/payments
+ */
+export const getInvoicePayments = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const invoiceId = req.params.invoiceId as string;
+    const organizationId = req.user?.organizationId;
+
+    const payments = await invoicingService.getPaymentsByInvoice(
+      invoiceId,
+      organizationId,
+    );
+
+    if (payments === null) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    logger.info(`Payments retrieved for invoice: ${invoiceId}`);
+    return res.status(200).json({
+      success: true,
+      payments,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error getting invoice payments", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve payments",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Create payment for an invoice
+ * POST /org/invoices/:invoiceId/payments
+ */
+export const createInvoicePayment = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const invoiceId = req.params.invoiceId as string;
+    const organizationId = req.user?.organizationId;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const payment = await invoicingService.createPaymentForInvoice(
+      invoiceId,
+      organizationId,
+      req.body,
+      userId,
+    );
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    logger.info(`Payment created for invoice: ${invoiceId}`);
+    return res.status(201).json({
+      success: true,
+      message: "Payment created successfully",
+      payment,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error creating invoice payment", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payment",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get single payment by ID
+ * GET /org/invoices/:invoiceId/payments/:paymentId
+ */
+export const getInvoicePayment = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const invoiceId = req.params.invoiceId as string;
+    const paymentId = req.params.paymentId as string;
+    const organizationId = req.user?.organizationId;
+
+    const payment = await invoicingService.getPaymentByIdForInvoice(
+      paymentId,
+      invoiceId,
+      organizationId,
+    );
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    logger.info(`Payment retrieved: ${paymentId}`);
+    return res.status(200).json({
+      success: true,
+      payment,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error getting payment", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve payment",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update payment
+ * PUT /org/invoices/:invoiceId/payments/:paymentId
+ */
+export const updateInvoicePayment = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const invoiceId = req.params.invoiceId as string;
+    const paymentId = req.params.paymentId as string;
+    const organizationId = req.user?.organizationId;
+
+    const payment = await invoicingService.updatePaymentForInvoice(
+      paymentId,
+      invoiceId,
+      organizationId,
+      req.body,
+    );
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    logger.info(`Payment updated: ${paymentId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Payment updated successfully",
+      payment,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error updating payment", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update payment",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete payment (soft delete)
+ * DELETE /org/invoices/:invoiceId/payments/:paymentId
+ */
+export const deleteInvoicePayment = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
+  try {
+    const invoiceId = req.params.invoiceId as string;
+    const paymentId = req.params.paymentId as string;
+    const organizationId = req.user?.organizationId;
+
+    const result = await invoicingService.deletePaymentForInvoice(
+      paymentId,
+      invoiceId,
+      organizationId,
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    logger.info(`Payment deleted: ${paymentId}`);
+    return res.status(200).json({
+      success: true,
+      message: "Payment deleted successfully",
+    });
+  } catch (error: any) {
+    logger.logApiError("Error deleting payment", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete payment",
+      error: error.message,
+    });
+  }
+};
