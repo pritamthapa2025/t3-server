@@ -126,6 +126,9 @@ export const createInvoice = async (req: Request, res: Response) => {
       result.organizationId,
       {
         includeLineItems: true,
+        includePayments: false,
+        includeDocuments: false,
+        includeHistory: false,
       },
     );
 

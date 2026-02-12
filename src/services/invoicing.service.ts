@@ -1232,7 +1232,7 @@ export const createPaymentForInvoice = async (
   },
   createdBy: string,
 ) => {
-  return await db.transaction(async (tx) => {
+  const payment = await db.transaction(async (tx) => {
     // Get invoice to validate and get client/organization
     const [invoice] = await tx
       .select()
@@ -1290,11 +1290,13 @@ export const createPaymentForInvoice = async (
       })
       .returning();
 
-    // Recalculate invoice totals
-    await recalculateInvoiceTotals(invoiceId);
-
     return payment;
   });
+
+  // Recalculate invoice totals AFTER transaction commits
+  await recalculateInvoiceTotals(invoiceId);
+
+  return payment;
 };
 
 /**
@@ -1371,34 +1373,32 @@ export const updatePaymentForInvoice = async (
     notes: string;
   }>,
 ) => {
-  return await db.transaction(async (tx) => {
-    // Verify payment exists and belongs to invoice
-    const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+  // Verify payment exists and belongs to invoice
+  const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
 
-    if (!payment) {
-      return null;
-    }
+  if (!payment) {
+    return null;
+  }
 
-    const updateData: any = { updatedAt: new Date() };
-    if (data.amount !== undefined) updateData.amount = data.amount;
-    if (data.paymentDate !== undefined) updateData.paymentDate = data.paymentDate;
-    if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
-    if (data.referenceNumber !== undefined) updateData.referenceNumber = data.referenceNumber;
-    if (data.notes !== undefined) updateData.notes = data.notes;
+  const updateData: any = { updatedAt: new Date() };
+  if (data.amount !== undefined) updateData.amount = data.amount;
+  if (data.paymentDate !== undefined) updateData.paymentDate = data.paymentDate;
+  if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
+  if (data.referenceNumber !== undefined) updateData.referenceNumber = data.referenceNumber;
+  if (data.notes !== undefined) updateData.notes = data.notes;
 
-    const [updated] = await tx
-      .update(payments)
-      .set(updateData)
-      .where(eq(payments.id, paymentId))
-      .returning();
+  const [updated] = await db
+    .update(payments)
+    .set(updateData)
+    .where(eq(payments.id, paymentId))
+    .returning();
 
-    // Recalculate invoice totals if amount changed
-    if (data.amount !== undefined) {
-      await recalculateInvoiceTotals(invoiceId);
-    }
+  // Recalculate invoice totals if amount changed
+  if (data.amount !== undefined) {
+    await recalculateInvoiceTotals(invoiceId);
+  }
 
-    return updated;
-  });
+  return updated;
 };
 
 /**
@@ -1409,22 +1409,20 @@ export const deletePaymentForInvoice = async (
   invoiceId: string,
   organizationId: string | undefined,
 ) => {
-  return await db.transaction(async (tx) => {
-    // Verify payment exists and belongs to invoice
-    const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+  // Verify payment exists and belongs to invoice
+  const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
 
-    if (!payment) {
-      return null;
-    }
+  if (!payment) {
+    return null;
+  }
 
-    await tx
-      .update(payments)
-      .set({ isDeleted: true, updatedAt: new Date() })
-      .where(eq(payments.id, paymentId));
+  await db
+    .update(payments)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(eq(payments.id, paymentId));
 
-    // Recalculate invoice totals
-    await recalculateInvoiceTotals(invoiceId);
+  // Recalculate invoice totals AFTER deletion
+  await recalculateInvoiceTotals(invoiceId);
 
-    return { success: true };
-  });
+  return { success: true };
 };
