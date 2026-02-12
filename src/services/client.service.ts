@@ -9,6 +9,7 @@ import {
   or,
   ilike,
   inArray,
+  gte,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -24,6 +25,7 @@ import {
 } from "../drizzle/schema/client.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
+import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -1132,14 +1134,87 @@ export const removeDocumentCategoryLink = async (
 // Client KPIs and Settings
 // ============================
 
-export const getClientKPIs = async (): Promise<ClientKPIs> => {
-  // This would aggregate various metrics for the client
-  // For now, return basic structure
+/**
+ * Get client KPIs: metrics about client organizations (from organizations table).
+ * Returns client counts, revenue, and activity metrics.
+ */
+export const getClientKPIs = async (
+  _organizationId: string | undefined,
+): Promise<ClientKPIs> => {
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const [
+    totalClientsResult,
+    activeClientsResult,
+    pendingOrdersResult,
+    revenueResult,
+    newThisMonthResult,
+  ] = await Promise.all([
+    // Total clients: count of all non-deleted client organizations
+    db
+      .select({ count: count() })
+      .from(organizations)
+      .where(eq(organizations.isDeleted, false)),
+    
+    // Active clients: orgs with jobs in active statuses
+    db
+      .selectDistinct({ clientOrgId: bidsTable.organizationId })
+      .from(bidsTable)
+      .innerJoin(jobs, eq(bidsTable.id, jobs.bidId))
+      .where(
+        and(
+          eq(bidsTable.isDeleted, false),
+          eq(jobs.isDeleted, false),
+          inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
+        ),
+      ),
+    
+    // Pending orders: jobs in "planned" status (not yet started)
+    db
+      .select({ count: count() })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(
+          eq(jobs.isDeleted, false),
+          eq(bidsTable.isDeleted, false),
+          eq(jobs.status, "planned"),
+        ),
+      ),
+    
+    // Total revenue: sum of all invoices
+    db
+      .select({
+        total: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+      })
+      .from(invoices)
+      .where(eq(invoices.isDeleted, false)),
+    
+    // New clients this month: organizations created this month
+    db
+      .select({ count: count() })
+      .from(organizations)
+      .where(
+        and(
+          eq(organizations.isDeleted, false),
+          gte(organizations.createdAt, firstDayOfMonth),
+        ),
+      ),
+  ]);
+
+  const totalClients = Number(totalClientsResult[0]?.count ?? 0);
+  const activeClients = activeClientsResult.length;
+  const pendingOrders = Number(pendingOrdersResult[0]?.count ?? 0);
+  const totalRevenue = revenueResult[0]?.total ?? "0";
+  const newThisMonth = Number(newThisMonthResult[0]?.count ?? 0);
+
   return {
-    totalJobs: 0,
-    totalRevenue: "0",
-    activeProjects: 0,
-    completedProjects: 0,
+    totalClients,
+    activeClients,
+    pendingOrders,
+    totalRevenue: String(parseFloat(totalRevenue).toFixed(2)),
+    newThisMonth,
   };
 };
 

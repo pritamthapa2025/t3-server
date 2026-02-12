@@ -48,16 +48,36 @@ export const getDashboardOverview = async (organizationId?: string) => {
 
 /**
  * Get revenue statistics for the last 6 months
+ * Invoices are scoped by organization via job → bid (invoices table has no organizationId).
  */
 export const getRevenueStats = async (organizationId?: string) => {
-  // Calculate date range for last 6 months
   const today = new Date();
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(today.getMonth() - 6);
 
-  const invoiceOrgFilter = organizationId
-    ? eq(invoices.organizationId, organizationId)
-    : undefined;
+  let invoiceJobIdFilter: ReturnType<typeof inArray> | undefined;
+  if (organizationId) {
+    const jobIdsResult = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
+    const jobIds = jobIdsResult.map((r) => r.id);
+    if (jobIds.length === 0) {
+      return {
+        currentMonthTotal: 0,
+        growthPercentage: 0,
+        chartData: [],
+      };
+    }
+    invoiceJobIdFilter = inArray(invoices.jobId, jobIds);
+  }
+
+  const invoiceWhereBase = and(
+    ...(invoiceJobIdFilter ? [invoiceJobIdFilter] : []),
+    eq(invoices.status, "paid"),
+    eq(invoices.isDeleted, false),
+  );
 
   // Get monthly revenue from paid invoices
   const monthlyRevenue = await db
@@ -67,13 +87,7 @@ export const getRevenueStats = async (organizationId?: string) => {
       revenue: sum(invoices.totalAmount),
     })
     .from(invoices)
-    .where(
-      and(
-        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
-        eq(invoices.status, "paid"),
-        gte(invoices.paidDate, sixMonthsAgo),
-      ),
-    )
+    .where(and(invoiceWhereBase, gte(invoices.paidDate, sixMonthsAgo)))
     .groupBy(
       sql`TO_CHAR(${invoices.paidDate}, 'Mon')`,
       sql`EXTRACT(MONTH FROM ${invoices.paidDate})`,
@@ -83,17 +97,9 @@ export const getRevenueStats = async (organizationId?: string) => {
   // Calculate total revenue for current month
   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const currentMonthRevenue = await db
-    .select({
-      total: sum(invoices.totalAmount),
-    })
+    .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
-    .where(
-      and(
-        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
-        eq(invoices.status, "paid"),
-        gte(invoices.paidDate, firstDayOfMonth),
-      ),
-    );
+    .where(and(invoiceWhereBase, gte(invoices.paidDate, firstDayOfMonth)));
 
   // Calculate previous month for comparison
   const firstDayOfPrevMonth = new Date(
@@ -103,14 +109,11 @@ export const getRevenueStats = async (organizationId?: string) => {
   );
   const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
   const previousMonthRevenue = await db
-    .select({
-      total: sum(invoices.totalAmount),
-    })
+    .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
     .where(
       and(
-        ...(invoiceOrgFilter ? [invoiceOrgFilter] : []),
-        eq(invoices.status, "paid"),
+        invoiceWhereBase,
         gte(invoices.paidDate, firstDayOfPrevMonth),
         lte(invoices.paidDate, lastDayOfPrevMonth),
       ),
@@ -271,13 +274,14 @@ export const getTeamUtilization = async (organizationId?: string) => {
   const assigned = Number(assignedEmployees[0]?.count || 0);
   const utilizationPercentage = Math.round((assigned / total) * 100);
 
-  // Monthly utilization data (simplified)
+  // Monthly utilization: use current utilization for all months (no simulated random)
+  // TODO: replace with real monthly utilization from timesheets when historical data is available
   const chartData = Array.from({ length: 6 }, (_, i) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - i));
     return {
       month: date.toLocaleString("en", { month: "short" }),
-      utilization: utilizationPercentage + Math.floor(Math.random() * 10 - 5), // Simulated variation
+      utilization: utilizationPercentage,
     };
   });
 
@@ -427,21 +431,29 @@ export const getActiveBidsStats = async (organizationId?: string) => {
 
 /**
  * Get performance overview
+ * Invoices are scoped by organization via job → bid (invoices table has no organizationId).
  */
 export const getPerformanceOverview = async (organizationId?: string) => {
   const today = new Date();
   const perfBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
-  const perfInvoiceOrgFilter = organizationId
-    ? eq(invoices.organizationId, organizationId)
-    : undefined;
+
+  let invoiceJobIdFilter: ReturnType<typeof inArray> | ReturnType<typeof sql> | undefined;
+  if (organizationId) {
+    const jobIdsResult = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(eq(bidsTable.organizationId, organizationId));
+    const jobIds = jobIdsResult.map((r) => r.id);
+    invoiceJobIdFilter =
+      jobIds.length > 0 ? inArray(invoices.jobId, jobIds) : sql`false`;
+  }
 
   // On-time jobs percentage
   const totalCompletedJobs = await db
-    .select({
-      count: count(jobs.id),
-    })
+    .select({ count: count(jobs.id) })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
@@ -453,9 +465,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     );
 
   const onTimeJobs = await db
-    .select({
-      count: count(jobs.id),
-    })
+    .select({ count: count(jobs.id) })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
@@ -472,14 +482,12 @@ export const getPerformanceOverview = async (organizationId?: string) => {
   const onTimePercentage =
     totalCompleted > 0 ? Math.round((onTime / totalCompleted) * 100) : 0;
 
-  // Client rating (placeholder - would need a ratings table)
-  const clientRating = 4.8;
+  // Placeholder until a ratings table exists; UI can treat null as "N/A"
+  const clientRating: number | null = null;
 
-  // Bid win rate (reuse from active bids)
+  // Bid win rate
   const totalBids = await db
-    .select({
-      count: count(bidsTable.id),
-    })
+    .select({ count: count(bidsTable.id) })
     .from(bidsTable)
     .where(
       and(
@@ -489,9 +497,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     );
 
   const wonBids = await db
-    .select({
-      count: count(bidsTable.id),
-    })
+    .select({ count: count(bidsTable.id) })
     .from(bidsTable)
     .where(
       and(
@@ -505,26 +511,27 @@ export const getPerformanceOverview = async (organizationId?: string) => {
   const won = Number(wonBids[0]?.count || 0);
   const bidWinRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-  // Monthly goal progress (placeholder - would need goals table)
+  // Revenue for current month (invoices scoped via jobIds when org provided)
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const currentMonthRevenue = await db
-    .select({
-      total: sum(invoices.totalAmount),
-    })
+    .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
     .where(
       and(
-        ...(perfInvoiceOrgFilter ? [perfInvoiceOrgFilter] : []),
+        ...(invoiceJobIdFilter ? [invoiceJobIdFilter] : []),
+        eq(invoices.isDeleted, false),
         eq(invoices.status, "paid"),
-        gte(
-          invoices.paidDate,
-          new Date(today.getFullYear(), today.getMonth(), 1),
-        ),
+        gte(invoices.paidDate, firstDayOfMonth),
       ),
     );
 
   const currentRevenue = Number(currentMonthRevenue[0]?.total || 0);
-  const monthlyGoal = 1100000; // $1.1M goal (would come from settings)
-  const goalProgress = Math.round((currentRevenue / monthlyGoal) * 100);
+  // Placeholder: no goals table yet; target null means "no goal set"
+  const monthlyGoalTarget: number | null = null;
+  const goalProgress =
+    monthlyGoalTarget != null && monthlyGoalTarget > 0
+      ? Math.round((currentRevenue / monthlyGoalTarget) * 100)
+      : null;
 
   return {
     onTimeJobsPercentage: onTimePercentage,
@@ -532,7 +539,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     bidWinRate,
     monthlyGoal: {
       current: currentRevenue,
-      target: monthlyGoal,
+      target: monthlyGoalTarget,
       percentage: goalProgress,
     },
   };

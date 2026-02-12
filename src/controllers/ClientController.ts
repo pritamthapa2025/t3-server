@@ -1047,13 +1047,14 @@ export const deleteClientNoteHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Get Client KPIs for dashboard. No organizationId required.
+// Get Client KPIs for dashboard (scoped by current user's organization).
 export const getClientKPIsHandler = async (req: Request, res: Response) => {
   try {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const kpis = await getClientKPIs();
+    const organizationId = req.user?.organizationId as string | undefined;
+    const kpis = await getClientKPIs(organizationId);
 
     logger.info("Client KPIs fetched successfully");
     return res.status(200).json({

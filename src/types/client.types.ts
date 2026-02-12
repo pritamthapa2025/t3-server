@@ -413,10 +413,11 @@ export interface ApiSuccessResponse<T = any> extends ApiResponse<T> {
 // ============================
 
 export interface ClientKPIs {
-  totalJobs: number;
+  totalClients: number;
+  activeClients: number;
+  pendingOrders: number;
   totalRevenue: string;
-  activeProjects: number;
-  completedProjects: number;
+  newThisMonth: number;
 }
 
 export interface ClientDashboard {
