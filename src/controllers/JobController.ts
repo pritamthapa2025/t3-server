@@ -106,6 +106,8 @@ import {
   updateJobExpense,
   deleteJobExpense,
   getJobWithAllData,
+  getJobInvoiceKPIs,
+  getJobLaborCostTracking,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 
@@ -3176,6 +3178,61 @@ export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Job Invoice KPIs
+// ============================
+
+/**
+ * Get invoice KPIs for a job
+ * GET /jobs/:jobId/invoices/kpis
+ */
+export const getJobInvoiceKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId as string;
+
+    const kpis = await getJobInvoiceKPIs(jobId);
+
+    logger.info("Job invoice KPIs fetched successfully", { jobId });
+    return res.status(200).json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching job invoice KPIs", error, req);
+    return res.status(error.message === "Job not found" ? 404 : 500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/**
+ * Get labor cost tracking for a job (based on dispatch assignments)
+ * GET /jobs/:jobId/labor/cost-tracking
+ */
+export const getJobLaborCostTrackingHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const jobId = req.params.jobId as string;
+
+    const tracking = await getJobLaborCostTracking(jobId);
+
+    logger.info("Job labor cost tracking fetched successfully", { jobId });
+    return res.status(200).json({
+      success: true,
+      data: tracking,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching job labor cost tracking", error, req);
+    return res.status(error.message === "Job not found" ? 404 : 500).json({
+      success: false,
+      message: error.message || "Internal server error",
     });
   }
 };

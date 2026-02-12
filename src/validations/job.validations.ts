@@ -865,3 +865,17 @@ export const getJobWithAllDataSchema = z.object({
     id: uuidSchema,
   }),
 });
+
+// Get job invoice KPIs validation
+export const getJobInvoiceKPIsSchema = z.object({
+  params: z.object({
+    jobId: z.string().uuid("Job ID must be a valid UUID"),
+  }),
+});
+
+// Get job labor cost tracking validation
+export const getJobLaborCostTrackingSchema = z.object({
+  params: z.object({
+    jobId: z.string().uuid("Job ID must be a valid UUID"),
+  }),
+});

@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, sql, or, ilike, max } from "drizzle-orm";
+import { count, eq, and, desc, asc, sql, or, ilike, max, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -9,6 +9,10 @@ import {
   jobExpenses,
   jobSurveys,
 } from "../drizzle/schema/jobs.schema.js";
+import { invoices } from "../drizzle/schema/invoicing.schema.js";
+import { dispatchTasks, dispatchAssignments } from "../drizzle/schema/dispatch.schema.js";
+import { payrollTimesheetEntries } from "../drizzle/schema/payroll.schema.js";
+import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import {
   bidsTable,
   bidFinancialBreakdown,
@@ -2601,4 +2605,237 @@ export const deleteJobDocument = async (
   const document = await deleteBidDocument(id);
 
   return document;
+};
+
+/**
+ * Get invoice KPIs for a specific job
+ * Returns: totalDue, totalInvoiced, invoiceOverdue count, invoicesCreated count
+ */
+export const getJobInvoiceKPIs = async (jobId: string) => {
+  // Validate job exists
+  const jobData = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)))
+    .limit(1);
+
+  if (!jobData || jobData.length === 0) {
+    throw new Error("Job not found");
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0]!;
+
+  // Get all invoice metrics in parallel
+  const [summaryResult, overdueResult] = await Promise.all([
+    // Main summary: total invoiced, total paid, balance due, invoice count
+    db
+      .select({
+        invoicesCreated: count(),
+        totalInvoiced: sql<string>`COALESCE(SUM(${invoices.totalAmount}), 0)`,
+        totalPaid: sql<string>`COALESCE(SUM(${invoices.amountPaid}), 0)`,
+        totalDue: sql<string>`COALESCE(SUM(${invoices.balanceDue}), 0)`,
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.jobId, jobId),
+          eq(invoices.isDeleted, false),
+        ),
+      ),
+    
+    // Overdue invoices: due date passed and not fully paid
+    db
+      .select({
+        count: count(),
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.jobId, jobId),
+          eq(invoices.isDeleted, false),
+          lte(invoices.dueDate, todayStr),
+          sql`${invoices.status} NOT IN ('paid', 'cancelled', 'void')`,
+        ),
+      ),
+  ]);
+
+  const summary = summaryResult[0];
+  const invoicesCreated = Number(summary?.invoicesCreated ?? 0);
+  const totalInvoiced = parseFloat(summary?.totalInvoiced ?? "0");
+  const totalDue = parseFloat(summary?.totalDue ?? "0");
+  const invoiceOverdue = Number(overdueResult[0]?.count ?? 0);
+
+  return {
+    totalDue: parseFloat(totalDue.toFixed(2)),
+    totalInvoiced: parseFloat(totalInvoiced.toFixed(2)),
+    invoiceOverdue,
+    invoicesCreated,
+  };
+};
+
+/**
+ * Get labor cost tracking for a job based on dispatch (planned) and timesheets (actual)
+ * Planned: from dispatch_tasks.estimatedDuration (or startTime - endTime) × hourly rates
+ * Actual: from payroll_timesheet_entries.jobHours for this job × hourly rates
+ */
+export const getJobLaborCostTracking = async (jobId: string) => {
+  // Validate job exists
+  const jobData = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)))
+    .limit(1);
+
+  if (!jobData || jobData.length === 0) {
+    throw new Error("Job not found");
+  }
+
+  // PLANNED COST: Get dispatch tasks for this job with assignments
+  const tasksWithAssignments = await db
+    .select({
+      taskId: dispatchTasks.id,
+      startTime: dispatchTasks.startTime,
+      endTime: dispatchTasks.endTime,
+      estimatedDuration: dispatchTasks.estimatedDuration, // in minutes
+      assignmentId: dispatchAssignments.id,
+      technicianId: dispatchAssignments.technicianId,
+      employeeId: employees.employeeId,
+      hourlyRate: employees.hourlyRate,
+      fullName: users.fullName,
+    })
+    .from(dispatchTasks)
+    .leftJoin(
+      dispatchAssignments,
+      and(
+        eq(dispatchTasks.id, dispatchAssignments.taskId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .leftJoin(employees, eq(dispatchAssignments.technicianId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(
+      and(
+        eq(dispatchTasks.jobId, jobId),
+        eq(dispatchTasks.isDeleted, false),
+      ),
+    );
+
+  // Calculate planned cost
+  let plannedCostTotal = 0;
+  let plannedHoursTotal = 0;
+
+  tasksWithAssignments.forEach((row) => {
+    if (row.hourlyRate) {
+      let estimatedHours = 0;
+      
+      // Use estimatedDuration if available, otherwise calculate from startTime - endTime
+      if (row.estimatedDuration) {
+        estimatedHours = row.estimatedDuration / 60;
+      } else if (row.startTime && row.endTime) {
+        const start = new Date(row.startTime);
+        const end = new Date(row.endTime);
+        estimatedHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      }
+      
+      if (estimatedHours > 0) {
+        const hourlyRate = parseFloat(row.hourlyRate);
+        plannedCostTotal += estimatedHours * hourlyRate;
+        plannedHoursTotal += estimatedHours;
+      }
+    }
+  });
+
+  // ACTUAL COST: Get actual hours from payroll_timesheet_entries for this job
+  const actualJobHours = await db
+    .select({
+      jobHours: payrollTimesheetEntries.jobHours,
+      hoursIncluded: payrollTimesheetEntries.hoursIncluded,
+      overtimeHours: payrollTimesheetEntries.overtimeHours,
+      doubleOvertimeHours: payrollTimesheetEntries.doubleOvertimeHours,
+      timesheetId: payrollTimesheetEntries.timesheetId,
+      employeeId: timesheets.employeeId,
+      hourlyRate: employees.hourlyRate,
+    })
+    .from(payrollTimesheetEntries)
+    .innerJoin(timesheets, eq(payrollTimesheetEntries.timesheetId, timesheets.id))
+    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(eq(payrollTimesheetEntries.jobId, jobId));
+
+  let actualCostTotal = 0;
+  let totalHours = 0;
+  let regularHours = 0;
+  let overtimeHours = 0;
+  let doubleOTHours = 0;
+
+  actualJobHours.forEach((row) => {
+    const jobHrs = parseFloat(row.jobHours || "0");
+    const totalTimesheetHrs = parseFloat(row.hoursIncluded || "0") + parseFloat(row.overtimeHours || "0") + parseFloat(row.doubleOvertimeHours || "0");
+    const hourlyRate = parseFloat(row.hourlyRate || "0");
+    const otRate = hourlyRate * 1.5; // employees table has no overtimeRate; use 1.5x
+    const dblOTRate = hourlyRate * 2;
+
+    if (totalTimesheetHrs > 0 && jobHrs > 0) {
+      // Calculate proportional breakdown for this job based on timesheet's OT distribution
+      const regHrs = (parseFloat(row.hoursIncluded || "0") / totalTimesheetHrs) * jobHrs;
+      const otHrs = (parseFloat(row.overtimeHours || "0") / totalTimesheetHrs) * jobHrs;
+      const dblOTHrs = (parseFloat(row.doubleOvertimeHours || "0") / totalTimesheetHrs) * jobHrs;
+
+      // Accumulate hours
+      totalHours += jobHrs;
+      regularHours += regHrs;
+      overtimeHours += otHrs;
+      doubleOTHours += dblOTHrs;
+
+      // Calculate cost
+      actualCostTotal += (regHrs * hourlyRate) + (otHrs * otRate) + (dblOTHrs * dblOTRate);
+    } else if (jobHrs > 0) {
+      // If no breakdown available, treat all job hours as regular hours
+      totalHours += jobHrs;
+      regularHours += jobHrs;
+      actualCostTotal += jobHrs * hourlyRate;
+    }
+  });
+
+  // Calculate status
+  let status = "Under Budget";
+  let statusPercentage = 0;
+
+  if (plannedCostTotal > 0) {
+    const variance = actualCostTotal - plannedCostTotal;
+    statusPercentage = (variance / plannedCostTotal) * 100;
+    
+    if (variance > 0) {
+      status = "Over Budget";
+    } else if (variance === 0) {
+      status = "On Budget";
+    }
+  }
+
+  // Format hours as "H h: MM m"
+  const formatHours = (hours: number) => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h} h: ${m.toString().padStart(2, "0")} m`;
+  };
+
+  return {
+    plannedCost: parseFloat(plannedCostTotal.toFixed(2)),
+    plannedHours: formatHours(plannedHoursTotal),
+    plannedHoursNumeric: parseFloat(plannedHoursTotal.toFixed(2)),
+    actualCost: parseFloat(actualCostTotal.toFixed(2)),
+    status,
+    statusPercentage: parseFloat(statusPercentage.toFixed(1)),
+    totalHours: formatHours(totalHours),
+    regularHours: formatHours(regularHours),
+    overtimeHours: formatHours(overtimeHours),
+    doubleOTHours: formatHours(doubleOTHours),
+    totalCost: parseFloat(actualCostTotal.toFixed(2)),
+    // Additional metrics
+    totalHoursNumeric: parseFloat(totalHours.toFixed(2)),
+    regularHoursNumeric: parseFloat(regularHours.toFixed(2)),
+    overtimeHoursNumeric: parseFloat(overtimeHours.toFixed(2)),
+    doubleOTHoursNumeric: parseFloat(doubleOTHours.toFixed(2)),
+  };
 };

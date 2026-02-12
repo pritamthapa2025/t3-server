@@ -353,10 +353,11 @@ export const getDispatchAssignments = async (
         ? asc(dispatchAssignments.createdAt)
         : desc(dispatchAssignments.createdAt);
   } else if (sortBy === "clockIn") {
+    // clockIn removed from schema; sort by createdAt instead
     orderBy =
       sortOrder === "asc"
-        ? asc(dispatchAssignments.clockIn)
-        : desc(dispatchAssignments.clockIn);
+        ? asc(dispatchAssignments.createdAt)
+        : desc(dispatchAssignments.createdAt);
   } else {
     orderBy = desc(dispatchAssignments.createdAt);
   }
@@ -412,14 +413,7 @@ export const createDispatchAssignment = async (
     status: data.status || "pending",
   };
 
-  if (data.clockIn)
-    insertData.clockIn =
-      data.clockIn instanceof Date ? data.clockIn : new Date(data.clockIn);
-  if (data.clockOut)
-    insertData.clockOut =
-      data.clockOut instanceof Date ? data.clockOut : new Date(data.clockOut);
-  if (data.actualDuration !== undefined)
-    insertData.actualDuration = data.actualDuration;
+  // clockIn, clockOut, actualDuration removed from schema (tracked via timesheets)
   if (data.role) insertData.role = data.role;
 
   const result = await db
@@ -443,14 +437,7 @@ export const updateDispatchAssignment = async (
   if (data.technicianId !== undefined)
     updateData.technicianId = data.technicianId;
   if (data.status !== undefined) updateData.status = data.status;
-  if (data.clockIn !== undefined)
-    updateData.clockIn =
-      data.clockIn instanceof Date ? data.clockIn : new Date(data.clockIn);
-  if (data.clockOut !== undefined)
-    updateData.clockOut =
-      data.clockOut instanceof Date ? data.clockOut : new Date(data.clockOut);
-  if (data.actualDuration !== undefined)
-    updateData.actualDuration = data.actualDuration;
+  // clockIn, clockOut, actualDuration removed from schema (tracked via timesheets)
   if (data.role !== undefined) updateData.role = data.role;
 
   const result = await db
@@ -734,8 +721,6 @@ export const getEmployeesWithAssignedTasks = async (
         technicianId: dispatchAssignments.technicianId,
         assignmentId: dispatchAssignments.id,
         assignmentStatus: dispatchAssignments.status,
-        clockIn: dispatchAssignments.clockIn,
-        clockOut: dispatchAssignments.clockOut,
         taskId: dispatchTasks.id,
         taskTitle: dispatchTasks.title,
         taskDescription: dispatchTasks.description,
@@ -768,8 +753,6 @@ export const getEmployeesWithAssignedTasks = async (
       list.push({
         assignmentId: a.assignmentId,
         assignmentStatus: a.assignmentStatus,
-        clockIn: a.clockIn,
-        clockOut: a.clockOut,
         taskId: a.taskId,
         taskTitle: a.taskTitle,
         taskDescription: a.taskDescription,

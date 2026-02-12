@@ -67,6 +67,8 @@ import {
   updateJobDocumentHandler,
   deleteJobDocumentHandler,
   getJobWithAllDataHandler,
+  getJobInvoiceKPIsHandler,
+  getJobLaborCostTrackingHandler,
 } from "../../controllers/JobController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -136,6 +138,8 @@ import {
   updateJobDocumentSchema,
   deleteJobDocumentSchema,
   getJobWithAllDataSchema,
+  getJobInvoiceKPIsSchema,
+  getJobLaborCostTrackingSchema,
 } from "../../validations/job.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
@@ -246,6 +250,16 @@ router
 router
   .route("/jobs/:id/complete")
   .get(validate(getJobWithAllDataSchema), getJobWithAllDataHandler);
+
+// Get job invoice KPIs
+router
+  .route("/jobs/:jobId/invoices/kpis")
+  .get(validate(getJobInvoiceKPIsSchema), getJobInvoiceKPIsHandler);
+
+// Get job labor cost tracking (based on dispatch assignments)
+router
+  .route("/jobs/:jobId/labor/cost-tracking")
+  .get(validate(getJobLaborCostTrackingSchema), getJobLaborCostTrackingHandler);
 
 // Team Members Routes
 

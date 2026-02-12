@@ -101,11 +101,6 @@ export const dispatchAssignments = org.table(
     // Assignment Status
     status: dispatchAssignmentStatusEnum("status").notNull().default("pending"), // pending, started, completed
 
-    // Time Tracking
-    clockIn: timestamp("clock_in"), // When technician started work
-    clockOut: timestamp("clock_out"), // When technician finished work
-    actualDuration: integer("actual_duration"), // Actual duration in minutes (calculated from clock in/out)
-
     // Role in Task
     role: varchar("role", { length: 50 }), // "Primary Tech", "Helper", etc.
 
@@ -118,7 +113,6 @@ export const dispatchAssignments = org.table(
     index("idx_dispatch_assignments_task").on(table.taskId),
     index("idx_dispatch_assignments_technician").on(table.technicianId),
     index("idx_dispatch_assignments_status").on(table.status),
-    index("idx_dispatch_assignments_clock_in").on(table.clockIn),
     index("idx_dispatch_assignments_is_deleted").on(table.isDeleted),
     // Composite index for technician task queries
     index("idx_dispatch_assignments_tech_task").on(
