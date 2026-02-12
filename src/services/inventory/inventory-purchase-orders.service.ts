@@ -167,7 +167,7 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
       quantityOrdered: item.quantityOrdered,
       quantityReceived: "0",
       unitCost: item.unitCost,
-      totalCost: (parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)).toString(),
+      lineTotal: (parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)).toString(),
       notes: item.notes,
     }));
 
