@@ -254,11 +254,15 @@ export const clientDocuments = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [index("idx_client_docs_org").on(table.organizationId)],
+  (table) => [
+    index("idx_client_docs_org").on(table.organizationId),
+    index("idx_client_docs_starred").on(table.isStarred),
+  ],
 );
 
 // Document Categories table - Reference table for document categories
@@ -461,6 +465,7 @@ export const propertyDocuments = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -468,6 +473,7 @@ export const propertyDocuments = org.table(
   (table) => [
     index("idx_property_docs_property").on(table.propertyId),
     index("idx_property_docs_type").on(table.documentType),
+    index("idx_property_docs_starred").on(table.isStarred),
   ],
 );
 

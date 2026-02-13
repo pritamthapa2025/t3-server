@@ -261,6 +261,7 @@ export const invoiceDocuments = org.table(
       .references(() => users.id),
     description: text("description"),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -268,6 +269,7 @@ export const invoiceDocuments = org.table(
     index("idx_invoice_documents_invoice").on(table.invoiceId),
     index("idx_invoice_documents_type").on(table.documentType),
     index("idx_invoice_documents_uploaded_by").on(table.uploadedBy),
+    index("idx_invoice_documents_starred").on(table.isStarred),
   ],
 );
 
@@ -297,6 +299,7 @@ export const paymentDocuments = org.table(
       .references(() => users.id),
     description: text("description"),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -304,6 +307,7 @@ export const paymentDocuments = org.table(
     index("idx_payment_documents_payment").on(table.paymentId),
     index("idx_payment_documents_type").on(table.documentType),
     index("idx_payment_documents_uploaded_by").on(table.uploadedBy),
+    index("idx_payment_documents_starred").on(table.isStarred),
   ],
 );
 

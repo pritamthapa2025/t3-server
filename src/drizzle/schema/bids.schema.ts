@@ -512,6 +512,7 @@ export const bidDocuments = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -520,6 +521,7 @@ export const bidDocuments = org.table(
     index("idx_bid_documents_bid_id").on(table.bidId),
     index("idx_bid_documents_type").on(table.documentType),
     index("idx_bid_documents_uploaded_by").on(table.uploadedBy),
+    index("idx_bid_documents_starred").on(table.isStarred),
   ],
 );
 
@@ -548,6 +550,7 @@ export const bidMedia = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -556,6 +559,7 @@ export const bidMedia = org.table(
     index("idx_bid_media_bid_id").on(table.bidId),
     index("idx_bid_media_type").on(table.mediaType),
     index("idx_bid_media_uploaded_by").on(table.uploadedBy),
+    index("idx_bid_media_starred").on(table.isStarred),
   ],
 );
 
@@ -582,6 +586,7 @@ export const bidPlanSpecFiles = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -589,6 +594,7 @@ export const bidPlanSpecFiles = org.table(
     index("idx_bid_plan_spec_files_org").on(table.organizationId),
     index("idx_bid_plan_spec_files_bid_id").on(table.bidId),
     index("idx_bid_plan_spec_files_type").on(table.fileType),
+    index("idx_bid_plan_spec_files_starred").on(table.isStarred),
   ],
 );
 
@@ -614,12 +620,14 @@ export const bidDesignBuildFiles = org.table(
       .notNull()
       .references(() => users.id),
 
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
     index("idx_bid_design_build_files_org").on(table.organizationId),
     index("idx_bid_design_build_files_bid_id").on(table.bidId),
+    index("idx_bid_design_build_files_starred").on(table.isStarred),
   ],
 );
 

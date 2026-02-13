@@ -598,6 +598,7 @@ export const vehicleMedia = org.table(
       .notNull()
       .references(() => users.id),
     uploadedDate: date("uploaded_date").notNull().defaultNow(),
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -606,6 +607,7 @@ export const vehicleMedia = org.table(
     index("idx_vehicle_media_vehicle").on(table.vehicleId),
     index("idx_vehicle_media_type").on(table.type),
     index("idx_vehicle_media_uploaded_by").on(table.uploadedBy),
+    index("idx_vehicle_media_starred").on(table.isStarred),
     index("idx_vehicle_media_is_deleted").on(table.isDeleted),
   ],
 );
@@ -641,6 +643,7 @@ export const vehicleDocuments = org.table(
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
+    isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -650,6 +653,7 @@ export const vehicleDocuments = org.table(
     index("idx_vehicle_documents_type").on(table.documentType),
     index("idx_vehicle_documents_expiration").on(table.expirationDate),
     index("idx_vehicle_documents_uploaded_by").on(table.uploadedBy),
+    index("idx_vehicle_documents_starred").on(table.isStarred),
     index("idx_vehicle_documents_is_deleted").on(table.isDeleted),
   ],
 );
