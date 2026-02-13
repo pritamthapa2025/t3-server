@@ -95,6 +95,19 @@ router.get(
 
 /**
  * ============================================================================
+ * EMPLOYEE ROUTES (Flat Lists with Pagination)
+ * ============================================================================
+ */
+
+// GET /api/v1/org/files/employees/documents?page=1&limit=20
+router.get(
+  "/employees/documents",
+  validate(queryPaginationSchema),
+  FilesV2Controller.getEmployeeDocumentFilesHandler
+);
+
+/**
+ * ============================================================================
  * FLEET ROUTES (Flat Lists with Pagination)
  * ============================================================================
  */

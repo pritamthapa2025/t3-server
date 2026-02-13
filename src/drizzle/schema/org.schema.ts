@@ -185,3 +185,47 @@ export const employeeReviews = org.table("employee_reviews", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+/**
+ * Employee Documents Table
+ * Documents for employees (resume, certifications, ID, W4, etc.)
+ */
+export const employeeDocuments = org.table(
+  "employee_documents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employees.id),
+
+    // File Information
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    filePath: varchar("file_path", { length: 500 }).notNull(),
+    fileType: varchar("file_type", { length: 50 }), // pdf, jpg, etc.
+    fileSize: integer("file_size"), // Size in bytes
+
+    // Document Classification
+    documentType: varchar("document_type", { length: 50 }), // resume, certification, id, w4, i9, etc.
+    description: text("description"),
+
+    // Expiration (for time-sensitive documents e.g. certifications, licenses)
+    expirationDate: date("expiration_date"),
+
+    // Metadata
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+    isStarred: boolean("is_starred").default(false),
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_employee_documents_employee").on(table.employeeId),
+    index("idx_employee_documents_type").on(table.documentType),
+    index("idx_employee_documents_expiration").on(table.expirationDate),
+    index("idx_employee_documents_uploaded_by").on(table.uploadedBy),
+    index("idx_employee_documents_starred").on(table.isStarred),
+    index("idx_employee_documents_is_deleted").on(table.isDeleted),
+  ],
+);

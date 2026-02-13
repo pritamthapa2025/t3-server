@@ -26,7 +26,7 @@ import reviewRoutes from "./org/reviewRoutes.js";
 import dashboardRoutes from "./org/dashboardRoutes.js";
 import notificationRoutes from "./org/notificationRoutes.js";
 import reportRoutes from "./org/reportRoutes.js";
-import filesV2Routes from "./org/filesV2Routes.js";
+import filesV2Routes from "./org/filesRoutes.js";
 import configRoutes from "./config/configRoutes.js";
 import cronRoutes from "./cron/cronRoutes.js";
 
@@ -68,6 +68,6 @@ router.use("/org/reviews", reviewRoutes);
 router.use("/org/dashboard", dashboardRoutes);
 router.use("/org", notificationRoutes);
 router.use("/org", reportRoutes);
-router.use("/org/files-v2", filesV2Routes);
+router.use("/org/files", filesV2Routes);
 
 export default router;

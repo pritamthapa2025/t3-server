@@ -13,7 +13,8 @@ export type FileSourceTable =
   | "client_documents"
   | "property_documents"
   | "invoice_documents"
-  | "payment_documents";
+  | "payment_documents"
+  | "employee_documents";
 
 export interface BaseFileInfo {
   id: string;
@@ -110,6 +111,25 @@ export interface ClientInvoicesResponse {
 
 export interface ClientDocumentsResponse {
   files: ClientDocumentFile[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+// Employee Documents Types
+export interface EmployeeDocumentFile extends BaseFileInfo {
+  employeeId: number;
+  employeeName: string | null;
+  employeeNumber: string | null;
+  documentType?: string | null;
+  expirationDate?: string | null;
+}
+
+export interface EmployeeDocumentsResponse {
+  files: EmployeeDocumentFile[];
   pagination: {
     total: number;
     page: number;

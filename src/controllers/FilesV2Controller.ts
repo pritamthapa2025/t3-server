@@ -233,3 +233,25 @@ export async function getFleetMediaFilesHandler(
     next(error);
   }
 }
+
+/**
+ * Get employee document files (flat list with employee info, pagination)
+ * GET /api/v1/org/files/employees/documents?page=1&limit=20
+ */
+export async function getEmployeeDocumentFilesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const pagination: PaginationParams = {
+      page: req.query.page ? parseInt(req.query.page as string) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
+    };
+
+    const result = await FilesV2Service.getEmployeeDocumentFiles(pagination);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}

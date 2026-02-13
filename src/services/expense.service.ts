@@ -312,19 +312,22 @@ export async function getDefaultExpenseCategoryId(): Promise<string> {
   return row.id;
 }
 
-/** Map job expense type string to org.expenses expense_type_enum (job_* for source tracking) */
+/**
+ * Map job expense type (UI: Materials, Equipment, Transportation, Permits, Subcontractor, Utilities, Tools, Safety Equipment, Other)
+ * to org.expenses expense_type_enum (job_material, job_travel, job_service). Labor is not a job expense type.
+ */
 function mapJobExpenseTypeToExpenseType(jobExpenseType: string): string {
-  const lower = (jobExpenseType ?? "").toLowerCase();
+  const lower = (jobExpenseType ?? "").toLowerCase().trim().replace(/\s+/g, "_");
   const map: Record<string, string> = {
     materials: "job_material",
-    material: "job_material",
-    labor: "job_labor",
-    labour: "job_labor",
-    travel: "job_travel",
-    service: "job_service",
     equipment: "job_material",
-    tools: "job_material",
+    transportation: "job_travel",
+    permits: "job_material",
     subcontractor: "job_service",
+    utilities: "job_material",
+    tools: "job_material",
+    safety_equipment: "job_material",
+    other: "job_material",
   };
   return map[lower] ?? "job_material";
 }

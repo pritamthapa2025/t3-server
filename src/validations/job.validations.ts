@@ -1082,6 +1082,33 @@ export const deleteJobSurveySchema = z.object({
 // Expenses Validations
 // ============================
 
+/** Job expense types (matches UI: Materials, Equipment, Transportation, Permits, Subcontractor, Utilities, Tools, Safety Equipment, Other) */
+export const JOB_EXPENSE_TYPES = [
+  "materials",
+  "equipment",
+  "transportation",
+  "permits",
+  "subcontractor",
+  "utilities",
+  "tools",
+  "safety_equipment",
+  "other",
+] as const;
+
+const jobExpenseTypeSchemaRaw = z.enum(JOB_EXPENSE_TYPES, {
+  message:
+    "Expense type must be one of: Materials, Equipment, Transportation, Permits, Subcontractor, Utilities, Tools, Safety Equipment, Other",
+});
+
+/** Accepts UI labels (e.g. "Safety Equipment") or API values (e.g. "safety_equipment") and normalizes to API form. */
+export const jobExpenseTypeSchema = z.preprocess(
+  (v) =>
+    typeof v === "string"
+      ? (v as string).toLowerCase().trim().replace(/\s+/g, "_")
+      : v,
+  jobExpenseTypeSchemaRaw
+);
+
 export const getJobExpensesSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -1093,7 +1120,7 @@ export const createJobExpenseSchema = z.object({
     jobId: uuidSchema,
   }),
   body: z.object({
-    expenseType: z.string().min(1, "Expense type is required").max(100),
+    expenseType: jobExpenseTypeSchema,
     expenseCategoryId: uuidSchema.optional(), // optional; service defaults if omitted
     description: z.string().min(1, "Description is required"),
     quantity: z.coerce.number().int().min(1).optional(),
@@ -1120,7 +1147,7 @@ export const updateJobExpenseSchema = z.object({
   }),
   body: z
     .object({
-      expenseType: z.string().max(100).optional(),
+      expenseType: jobExpenseTypeSchema.optional(),
       expenseCategoryId: uuidSchema.optional(),
       description: z.string().min(1).optional(),
       quantity: z.coerce.number().int().min(1).optional(),

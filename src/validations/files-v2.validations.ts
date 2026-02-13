@@ -28,6 +28,7 @@ export const toggleStarSchema = z.object({
     "property_documents",
     "invoice_documents",
     "payment_documents",
+    "employee_documents",
   ]),
   isStarred: z.boolean(),
 });

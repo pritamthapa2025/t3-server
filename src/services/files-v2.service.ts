@@ -5,6 +5,7 @@
  */
 
 import { eq, and, sql, gte, desc } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
   bidDocuments,
@@ -31,6 +32,10 @@ import {
 } from "../drizzle/schema/invoicing.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import {
+  employeeDocuments,
+  employees,
+} from "../drizzle/schema/org.schema.js";
 import type {
   BaseFileInfo,
   RecentFilesResponse,
@@ -47,6 +52,8 @@ import type {
   FleetMediaResponse,
   FleetDocumentFile,
   FleetMediaFile,
+  EmployeeDocumentsResponse,
+  EmployeeDocumentFile,
   PaginationParams,
   FileSourceTable,
 } from "../types/files-v2.types.js";
@@ -198,6 +205,9 @@ export async function toggleFileStar(fileId: string, source: FileSourceTable, is
         break;
       case "payment_documents":
         await db.update(paymentDocuments).set({ isStarred }).where(eq(paymentDocuments.id, fileId));
+        break;
+      case "employee_documents":
+        await db.update(employeeDocuments).set({ isStarred }).where(eq(employeeDocuments.id, fileId));
         break;
       default:
         return false;
@@ -420,4 +430,85 @@ export async function getFleetMediaFiles(pagination: PaginationParams = {}): Pro
   const files: FleetMediaFile[] = media.slice(offset, offset + limit).map((f) => ({ id: f.id, fileName: f.fileName, filePath: "", fileUrl: f.fileUrl, fileType: f.fileType, fileSize: f.fileSize, source: "vehicle_media", sourceId: f.vehicleId, sourceName: f.vehicleNumber, vehicleId: f.vehicleId, vehicleName: f.vehicleName, vehicleNumber: f.vehicleNumber, thumbnailUrl: f.thumbnailUrl, uploadedBy: f.uploadedBy, uploadedByName: f.uploadedByName, isStarred: f.isStarred ?? false, createdAt: new Date((f.createdAt as Date | string) ?? 0), updatedAt: f.updatedAt != null ? new Date(f.updatedAt) : null }));
 
   return { files, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+}
+
+/**
+ * ============================================================================
+ * EMPLOYEES - DOCUMENTS (Flat List with Employee Info)
+ * ============================================================================
+ */
+const employeeUserAlias = alias(users, "employee_user");
+const uploadedByUserAlias = alias(users, "uploaded_by_user");
+
+export async function getEmployeeDocumentFiles(
+  pagination: PaginationParams = {}
+): Promise<EmployeeDocumentsResponse> {
+  const page = pagination.page || 1;
+  const limit = pagination.limit || 20;
+  const offset = (page - 1) * limit;
+
+  const docs = await db
+    .select({
+      id: employeeDocuments.id,
+      fileName: employeeDocuments.fileName,
+      filePath: employeeDocuments.filePath,
+      fileType: employeeDocuments.fileType,
+      fileSize: employeeDocuments.fileSize,
+      employeeId: employeeDocuments.employeeId,
+      employeeNumber: employees.employeeId,
+      employeeName: employeeUserAlias.fullName,
+      documentType: employeeDocuments.documentType,
+      expirationDate: employeeDocuments.expirationDate,
+      uploadedBy: employeeDocuments.uploadedBy,
+      uploadedByName: uploadedByUserAlias.fullName,
+      isStarred: employeeDocuments.isStarred,
+      createdAt: employeeDocuments.createdAt,
+      updatedAt: employeeDocuments.updatedAt,
+    })
+    .from(employeeDocuments)
+    .innerJoin(employees, eq(employeeDocuments.employeeId, employees.id))
+    .leftJoin(employeeUserAlias, eq(employees.userId, employeeUserAlias.id))
+    .leftJoin(uploadedByUserAlias, eq(employeeDocuments.uploadedBy, uploadedByUserAlias.id))
+    .where(
+      and(
+        eq(employeeDocuments.isDeleted, false),
+        eq(employees.isDeleted, false)
+      )
+    )
+    .orderBy(desc(employeeDocuments.createdAt));
+
+  const total = docs.length;
+  const files: EmployeeDocumentFile[] = docs
+    .slice(offset, offset + limit)
+    .map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      filePath: f.filePath,
+      fileUrl: null,
+      fileType: f.fileType,
+      fileSize: f.fileSize,
+      source: "employee_documents",
+      sourceId: String(f.employeeId),
+      sourceName: f.employeeNumber ?? f.employeeName ?? String(f.employeeId),
+      employeeId: f.employeeId,
+      employeeName: f.employeeName ?? null,
+      employeeNumber: f.employeeNumber ?? null,
+      documentType: f.documentType ?? null,
+      expirationDate: f.expirationDate != null ? String(f.expirationDate) : null,
+      uploadedBy: f.uploadedBy,
+      uploadedByName: f.uploadedByName ?? null,
+      isStarred: f.isStarred ?? false,
+      createdAt: new Date((f.createdAt as Date | string) ?? 0),
+      updatedAt: f.updatedAt != null ? new Date(f.updatedAt) : null,
+    }));
+
+  return {
+    files,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }

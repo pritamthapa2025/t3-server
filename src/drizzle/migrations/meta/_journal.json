@@ -610,6 +610,13 @@
       "when": 1770973491953,
       "tag": "0086_narrow_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1770979389939,
+      "tag": "0087_bumpy_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

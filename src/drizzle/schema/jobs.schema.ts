@@ -216,7 +216,7 @@ export const jobExpenses = org.table(
     jobId: uuid("job_id")
       .notNull()
       .references(() => jobs.id),
-    // High-level type of expense (labor, material, travel, etc.)
+
     expenseType: varchar("expense_type", { length: 100 }),
     expenseCategoryId: uuid("expense_category_id")
       .notNull()
