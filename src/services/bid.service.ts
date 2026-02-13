@@ -9,6 +9,8 @@ import {
   or,
   ilike,
   inArray,
+  lte,
+  isNotNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -45,19 +47,6 @@ import { getOrganizationById } from "./client.service.js";
 const createdByUser = alias(users, "created_by_user");
 const assignedToUser = alias(users, "assigned_to_user");
 
-/** Compute expiresIn (days) from endDate - createdDate. Returns null if either date missing or endDate before createdDate. */
-function computeExpiresIn(bid: {
-  endDate?: string | Date | null;
-  createdDate?: string | Date | null;
-}): number | null {
-  const end = bid.endDate ? new Date(bid.endDate) : null;
-  const created = bid.createdDate ? new Date(bid.createdDate) : null;
-  if (!end || !created) return null;
-  if (end.getTime() < created.getTime()) return null;
-  const msPerDay = 24 * 60 * 60 * 1000;
-  return Math.floor((end.getTime() - created.getTime()) / msPerDay);
-}
-
 /** Days from today until endDate (0 if no endDate or already past). For "Expires in X Days" card. */
 function expiresInDaysFromToday(bid: {
   endDate?: string | Date | null;
@@ -86,10 +75,21 @@ function getBidSummaryFields(bid: {
   estimatedDuration?: number | null;
   profitMargin?: string | null;
   endDate?: string | Date | null;
+  plannedStartDate?: string | Date | null;
+  estimatedCompletion?: string | Date | null;
 }): BidSummaryFields {
   const amount = Number(bid.bidAmount) || 0;
-  const duration = bid.estimatedDuration ?? 0;
   const margin = bid.profitMargin != null ? Number(bid.profitMargin) : 0;
+  
+  // Calculate estimated duration from dates if available
+  let duration = bid.estimatedDuration ?? 0;
+  if (bid.plannedStartDate && bid.estimatedCompletion) {
+    const startDate = new Date(bid.plannedStartDate);
+    const endDate = new Date(bid.estimatedCompletion);
+    const msPerDay = 24 * 60 * 60 * 1000;
+    duration = Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay);
+  }
+  
   return {
     bidAmount: amount.toFixed(2),
     estimatedDuration: duration,
@@ -288,7 +288,7 @@ export const getBids = async (
       organizationZipCode: item.organizationZipCode ?? null,
       ...(primaryContact && { primaryContact }),
       ...(property && { property }),
-      expiresIn: computeExpiresIn(item.bid),
+      expiresIn: expiresInDaysFromToday(item.bid),
     };
   });
 
@@ -362,14 +362,14 @@ export const getBidById = async (id: string) => {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
-    expiresIn: computeExpiresIn(result.bid),
+    expiresIn: expiresInDaysFromToday(result.bid),
     bidSummary,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
   };
 };
 
-// Simple version without organization validation - trusts bid ID access
+// Simple version without organization validation - trusts bid ID access  
 export const getBidByIdSimple = async (id: string) => {
   const [result] = await db
     .select({
@@ -391,7 +391,7 @@ export const getBidByIdSimple = async (id: string) => {
     ...result.bid,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
-    expiresIn: computeExpiresIn(result.bid),
+    expiresIn: expiresInDaysFromToday(result.bid),
     bidSummary,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
@@ -2265,6 +2265,100 @@ export const getBidsKPIs = async () => {
     activeBids: activeBidsRow?.count || 0,
     pendingBids: pendingBidsRow?.count || 0,
     wonBids: wonBidsRow?.count || 0,
-    avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin || 0),
+    avgProfitMargin: Number((Number(avgProfitMarginRow?.avgProfitMargin || 0)).toFixed(2)),
   };
+};
+
+// Get KPIs for a specific bid
+export const getBidKPIs = async (bidId: string) => {
+  const [bid] = await db
+    .select({
+      bidAmount: bidsTable.bidAmount,
+      estimatedDuration: bidsTable.estimatedDuration,
+      profitMargin: bidsTable.profitMargin,
+      endDate: bidsTable.endDate,
+      plannedStartDate: bidsTable.plannedStartDate,
+      estimatedCompletion: bidsTable.estimatedCompletion,
+    })
+    .from(bidsTable)
+    .where(and(eq(bidsTable.id, bidId), eq(bidsTable.isDeleted, false)));
+
+  if (!bid) {
+    return null;
+  }
+
+  // Calculate estimated duration from dates if available
+  let calculatedDuration = bid.estimatedDuration || 0;
+  if (bid.plannedStartDate && bid.estimatedCompletion) {
+    const startDate = new Date(bid.plannedStartDate);
+    const endDate = new Date(bid.estimatedCompletion);
+    const msPerDay = 24 * 60 * 60 * 1000;
+    calculatedDuration = Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay);
+  }
+
+  return {
+    bidAmount: Number(bid.bidAmount || 0),
+    estimatedDuration: calculatedDuration,
+    profitMargin: Number(bid.profitMargin || 0),
+    expiresIn: expiresInDaysFromToday(bid),
+  };
+};
+
+/** Statuses that should be auto-expired when endDate has passed */
+const BID_STATUSES_TO_EXPIRE = [
+  "draft",
+  "pending",
+  "submitted",
+  "in_progress",
+] as const;
+
+/**
+ * Expire bids whose endDate has passed. Used by cron job.
+ * Updates status to "expired" and creates history entry when CRON_SYSTEM_USER_ID is set.
+ */
+export const expireExpiredBids = async (): Promise<{ expired: number; errors: number }> => {
+  const today = new Date().toISOString().split("T")[0]!;
+  const systemUserId = process.env.CRON_SYSTEM_USER_ID;
+
+  const expiredBids = await db
+    .select({
+      id: bidsTable.id,
+      organizationId: bidsTable.organizationId,
+      status: bidsTable.status,
+    })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.isDeleted, false),
+        isNotNull(bidsTable.endDate),
+        lte(bidsTable.endDate, today),
+        inArray(bidsTable.status, [...BID_STATUSES_TO_EXPIRE]),
+      ),
+    );
+
+  let expired = 0;
+  let errors = 0;
+
+  for (const bid of expiredBids) {
+    try {
+      await updateBid(bid.id, bid.organizationId, { status: "expired" });
+      if (systemUserId) {
+        await createBidHistoryEntry({
+          bidId: bid.id,
+          organizationId: bid.organizationId,
+          action: "status_changed",
+          oldValue: bid.status,
+          newValue: "expired",
+          description: "Bid automatically expired (end date passed)",
+          performedBy: systemUserId,
+        });
+      }
+      expired++;
+    } catch {
+      errors++;
+      // Log but continue with other bids
+    }
+  }
+
+  return { expired, errors };
 };

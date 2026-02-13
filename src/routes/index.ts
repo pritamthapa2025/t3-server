@@ -27,11 +27,15 @@ import dashboardRoutes from "./org/dashboardRoutes.js";
 import notificationRoutes from "./org/notificationRoutes.js";
 import reportRoutes from "./org/reportRoutes.js";
 import configRoutes from "./config/configRoutes.js";
+import cronRoutes from "./cron/cronRoutes.js";
 
 const router: IRouter = Router();
 
 // Mount public config routes (no auth required - for client initialization)
 router.use("/config", configRoutes);
+
+// Cron endpoints (protected by CRON_SECRET - for Cronicles or other external schedulers)
+router.use("/cron", cronRoutes);
 
 // Mount auth routes - authRoutes should be mounted first to handle public routes
 router.use("/auth", authRoutes);

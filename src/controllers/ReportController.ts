@@ -152,19 +152,14 @@ export const getFinancialKPIsHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId } = req.query;
+    const { startDate, endDate, jobType } = req.query;
 
     const kpis = await getFinancialKPIs(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
     });
 
     res.status(200).json({
@@ -187,19 +182,14 @@ export const getProfitAndLossHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId } = req.query;
+    const { startDate, endDate, jobType } = req.query;
 
     const profitLoss = await getProfitAndLossStatement(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
     });
 
     res.status(200).json({
@@ -222,19 +212,14 @@ export const getCashFlowForecastHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId } = req.query;
+    const { startDate, endDate, jobType } = req.query;
 
     const forecast = await getCashFlowForecast(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
     });
 
     res.status(200).json({
@@ -257,19 +242,14 @@ export const getRevenueByClientHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId } = req.query;
+    const { startDate, endDate, jobType } = req.query;
 
     const revenue = await getRevenueByClientFiltered(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
     });
 
     res.status(200).json({
@@ -292,11 +272,7 @@ export const getExpenseByCategoryHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, jobType, category } = req.query;
 
@@ -327,11 +303,7 @@ export const getMonthlyExpenseTrendHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, jobType, category } = req.query;
 
@@ -362,11 +334,7 @@ export const getVendorSpendHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, jobType, category } = req.query;
 
@@ -397,11 +365,7 @@ export const getTechnicianHoursHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -425,11 +389,7 @@ export const getLaborCostHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -453,11 +413,7 @@ export const getAttendanceHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -485,11 +441,7 @@ export const getFleetUsageHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, vehicleId, location } = req.query;
 
@@ -513,11 +465,7 @@ export const getFleetMaintenanceHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, vehicleId, location } = req.query;
 
@@ -541,11 +489,7 @@ export const getFuelExpenseHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, vehicleId, location } = req.query;
 
@@ -573,11 +517,7 @@ export const getInventoryValuationHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, category, location } = req.query;
 
@@ -601,11 +541,7 @@ export const getStockMovementHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, category, location } = req.query;
 
@@ -629,11 +565,7 @@ export const getLowStockItemsHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, category, location } = req.query;
 
@@ -661,18 +593,13 @@ export const getClientSpendHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, clientId, paymentStatus } = req.query;
+    const { startDate, endDate, paymentStatus } = req.query;
 
     const clientSpend = await getClientSpendReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      clientId: clientId as string | undefined,
       paymentStatus: paymentStatus as string | undefined,
     });
 
@@ -689,18 +616,13 @@ export const getClientOutstandingHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, clientId, paymentStatus } = req.query;
+    const { startDate, endDate, paymentStatus } = req.query;
 
     const outstanding = await getClientOutstandingPayments(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      clientId: clientId as string | undefined,
       paymentStatus: paymentStatus as string | undefined,
     });
 
@@ -721,11 +643,7 @@ export const getTechnicianProductivityHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -749,11 +667,7 @@ export const getTechnicianQualityHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -777,11 +691,7 @@ export const getTechnicianProfitHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
@@ -809,19 +719,14 @@ export const getJobStatusSummaryHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
 
     const summary = await getJobStatusSummary(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       managerId: managerId ? parseInt(managerId as string) : undefined,
       technicianId: technicianId ? parseInt(technicianId as string) : undefined,
@@ -840,19 +745,14 @@ export const getJobProfitabilityHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
 
     const profitability = await getJobProfitability(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       managerId: managerId ? parseInt(managerId as string) : undefined,
       technicianId: technicianId ? parseInt(technicianId as string) : undefined,
@@ -871,19 +771,14 @@ export const getJobCostBreakdownHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
 
     const breakdown = await getJobCostBreakdown(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       managerId: managerId ? parseInt(managerId as string) : undefined,
       technicianId: technicianId ? parseInt(technicianId as string) : undefined,
@@ -902,19 +797,14 @@ export const getJobTimelineHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, clientId, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
 
     const timeline = await getJobTimeline(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
       jobType: jobType as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       managerId: managerId ? parseInt(managerId as string) : undefined,
       technicianId: technicianId ? parseInt(technicianId as string) : undefined,
@@ -937,18 +827,13 @@ export const getInvoiceSummaryHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, clientId, status, paymentStatus } = req.query;
+    const { startDate, endDate, status, paymentStatus } = req.query;
 
     const summary = await getInvoiceSummary(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       paymentStatus: paymentStatus as string | undefined,
     });
@@ -966,18 +851,13 @@ export const getCustomerAgingHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, clientId, status, paymentStatus } = req.query;
+    const { startDate, endDate, status, paymentStatus } = req.query;
 
     const aging = await getCustomerAgingReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       paymentStatus: paymentStatus as string | undefined,
     });
@@ -995,18 +875,13 @@ export const getPaymentCollectionHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const organizationId = req.user?.organizationId;
-    if (!organizationId) {
-      res.status(400).json({ error: "Organization ID is required" });
-      return;
-    }
+    const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, clientId, status, paymentStatus } = req.query;
+    const { startDate, endDate, status, paymentStatus } = req.query;
 
     const collection = await getPaymentCollectionData(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      clientId: clientId as string | undefined,
       status: status as string | undefined,
       paymentStatus: paymentStatus as string | undefined,
     });

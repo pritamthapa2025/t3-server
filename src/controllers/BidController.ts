@@ -46,6 +46,7 @@ import {
   isDatabaseError,
 } from "../utils/database-error-parser.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { getUserRoles } from "../services/role.service.js";
 import {
   getBids,
   getBidById,
@@ -99,6 +100,7 @@ import {
   getBidDocumentById,
   updateBidDocument,
   getBidsKPIs,
+  getBidKPIs,
   deleteBidDocument,
   createBidMedia,
   getBidMedia,
@@ -250,6 +252,17 @@ export const createBidHandler = async (req: Request, res: Response) => {
       return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
+    // Get user's role to determine bid status
+    const userRole = await getUserRoles(userId);
+    let bidStatus = req.body.status; // Use status from request body as default
+
+    // Set status based on role
+    if (userRole?.roleName === "Executive") {
+      bidStatus = "in_progress";
+    } else if (userRole?.roleName === "Manager") {
+      bidStatus = "draft";
+    }
+
     // Extract nested objects from request body
     const {
       financialBreakdown,
@@ -267,6 +280,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
       ...bidFields,
       organizationId,
       createdBy,
+      status: bidStatus, // Override status based on role
     };
 
     const bid = await createBid(bidData);
@@ -3985,6 +3999,43 @@ export const getBidsKPIsHandler = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch bids KPIs",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get KPIs for a specific bid
+ * GET /bids/:bidId/kpis
+ */
+export const getBidKPIsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+
+    // Validate user access
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const kpis = await getBidKPIs(bidId!);
+
+    if (!kpis) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    logger.info("Bid KPIs fetched successfully", { bidId });
+    res.json({
+      success: true,
+      data: kpis,
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching bid KPIs", error, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch bid KPIs",
       error: error.message,
     });
   }

@@ -113,7 +113,7 @@ export const getJobs = async (
       organizationZipCode: organizations.zipCode,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .leftJoin(
       bidFinancialBreakdown,
       and(
@@ -132,7 +132,7 @@ export const getJobs = async (
   const totalCountResult = await db
     .select({ count: count() })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(whereCondition);
 
   const totalCount = totalCountResult[0]?.count || 0;
@@ -177,7 +177,7 @@ export const getJobById = async (id: string) => {
       createdByName: users.fullName,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .leftJoin(users, eq(jobs.createdBy, users.id))
     .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)));
   if (!result) return null;
@@ -381,7 +381,7 @@ export const updateJob = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)))
     .limit(1);
 
@@ -608,7 +608,7 @@ export const getJobWithAllData = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -752,7 +752,7 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
     const maxResult = await db
       .select({ maxJobNumber: sql<string>`MAX(${jobs.jobNumber})` })
       .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
       .where(
         and(
           eq(bidsTable.organizationId, organizationId),
@@ -783,7 +783,7 @@ export const checkJobNumberExists = async (
   const [result] = await db
     .select({ count: count() })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.jobNumber, jobNumber),
@@ -808,7 +808,7 @@ export const getJobFinancialSummary = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -874,7 +874,7 @@ export const getJobMaterials = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -898,7 +898,7 @@ export const getJobMaterialById = async (jobId: string, materialId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -926,7 +926,7 @@ export const createJobMaterial = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -965,7 +965,7 @@ export const updateJobMaterial = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -986,7 +986,7 @@ export const deleteJobMaterial = async (id: string, jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1011,7 +1011,7 @@ export const getJobLabor = async (jobId: string) => {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1031,7 +1031,7 @@ export const getJobLaborById = async (jobId: string, laborId: string) => {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1065,7 +1065,7 @@ export const createJobLabor = async (data: {
         organizationId: bidsTable.organizationId,
       })
       .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
       .where(
         and(
           eq(jobs.id, data.jobId),
@@ -1129,7 +1129,7 @@ export const updateJobLabor = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.id, jobId),
@@ -1167,7 +1167,7 @@ export const deleteJobLabor = async (
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.id, jobId),
@@ -1197,7 +1197,7 @@ export const getJobTravel = async (jobId: string) => {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1222,7 +1222,7 @@ export const getJobTravelById = async (jobId: string, travelId: string) => {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1255,7 +1255,7 @@ export const createJobTravel = async (data: {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1303,7 +1303,7 @@ export const updateJobTravel = async (
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1327,7 +1327,7 @@ export const deleteJobTravel = async (
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1348,7 +1348,7 @@ export const getJobPlannedOperatingExpenses = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1376,7 +1376,7 @@ export const getJobTimeline = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1408,7 +1408,7 @@ export const createJobTimelineEvent = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1442,7 +1442,7 @@ export const getJobTimelineEventById = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1476,7 +1476,7 @@ export const updateJobTimelineEvent = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1501,7 +1501,7 @@ export const deleteJobTimelineEvent = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1526,7 +1526,7 @@ export const getJobNotes = async (jobId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1553,7 +1553,7 @@ export const createJobNote = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1579,7 +1579,7 @@ export const getJobNoteById = async (jobId: string, noteId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1608,7 +1608,7 @@ export const updateJobNote = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1633,7 +1633,7 @@ export const deleteJobNote = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -1658,7 +1658,7 @@ export const getJobHistory = async (jobId: string, _organizationId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.id, jobId),
@@ -1692,7 +1692,7 @@ export const createJobHistoryEntry = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.id, data.jobId),
@@ -1809,7 +1809,7 @@ export const createJobTask = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2304,7 +2304,7 @@ export const getJobExpenses = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2329,7 +2329,7 @@ export const getJobExpenseById = async (jobId: string, expenseId: string) => {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2381,7 +2381,7 @@ export const createJobExpense = async (data: {
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2454,7 +2454,7 @@ export const updateJobExpense = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2493,7 +2493,7 @@ export const deleteJobExpense = async (
       organizationId: bidsTable.organizationId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2533,7 +2533,7 @@ export const getJobDocuments = async (
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2562,7 +2562,7 @@ export const createJobDocument = async (data: {
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2594,7 +2594,7 @@ export const deleteJobDocument = async (
       bidId: jobs.bidId,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
 
   if (!jobData) {
@@ -2887,7 +2887,7 @@ export const getJobsKPIs = async () => {
       avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
     })
     .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(
       and(
         eq(jobs.isDeleted, false),

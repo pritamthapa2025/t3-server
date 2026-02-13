@@ -13,15 +13,16 @@ export const dateRangeQuerySchema = z.object({
 
 export const financialReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     jobType: z.string().optional(),
-    clientId: z.string().uuid().optional(),
   }),
 });
 
 export const expenseReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     jobType: z.string().optional(),
@@ -31,6 +32,7 @@ export const expenseReportQuerySchema = z.object({
 
 export const timesheetReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     technicianId: z.string().optional(),
@@ -40,6 +42,7 @@ export const timesheetReportQuerySchema = z.object({
 
 export const fleetReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     vehicleId: z.string().uuid().optional(),
@@ -49,6 +52,7 @@ export const fleetReportQuerySchema = z.object({
 
 export const inventoryReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     category: z.string().optional(),
@@ -58,15 +62,16 @@ export const inventoryReportQuerySchema = z.object({
 
 export const clientReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
-    clientId: z.string().uuid().optional(),
     paymentStatus: z.string().optional(),
   }),
 });
 
 export const technicianPerformanceQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     technicianId: z.string().optional(),
@@ -76,10 +81,10 @@ export const technicianPerformanceQuerySchema = z.object({
 
 export const jobReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     jobType: z.string().optional(),
-    clientId: z.string().uuid().optional(),
     status: z.string().optional(),
     managerId: z.string().optional(),
     technicianId: z.string().optional(),
@@ -88,9 +93,9 @@ export const jobReportQuerySchema = z.object({
 
 export const invoicingReportQuerySchema = z.object({
   query: z.object({
+    organizationId: z.string().uuid().optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
-    clientId: z.string().uuid().optional(),
     status: z.string().optional(),
     paymentStatus: z.string().optional(),
   }),

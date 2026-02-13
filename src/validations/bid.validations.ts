@@ -96,6 +96,12 @@ export const getRelatedBidsSchema = z.object({
   }),
 });
 
+export const getBidKPIsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
 export const createBidSchema = z.object({
   body: z
     .object({

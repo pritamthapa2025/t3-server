@@ -64,6 +64,7 @@ import {
   sendQuoteEmail,
   sendQuoteEmailTest,
   getBidsKPIsHandler,
+  getBidKPIsHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -118,6 +119,7 @@ import {
   getBidHistorySchema,
   getBidWithAllDataSchema,
   getRelatedBidsSchema,
+  getBidKPIsSchema,
   createBidDocumentsSchema,
   getBidDocumentsSchema,
   getBidDocumentByIdSchema,
@@ -444,6 +446,16 @@ router
 router
   .route("/bids/:bidId/history")
   .get(validate(getBidHistorySchema), getBidHistoryHandler);
+
+// KPIs Routes (Read-only)
+
+router
+  .route("/bids/:bidId/kpis")
+  .get(
+    authorizeFeature("bids", "view"),
+    validate(getBidKPIsSchema),
+    getBidKPIsHandler,
+  );
 
 // Documents Routes
 

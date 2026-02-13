@@ -3,13 +3,13 @@ import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
-import { organizations as clients } from "../drizzle/schema/client.schema.js";
+import { organizations } from "../drizzle/schema/client.schema.js";
 import { expenses } from "../drizzle/schema/expenses.schema.js";
 import { timesheetEntries } from "../drizzle/schema/timesheet.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
-import { inventoryItems } from "../drizzle/schema/inventory.schema.js";
+import { inventoryItems, inventoryCategories } from "../drizzle/schema/inventory.schema.js";
 import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 
 // ============================
@@ -23,7 +23,6 @@ interface DateRangeFilter {
 
 interface FinancialReportFilter extends DateRangeFilter {
   jobType?: string | undefined;
-  clientId?: string | undefined;
 }
 
 interface ExpenseReportFilter extends DateRangeFilter {
@@ -47,7 +46,6 @@ interface InventoryReportFilter extends DateRangeFilter {
 }
 
 interface ClientReportFilter extends DateRangeFilter {
-  clientId?: string | undefined;
   paymentStatus?: string | undefined;
 }
 
@@ -58,14 +56,12 @@ interface TechnicianPerformanceFilter extends DateRangeFilter {
 
 interface JobReportFilter extends DateRangeFilter {
   jobType?: string | undefined;
-  clientId?: string | undefined;
   status?: string | undefined;
   managerId?: number | undefined;
   technicianId?: number | undefined;
 }
 
 interface InvoicingReportFilter extends DateRangeFilter {
-  clientId?: string | undefined;
   status?: string | undefined;
   paymentStatus?: string | undefined;
 }
@@ -332,14 +328,14 @@ export const getClientRevenueDistribution = async (
 ) => {
   const clientRevenue = await db
     .select({
-      clientId: bidsTable.clientId,
-      clientName: clients.name,
+      organizationId: bidsTable.organizationId,
+      clientName: organizations.name,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(clients, eq(bidsTable.clientId, clients.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(
       and(
         eq(invoices.isDeleted, false),
@@ -347,11 +343,12 @@ export const getClientRevenueDistribution = async (
         ...(filters?.endDate ? [lte(invoices.invoiceDate, filters.endDate)] : [])
       )
     )
-    .groupBy(bidsTable.clientId, clients.name)
+    .groupBy(bidsTable.organizationId, organizations.name)
     .orderBy(desc(sql`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`))
     .limit(5);
 
   return clientRevenue.map((cr) => ({
+    organizationId: cr.organizationId,
     client: cr.clientName || "Unknown Client",
     value: parseFloat(cr.revenue),
   }));
@@ -362,18 +359,14 @@ export const getClientRevenueDistribution = async (
 // ============================
 
 export const getProfitAndLossStatement = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: FinancialReportFilter
 ) => {
-  // Build conditions
-  const conditions = [eq(bidsTable.organizationId, organizationId)];
+  // Build conditions (omit org filter when organizationId not provided = all orgs)
+  const conditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
   
   if (filters?.jobType) {
     conditions.push(eq(jobs.jobType, filters.jobType));
-  }
-  
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
   }
 
   // Total Revenue from invoices
@@ -394,6 +387,7 @@ export const getProfitAndLossStatement = async (
     );
 
   // Cost of Goods Sold (direct job expenses - materials, labor, subcontractors)
+  const cogsConditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
   const cogsQuery = await db
     .select({
       cogs: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
@@ -403,7 +397,7 @@ export const getProfitAndLossStatement = async (
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...cogsConditions,
         eq(expenses.isDeleted, false),
         or(
           eq(expenses.expenseType, "materials"),
@@ -411,13 +405,13 @@ export const getProfitAndLossStatement = async (
           eq(expenses.expenseType, "subcontractor")
         ),
         ...(filters?.jobType && jobs.jobType ? [eq(jobs.jobType, filters.jobType)] : []),
-        ...(filters?.clientId && bidsTable.clientId ? [eq(bidsTable.clientId, filters.clientId)] : []),
         ...(filters?.startDate ? [gte(expenses.expenseDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(expenses.expenseDate, filters.endDate)] : [])
       )
     );
 
   // Operating Expenses (overhead, admin, tools, fleet, etc.)
+  const opexConditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
   const opexQuery = await db
     .select({
       operatingExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
@@ -427,7 +421,7 @@ export const getProfitAndLossStatement = async (
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...opexConditions,
         eq(expenses.isDeleted, false),
         or(
           eq(expenses.expenseType, "tools"),
@@ -441,6 +435,7 @@ export const getProfitAndLossStatement = async (
     );
 
   // Total Job Expenses (all expenses linked to jobs)
+  const jobExpConditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
   const jobExpensesQuery = await db
     .select({
       totalJobExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
@@ -450,11 +445,10 @@ export const getProfitAndLossStatement = async (
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        eq(bidsTable.organizationId, organizationId),
+        ...jobExpConditions,
         eq(expenses.isDeleted, false),
         sql`${expenses.jobId} IS NOT NULL`,
         ...(filters?.jobType && jobs.jobType ? [eq(jobs.jobType, filters.jobType)] : []),
-        ...(filters?.clientId && bidsTable.clientId ? [eq(bidsTable.clientId, filters.clientId)] : []),
         ...(filters?.startDate ? [gte(expenses.expenseDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(expenses.expenseDate, filters.endDate)] : [])
       )
@@ -506,18 +500,14 @@ export const getProfitAndLossStatement = async (
 // ============================
 
 export const getCashFlowForecast = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: FinancialReportFilter
 ) => {
-  // Get monthly cash flow data
-  const conditions = [eq(bidsTable.organizationId, organizationId)];
+  // Get monthly cash flow data (omit org filter when organizationId not provided = all orgs)
+  const conditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
   
   if (filters?.jobType) {
     conditions.push(eq(jobs.jobType, filters.jobType));
-  }
-  
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
   }
 
   // Monthly inflows (invoiced amounts)
@@ -557,7 +547,6 @@ export const getCashFlowForecast = async (
         eq(bidsTable.organizationId, organizationId),
         eq(expenses.isDeleted, false),
         ...(filters?.jobType && jobs.jobType ? [eq(jobs.jobType, filters.jobType)] : []),
-        ...(filters?.clientId && bidsTable.clientId ? [eq(bidsTable.clientId, filters.clientId)] : []),
         ...(filters?.startDate ? [gte(expenses.expenseDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(expenses.expenseDate, filters.endDate)] : [])
       )
@@ -591,40 +580,34 @@ export const getCashFlowForecast = async (
 // ============================
 
 export const getRevenueByClientFiltered = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: FinancialReportFilter
 ) => {
-  const conditions = [
-    eq(bidsTable.organizationId, organizationId),
-    eq(invoices.isDeleted, false),
-  ];
-  
+  const conditions = organizationId ? [eq(bidsTable.organizationId, organizationId)] : [];
+
   if (filters?.jobType) {
     conditions.push(eq(jobs.jobType, filters.jobType));
-  }
-  
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
   }
 
   const clientRevenue = await db
     .select({
-      clientId: bidsTable.clientId,
-      clientName: clients.name,
+      organizationId: bidsTable.organizationId,
+      clientName: organizations.name,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(clients, eq(bidsTable.clientId, clients.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(
       and(
         ...conditions,
+        eq(invoices.isDeleted, false),
         ...(filters?.startDate ? [gte(invoices.invoiceDate, filters.startDate)] : []),
         ...(filters?.endDate ? [lte(invoices.invoiceDate, filters.endDate)] : [])
       )
     )
-    .groupBy(bidsTable.clientId, clients.name)
+    .groupBy(bidsTable.organizationId, organizations.name)
     .orderBy(desc(sql`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`));
 
   // Calculate total and percentages
@@ -636,6 +619,7 @@ export const getRevenueByClientFiltered = async (
   return clientRevenue.map((cr) => {
     const revenue = parseFloat(cr.revenue);
     return {
+      organizationId: cr.organizationId,
       client: cr.clientName || "Unknown Client",
       revenue,
       percentage: totalRevenue > 0 ? Number(((revenue / totalRevenue) * 100).toFixed(1)) : 0,
@@ -648,7 +632,7 @@ export const getRevenueByClientFiltered = async (
 // ============================
 
 export const getFinancialKPIs = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: FinancialReportFilter
 ) => {
   const profitLoss = await getProfitAndLossStatement(organizationId, filters);
@@ -674,11 +658,11 @@ export const getFinancialKPIs = async (
 // ============================
 
 export const getExpenseByCategory = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: ExpenseReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(expenses.isDeleted, false),
   ];
 
@@ -752,11 +736,11 @@ export const getExpenseByCategory = async (
 // ============================
 
 export const getMonthlyExpenseTrend = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: ExpenseReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(expenses.isDeleted, false),
   ];
 
@@ -835,11 +819,11 @@ export const getMonthlyExpenseTrend = async (
 // ============================
 
 export const getVendorSpendReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: ExpenseReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(expenses.isDeleted, false),
     sql`${expenses.vendor} IS NOT NULL`,
   ];
@@ -905,7 +889,7 @@ export const getVendorSpendReport = async (
 // ============================
 
 export const getTechnicianHoursReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: TimesheetReportFilter
 ) => {
   const conditions = [];
@@ -944,7 +928,7 @@ export const getTechnicianHoursReport = async (
 };
 
 export const getLaborCostReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: TimesheetReportFilter
 ) => {
   const conditions = [];
@@ -986,7 +970,7 @@ export const getLaborCostReport = async (
 };
 
 export const getAttendanceReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: TimesheetReportFilter
 ) => {
   const conditions = [];
@@ -1031,7 +1015,7 @@ export const getAttendanceReport = async (
 // ============================
 
 export const getFleetUsageReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: FleetReportFilter
 ) => {
   const conditions = [eq(vehicles.isDeleted, false)];
@@ -1063,7 +1047,7 @@ export const getFleetUsageReport = async (
 };
 
 export const getFleetMaintenanceCostReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: FleetReportFilter
 ) => {
   const conditions = [eq(vehicles.isDeleted, false)];
@@ -1090,7 +1074,7 @@ export const getFleetMaintenanceCostReport = async (
 };
 
 export const getFuelExpenseReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: FleetReportFilter
 ) => {
   const conditions = [eq(vehicles.isDeleted, false)];
@@ -1120,7 +1104,7 @@ export const getFuelExpenseReport = async (
 // ============================
 
 export const getInventoryValuation = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: InventoryReportFilter
 ) => {
   const conditions = [eq(inventoryItems.isDeleted, false)];
@@ -1145,19 +1129,22 @@ export const getInventoryValuation = async (
   // By category breakdown
   const categoryQuery = await db
     .select({
-      categoryName: sql<string>`COALESCE(${inventoryItems.categoryId}, 'Uncategorized')`,
+      categoryId: inventoryItems.categoryId,
+      categoryName: inventoryCategories.name,
       value: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
       items: count(),
     })
     .from(inventoryItems)
+    .leftJoin(inventoryCategories, eq(inventoryItems.categoryId, inventoryCategories.id))
     .where(and(...conditions))
-    .groupBy(inventoryItems.categoryId);
+    .groupBy(inventoryItems.categoryId, inventoryCategories.name);
 
   return {
     totalValue: parseFloat(totalsQuery[0]?.totalValue || "0"),
     itemCount: totalsQuery[0]?.itemCount || 0,
     categories: categoryQuery.map((c) => ({
-      category: c.categoryName,
+      categoryId: c.categoryId,
+      category: c.categoryName || "Uncategorized",
       value: parseFloat(c.value),
       items: c.items,
     })),
@@ -1165,7 +1152,7 @@ export const getInventoryValuation = async (
 };
 
 export const getStockMovementReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: InventoryReportFilter
 ) => {
   const conditions = [eq(inventoryItems.isDeleted, false)];
@@ -1194,7 +1181,7 @@ export const getStockMovementReport = async (
 };
 
 export const getLowStockItems = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: InventoryReportFilter
 ) => {
   const conditions = [
@@ -1234,17 +1221,14 @@ export const getLowStockItems = async (
 // ============================
 
 export const getClientSpendReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: ClientReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(invoices.isDeleted, false),
   ];
 
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
-  }
   if (filters?.startDate) {
     conditions.push(gte(invoices.invoiceDate, filters.startDate));
   }
@@ -1254,16 +1238,16 @@ export const getClientSpendReport = async (
 
   const clientData = await db
     .select({
-      clientName: clients.name,
+      clientName: organizations.name,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
       jobs: sql<number>`COUNT(DISTINCT ${jobs.id})`,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(clients, eq(bidsTable.clientId, clients.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(and(...conditions))
-    .groupBy(bidsTable.clientId, clients.name)
+    .groupBy(bidsTable.organizationId, organizations.name)
     .orderBy(desc(sql`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`));
 
   return clientData.map((c) => {
@@ -1279,35 +1263,32 @@ export const getClientSpendReport = async (
 };
 
 export const getClientOutstandingPayments = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: ClientReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(invoices.isDeleted, false),
     sql`${invoices.balanceDue} > 0`,
   ];
 
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
-  }
   if (filters?.paymentStatus === "overdue") {
     conditions.push(sql`${invoices.dueDate} < CURRENT_DATE`);
   }
 
   const outstandingData = await db
     .select({
-      clientName: clients.name,
+      clientName: organizations.name,
       outstanding: sql<string>`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`,
       invoiceCount: sql<number>`COUNT(${invoices.id})`,
-      oldestDue: sql<number>`CAST(EXTRACT(DAY FROM CURRENT_DATE - MIN(${invoices.dueDate})) AS INTEGER)`,
+      oldestDue: sql<number>`CURRENT_DATE - MIN(${invoices.dueDate})`,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(clients, eq(bidsTable.clientId, clients.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(and(...conditions))
-    .groupBy(bidsTable.clientId, clients.name)
+    .groupBy(bidsTable.organizationId, organizations.name)
     .orderBy(desc(sql`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`));
 
   return outstandingData.map((c) => ({
@@ -1323,7 +1304,7 @@ export const getClientOutstandingPayments = async (
 // ============================
 
 export const getTechnicianProductivityReport = async (
-  organizationId: string,
+  _organizationId: string | undefined,
   filters?: TechnicianPerformanceFilter
 ) => {
   const conditions = [];
@@ -1347,7 +1328,9 @@ export const getTechnicianProductivityReport = async (
     .from(timesheetEntries)
     .leftJoin(employees, eq(timesheetEntries.employeeId, employees.id))
     .leftJoin(users, eq(employees.userId, users.id))
-    .where(and(...conditions))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(and(...conditions, eq(roles.name, "technician")))
     .groupBy(employees.id, users.fullName);
 
   return productivityData.map((p) => {
@@ -1366,7 +1349,7 @@ export const getTechnicianProductivityReport = async (
 };
 
 export const getTechnicianQualityReport = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: TechnicianPerformanceFilter
 ) => {
   const conditions = [eq(jobs.isDeleted, false)];
@@ -1377,6 +1360,9 @@ export const getTechnicianQualityReport = async (
   if (filters?.endDate) {
     conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
   }
+  if (organizationId) {
+    conditions.push(eq(bidsTable.organizationId, organizationId));
+  }
 
   // This would need callback/reopen tracking - returning placeholder
   const technicianData = await db
@@ -1386,14 +1372,11 @@ export const getTechnicianQualityReport = async (
     })
     .from(jobs)
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(employees, eq(bidsTable.assignedTo, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(
-      and(
-        ...conditions,
-        eq(bidsTable.organizationId, organizationId)
-      )
-    )
+    .leftJoin(users, eq(bidsTable.assignedTo, users.id))
+    .leftJoin(employees, eq(users.id, employees.userId))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(and(...conditions, eq(roles.name, "technician")))
     .groupBy(employees.id, users.fullName);
 
   return technicianData.map((t) => ({
@@ -1405,7 +1388,7 @@ export const getTechnicianQualityReport = async (
 };
 
 export const getTechnicianProfitContribution = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: TechnicianPerformanceFilter
 ) => {
   const conditions = [eq(jobs.isDeleted, false), eq(jobs.status, "completed")];
@@ -1417,7 +1400,10 @@ export const getTechnicianProfitContribution = async (
     conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
   }
   if (filters?.technicianId) {
-    conditions.push(eq(bidsTable.assignedTo, filters.technicianId));
+    conditions.push(eq(employees.id, filters.technicianId));
+  }
+  if (organizationId) {
+    conditions.push(eq(bidsTable.organizationId, organizationId));
   }
 
   const profitData = await db
@@ -1428,16 +1414,13 @@ export const getTechnicianProfitContribution = async (
     })
     .from(jobs)
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(employees, eq(bidsTable.assignedTo, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(users, eq(bidsTable.assignedTo, users.id))
+    .leftJoin(employees, eq(users.id, employees.userId))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .leftJoin(invoices, eq(jobs.id, invoices.jobId))
     .leftJoin(expenses, eq(jobs.id, expenses.jobId))
-    .where(
-      and(
-        ...conditions,
-        eq(bidsTable.organizationId, organizationId)
-      )
-    )
+    .where(and(...conditions, eq(roles.name, "technician")))
     .groupBy(employees.id, users.fullName);
 
   return profitData.map((p) => {
@@ -1461,11 +1444,11 @@ export const getTechnicianProfitContribution = async (
 // ============================
 
 export const getJobStatusSummary = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: JobReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
   ];
 
@@ -1477,9 +1460,6 @@ export const getJobStatusSummary = async (
   }
   if (filters?.jobType) {
     conditions.push(eq(bidsTable.jobType, filters.jobType));
-  }
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
   }
 
   const statusCounts = await db
@@ -1512,11 +1492,11 @@ export const getJobStatusSummary = async (
 };
 
 export const getJobProfitability = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: JobReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
   ];
 
@@ -1536,7 +1516,7 @@ export const getJobProfitability = async (
   const profitabilityData = await db
     .select({
       jobId: jobs.id,
-      jobName: bidsTable.jobName,
+      jobName: bidsTable.projectName,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
       totalExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
     })
@@ -1545,7 +1525,7 @@ export const getJobProfitability = async (
     .leftJoin(invoices, eq(jobs.id, invoices.jobId))
     .leftJoin(expenses, eq(jobs.id, expenses.jobId))
     .where(and(...conditions))
-    .groupBy(jobs.id, bidsTable.jobName)
+    .groupBy(jobs.id, bidsTable.projectName)
     .limit(50);
 
   return profitabilityData.map((j) => {
@@ -1566,11 +1546,11 @@ export const getJobProfitability = async (
 };
 
 export const getJobCostBreakdown = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: JobReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(expenses.isDeleted, false),
   ];
 
@@ -1621,11 +1601,11 @@ export const getJobCostBreakdown = async (
 };
 
 export const getJobTimeline = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: JobReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
   ];
 
@@ -1642,9 +1622,11 @@ export const getJobTimeline = async (
   const timelineData = await db
     .select({
       jobId: jobs.id,
-      jobName: bidsTable.jobName,
-      startDate: jobs.startDate,
-      completionDate: jobs.completionDate,
+      jobName: bidsTable.projectName,
+      scheduledStartDate: jobs.scheduledStartDate,
+      actualStartDate: jobs.actualStartDate,
+      scheduledEndDate: jobs.scheduledEndDate,
+      actualEndDate: jobs.actualEndDate,
       estimatedDuration: bidsTable.estimatedDuration,
       status: jobs.status,
     })
@@ -1659,26 +1641,34 @@ export const getJobTimeline = async (
     let actualDuration = "N/A";
     let delayDays = 0;
 
-    if (j.startDate && j.completionDate) {
-      const start = new Date(j.startDate);
-      const end = new Date(j.completionDate);
+    // Prefer actual dates, fall back to scheduled dates
+    const startDate = j.actualStartDate || j.scheduledStartDate;
+    const endDate = j.actualEndDate || j.scheduledEndDate;
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
       const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       actualDuration = `${days} days`;
       
       // Calculate delay if we have estimated duration
       if (estimatedDuration && estimatedDuration !== "N/A") {
-        const estimatedDays = parseInt(estimatedDuration.split(" ")[0]);
-        delayDays = days - estimatedDays;
+        const estimatedDays = parseInt(estimatedDuration.toString());
+        if (!isNaN(estimatedDays)) {
+          delayDays = days - estimatedDays;
+        }
       }
     }
 
     return {
       id: j.jobId,
       jobName: j.jobName || "Unnamed Job",
-      estimatedDuration,
+      estimatedDuration: estimatedDuration !== "N/A" ? `${estimatedDuration} days` : "N/A",
       actualDuration,
-      startDate: j.startDate ? new Date(j.startDate).toISOString().split("T")[0] : "N/A",
-      completionDate: j.completionDate ? new Date(j.completionDate).toISOString().split("T")[0] : "N/A",
+      scheduledStartDate: j.scheduledStartDate || "N/A",
+      actualStartDate: j.actualStartDate || "N/A",
+      scheduledEndDate: j.scheduledEndDate || "N/A",
+      actualEndDate: j.actualEndDate || "N/A",
       delayDays,
       status: j.status || "unknown",
     };
@@ -1690,11 +1680,11 @@ export const getJobTimeline = async (
 // ============================
 
 export const getInvoiceSummary = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: InvoicingReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(invoices.isDeleted, false),
   ];
 
@@ -1703,9 +1693,6 @@ export const getInvoiceSummary = async (
   }
   if (filters?.endDate) {
     conditions.push(lte(invoices.invoiceDate, filters.endDate));
-  }
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
   }
 
   // Overall totals
@@ -1755,32 +1742,28 @@ export const getInvoiceSummary = async (
 };
 
 export const getCustomerAgingReport = async (
-  organizationId: string,
-  filters?: InvoicingReportFilter
+  organizationId: string | undefined,
+  _filters?: InvoicingReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(invoices.isDeleted, false),
     sql`${invoices.balanceDue} > 0`,
   ];
 
-  if (filters?.clientId) {
-    conditions.push(eq(bidsTable.clientId, filters.clientId));
-  }
-
   const agingData = await db
     .select({
-      clientName: clients.name,
+      clientName: organizations.name,
       balanceDue: invoices.balanceDue,
       dueDate: invoices.dueDate,
-      daysOverdue: sql<number>`CAST(EXTRACT(DAY FROM CURRENT_DATE - ${invoices.dueDate}) AS INTEGER)`,
+      daysOverdue: sql<number>`CURRENT_DATE - ${invoices.dueDate}`,
     })
     .from(invoices)
     .leftJoin(jobs, eq(invoices.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(clients, eq(bidsTable.clientId, clients.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(and(...conditions))
-    .orderBy(clients.name);
+    .orderBy(organizations.name);
 
   // Group by client and age buckets
   const clientAging = new Map<string, any>();
@@ -1821,11 +1804,11 @@ export const getCustomerAgingReport = async (
 };
 
 export const getPaymentCollectionData = async (
-  organizationId: string,
+  organizationId: string | undefined,
   filters?: InvoicingReportFilter
 ) => {
   const conditions = [
-    eq(bidsTable.organizationId, organizationId),
+    ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(invoices.isDeleted, false),
   ];
 

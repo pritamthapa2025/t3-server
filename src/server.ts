@@ -4,7 +4,6 @@ import { initDB, pool } from "./config/db.js";
 import redis from "./config/redis.js";
 import { setupSocketIO } from "./config/socket.js";
 import { closeQueue } from "./queues/notification.queue.js";
-
 import dotenv from "dotenv";
 
 dotenv.config();
