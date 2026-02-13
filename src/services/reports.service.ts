@@ -1,4 +1,4 @@
-import { count, eq, and, desc, sql, gte, lte, or } from "drizzle-orm";
+import { count, eq, and, desc, sql, gte, lte, or, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -230,6 +230,66 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
       ? Math.min(Math.round(((completedJobs * 8) / totalHours) * 100), 100)
       : 95;
 
+  // 8. Active Jobs - jobs not yet completed (planned, scheduled, in_progress, on_hold)
+  const activeJobsQuery = await db
+    .select({ count: count() })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
+        ...jobDateConditions,
+      ),
+    );
+  const activeJobs = activeJobsQuery[0]?.count ?? 0;
+
+  // 9. Client Count - distinct organizations with jobs in date range
+  const clientCountQuery = await db
+    .select({ count: sql<number>`COUNT(DISTINCT ${bidsTable.organizationId})` })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(eq(jobs.isDeleted, false), ...jobDateConditions));
+  const clientCount = Number(clientCountQuery[0]?.count ?? 0);
+
+  // 10. Employee Count - total active employees
+  const employeeCountQuery = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(eq(employees.isDeleted, false));
+  const employeeCount = employeeCountQuery[0]?.count ?? 0;
+
+  // 11. Revenue Growth - (current - previous period) / previous * 100 when date range provided
+  let revenueGrowth: number | null = null;
+  if (filters?.startDate && filters?.endDate) {
+    const start = new Date(filters.startDate);
+    const end = new Date(filters.endDate);
+    const periodMs = end.getTime() - start.getTime();
+    const prevEnd = new Date(start.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+    const prevStartStr = prevStart.toISOString().slice(0, 10);
+    const prevEndStr = prevEnd.toISOString().slice(0, 10);
+    const prevRevenueQuery = await db
+      .select({
+        total: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.isDeleted, false),
+          gte(invoices.invoiceDate, prevStartStr),
+          lte(invoices.invoiceDate, prevEndStr),
+        ),
+      );
+    const prevRevenue = parseFloat(prevRevenueQuery[0]?.total || "0");
+    if (prevRevenue > 0) {
+      revenueGrowth = Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100);
+    } else if (totalRevenue > 0) {
+      revenueGrowth = 100;
+    } else {
+      revenueGrowth = 0;
+    }
+  }
+
   return {
     totalRevenue,
     totalCost,
@@ -241,6 +301,10 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
     fleetAvailability,
     inventoryValuation: parseFloat(inventoryValueQuery[0]?.totalValue || "0"),
     technicianEfficiency,
+    activeJobs,
+    clientCount,
+    employeeCount,
+    revenueGrowth,
   };
 };
 
@@ -1024,13 +1088,20 @@ export const getTechnicianHoursReport = async (
     .where(and(...conditions))
     .groupBy(timesheetEntries.employeeId, users.fullName);
 
-  return hoursData.map((h) => ({
-    name: h.employeeName,
-    regularHours: h.regularHours,
-    overtime: h.overtime,
-    doubleOT: h.doubleOT,
-    totalHours: h.regularHours + h.overtime + h.doubleOT,
-  }));
+  return hoursData.map((h) => {
+    const regular = Number(h.regularHours) || 0;
+    const overtime = Number(h.overtime) || 0;
+    const doubleOT = Number(h.doubleOT) || 0;
+    const totalHours = regular + overtime + doubleOT;
+    return {
+      employeeId: h.employeeId,
+      name: h.employeeName,
+      regularHours: regular,
+      overtime,
+      doubleOT,
+      totalHours: Number.isFinite(totalHours) ? totalHours : 0,
+    };
+  });
 };
 
 export const getLaborCostReport = async (
@@ -1640,17 +1711,20 @@ export const getJobProfitability = async (
   const profitabilityData = await db
     .select({
       jobId: jobs.id,
+      jobNumber: jobs.jobNumber,
       jobName: bidsTable.projectName,
+      clientName: organizations.name,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
       totalExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .leftJoin(invoices, eq(jobs.id, invoices.jobId))
     .leftJoin(expenses, eq(jobs.id, expenses.jobId))
     .where(and(...conditions))
-    .groupBy(jobs.id, bidsTable.projectName)
-    .limit(50);
+    .groupBy(jobs.id, jobs.jobNumber, bidsTable.projectName, organizations.name)
+    .limit(500);
 
   return profitabilityData.map((j) => {
     const revenue = parseFloat(j.revenue);
@@ -1661,7 +1735,9 @@ export const getJobProfitability = async (
 
     return {
       id: j.jobId,
+      jobNumber: j.jobNumber || null,
       jobName: j.jobName || "Unnamed Job",
+      clientName: j.clientName || null,
       revenue,
       totalExpenses,
       profit,
