@@ -188,11 +188,15 @@ const uploadBidMedia = multer({
       "audio/wav",
       "audio/ogg",
     ];
-    
+
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only images, videos, and audio files are allowed.`));
+      cb(
+        new Error(
+          `Invalid file type: ${file.mimetype}. Only images, videos, and audio files are allowed.`,
+        ),
+      );
     }
   },
 }).any(); // Accept any files - controller will handle media_0, media_1, etc. pattern
@@ -258,11 +262,7 @@ router.use(generalTransformer);
 // Main Bid Routes
 
 // KPIs Route (must be before /bids/:id to avoid parameter conflicts)
-router.get(
-  "/bids/kpis",
-  authorizeFeature("bids", "view"),
-  getBidsKPIsHandler,
-);
+router.get("/bids/kpis", authorizeFeature("bids", "view"), getBidsKPIsHandler);
 
 router
   .route("/bids")
