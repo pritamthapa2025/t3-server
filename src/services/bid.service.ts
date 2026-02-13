@@ -27,6 +27,8 @@ import {
   bidNotes,
   bidHistory,
   bidDocuments,
+  bidDocumentTags,
+  bidDocumentTagLinks,
   bidMedia,
 } from "../drizzle/schema/bids.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
@@ -1911,24 +1913,95 @@ export const getBidWithAllData = async (id: string) => {
 // Bid Documents Operations
 // ============================
 
-export const getBidDocuments = async (bidId: string) => {
-  const documentsResult = await db
-    .select({
-      document: bidDocuments,
-      uploadedByName: users.fullName,
-    })
-    .from(bidDocuments)
-    .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
-    .where(
-      and(eq(bidDocuments.bidId, bidId), eq(bidDocuments.isDeleted, false)),
-    )
-    .orderBy(desc(bidDocuments.createdAt));
+export const getBidDocuments = async (
+  bidId: string,
+  options?: { tagIds?: string[] },
+) => {
+  const tagIds = options?.tagIds?.filter(Boolean);
+  const hasTagFilter = (tagIds?.length ?? 0) > 0;
+
+  const baseConditions = and(
+    eq(bidDocuments.bidId, bidId),
+    eq(bidDocuments.isDeleted, false),
+  );
+
+  let documentsResult: { document: typeof bidDocuments.$inferSelect; uploadedByName: string | null }[];
+
+  if (hasTagFilter) {
+    const withTagLinks = await db
+      .select({
+        document: bidDocuments,
+        uploadedByName: users.fullName,
+      })
+      .from(bidDocuments)
+      .innerJoin(
+        bidDocumentTagLinks,
+        eq(bidDocuments.id, bidDocumentTagLinks.documentId),
+      )
+      .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
+      .where(
+        and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)),
+      )
+      .orderBy(desc(bidDocuments.createdAt));
+    // Dedupe by document id (same doc can appear once per matching tag)
+    const seen = new Set<string>();
+    documentsResult = withTagLinks.filter((row) => {
+      if (seen.has(row.document.id)) return false;
+      seen.add(row.document.id);
+      return true;
+    });
+  } else {
+    documentsResult = await db
+      .select({
+        document: bidDocuments,
+        uploadedByName: users.fullName,
+      })
+      .from(bidDocuments)
+      .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
+      .where(baseConditions)
+      .orderBy(desc(bidDocuments.createdAt));
+  }
+
+  const documentIds = documentsResult.map((r) => r.document.id);
+  const documentTagsMap = await getDocumentTagsMapForDocuments(bidId, documentIds);
 
   return documentsResult.map((doc) => ({
     ...doc.document,
     uploadedByName: doc.uploadedByName || null,
+    tags: documentTagsMap.get(doc.document.id) ?? [],
   }));
 };
+
+/** Build map documentId -> tags[] for given document ids in a bid */
+async function getDocumentTagsMapForDocuments(
+  bidId: string,
+  documentIds: string[],
+): Promise<Map<string, { id: string; name: string }[]>> {
+  const map = new Map<string, { id: string; name: string }[]>();
+  if (documentIds.length === 0) return map;
+
+  const linksAndTags = await db
+    .select({
+      documentId: bidDocumentTagLinks.documentId,
+      tagId: bidDocumentTags.id,
+      tagName: bidDocumentTags.name,
+    })
+    .from(bidDocumentTagLinks)
+    .innerJoin(bidDocumentTags, eq(bidDocumentTagLinks.tagId, bidDocumentTags.id))
+    .where(
+      and(
+        eq(bidDocumentTags.bidId, bidId),
+        inArray(bidDocumentTagLinks.documentId, documentIds),
+      ),
+    );
+
+  for (const row of linksAndTags) {
+    const list = map.get(row.documentId) ?? [];
+    list.push({ id: row.tagId, name: row.tagName });
+    map.set(row.documentId, list);
+  }
+  return map;
+}
 
 export const getBidDocumentById = async (documentId: string) => {
   const [result] = await db
@@ -2046,6 +2119,190 @@ export const deleteBidDocument = async (documentId: string) => {
     )
     .returning();
   return document || null;
+};
+
+// ============================
+// Bid Document Tags Operations
+// ============================
+
+export const getBidDocumentTags = async (bidId: string) => {
+  const tags = await db
+    .select({
+      id: bidDocumentTags.id,
+      bidId: bidDocumentTags.bidId,
+      name: bidDocumentTags.name,
+      createdAt: bidDocumentTags.createdAt,
+    })
+    .from(bidDocumentTags)
+    .where(eq(bidDocumentTags.bidId, bidId))
+    .orderBy(asc(bidDocumentTags.name));
+
+  const linkCounts = await db
+    .select({
+      tagId: bidDocumentTagLinks.tagId,
+      count: count(),
+    })
+    .from(bidDocumentTagLinks)
+    .where(inArray(bidDocumentTagLinks.tagId, tags.map((t) => t.id)))
+    .groupBy(bidDocumentTagLinks.tagId);
+
+  const countByTagId = new Map(
+    linkCounts.map((r) => [r.tagId, Number(r.count)]),
+  );
+
+  return tags.map((tag) => ({
+    ...tag,
+    documentCount: countByTagId.get(tag.id) ?? 0,
+  }));
+};
+
+export const getBidDocumentTagById = async (tagId: string) => {
+  const [row] = await db
+    .select()
+    .from(bidDocumentTags)
+    .where(eq(bidDocumentTags.id, tagId));
+  return row ?? null;
+};
+
+export const createBidDocumentTag = async (bidId: string, name: string) => {
+  const [tag] = await db
+    .insert(bidDocumentTags)
+    .values({ bidId, name: name.trim() })
+    .returning();
+  return tag;
+};
+
+export const updateBidDocumentTag = async (
+  tagId: string,
+  data: { name: string },
+) => {
+  const [tag] = await db
+    .update(bidDocumentTags)
+    .set({ name: data.name.trim() })
+    .where(eq(bidDocumentTags.id, tagId))
+    .returning();
+  return tag ?? null;
+};
+
+export const deleteBidDocumentTag = async (tagId: string) => {
+  await db.delete(bidDocumentTagLinks).where(eq(bidDocumentTagLinks.tagId, tagId));
+  const [tag] = await db
+    .delete(bidDocumentTags)
+    .where(eq(bidDocumentTags.id, tagId))
+    .returning();
+  return tag ?? null;
+};
+
+export const getDocumentTags = async (
+  bidId: string,
+  documentId: string,
+): Promise<{ id: string; name: string }[]> => {
+  const rows = await db
+    .select({
+      id: bidDocumentTags.id,
+      name: bidDocumentTags.name,
+    })
+    .from(bidDocumentTagLinks)
+    .innerJoin(bidDocumentTags, eq(bidDocumentTagLinks.tagId, bidDocumentTags.id))
+    .where(
+      and(
+        eq(bidDocumentTagLinks.documentId, documentId),
+        eq(bidDocumentTags.bidId, bidId),
+      ),
+    );
+  return rows;
+};
+
+/** Link a tag to a document. If tagName provided and tag doesn't exist, create it then link. */
+export const linkDocumentTag = async (params: {
+  bidId: string;
+  documentId: string;
+  tagId?: string;
+  tagName?: string;
+}) => {
+  const { bidId, documentId, tagId: providedTagId, tagName } = params;
+
+  let tagId = providedTagId;
+  if (!tagId && tagName) {
+    const trimmed = tagName.trim();
+    const [existing] = await db
+      .select()
+      .from(bidDocumentTags)
+      .where(
+        and(
+          eq(bidDocumentTags.bidId, bidId),
+          eq(bidDocumentTags.name, trimmed),
+        ),
+      );
+    if (existing) {
+      tagId = existing.id;
+    } else {
+      const [created] = await db
+        .insert(bidDocumentTags)
+        .values({ bidId, name: trimmed })
+        .returning();
+      tagId = created?.id;
+    }
+  }
+
+  if (!tagId) {
+    return null;
+  }
+
+  const [link] = await db
+    .insert(bidDocumentTagLinks)
+    .values({ documentId, tagId })
+    .onConflictDoNothing({
+      target: [
+        bidDocumentTagLinks.documentId,
+        bidDocumentTagLinks.tagId,
+      ],
+    })
+    .returning();
+
+  if (link) return link;
+  const [existing] = await db
+    .select()
+    .from(bidDocumentTagLinks)
+    .where(
+      and(
+        eq(bidDocumentTagLinks.documentId, documentId),
+        eq(bidDocumentTagLinks.tagId, tagId),
+      ),
+    );
+  return existing ?? null;
+};
+
+/** Unlink a tag from a document. If tag has no more links, delete the tag. */
+export const unlinkDocumentTag = async (
+  documentId: string,
+  tagId: string,
+): Promise<{ unlinked: boolean; tagDeleted: boolean }> => {
+  const [deleted] = await db
+    .delete(bidDocumentTagLinks)
+    .where(
+      and(
+        eq(bidDocumentTagLinks.documentId, documentId),
+        eq(bidDocumentTagLinks.tagId, tagId),
+      ),
+    )
+    .returning();
+
+  if (!deleted) {
+    return { unlinked: false, tagDeleted: false };
+  }
+
+  const remaining = await db
+    .select({ count: count() })
+    .from(bidDocumentTagLinks)
+    .where(eq(bidDocumentTagLinks.tagId, tagId));
+
+  const remainingCount = Number(remaining[0]?.count ?? 0);
+  if (remainingCount === 0) {
+    await db.delete(bidDocumentTags).where(eq(bidDocumentTags.id, tagId));
+    return { unlinked: true, tagDeleted: true };
+  }
+  return { unlinked: true, tagDeleted: false };
 };
 
 // ============================

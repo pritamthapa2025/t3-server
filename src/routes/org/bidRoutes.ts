@@ -54,6 +54,14 @@ import {
   getBidDocumentByIdHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
+  getBidDocumentTagsHandler,
+  getBidDocumentTagByIdHandler,
+  createBidDocumentTagHandler,
+  updateBidDocumentTagHandler,
+  deleteBidDocumentTagHandler,
+  getDocumentTagsHandler,
+  linkDocumentTagHandler,
+  unlinkDocumentTagHandler,
   createBidMediaHandler,
   getBidMediaHandler,
   getBidMediaByIdHandler,
@@ -125,6 +133,14 @@ import {
   getBidDocumentByIdSchema,
   updateBidDocumentSchema,
   deleteBidDocumentSchema,
+  getBidDocumentTagsSchema,
+  getBidDocumentTagByIdSchema,
+  createBidDocumentTagSchema,
+  updateBidDocumentTagSchema,
+  deleteBidDocumentTagSchema,
+  getDocumentTagsSchema,
+  linkDocumentTagSchema,
+  unlinkDocumentTagSchema,
   createBidMediaSchema,
   getBidMediaSchema,
   getBidMediaByIdSchema,
@@ -479,6 +495,31 @@ router
     updateBidDocumentHandler,
   )
   .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
+
+// Document tags: list tags for a document; link tag (by id or create by name)
+router
+  .route("/bids/:bidId/documents/:documentId/tags")
+  .get(validate(getDocumentTagsSchema), getDocumentTagsHandler)
+  .post(validate(linkDocumentTagSchema), linkDocumentTagHandler);
+
+// Unlink a tag from a document
+router.delete(
+  "/bids/:bidId/documents/:documentId/tags/:tagId",
+  validate(unlinkDocumentTagSchema),
+  unlinkDocumentTagHandler,
+);
+
+// Bid-level tags CRUD (e.g. Client, Vendor, Architect)
+router
+  .route("/bids/:bidId/tags")
+  .get(validate(getBidDocumentTagsSchema), getBidDocumentTagsHandler)
+  .post(validate(createBidDocumentTagSchema), createBidDocumentTagHandler);
+
+router
+  .route("/bids/:bidId/tags/:tagId")
+  .get(validate(getBidDocumentTagByIdSchema), getBidDocumentTagByIdHandler)
+  .patch(validate(updateBidDocumentTagSchema), updateBidDocumentTagHandler)
+  .delete(validate(deleteBidDocumentTagSchema), deleteBidDocumentTagHandler);
 
 // Media Routes
 

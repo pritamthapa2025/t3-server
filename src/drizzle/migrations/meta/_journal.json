@@ -617,6 +617,13 @@
       "when": 1770979389939,
       "tag": "0087_bumpy_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1770981182336,
+      "tag": "0088_polite_doorman",
+      "breakpoints": true
     }
   ]
 }

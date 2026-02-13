@@ -526,6 +526,49 @@ export const bidDocuments = org.table(
 );
 
 /**
+ * Bid Document Tags Table
+ * Tags for categorizing bid documents (e.g. Client, Vendor, Architect). Scoped per bid.
+ */
+export const bidDocumentTags = org.table(
+  "bid_document_tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id),
+    name: varchar("name", { length: 100 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_bid_document_tags_bid_id").on(table.bidId),
+    unique("unique_bid_document_tag_name_per_bid").on(table.bidId, table.name),
+  ],
+);
+
+/**
+ * Bid Document Tag Links (junction table)
+ * Many-to-many: documents <-> tags
+ */
+export const bidDocumentTagLinks = org.table(
+  "bid_document_tag_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => bidDocuments.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => bidDocumentTags.id),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    unique("unique_document_tag").on(table.documentId, table.tagId),
+    index("idx_bid_document_tag_links_document").on(table.documentId),
+    index("idx_bid_document_tag_links_tag").on(table.tagId),
+  ],
+);
+
+/**
  * Bid Media Table
  * Stores media files (images, videos, audio) associated with bids
  */

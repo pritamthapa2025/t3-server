@@ -102,6 +102,14 @@ import {
   getBidsKPIs,
   getBidKPIs,
   deleteBidDocument,
+  getBidDocumentTags,
+  getBidDocumentTagById,
+  createBidDocumentTag,
+  updateBidDocumentTag,
+  deleteBidDocumentTag,
+  getDocumentTags,
+  linkDocumentTag,
+  unlinkDocumentTag,
   createBidMedia,
   getBidMedia,
   getBidMediaById,
@@ -3108,7 +3116,18 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const documents = await getBidDocuments(bidId!);
+    const rawTagIds = req.query.tagIds;
+    const tagIds: string[] | undefined = Array.isArray(rawTagIds)
+      ? (rawTagIds as string[]).filter((s) => typeof s === "string")
+      : typeof rawTagIds === "string"
+        ? rawTagIds
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+    const options =
+      tagIds?.length ? ({ tagIds } as { tagIds: string[] }) : undefined;
+    const documents = await getBidDocuments(bidId!, options);
 
     logger.info(`Bid documents fetched successfully for bid ${bidId}`);
     return res.status(200).json({
@@ -3307,6 +3326,324 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Document deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Bid Document Tags Handlers
+// ============================
+
+export const getBidDocumentTagsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const tags = await getBidDocumentTags(bidId!);
+    return res.status(200).json({ success: true, data: tags });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getBidDocumentTagByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "tagId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const tagId = asSingleString(req.params.tagId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const tag = await getBidDocumentTagById(tagId!);
+    if (!tag || tag.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag not found",
+      });
+    }
+
+    return res.status(200).json({ success: true, data: tag });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const createBidDocumentTagHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const { name } = (req as any).body as { name: string };
+    const tag = await createBidDocumentTag(bidId!, name);
+    return res.status(201).json({ success: true, data: tag });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidDocumentTagHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "tagId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const tagId = asSingleString(req.params.tagId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const tag = await getBidDocumentTagById(tagId!);
+    if (!tag || tag.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag not found",
+      });
+    }
+
+    const { name } = (req as any).body as { name: string };
+    const updated = await updateBidDocumentTag(tagId!, { name });
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag not found",
+      });
+    }
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const deleteBidDocumentTagHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "tagId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const tagId = asSingleString(req.params.tagId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const tag = await getBidDocumentTagById(tagId!);
+    if (!tag || tag.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag not found",
+      });
+    }
+
+    await deleteBidDocumentTag(tagId!);
+    return res.status(200).json({
+      success: true,
+      message: "Tag deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getDocumentTagsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const document = await getBidDocumentById(documentId!);
+    if (!document || document.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const tags = await getDocumentTags(bidId!, documentId!);
+    return res.status(200).json({ success: true, data: tags });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const linkDocumentTagHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const document = await getBidDocumentById(documentId!);
+    if (!document || document.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const body = (req as any).body as { tagId?: string; tagName?: string };
+    const link = await linkDocumentTag({
+      bidId: bidId!,
+      documentId: documentId!,
+      ...(body.tagId != null && { tagId: body.tagId }),
+      ...(body.tagName != null && { tagName: body.tagName }),
+    });
+
+    if (!link) {
+      return res.status(400).json({
+        success: false,
+        message: "Either tagId or tagName is required",
+      });
+    }
+
+    return res.status(201).json({ success: true, data: link });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const unlinkDocumentTagHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId", "tagId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
+    const tagId = asSingleString(req.params.tagId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const document = await getBidDocumentById(documentId!);
+    if (!document || document.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const tag = await getBidDocumentTagById(tagId!);
+    if (!tag || tag.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag not found",
+      });
+    }
+
+    const result = await unlinkDocumentTag(documentId!, tagId!);
+    if (!result.unlinked) {
+      return res.status(404).json({
+        success: false,
+        message: "Tag was not linked to this document",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.tagDeleted
+        ? "Tag unlinked and deleted (had no other documents)"
+        : "Tag unlinked successfully",
+      data: result,
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);

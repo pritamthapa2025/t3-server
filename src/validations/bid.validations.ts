@@ -1316,6 +1316,93 @@ export const getBidDocumentsSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
+  query: z
+    .object({
+      tagIds: z
+        .union([
+          z.string(),
+          z.array(uuidSchema),
+        ])
+        .optional()
+        .transform((v) => {
+          if (v === undefined) return undefined;
+          const arr = Array.isArray(v)
+            ? v
+            : (v as string)
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean);
+          return arr.length ? arr : undefined;
+        }),
+    })
+    .optional(),
+});
+
+export const getBidDocumentTagsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const getBidDocumentTagByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    tagId: uuidSchema,
+  }),
+});
+
+export const createBidDocumentTagSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  }),
+});
+
+export const updateBidDocumentTagSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    tagId: uuidSchema,
+  }),
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  }),
+});
+
+export const deleteBidDocumentTagSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    tagId: uuidSchema,
+  }),
+});
+
+export const getDocumentTagsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+});
+
+export const linkDocumentTagSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+  body: z.object({
+    tagId: uuidSchema.optional(),
+    tagName: z.string().min(1).max(100).optional(),
+  }).refine((data) => data.tagId ?? data.tagName, {
+    message: "Either tagId or tagName is required",
+  }),
+});
+
+export const unlinkDocumentTagSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+    tagId: uuidSchema,
+  }),
 });
 
 export const getBidDocumentByIdSchema = z.object({
