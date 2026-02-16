@@ -191,6 +191,40 @@ export async function getClientDocumentFilesHandler(
 }
 
 /**
+ * Get client invoice files grouped by organization
+ * GET /api/v1/org/files/clients/invoices/grouped
+ */
+export async function getClientInvoiceFilesGroupedHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const result = await FilesV2Service.getClientInvoiceFilesGroupedByOrg();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Get client document files grouped by organization
+ * GET /api/v1/org/files/clients/documents/grouped
+ */
+export async function getClientDocumentFilesGroupedHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const result = await FilesV2Service.getClientDocumentFilesGroupedByOrg();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * Get fleet document files (flat list with pagination)
  * GET /api/v1/org/files-v2/fleet/documents?page=1&limit=20
  */

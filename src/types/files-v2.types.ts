@@ -119,6 +119,27 @@ export interface ClientDocumentsResponse {
   };
 }
 
+// Client files grouped by organization (for folderized UI)
+export interface ClientFilesByOrganization {
+  organizationId: string;
+  organizationName: string;
+  clientId: string;
+  fileCount: number;
+  files: BaseFileInfo[];
+}
+
+export interface ClientInvoicesGroupedResponse {
+  organizations: ClientFilesByOrganization[];
+  totalOrganizations: number;
+  totalFiles: number;
+}
+
+export interface ClientDocumentsGroupedResponse {
+  organizations: ClientFilesByOrganization[];
+  totalOrganizations: number;
+  totalFiles: number;
+}
+
 // Employee Documents Types
 export interface EmployeeDocumentFile extends BaseFileInfo {
   employeeId: number;

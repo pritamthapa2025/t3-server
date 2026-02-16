@@ -93,6 +93,12 @@ router.get(
   FilesV2Controller.getClientDocumentFilesHandler
 );
 
+// GET /api/v1/org/files/clients/invoices/grouped (by organization)
+router.get("/clients/invoices/grouped", FilesV2Controller.getClientInvoiceFilesGroupedHandler);
+
+// GET /api/v1/org/files/clients/documents/grouped (by organization)
+router.get("/clients/documents/grouped", FilesV2Controller.getClientDocumentFilesGroupedHandler);
+
 /**
  * ============================================================================
  * EMPLOYEE ROUTES (Flat Lists with Pagination)
