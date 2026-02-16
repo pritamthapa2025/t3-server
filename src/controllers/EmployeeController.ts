@@ -583,6 +583,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       status,
       startDate,
       endDate,
+      note,
       // User fields
       fullName,
       email,
@@ -692,6 +693,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       employeeUpdateData.startDate = startDate ? new Date(startDate) : null;
     if (endDate !== undefined)
       employeeUpdateData.endDate = endDate ? new Date(endDate) : null;
+    if (note !== undefined) employeeUpdateData.note = note;
 
     let employee = null;
     if (Object.keys(employeeUpdateData).length > 0) {

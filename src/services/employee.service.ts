@@ -742,6 +742,7 @@ export const updateEmployee = async (
     status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
     startDate?: Date | null;
     endDate?: Date | null;
+    note?: unknown;
   },
 ) => {
   const updateData: {
@@ -755,6 +756,7 @@ export const updateEmployee = async (
     endDate?: Date | null;
     payType?: string | null;
     hourlyRate?: string | null;
+    note?: unknown;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -789,6 +791,9 @@ export const updateEmployee = async (
   }
   if (data.endDate !== undefined) {
     updateData.endDate = data.endDate;
+  }
+  if (data.note !== undefined) {
+    updateData.note = data.note;
   }
 
   const [employee] = await db

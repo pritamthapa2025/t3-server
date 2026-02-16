@@ -476,9 +476,28 @@ export interface UniqueFieldCheck {
 // Database Query Result Types
 // ============================
 
+/** Primary contact summary for list views */
+export interface ClientListPrimaryContact {
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+/** Financial summary for list views */
+export interface ClientListFinancial {
+  totalPaid: number;
+  totalOutstanding: number;
+}
+
 export interface ClientQueryResult {
   organization: Client;
   clientType?: ClientType;
+  /** Enriched for list: primary contact (when available) */
+  primaryContact?: ClientListPrimaryContact | null;
+  /** Enriched for list: count of active jobs */
+  activeJobs?: number;
+  /** Enriched for list: paid and outstanding totals */
+  financial?: ClientListFinancial | null;
 }
 
 export interface ClientListResult {

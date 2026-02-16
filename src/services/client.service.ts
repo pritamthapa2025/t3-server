@@ -33,6 +33,8 @@ import { alias } from "drizzle-orm/pg-core";
 import type {
   ClientFilters,
   ClientListResult,
+  ClientListPrimaryContact,
+  ClientListFinancial,
   CreateClientRequest,
   UpdateClientRequest,
   CreateContactRequest,
@@ -108,8 +110,98 @@ export const getClients = async (
 
     const totalCount = totalCountResult[0]?.count || 0;
 
+    // Enrich list with primaryContact, activeJobs, financial per organization
+    const orgIds = orgsData.map((row) => row.organization.id);
+    if (orgIds.length === 0) {
+      return {
+        data: orgsData,
+        total: totalCount,
+        pagination: {
+          offset,
+          limit,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+      };
+    }
+
+    const [primaryContactsRows, activeJobsRows, financialRows] = await Promise.all([
+      db
+        .select({
+          organizationId: clientContacts.organizationId,
+          fullName: clientContacts.fullName,
+          email: clientContacts.email,
+          phone: clientContacts.phone,
+        })
+        .from(clientContacts)
+        .where(
+          and(
+            inArray(clientContacts.organizationId, orgIds),
+            eq(clientContacts.isPrimary, true),
+            eq(clientContacts.isDeleted, false),
+          ),
+        ),
+      db
+        .select({
+          organizationId: bidsTable.organizationId,
+          count: count(),
+        })
+        .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(
+          and(
+            inArray(bidsTable.organizationId, orgIds),
+            eq(jobs.isDeleted, false),
+            inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
+          ),
+        )
+        .groupBy(bidsTable.organizationId),
+      db
+        .select({
+          organizationId: bidsTable.organizationId,
+          totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
+          totalOutstanding: sql<string>`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`,
+        })
+        .from(invoices)
+        .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(
+          and(inArray(bidsTable.organizationId, orgIds), eq(invoices.isDeleted, false)),
+        )
+        .groupBy(bidsTable.organizationId),
+    ]);
+
+    const primaryContactByOrgId = new Map<string, ClientListPrimaryContact>();
+    for (const row of primaryContactsRows) {
+      primaryContactByOrgId.set(row.organizationId, {
+        name: row.fullName,
+        email: row.email ?? null,
+        phone: row.phone ?? null,
+      });
+    }
+    const activeJobsByOrgId = new Map<string, number>();
+    for (const row of activeJobsRows) {
+      activeJobsByOrgId.set(row.organizationId, Number(row.count) || 0);
+    }
+    const financialByOrgId = new Map<string, ClientListFinancial>();
+    for (const row of financialRows) {
+      financialByOrgId.set(row.organizationId, {
+        totalPaid: parseFloat(row.totalPaid ?? "0"),
+        totalOutstanding: parseFloat(row.totalOutstanding ?? "0"),
+      });
+    }
+
+    const enrichedData = orgsData.map((row) => {
+      const orgId = row.organization.id;
+      return {
+        ...row,
+        primaryContact: primaryContactByOrgId.get(orgId) ?? null,
+        activeJobs: activeJobsByOrgId.get(orgId) ?? 0,
+        financial: financialByOrgId.get(orgId) ?? null,
+      };
+    });
+
     return {
-      data: orgsData,
+      data: enrichedData,
       total: totalCount,
       pagination: {
         offset,

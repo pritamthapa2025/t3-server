@@ -111,6 +111,10 @@ export const updateEmployeeSchema = z.object({
       departmentId: z.number().int().positive().optional().nullable(),
       positionId: z.number().int().positive().optional().nullable(),
       reportsTo: uuidSchema.optional().nullable(),
+      status: z.string().optional(),
+      startDate: z.union([z.string(), z.date()]).optional().nullable(),
+      endDate: z.union([z.string(), z.date()]).optional().nullable(),
+      note: z.unknown().optional(),
     })
     .refine(
       (data) =>
@@ -118,10 +122,14 @@ export const updateEmployeeSchema = z.object({
         data.employeeId !== undefined ||
         data.departmentId !== undefined ||
         data.positionId !== undefined ||
-        data.reportsTo !== undefined,
+        data.reportsTo !== undefined ||
+        data.status !== undefined ||
+        data.startDate !== undefined ||
+        data.endDate !== undefined ||
+        data.note !== undefined,
       {
         message:
-          "At least one field (userId, employeeId, departmentId, positionId, or reportsTo) is required",
+          "At least one field is required for update",
       }
     ),
 });
