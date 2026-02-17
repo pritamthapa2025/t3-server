@@ -20,7 +20,7 @@ import { bidsTable } from "./bids.schema.js";
 
 // Import enums from centralized location
 import { jobStatusEnum } from "../enums/org.enums.js";
-import { expenseCategories } from "./expenses.schema.js";
+import { expenseCategoryEnum } from "../enums/expenses.enums.js";
 
 const org = pgSchema("org");
 
@@ -218,9 +218,7 @@ export const jobExpenses = org.table(
       .references(() => jobs.id),
 
     expenseType: varchar("expense_type", { length: 100 }),
-    expenseCategoryId: uuid("expense_category_id")
-      .notNull()
-      .references(() => expenseCategories.id),
+    category: expenseCategoryEnum("category").notNull(),
     description: text("description").notNull(),
     quantity: integer("quantity").default(1),
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),

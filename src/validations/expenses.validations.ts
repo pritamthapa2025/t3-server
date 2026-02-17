@@ -128,8 +128,33 @@ const budgetPeriodEnum = z.enum(
   },
 );
 
+export const expenseCategoryEnum = z.enum(
+  [
+    "materials",
+    "equipment",
+    "transportation",
+    "permits",
+    "subcontractor",
+    "utilities",
+    "tools",
+    "safety",
+    "fleet",
+    "maintenance",
+    "fuel",
+    "tires",
+    "registration",
+    "repairs",
+    "insurance",
+    "office_supplies",
+    "rent",
+    "internet",
+    "other",
+  ],
+  { message: "Invalid expense category" },
+);
+
 // ============================
-// Expense Categories Validations
+// Expense Categories Validations (enum list for dropdown)
 // ============================
 
 export const getExpenseCategoriesQuerySchema = z.object({
@@ -151,117 +176,6 @@ export const getExpenseCategoriesQuerySchema = z.object({
           .max(100, "Maximum 100 items per page"),
       ),
     search: z.string().optional(),
-    expenseType: expenseTypeEnum.optional(),
-    parentCategoryId: uuidSchema.optional(),
-    isActive: z
-      .string()
-      .optional()
-      .transform((val) => val === "true")
-      .refine((val) => val === undefined || typeof val === "boolean", {
-        message: "Must be a boolean value",
-      }),
-    requiresReceipt: z
-      .string()
-      .optional()
-      .transform((val) => val === "true")
-      .refine((val) => val === undefined || typeof val === "boolean", {
-        message: "Must be a boolean value",
-      }),
-    requiresApproval: z
-      .string()
-      .optional()
-      .transform((val) => val === "true")
-      .refine((val) => val === undefined || typeof val === "boolean", {
-        message: "Must be a boolean value",
-      }),
-    sortBy: z
-      .enum(["name", "code", "expenseType", "sortOrder", "createdAt"])
-      .optional(),
-    sortOrder: z.enum(["asc", "desc"]).optional(),
-    includeDeleted: z
-      .string()
-      .optional()
-      .transform((val) => val === "true")
-      .refine((val) => val === undefined || typeof val === "boolean", {
-        message: "Must be a boolean value",
-      }),
-  }),
-});
-
-export const createExpenseCategorySchema = z.object({
-  body: z.object({
-    name: z
-      .string()
-      .min(1, "Category name is required")
-      .max(100, "Category name is too long (maximum 100 characters)")
-      .trim(),
-    description: z.string().optional(),
-    code: z
-      .string()
-      .min(1, "Category code is required")
-      .max(20, "Category code is too long (maximum 20 characters)")
-      .trim(),
-    expenseType: expenseTypeEnum,
-    parentCategoryId: uuidSchema.optional(),
-    requiresReceipt: z.boolean().optional(),
-    requiresApproval: z.boolean().optional(),
-    isReimbursable: z.boolean().optional(),
-    isTaxDeductible: z.boolean().optional(),
-    dailyLimit: numericStringSchema.optional(),
-    monthlyLimit: numericStringSchema.optional(),
-    yearlyLimit: numericStringSchema.optional(),
-    approvalThreshold: numericStringSchema.optional(),
-    requiresManagerApproval: z.boolean().optional(),
-    requiresFinanceApproval: z.boolean().optional(),
-    isActive: z.boolean().optional(),
-    sortOrder: z.number().int().optional(),
-  }),
-});
-
-export const getExpenseCategoryByIdSchema = z.object({
-  params: z.object({
-    id: uuidSchema,
-  }),
-});
-
-export const updateExpenseCategorySchema = z.object({
-  params: z.object({
-    id: uuidSchema,
-  }),
-  body: z.object({
-    name: z
-      .string()
-      .min(1, "Category name is required")
-      .max(100, "Category name is too long (maximum 100 characters)")
-      .trim()
-      .optional(),
-    description: z.string().optional(),
-    code: z
-      .string()
-      .min(1, "Category code is required")
-      .max(20, "Category code is too long (maximum 20 characters)")
-      .trim()
-      .optional(),
-    expenseType: expenseTypeEnum.optional(),
-    parentCategoryId: uuidSchema.optional(),
-    requiresReceipt: z.boolean().optional(),
-    requiresApproval: z.boolean().optional(),
-    isReimbursable: z.boolean().optional(),
-    isTaxDeductible: z.boolean().optional(),
-    dailyLimit: numericStringSchema.optional(),
-    monthlyLimit: numericStringSchema.optional(),
-    yearlyLimit: numericStringSchema.optional(),
-    approvalThreshold: numericStringSchema.optional(),
-    requiresManagerApproval: z.boolean().optional(),
-    requiresFinanceApproval: z.boolean().optional(),
-    isActive: z.boolean().optional(),
-    sortOrder: z.number().int().optional(),
-  }),
-});
-
-export const deleteExpenseCategorySchema = z.object({
-  params: z.object({
-    id: uuidSchema,
   }),
 });
 
@@ -289,7 +203,7 @@ export const getExpensesQuerySchema = z.object({
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : undefined))
       .pipe(z.number().int().positive().optional()),
-    categoryId: uuidSchema.optional(),
+    category: expenseCategoryEnum.optional(),
     jobId: uuidSchema.optional(),
     sourceId: uuidSchema.optional(),
     bidId: uuidSchema.optional(),
@@ -381,7 +295,7 @@ const expenseAllocationSchema = z.object({
 
 export const createExpenseSchema = z.object({
   body: z.object({
-    categoryId: uuidSchema,
+    category: expenseCategoryEnum,
     jobId: uuidSchema.optional(),
     bidId: uuidSchema.optional(),
     expenseType: expenseTypeEnum,
@@ -426,7 +340,7 @@ export const updateExpenseSchema = z.object({
   }),
   body: z.object({
     status: expenseStatusEnum.optional(),
-    categoryId: uuidSchema.optional(),
+    category: expenseCategoryEnum.optional(),
     jobId: uuidSchema.optional(),
     bidId: uuidSchema.optional(),
     expenseType: expenseTypeEnum.optional(),
@@ -923,7 +837,7 @@ export const getExpenseBudgetsQuerySchema = z.object({
       .enum(["category", "department", "employee", "project"])
       .optional(),
     budgetPeriod: budgetPeriodEnum.optional(),
-    categoryId: uuidSchema.optional(),
+    category: expenseCategoryEnum.optional(),
     departmentId: z
       .string()
       .optional()
@@ -990,7 +904,7 @@ export const createExpenseBudgetSchema = z.object({
         .trim(),
       description: z.string().optional(),
       budgetType: z.enum(["category", "department", "employee", "project"]),
-      categoryId: uuidSchema.optional(),
+      category: expenseCategoryEnum.optional(),
       departmentId: z.number().int().positive().optional(),
       employeeId: z.number().int().positive().optional(),
       jobId: uuidSchema.optional(),
@@ -1034,7 +948,7 @@ export const updateExpenseBudgetSchema = z.object({
     budgetType: z
       .enum(["category", "department", "employee", "project"])
       .optional(),
-    categoryId: uuidSchema.optional(),
+    category: expenseCategoryEnum.optional(),
     departmentId: z.number().int().positive().optional(),
     employeeId: z.number().int().positive().optional(),
     jobId: uuidSchema.optional(),
@@ -1067,7 +981,7 @@ export const getExpenseSummarySchema = z.object({
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : undefined))
       .pipe(z.number().int().positive().optional()),
-    categoryId: uuidSchema.optional(),
+    category: expenseCategoryEnum.optional(),
     jobId: uuidSchema.optional(),
     departmentId: z
       .string()

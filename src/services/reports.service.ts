@@ -13,7 +13,6 @@ import {
   inventoryItems,
   inventoryCategories,
 } from "../drizzle/schema/inventory.schema.js";
-import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
 import { payrollEntries } from "../drizzle/schema/payroll.schema.js";
 
 // ============================
@@ -847,9 +846,9 @@ export const getExpenseByCategory = async (
     eq(expenses.isDeleted, false),
   ];
 
-  // Apply category filter if provided
+  // Apply category filter if provided (expense category enum)
   if (filters?.category) {
-    conditions.push(eq(expenses.expenseType, filters.category as any));
+    conditions.push(eq(expenses.category, filters.category as any));
   }
 
   // Build date conditions
@@ -865,44 +864,54 @@ export const getExpenseByCategory = async (
   if (filters?.jobType) {
     query = db
       .select({
-        category: expenses.expenseType,
+        category: expenses.category,
         amount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
       })
       .from(expenses)
       .leftJoin(jobs, eq(expenses.jobId, jobs.id))
       .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
       .where(and(...conditions, eq(jobs.jobType, filters.jobType)))
-      .groupBy(expenses.expenseType);
+      .groupBy(expenses.category);
   } else {
     query = db
       .select({
-        category: expenses.expenseType,
+        category: expenses.category,
         amount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
       })
       .from(expenses)
       .leftJoin(jobs, eq(expenses.jobId, jobs.id))
       .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
       .where(and(...conditions))
-      .groupBy(expenses.expenseType);
+      .groupBy(expenses.category);
   }
 
   const categoryData = await query;
 
-  // Map expense types to friendly names
+  // Map expense category enum to friendly names
   const categoryMap: Record<string, string> = {
     materials: "Materials",
-    tools: "Tools",
-    fleet: "Fleet",
+    equipment: "Equipment",
+    transportation: "Transportation",
+    permits: "Permits",
     subcontractor: "Subcontractor",
-    admin: "Admin",
-    travel: "Travel",
+    utilities: "Utilities",
+    tools: "Tools",
     safety: "Safety",
-    labor: "Labor",
-    overhead: "Overhead",
+    fleet: "Fleet",
+    maintenance: "Maintenance",
+    fuel: "Fuel",
+    tires: "Tires",
+    registration: "Registration",
+    repairs: "Repairs",
+    insurance: "Insurance",
+    office_supplies: "Office Supplies",
+    rent: "Rent",
+    internet: "Internet",
+    other: "Other",
   };
 
   return categoryData.map((item) => ({
-    category: categoryMap[item.category] || item.category,
+    category: categoryMap[item.category] ?? item.category,
     amount: parseFloat(item.amount),
   }));
 };
@@ -1767,15 +1776,14 @@ export const getJobCostBreakdown = async (
 
   const costData = await db
     .select({
-      category: expenseCategories.name,
+      category: expenses.category,
       amount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
     })
     .from(expenses)
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .leftJoin(jobs, eq(expenses.jobId, jobs.id))
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(...conditions))
-    .groupBy(expenses.categoryId, expenseCategories.name);
+    .groupBy(expenses.category);
 
   const breakdown = {
     materials: 0,
@@ -1788,7 +1796,7 @@ export const getJobCostBreakdown = async (
 
   costData.forEach((c) => {
     const amount = parseFloat(c.amount);
-    const category = c.category?.toLowerCase() ?? "";
+    const category = (c.category ?? "").toLowerCase();
 
     if (category?.includes("material")) breakdown.materials += amount;
     else if (category?.includes("labor")) breakdown.labor += amount;

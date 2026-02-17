@@ -146,3 +146,29 @@ export const budgetPeriodEnum = pgEnum("budget_period_enum", [
   "project",
   "custom",
 ]);
+
+/**
+ * Expense Category Enum
+ * UI dropdown categories (replaces expense_categories table)
+ */
+export const expenseCategoryEnum = pgEnum("expense_category_enum", [
+  "materials",
+  "equipment",
+  "transportation",
+  "permits",
+  "subcontractor",
+  "utilities",
+  "tools",
+  "safety",
+  "fleet",
+  "maintenance",
+  "fuel",
+  "tires",
+  "registration",
+  "repairs",
+  "insurance",
+  "office_supplies",
+  "rent",
+  "internet",
+  "other",
+]);

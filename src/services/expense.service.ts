@@ -3,10 +3,8 @@ import {
   eq,
   and,
   desc,
-  asc,
   gte,
   lte,
-  ilike,
   getTableColumns,
   sql,
   or,
@@ -14,15 +12,37 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
-  expenseCategories,
   expenses,
   expenseHistory,
   expenseReceipts,
 } from "../drizzle/schema/expenses.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
+/** Expense category enum values with display labels (for dropdown) */
+const EXPENSE_CATEGORIES: { value: string; label: string }[] = [
+  { value: "materials", label: "Materials" },
+  { value: "equipment", label: "Equipment" },
+  { value: "transportation", label: "Transportation" },
+  { value: "permits", label: "Permits" },
+  { value: "subcontractor", label: "Subcontractor" },
+  { value: "utilities", label: "Utilities" },
+  { value: "tools", label: "Tools" },
+  { value: "safety", label: "Safety" },
+  { value: "fleet", label: "Fleet" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "fuel", label: "Fuel" },
+  { value: "tires", label: "Tires" },
+  { value: "registration", label: "Registration" },
+  { value: "repairs", label: "Repairs" },
+  { value: "insurance", label: "Insurance" },
+  { value: "office_supplies", label: "Office Supplies" },
+  { value: "rent", label: "Rent" },
+  { value: "internet", label: "Internet" },
+  { value: "other", label: "Other" },
+];
+
 // ============================
-// Expense Categories
+// Expense Categories (enum list)
 // ============================
 
 export async function getExpenseCategories(
@@ -31,48 +51,19 @@ export async function getExpenseCategories(
   limit: number,
   filters?: Record<string, unknown>,
 ) {
-  const whereConditions = [eq(expenseCategories.isDeleted, false)];
+  let data = EXPENSE_CATEGORIES;
   if (filters?.search) {
-    whereConditions.push(
-      ilike(expenseCategories.name, `%${String(filters.search)}%`),
+    const search = String(filters.search).toLowerCase();
+    data = data.filter(
+      (c) =>
+        c.label.toLowerCase().includes(search) ||
+        c.value.toLowerCase().includes(search),
     );
   }
-  if (filters?.expenseType) {
-    whereConditions.push(
-      eq(expenseCategories.expenseType, filters.expenseType as string),
-    );
-  }
-  if (filters?.isActive === true) {
-    whereConditions.push(eq(expenseCategories.isActive, true));
-  }
-  if (filters?.isActive === false) {
-    whereConditions.push(eq(expenseCategories.isActive, false));
-  }
-
-  const orderBy =
-    filters?.sortBy === "name"
-      ? asc(expenseCategories.name)
-      : desc(expenseCategories.createdAt);
-  const sortOrder = filters?.sortOrder as "asc" | "desc" | undefined;
-  const finalOrder =
-    sortOrder === "asc" ? asc(expenseCategories.name) : orderBy;
-
-  const [totalRow] = await db
-    .select({ total: count() })
-    .from(expenseCategories)
-    .where(and(...whereConditions));
-
-  const data = await db
-    .select()
-    .from(expenseCategories)
-    .where(and(...whereConditions))
-    .orderBy(finalOrder)
-    .limit(limit)
-    .offset(offset);
-
-  const total = totalRow?.total ?? 0;
+  const total = data.length;
+  const paginated = data.slice(offset, offset + limit);
   return {
-    data,
+    data: paginated,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -80,84 +71,6 @@ export async function getExpenseCategories(
       totalPages: Math.ceil(total / limit) || 1,
     },
   };
-}
-
-export async function getExpenseCategoryById(
-  _organizationId: string | undefined,
-  id: string,
-) {
-  const [row] = await db
-    .select()
-    .from(expenseCategories)
-    .where(
-      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
-export async function createExpenseCategory(
-  _organizationId: string | undefined,
-  body: Record<string, unknown>,
-  _userId: string,
-) {
-  const result = await db
-    .insert(expenseCategories)
-    .values({
-      name: body.name as string,
-      description: (body.description as string) ?? null,
-      code: body.code as string,
-      expenseType: body.expenseType as string,
-      requiresReceipt: (body.requiresReceipt as boolean) ?? true,
-      requiresApproval: (body.requiresApproval as boolean) ?? true,
-      isTaxDeductible: (body.isTaxDeductible as boolean) ?? true,
-      isActive: (body.isActive as boolean) ?? true,
-    })
-    .returning();
-  const row = Array.isArray(result) ? result[0] : undefined;
-  return row ?? null;
-}
-
-export async function updateExpenseCategory(
-  _organizationId: string | undefined,
-  id: string,
-  body: Record<string, unknown>,
-) {
-  const [row] = await db
-    .update(expenseCategories)
-    .set({
-      ...(body.name != null && { name: body.name as string }),
-      ...(body.description !== undefined && {
-        description: body.description as string | null,
-      }),
-      ...(body.code != null && { code: body.code as string }),
-      ...(body.expenseType != null && {
-        expenseType: body.expenseType as string,
-      }),
-      ...(body.isActive !== undefined && {
-        isActive: body.isActive as boolean,
-      }),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
-    )
-    .returning();
-  return row ?? null;
-}
-
-export async function deleteExpenseCategory(
-  _organizationId: string | undefined,
-  id: string,
-) {
-  const [row] = await db
-    .update(expenseCategories)
-    .set({ isDeleted: true, updatedAt: new Date() })
-    .where(
-      and(eq(expenseCategories.id, id), eq(expenseCategories.isDeleted, false)),
-    )
-    .returning();
-  return row ?? null;
 }
 
 // ============================
@@ -192,8 +105,10 @@ export async function getExpenses(
       ),
     );
   }
-  if (filters?.categoryId) {
-    whereConditions.push(eq(expenses.categoryId, filters.categoryId as string));
+  if (filters?.category) {
+    whereConditions.push(
+      eq(expenses.category, filters.category as typeof expenses.$inferSelect.category),
+    );
   }
   if (filters?.jobId) {
     whereConditions.push(eq(expenses.jobId, filters.jobId as string));
@@ -281,7 +196,7 @@ export async function createExpense(
     .insert(expenses)
     .values({
       expenseNumber: generateExpenseNumber(),
-      categoryId: body.categoryId as string,
+      category: body.category as string,
       jobId: (body.jobId as string) ?? null,
       sourceId: (body.sourceId as string) ?? null,
       title: (body.title as string) ?? "Untitled",
@@ -299,17 +214,11 @@ export async function createExpense(
   return row ?? null;
 }
 
-/**
- * Get default expense category ID (first active category). Used by fleet, inventory, job flows.
- */
-export async function getDefaultExpenseCategoryId(): Promise<string> {
-  const [row] = await db
-    .select({ id: expenseCategories.id })
-    .from(expenseCategories)
-    .where(eq(expenseCategories.isDeleted, false))
-    .limit(1);
-  if (!row?.id) throw new Error("No expense category found");
-  return row.id;
+/** Default expense category (enum value). Used by fleet, inventory, job flows. */
+export const DEFAULT_EXPENSE_CATEGORY = "other";
+
+export function getDefaultExpenseCategory(): string {
+  return DEFAULT_EXPENSE_CATEGORY;
 }
 
 /**
@@ -339,7 +248,7 @@ function mapJobExpenseTypeToExpenseType(jobExpenseType: string): string {
 export async function createExpenseFromSource(data: {
   sourceId: string;
   jobId?: string | null;
-  categoryId: string;
+  category: string;
   expenseType: string;
   amount: string;
   expenseDate: string;
@@ -357,7 +266,7 @@ export async function createExpenseFromSource(data: {
     .insert(expenses)
     .values({
       expenseNumber: generateExpenseNumber(),
-      categoryId: data.categoryId,
+      category: data.category as typeof expenses.$inferSelect.category,
       jobId: data.jobId ?? null,
       sourceId: data.sourceId,
       expenseType:
@@ -390,6 +299,9 @@ export async function updateExpense(
       ...(body.title != null && { title: body.title as string }),
       ...(body.description !== undefined && {
         description: body.description as string | null,
+      }),
+      ...(body.category != null && {
+        category: body.category as typeof expenses.$inferSelect.category,
       }),
       ...(body.amount != null && {
         amount: String(body.amount),

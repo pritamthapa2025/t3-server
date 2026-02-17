@@ -16,7 +16,6 @@ import {
   expenseReports,
   expenseReportItems,
   expenses,
-  expenseCategories,
 } from "../drizzle/schema/expenses.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
@@ -292,13 +291,12 @@ export const getExpenseReportById = async (
       status: expenses.status,
       expenseType: expenses.expenseType,
       vendor: expenses.vendor,
-      // Category data
-      categoryName: expenseCategories.name,
-      categoryCode: expenseCategories.code,
+      // Category (enum value as name; no code)
+      categoryName: expenses.category,
+      categoryCode: expenses.category,
     })
     .from(expenseReportItems)
     .leftJoin(expenses, eq(expenseReportItems.expenseId, expenses.id))
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .where(and(...itemConditions))
     .orderBy(
       asc(expenseReportItems.sortOrder),

@@ -51,7 +51,7 @@ import {
 } from "../services/fleet.service.js";
 import {
   createExpenseFromSource,
-  getDefaultExpenseCategoryId,
+  getDefaultExpenseCategory,
 } from "../services/expense.service.js";
 import {
   uploadToSpaces,
@@ -199,7 +199,7 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
       parseFloat(newVehicle.purchaseCost) > 0
     ) {
       try {
-        const categoryId = await getDefaultExpenseCategoryId();
+        const category = getDefaultExpenseCategory();
         const purchaseDate = newVehicle.purchaseDate;
         const expenseDate =
           (typeof purchaseDate === "string"
@@ -209,7 +209,7 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
               : new Date().toISOString().split("T")[0]) as string;
         await createExpenseFromSource({
           sourceId: newVehicle.id,
-          categoryId,
+          category,
           expenseType: "fleet_purchase",
           amount: newVehicle.purchaseCost,
           expenseDate,
@@ -575,7 +575,7 @@ export const updateMaintenanceRecordHandler = async (
       req.user?.id
     ) {
       try {
-        const categoryId = await getDefaultExpenseCategoryId();
+        const category = getDefaultExpenseCategory();
         const rawDate = updatedRecord.date;
         const expenseDate =
           (typeof rawDate === "string"
@@ -585,7 +585,7 @@ export const updateMaintenanceRecordHandler = async (
               : new Date().toISOString().split("T")[0]) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,
-          categoryId,
+          category,
           expenseType: "fleet_maintenance",
           amount: updatedRecord.cost,
           expenseDate,
@@ -823,7 +823,7 @@ export const updateRepairRecordHandler = async (
       req.user?.id
     ) {
       try {
-        const categoryId = await getDefaultExpenseCategoryId();
+        const category = getDefaultExpenseCategory();
         const rawDate = updatedRecord.date;
         const expenseDate =
           (typeof rawDate === "string"
@@ -833,7 +833,7 @@ export const updateRepairRecordHandler = async (
               : new Date().toISOString().split("T")[0]) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,
-          categoryId,
+          category,
           expenseType: "fleet_repair",
           amount: updatedRecord.cost,
           expenseDate,

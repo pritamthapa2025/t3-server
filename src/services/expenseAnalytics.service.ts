@@ -2,7 +2,6 @@ import { count, eq, desc, and, sql, gte, lte } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   expenses,
-  expenseCategories,
   expenseBudgets,
 } from "../drizzle/schema/expenses.schema.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
@@ -18,7 +17,7 @@ export const getExpenseSummary = async (
     startDate?: string;
     endDate?: string;
     employeeId?: number;
-    categoryId?: string;
+    category?: string;
     jobId?: string;
     departmentId?: number;
     status?: string;
@@ -36,9 +35,9 @@ export const getExpenseSummary = async (
     whereConditions.push(lte(expenses.expenseDate, filters.endDate));
   }
 
-  // employee_id removed from expenses; filter by jobId/sourceId/categoryId instead
-  if (filters?.categoryId) {
-    whereConditions.push(eq(expenses.categoryId, filters.categoryId));
+  // employee_id removed from expenses; filter by jobId/sourceId/category instead
+  if (filters?.category) {
+    whereConditions.push(eq(expenses.category, filters.category as typeof expenses.$inferSelect.category));
   }
 
   if (filters?.jobId) {
@@ -109,18 +108,17 @@ export const getExpenseSummary = async (
     .groupBy(sql`TO_CHAR(${expenses.expenseDate}, 'YYYY-MM')`)
     .orderBy(sql`TO_CHAR(${expenses.expenseDate}, 'YYYY-MM')`);
 
-  // Get top categories
+  // Get top categories (category is enum value)
   const topCategories = await db
     .select({
-      categoryId: expenses.categoryId,
-      categoryName: expenseCategories.name,
+      category: expenses.category,
+      categoryName: expenses.category,
       count: count(),
       totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS DECIMAL)), 0)`,
     })
     .from(expenses)
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .where(and(...whereConditions))
-    .groupBy(expenses.categoryId, expenseCategories.name)
+    .groupBy(expenses.category)
     .orderBy(desc(sql`SUM(CAST(${expenses.amount} AS DECIMAL))`))
     .limit(10);
 
@@ -174,7 +172,7 @@ export const getExpenseSummary = async (
     ),
     byMonth: monthlyBreakdown,
     topCategories: topCategories.map((cat) => ({
-      categoryId: cat.categoryId,
+      category: cat.category,
       categoryName: cat.categoryName || "Unknown",
       count: cat.count,
       totalAmount: cat.totalAmount,
@@ -377,18 +375,17 @@ export const getEmployeeExpenseSummary = async (
     .from(expenses)
     .where(and(...whereConditions));
 
-  // Get breakdown by category
+  // Get breakdown by category (category is enum value)
   const categoryBreakdown = await db
     .select({
-      categoryId: expenses.categoryId,
-      categoryName: expenseCategories.name,
+      category: expenses.category,
+      categoryName: expenses.category,
       count: count(),
       totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS DECIMAL)), 0)`,
     })
     .from(expenses)
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .where(and(...whereConditions))
-    .groupBy(expenses.categoryId, expenseCategories.name)
+    .groupBy(expenses.category)
     .orderBy(desc(sql`SUM(CAST(${expenses.amount} AS DECIMAL))`));
 
   // Get recent expenses (last 5)
@@ -400,10 +397,9 @@ export const getEmployeeExpenseSummary = async (
       amount: expenses.amount,
       expenseDate: expenses.expenseDate,
       status: expenses.status,
-      categoryName: expenseCategories.name,
+      categoryName: expenses.category,
     })
     .from(expenses)
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .where(and(...whereConditions))
     .orderBy(desc(expenses.expenseDate))
     .limit(5);
@@ -417,10 +413,9 @@ export const getEmployeeExpenseSummary = async (
       amount: expenses.amount,
       expenseDate: expenses.expenseDate,
       submittedDate: expenses.submittedDate,
-      categoryName: expenseCategories.name,
+      categoryName: expenses.category,
     })
     .from(expenses)
-    .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
     .where(and(...whereConditions, eq(expenses.status, "submitted")))
     .orderBy(desc(expenses.submittedDate));
 
@@ -444,7 +439,7 @@ export const getEmployeeExpenseSummary = async (
       totalMileageAmount: summary?.totalMileageAmount || "0",
     },
     byCategory: categoryBreakdown.map((cat) => ({
-      categoryId: cat.categoryId,
+      category: cat.category,
       categoryName: cat.categoryName || "Unknown",
       count: cat.count,
       totalAmount: cat.totalAmount,

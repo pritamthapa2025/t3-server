@@ -2,10 +2,6 @@ import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import {
   getExpenseCategories,
-  getExpenseCategoryById,
-  createExpenseCategory,
-  updateExpenseCategory,
-  deleteExpenseCategory,
   getExpenses,
   getExpenseById,
   createExpense,
@@ -46,29 +42,6 @@ export const getExpenseCategoriesHandler = async (
 
     const filters = {
       search: req.query.search as string,
-      expenseType: req.query.expenseType as string,
-      parentCategoryId: req.query.parentCategoryId as string,
-      isActive:
-        req.query.isActive === "true"
-          ? true
-          : req.query.isActive === "false"
-            ? false
-            : undefined,
-      requiresReceipt:
-        req.query.requiresReceipt === "true"
-          ? true
-          : req.query.requiresReceipt === "false"
-            ? false
-            : undefined,
-      requiresApproval:
-        req.query.requiresApproval === "true"
-          ? true
-          : req.query.requiresApproval === "false"
-            ? false
-            : undefined,
-      sortBy: req.query.sortBy as string,
-      sortOrder: req.query.sortOrder as "asc" | "desc",
-      includeDeleted: req.query.includeDeleted === "true",
     };
 
     // Clean up undefined values from filters
@@ -99,164 +72,6 @@ export const getExpenseCategoriesHandler = async (
   }
 };
 
-export const getExpenseCategoryByIdHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const id = asSingleString(req.params.id);
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Category ID is required",
-      });
-    }
-    const category = await getExpenseCategoryById(undefined, id);
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense category not found",
-      });
-    }
-
-    logger.info("Expense category fetched successfully");
-    return res.status(200).json({
-      success: true,
-      message: "Expense category retrieved successfully",
-      data: category,
-    });
-  } catch (error) {
-    logger.logApiError("Error fetching expense category", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to retrieve expense category",
-    });
-  }
-};
-
-export const createExpenseCategoryHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User authentication required.",
-      });
-    }
-
-    const category = await createExpenseCategory(undefined, req.body, userId);
-
-    logger.info("Expense category created successfully");
-    return res.status(201).json({
-      success: true,
-      message: "Expense category created successfully",
-      data: category,
-    });
-  } catch (error) {
-    if (isDatabaseError(error)) {
-      const dbError = parseDatabaseError(error);
-      if (dbError.statusCode === 409) {
-        return res.status(409).json({
-          success: false,
-          message: "Expense category code or name already exists",
-        });
-      }
-    }
-
-    logger.logApiError("Error creating expense category", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create expense category",
-    });
-  }
-};
-
-export const updateExpenseCategoryHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const id = asSingleString(req.params.id);
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Category ID is required",
-      });
-    }
-    const category = await updateExpenseCategory(undefined, id, req.body);
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense category not found",
-      });
-    }
-
-    logger.info("Expense category updated successfully");
-    return res.status(200).json({
-      success: true,
-      message: "Expense category updated successfully",
-      data: category,
-    });
-  } catch (error) {
-    if (isDatabaseError(error)) {
-      const dbError = parseDatabaseError(error);
-      if (dbError.statusCode === 409) {
-        return res.status(409).json({
-          success: false,
-          message: "Expense category code or name already exists",
-        });
-      }
-    }
-
-    logger.logApiError("Error updating expense category", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update expense category",
-    });
-  }
-};
-
-export const deleteExpenseCategoryHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const id = asSingleString(req.params.id);
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Category ID is required",
-      });
-    }
-    const category = await deleteExpenseCategory(undefined, id);
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense category not found",
-      });
-    }
-
-    logger.info("Expense category deleted successfully");
-    return res.status(200).json({
-      success: true,
-      message: "Expense category deleted successfully",
-    });
-  } catch (error) {
-    logger.logApiError("Error deleting expense category", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete expense category",
-    });
-  }
-};
-
 // ============================
 // Expenses Controllers
 // ============================
@@ -274,7 +89,7 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
       employeeId: req.query.employeeId
         ? parseInt(req.query.employeeId as string)
         : undefined,
-      categoryId: req.query.categoryId as string,
+      category: req.query.category as string,
       jobId: req.query.jobId as string,
       bidId: req.query.bidId as string,
       startDate: req.query.startDate as string,
@@ -631,7 +446,7 @@ export const getExpenseSummaryHandler = async (req: Request, res: Response) => {
       employeeId: req.query.employeeId
         ? parseInt(req.query.employeeId as string)
         : undefined,
-      categoryId: req.query.categoryId as string,
+      category: req.query.category as string,
       jobId: req.query.jobId as string,
       departmentId: req.query.departmentId
         ? parseInt(req.query.departmentId as string)

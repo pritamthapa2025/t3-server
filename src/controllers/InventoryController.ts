@@ -4,7 +4,7 @@ import { logger } from "../utils/logger.js";
 import * as inventoryService from "../services/inventory/index.js";
 import {
   createExpenseFromSource,
-  getDefaultExpenseCategoryId,
+  getDefaultExpenseCategory,
 } from "../services/expense.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 
@@ -195,10 +195,10 @@ export const createInventoryItemHandler = async (
       const amount = (parseFloat(newItem.unitCost) * qty).toString();
       if (parseFloat(amount) > 0) {
         try {
-          const categoryId = await getDefaultExpenseCategoryId();
+          const category = getDefaultExpenseCategory();
           await createExpenseFromSource({
             sourceId: itemId,
-            categoryId,
+            category,
             expenseType: "inventory_purchase",
             amount,
             expenseDate: new Date().toISOString().slice(0, 10),

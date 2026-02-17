@@ -31,68 +31,10 @@ import {
   taxStatusEnum,
   receiptStatusEnum,
   budgetPeriodEnum,
+  expenseCategoryEnum,
 } from "../enums/expenses.enums.js";
 
 const org = pgSchema("org");
-
-/**
- * Expense Categories Table
- * Standardized expense categories and subcategories
- */
-export const expenseCategories: any = org.table(
-  "expense_categories",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-
-    // Category Details
-    name: varchar("name", { length: 100 }).notNull(),
-    description: text("description"),
-    code: varchar("code", { length: 20 }).notNull(), // For accounting/reporting
-    expenseType: expenseTypeEnum("expense_type").notNull(),
-
-    // Parent Category (for subcategories)
-    parentCategoryId: uuid("parent_category_id").references(
-      (): any => expenseCategories.id,
-    ),
-
-    // Settings
-    requiresReceipt: boolean("requires_receipt").default(true),
-    requiresApproval: boolean("requires_approval").default(true),
-    isTaxDeductible: boolean("is_tax_deductible").default(true),
-
-    // Limits (for budgeting)
-    dailyLimit: numeric("daily_limit", { precision: 15, scale: 2 }),
-    monthlyLimit: numeric("monthly_limit", { precision: 15, scale: 2 }),
-    yearlyLimit: numeric("yearly_limit", { precision: 15, scale: 2 }),
-
-    // Approval Settings
-    approvalThreshold: numeric("approval_threshold", {
-      precision: 15,
-      scale: 2,
-    }),
-    requiresManagerApproval: boolean("requires_manager_approval").default(true),
-    requiresFinanceApproval: boolean("requires_finance_approval").default(
-      false,
-    ),
-
-    // Metadata
-    isActive: boolean("is_active").default(true),
-    sortOrder: integer("sort_order").default(0),
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    // Unique constraints: code and name must be unique globally
-    unique("unique_expense_category_code").on(table.code),
-    unique("unique_expense_category_name").on(table.name),
-    // Indexes for performance
-    index("idx_expense_categories_type").on(table.expenseType),
-    index("idx_expense_categories_parent").on(table.parentCategoryId),
-    index("idx_expense_categories_active").on(table.isActive),
-  ],
-);
 
 /**
  * Expenses Table
@@ -104,10 +46,8 @@ export const expenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     expenseNumber: varchar("expense_number", { length: 100 }).notNull(),
 
-    // Relationships (source_id links to job_expense.id, fleet_repair.id, purchase_order.id, etc.)
-    categoryId: uuid("category_id")
-      .notNull()
-      .references(() => expenseCategories.id),
+    // Category (enum: materials, equipment, fleet, etc.)
+    category: expenseCategoryEnum("category").notNull().default("other"),
     jobId: uuid("job_id").references(() => jobs.id), // Optional - only for job-related expenses
 
     // Source tracking
@@ -197,7 +137,7 @@ export const expenses = org.table(
   },
   (table) => [
     // Indexes for performance
-    index("idx_expenses_category").on(table.categoryId),
+    index("idx_expenses_category").on(table.category),
     index("idx_expenses_job").on(table.jobId),
     index("idx_expenses_source").on(table.sourceId),
     index("idx_expenses_status").on(table.status),
@@ -664,7 +604,7 @@ export const expenseBudgets = org.table(
     budgetType: varchar("budget_type", { length: 50 }).notNull(), // "category", "department", "employee", "project"
 
     // References
-    categoryId: uuid("category_id").references(() => expenseCategories.id),
+    category: expenseCategoryEnum("category"), // When budgetType is "category"
     departmentId: integer("department_id"), // Will reference departments
     employeeId: integer("employee_id").references(() => employees.id),
     jobId: uuid("job_id").references(() => jobs.id),
@@ -715,7 +655,7 @@ export const expenseBudgets = org.table(
   (table) => [
     index("idx_expense_budgets_org").on(table.organizationId),
     index("idx_expense_budgets_type").on(table.budgetType),
-    index("idx_expense_budgets_category").on(table.categoryId),
+    index("idx_expense_budgets_category").on(table.category),
     index("idx_expense_budgets_employee").on(table.employeeId),
     index("idx_expense_budgets_job").on(table.jobId),
     index("idx_expense_budgets_period").on(table.budgetPeriod),

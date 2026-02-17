@@ -11,7 +11,7 @@ import { users } from "../../drizzle/schema/auth.schema.js";
 import { createTransaction } from "./inventory-transactions.service.js";
 import {
   createExpenseFromSource,
-  getDefaultExpenseCategoryId,
+  getDefaultExpenseCategory,
 } from "../../services/expense.service.js";
 
 // ============================
@@ -225,7 +225,7 @@ export const approvePurchaseOrder = async (
 
   if (isExpense && approvedPO.totalAmount && parseFloat(approvedPO.totalAmount) > 0) {
     try {
-      const categoryId = await getDefaultExpenseCategoryId();
+      const category = getDefaultExpenseCategory();
       const orderDate = approvedPO.orderDate;
       const expenseDate =
         (typeof orderDate === "string"
@@ -235,7 +235,7 @@ export const approvePurchaseOrder = async (
             : new Date().toISOString().split("T")[0]) as string;
       await createExpenseFromSource({
         sourceId: approvedPO.id,
-        categoryId,
+        category,
         expenseType: "inventory_purchase",
         amount: approvedPO.totalAmount,
         expenseDate,

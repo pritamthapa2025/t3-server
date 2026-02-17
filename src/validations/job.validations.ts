@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expenseCategoryEnum } from "./expenses.validations.js";
 
 const uuidSchema = z
   .string()
@@ -1121,7 +1122,7 @@ export const createJobExpenseSchema = z.object({
   }),
   body: z.object({
     expenseType: jobExpenseTypeSchema,
-    expenseCategoryId: uuidSchema.optional(), // optional; service defaults if omitted
+    category: expenseCategoryEnum.optional(), // optional; service defaults if omitted
     description: z.string().min(1, "Description is required"),
     quantity: z.coerce.number().int().min(1).optional(),
     amount: numericStringSchema,
@@ -1148,7 +1149,7 @@ export const updateJobExpenseSchema = z.object({
   body: z
     .object({
       expenseType: jobExpenseTypeSchema.optional(),
-      expenseCategoryId: uuidSchema.optional(),
+      category: expenseCategoryEnum.optional(),
       description: z.string().min(1).optional(),
       quantity: z.coerce.number().int().min(1).optional(),
       amount: numericStringSchema.optional(),

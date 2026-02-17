@@ -624,6 +624,13 @@
       "when": 1770981182336,
       "tag": "0088_polite_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1771302756639,
+      "tag": "0089_handy_trauma",
+      "breakpoints": true
     }
   ]
 }

@@ -18,7 +18,7 @@ import {
   bidFinancialBreakdown,
 } from "../drizzle/schema/bids.schema.js";
 import { properties } from "../drizzle/schema/client.schema.js";
-import { expenseCategories } from "../drizzle/schema/expenses.schema.js";
+import { getDefaultExpenseCategory } from "./expense.service.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
@@ -2351,19 +2351,11 @@ export const getJobExpenseById = async (jobId: string, expenseId: string) => {
   return expense || null;
 };
 
-async function getDefaultExpenseCategoryId(): Promise<string> {
-  const [row] = await db
-    .select({ id: expenseCategories.id })
-    .from(expenseCategories)
-    .limit(1);
-  if (!row?.id) throw new Error("No expense category found");
-  return row.id;
-}
 
 export const createJobExpense = async (data: {
   jobId: string;
   expenseType: string;
-  expenseCategoryId?: string;
+  category?: string;
   description: string;
   quantity?: number;
   amount: string;
@@ -2388,13 +2380,14 @@ export const createJobExpense = async (data: {
     return null;
   }
 
+  const category = (data.category ?? getDefaultExpenseCategory()) as typeof jobExpenses.$inferSelect.category;
+
   // Create the expense in the database (job_expenses has no organizationId column)
   const [expense] = await db
     .insert(jobExpenses)
     .values({
       jobId: data.jobId,
-      expenseCategoryId:
-        data.expenseCategoryId ?? (await getDefaultExpenseCategoryId()),
+      category,
       expenseType: data.expenseType,
       description: data.description,
       quantity: data.quantity ?? 1,
@@ -2410,12 +2403,10 @@ export const createJobExpense = async (data: {
 
   // Sync to org.expenses for unified expense tracking (source_id = job_expense.id, expense_type = job_*)
   if (expense) {
-    const categoryId =
-      data.expenseCategoryId ?? (await getDefaultExpenseCategoryId());
     await createExpenseFromSource({
       sourceId: expense.id,
       jobId: data.jobId,
-      categoryId,
+      category,
       expenseType: data.expenseType,
       amount: data.amount,
       expenseDate: data.expenseDate,
@@ -2436,7 +2427,7 @@ export const updateJobExpense = async (
   organizationId: string,
   data: Partial<{
     expenseType: string;
-    expenseCategoryId: string;
+    category: string;
     description: string;
     quantity: number;
     amount: string;
@@ -2462,13 +2453,18 @@ export const updateJobExpense = async (
   }
 
   // Update the expense in the database (job_expenses has no organizationId - filter by jobId only)
+  const { category: categoryVal, ...rest } = data;
+  const setData: Partial<typeof jobExpenses.$inferInsert> = {
+    ...rest,
+    ...(categoryVal !== undefined && {
+      category: categoryVal as typeof jobExpenses.$inferSelect.category,
+    }),
+    approvedAt: data.approvedBy ? new Date() : undefined,
+    updatedAt: new Date(),
+  };
   const [expense] = await db
     .update(jobExpenses)
-    .set({
-      ...data,
-      approvedAt: data.approvedBy ? new Date() : undefined,
-      updatedAt: new Date(),
-    })
+    .set(setData)
     .where(
       and(
         eq(jobExpenses.id, id),

@@ -2,10 +2,6 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import {
   getExpenseCategoriesHandler,
-  getExpenseCategoryByIdHandler,
-  createExpenseCategoryHandler,
-  updateExpenseCategoryHandler,
-  deleteExpenseCategoryHandler,
   getExpensesHandler,
   getExpenseByIdHandler,
   createExpenseHandler,
@@ -44,12 +40,8 @@ import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 import {
-  // Expense Categories
+  // Expense Categories (enum list for dropdown)
   getExpenseCategoriesQuerySchema,
-  getExpenseCategoryByIdSchema,
-  createExpenseCategorySchema,
-  updateExpenseCategorySchema,
-  deleteExpenseCategorySchema,
   // Expenses
   getExpensesQuerySchema,
   getExpenseByIdSchema,
@@ -137,16 +129,11 @@ router.use(generalTransformer);
 // EXPENSE CATEGORIES ROUTES
 // ============================
 
-router
-  .route("/expense/category")
-  .get(validate(getExpenseCategoriesQuerySchema), getExpenseCategoriesHandler)
-  .post(validate(createExpenseCategorySchema), createExpenseCategoryHandler);
-
-router
-  .route("/expense/category/:id")
-  .get(validate(getExpenseCategoryByIdSchema), getExpenseCategoryByIdHandler)
-  .put(validate(updateExpenseCategorySchema), updateExpenseCategoryHandler)
-  .delete(validate(deleteExpenseCategorySchema), deleteExpenseCategoryHandler);
+router.get(
+  "/expense/category",
+  validate(getExpenseCategoriesQuerySchema),
+  getExpenseCategoriesHandler,
+);
 
 // ============================
 // EXPENSES ROUTES
