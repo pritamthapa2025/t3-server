@@ -5,6 +5,15 @@ const uuidSchema = z.string().uuid("Invalid ID format - must be a valid UUID");
 const decimalSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid number format. Please provide a valid decimal number (e.g., 1000.00 or 99.99)");
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)");
 
+// Financial Dashboard and section APIs – organizationId optional (like reports module)
+export const getFinancialDashboardQuerySchema = z.object({
+  query: z.object({
+    organizationId: uuidSchema.optional(),
+    startDate: dateSchema.optional(),
+    endDate: dateSchema.optional(),
+  }),
+});
+
 // Financial Summary Validations
 export const getFinancialSummaryQuerySchema = z.object({
   query: z.object({

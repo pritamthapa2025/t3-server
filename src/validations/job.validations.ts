@@ -164,7 +164,8 @@ export const updateJobSchema = z.object({
           .optional(),
         priority: z
           .enum(["low", "medium", "high", "urgent"], {
-            message: "Bid priority must be one of: low, medium, high, or urgent",
+            message:
+              "Bid priority must be one of: low, medium, high, or urgent",
           })
           .optional(),
         primaryContactId: uuidSchema.optional().nullable(),
@@ -176,7 +177,10 @@ export const updateJobSchema = z.object({
         siteAddress: z.string().optional(),
         buildingSuiteNumber: z
           .string()
-          .max(100, "Building/Suite number is too long (maximum 100 characters)")
+          .max(
+            100,
+            "Building/Suite number is too long (maximum 100 characters)",
+          )
           .optional(),
         acrossValuations: z
           .string()
@@ -272,6 +276,13 @@ export const updateJobSchema = z.object({
         totalCost: z.string().optional(),
         totalPrice: z.string().optional(),
         grossProfit: z.string().optional(),
+        actualMaterialsEquipment: z.string().optional(),
+        actualLabor: z.string().optional(),
+        actualTravel: z.string().optional(),
+        actualOperatingExpenses: z.string().optional(),
+        actualTotalCost: z.string().optional(),
+        actualTotalPrice: z.string().optional(),
+        actualGrossProfit: z.string().optional(),
       })
       .optional(),
 
@@ -288,6 +299,10 @@ export const updateJobSchema = z.object({
         applyMarkup: z.boolean().optional(),
         markupPercentage: z.string().optional(),
         operatingPrice: z.string().optional(),
+        actualCurrentBidAmount: z.string().optional(),
+        actualCalculatedOperatingCost: z.string().optional(),
+        actualInflationAdjustedOperatingCost: z.string().optional(),
+        actualOperatingPrice: z.string().optional(),
       })
       .optional(),
 
@@ -301,6 +316,7 @@ export const updateJobSchema = z.object({
           unitCost: z.string(),
           markup: z.string().optional(),
           totalCost: z.string(),
+          totalPrice: z.string().optional(),
         }),
       )
       .optional(),
@@ -415,7 +431,10 @@ export const updateJobSchema = z.object({
           event: z
             .string()
             .min(1, "Timeline event name is required")
-            .max(255, "Timeline event name is too long (maximum 255 characters)")
+            .max(
+              255,
+              "Timeline event name is too long (maximum 255 characters)",
+            )
             .trim(),
           eventDate: z
             .string()
@@ -771,6 +790,10 @@ export const updateJobOperatingExpensesSchema = z.object({
     applyMarkup: z.boolean().optional(),
     markupPercentage: numericStringSchema.optional(),
     operatingPrice: numericStringSchema.optional(),
+    actualCurrentBidAmount: numericStringSchema.optional(),
+    actualCalculatedOperatingCost: numericStringSchema.optional(),
+    actualInflationAdjustedOperatingCost: numericStringSchema.optional(),
+    actualOperatingPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -1107,7 +1130,7 @@ export const jobExpenseTypeSchema = z.preprocess(
     typeof v === "string"
       ? (v as string).toLowerCase().trim().replace(/\s+/g, "_")
       : v,
-  jobExpenseTypeSchemaRaw
+  jobExpenseTypeSchemaRaw,
 );
 
 export const getJobExpensesSchema = z.object({

@@ -125,8 +125,8 @@ export const getEmployees = async (offset: number, limit: number) => {
         ) {
           portalRole = "Manager";
         } else if (
-          emp.positionName.toLowerCase().includes("technician") ||
-          emp.positionName.toLowerCase().includes("engineer")
+          (emp.positionName ?? "").includes("Technician") ||
+          (emp.positionName ?? "").includes("Engineer")
         ) {
           portalRole = "Technician";
         }
@@ -258,8 +258,8 @@ export const getEmployeeById = async (id: number) => {
       ) {
         portalRole = "Manager";
       } else if (
-        roleNameLower.includes("technician") ||
-        roleNameLower.includes("engineer")
+        roleResult.roleName === "Technician" ||
+        roleResult.roleName === "Engineer"
       ) {
         portalRole = "Technician";
       } else {
@@ -1181,7 +1181,7 @@ export const getEmployeeJobsAndDispatchForDate = async (
         siteAddress: row.siteAddress ?? null,
       });
     }
-    const jobDetails = jId ? jobMap.get(jId) ?? null : null;
+    const jobDetails = jId ? (jobMap.get(jId) ?? null) : null;
     dispatchTasksList.push({
       id: row.dispatchTaskId,
       title: row.dispatchTitle ?? null,

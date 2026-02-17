@@ -3,6 +3,7 @@ import {
   eq,
   desc,
   and,
+  or,
   like,
   gte,
   lte,
@@ -238,6 +239,13 @@ export const getInvoices = async (
   options?: {
     page?: number;
     limit?: number;
+    status?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+    dueDateStart?: string;
+    dueDateEnd?: string;
+    jobId?: string;
   },
 ) => {
   const page = options?.page || 1;
@@ -245,6 +253,43 @@ export const getInvoices = async (
   const offset = (page - 1) * limit;
 
   let whereConditions: any[] = [eq(invoices.isDeleted, false)];
+
+  // Filter by status
+  if (options?.status) {
+    whereConditions.push(eq(invoices.status, options.status as any));
+  }
+
+  // Filter by date range (invoice date)
+  if (options?.startDate) {
+    whereConditions.push(gte(invoices.invoiceDate, options.startDate));
+  }
+  if (options?.endDate) {
+    whereConditions.push(lte(invoices.invoiceDate, options.endDate));
+  }
+
+  // Filter by due date range
+  if (options?.dueDateStart) {
+    whereConditions.push(gte(invoices.dueDate, options.dueDateStart));
+  }
+  if (options?.dueDateEnd) {
+    whereConditions.push(lte(invoices.dueDate, options.dueDateEnd));
+  }
+
+  // Filter by jobId
+  if (options?.jobId) {
+    whereConditions.push(eq(invoices.jobId, options.jobId));
+  }
+
+  // Filter by search (invoice number or billing address)
+  if (options?.search) {
+    whereConditions.push(
+      or(
+        like(invoices.invoiceNumber, `%${options.search}%`),
+        like(invoices.billingAddressLine1, `%${options.search}%`),
+        like(invoices.billingCity, `%${options.search}%`),
+      ),
+    );
+  }
 
   // Filter by organizationId through job → bid → organizationId
   if (organizationId) {
@@ -715,7 +760,13 @@ export const updateInvoice = async (
     await recalculateInvoiceTotals(invoiceId);
   }
 
-  return await getInvoiceById(invoiceId, organizationId);
+  // Return invoice with line items included
+  return await getInvoiceById(invoiceId, organizationId, {
+    includeLineItems: true,
+    includePayments: false,
+    includeDocuments: false,
+    includeHistory: false,
+  });
 };
 
 /**

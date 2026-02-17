@@ -27,8 +27,161 @@ import {
   createFinancialReport,
   updateFinancialReport,
   deleteFinancialReport,
+  getFinancialDashboard,
+  getFinancialSummarySection,
+  getFinancialJobsSummarySection,
+  getFinancialCostCategoriesSection,
+  getFinancialProfitabilitySection,
+  getFinancialProfitTrendSection,
+  getFinancialForecastingSection,
+  getFinancialReportsSection,
 } from "../services/financial.service.js";
 import { logger } from "../utils/logger.js";
+
+// Financial Module Dashboard (optional aggregate – one call for all)
+export const getFinancialDashboardHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    const data = await getFinancialDashboard(organizationId, {
+      startDate,
+      endDate,
+    });
+
+    logger.info("Financial dashboard fetched successfully");
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// ============================
+// Financial section handlers (report-style, one per tab)
+// ============================
+
+export const getFinancialSummarySectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const result = await getFinancialSummarySection(organizationId, {
+      startDate,
+      endDate,
+    });
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialJobsSummarySectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const result = await getFinancialJobsSummarySection(organizationId, {
+      startDate,
+      endDate,
+    });
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialCostCategoriesSectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const result = await getFinancialCostCategoriesSection(organizationId, {
+      startDate,
+      endDate,
+    });
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialProfitabilitySectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const result = await getFinancialProfitabilitySection(organizationId, {
+      startDate,
+      endDate,
+    });
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialProfitTrendSectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const result = await getFinancialProfitTrendSection(organizationId);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialForecastingSectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const result = await getFinancialForecastingSection(organizationId);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialReportsSectionHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const organizationId = (req.query.organizationId as string) || undefined;
+    const result = await getFinancialReportsSection(organizationId);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 // Financial Summary Handlers
 export const getFinancialSummaryHandler = async (

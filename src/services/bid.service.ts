@@ -40,6 +40,7 @@ import {
 } from "../drizzle/schema/client.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { getOrganizationById } from "./client.service.js";
+import { getOperatingExpenseDefaults } from "./settings.service.js";
 
 // ============================
 // Main Bid Operations
@@ -82,7 +83,7 @@ function getBidSummaryFields(bid: {
 }): BidSummaryFields {
   const amount = Number(bid.bidAmount) || 0;
   const margin = bid.profitMargin != null ? Number(bid.profitMargin) : 0;
-  
+
   // Calculate estimated duration from dates if available
   let duration = bid.estimatedDuration ?? 0;
   if (bid.plannedStartDate && bid.estimatedCompletion) {
@@ -91,7 +92,7 @@ function getBidSummaryFields(bid: {
     const msPerDay = 24 * 60 * 60 * 1000;
     duration = Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay);
   }
-  
+
   return {
     bidAmount: amount.toFixed(2),
     estimatedDuration: duration,
@@ -371,7 +372,7 @@ export const getBidById = async (id: string) => {
   };
 };
 
-// Simple version without organization validation - trusts bid ID access  
+// Simple version without organization validation - trusts bid ID access
 export const getBidByIdSimple = async (id: string) => {
   const [result] = await db
     .select({
@@ -765,48 +766,158 @@ export const updateBidFinancialBreakdown = async (
   bidId: string,
   organizationId: string,
   data: {
-    materialsEquipment: string;
-    labor: string;
-    travel: string;
-    operatingExpenses: string;
-    totalCost: string;
+    materialsEquipment?: string;
+    labor?: string;
+    travel?: string;
+    operatingExpenses?: string;
+    totalCost?: string;
     totalPrice?: string;
     grossProfit?: string;
+    actualMaterialsEquipment?: string;
+    actualLabor?: string;
+    actualTravel?: string;
+    actualOperatingExpenses?: string;
+    actualTotalCost?: string;
+    actualTotalPrice?: string;
+    actualGrossProfit?: string;
   },
 ) => {
-  const totalPrice = data.totalPrice ?? "0";
-  const grossProfit =
-    data.grossProfit ??
-    (parseFloat(totalPrice) - parseFloat(data.totalCost ?? "0")).toFixed(2);
-
-  const payload = {
-    ...data,
-    totalPrice,
-    grossProfit,
-  };
-
   const existing = await getBidFinancialBreakdown(bidId, organizationId);
 
+  const hasInitial =
+    data.materialsEquipment !== undefined ||
+    data.labor !== undefined ||
+    data.travel !== undefined ||
+    data.operatingExpenses !== undefined ||
+    data.totalCost !== undefined ||
+    data.totalPrice !== undefined ||
+    data.grossProfit !== undefined;
+  const hasActual =
+    data.actualMaterialsEquipment !== undefined ||
+    data.actualLabor !== undefined ||
+    data.actualTravel !== undefined ||
+    data.actualOperatingExpenses !== undefined ||
+    data.actualTotalCost !== undefined ||
+    data.actualTotalPrice !== undefined ||
+    data.actualGrossProfit !== undefined;
+
+  const totalPrice = data.totalPrice ?? existing?.totalPrice ?? "0";
+  const totalCost = data.totalCost ?? existing?.totalCost ?? "0";
+  const grossProfit =
+    data.grossProfit ??
+    existing?.grossProfit ??
+    (parseFloat(totalPrice) - parseFloat(totalCost)).toFixed(2);
+
+  const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+
+  // PUT: never update initial on existing row; only update actual. If no row yet (insert), set both from payload.
+  if (existing) {
+    if (hasInitial && !hasActual) {
+      setPayload.actualMaterialsEquipment =
+        data.materialsEquipment ?? existing.actualMaterialsEquipment ?? "0";
+      setPayload.actualLabor = data.labor ?? existing.actualLabor ?? "0";
+      setPayload.actualTravel = data.travel ?? existing.actualTravel ?? "0";
+      setPayload.actualOperatingExpenses =
+        data.operatingExpenses ?? existing.actualOperatingExpenses ?? "0";
+      setPayload.actualTotalCost =
+        data.totalCost ?? existing.actualTotalCost ?? "0";
+      setPayload.actualTotalPrice =
+        data.totalPrice ?? existing.actualTotalPrice ?? "0";
+      setPayload.actualGrossProfit =
+        data.grossProfit ?? existing.actualGrossProfit ?? "0";
+    } else if (hasActual) {
+      if (data.actualMaterialsEquipment !== undefined)
+        setPayload.actualMaterialsEquipment = data.actualMaterialsEquipment;
+      if (data.actualLabor !== undefined)
+        setPayload.actualLabor = data.actualLabor;
+      if (data.actualTravel !== undefined)
+        setPayload.actualTravel = data.actualTravel;
+      if (data.actualOperatingExpenses !== undefined)
+        setPayload.actualOperatingExpenses = data.actualOperatingExpenses;
+      if (data.actualTotalCost !== undefined)
+        setPayload.actualTotalCost = data.actualTotalCost;
+      if (data.actualTotalPrice !== undefined)
+        setPayload.actualTotalPrice = data.actualTotalPrice;
+      if (data.actualGrossProfit !== undefined)
+        setPayload.actualGrossProfit = data.actualGrossProfit;
+    }
+  } else if (hasInitial) {
+    setPayload.materialsEquipment = data.materialsEquipment ?? "0";
+    setPayload.labor = data.labor ?? "0";
+    setPayload.travel = data.travel ?? "0";
+    setPayload.operatingExpenses = data.operatingExpenses ?? "0";
+    setPayload.totalCost = data.totalCost ?? "0";
+    setPayload.totalPrice = data.totalPrice ?? totalPrice;
+    setPayload.grossProfit = data.grossProfit ?? grossProfit;
+    setPayload.actualMaterialsEquipment = data.materialsEquipment ?? "0";
+    setPayload.actualLabor = data.labor ?? "0";
+    setPayload.actualTravel = data.travel ?? "0";
+    setPayload.actualOperatingExpenses = data.operatingExpenses ?? "0";
+    setPayload.actualTotalCost = data.totalCost ?? "0";
+    setPayload.actualTotalPrice = data.totalPrice ?? totalPrice;
+    setPayload.actualGrossProfit = data.grossProfit ?? grossProfit;
+  }
+
+  let result;
   if (existing) {
     const [breakdown] = await db
       .update(bidFinancialBreakdown)
-      .set({
-        ...payload,
-        updatedAt: new Date(),
-      })
+      .set(setPayload as any)
       .where(eq(bidFinancialBreakdown.id, existing.id))
       .returning();
-    return breakdown;
-  } else {
+    result = breakdown;
+  } else if (hasInitial) {
     const [breakdown] = await db
       .insert(bidFinancialBreakdown)
       .values({
         bidId,
-        ...payload,
-      })
+        materialsEquipment: (setPayload.materialsEquipment as string) ?? "0",
+        labor: (setPayload.labor as string) ?? "0",
+        travel: (setPayload.travel as string) ?? "0",
+        operatingExpenses: (setPayload.operatingExpenses as string) ?? "0",
+        totalCost: (setPayload.totalCost as string) ?? "0",
+        totalPrice: (setPayload.totalPrice as string) ?? "0",
+        grossProfit: (setPayload.grossProfit as string) ?? "0",
+        actualMaterialsEquipment:
+          (setPayload.actualMaterialsEquipment as string) ??
+          (setPayload.materialsEquipment as string) ??
+          "0",
+        actualLabor:
+          (setPayload.actualLabor as string) ??
+          (setPayload.labor as string) ??
+          "0",
+        actualTravel:
+          (setPayload.actualTravel as string) ??
+          (setPayload.travel as string) ??
+          "0",
+        actualOperatingExpenses:
+          (setPayload.actualOperatingExpenses as string) ??
+          (setPayload.operatingExpenses as string) ??
+          "0",
+        actualTotalCost:
+          (setPayload.actualTotalCost as string) ??
+          (setPayload.totalCost as string) ??
+          "0",
+        actualTotalPrice:
+          (setPayload.actualTotalPrice as string) ??
+          (setPayload.totalPrice as string) ??
+          "0",
+        actualGrossProfit:
+          (setPayload.actualGrossProfit as string) ??
+          (setPayload.grossProfit as string) ??
+          "0",
+      } as any)
       .returning();
-    return breakdown;
+    result = breakdown;
+  } else {
+    return existing;
   }
+
+  if (!existing && hasInitial) {
+    await recalculateAndApplyBidOperatingExpenses(bidId, organizationId);
+  }
+  const updated = await getBidFinancialBreakdown(bidId, organizationId);
+  return updated ?? result;
 };
 
 // ============================
@@ -850,37 +961,88 @@ export const updateBidOperatingExpenses = async (
     applyMarkup: boolean;
     markupPercentage: string;
     operatingPrice: string;
+    actualCurrentBidAmount: string;
+    actualCalculatedOperatingCost: string;
+    actualInflationAdjustedOperatingCost: string;
+    actualOperatingPrice: string;
   }>,
 ) => {
-  // Verify bid exists
   const bid = await getBidById(bidId);
-  if (!bid) {
-    return null;
+  if (!bid) return null;
+
+  const existing = await getBidOperatingExpenses(bidId, organizationId);
+  const hasActual =
+    data.actualCurrentBidAmount !== undefined ||
+    data.actualCalculatedOperatingCost !== undefined ||
+    data.actualInflationAdjustedOperatingCost !== undefined ||
+    data.actualOperatingPrice !== undefined;
+  const hasInitial =
+    data.enabled !== undefined ||
+    data.grossRevenuePreviousYear !== undefined ||
+    data.currentBidAmount !== undefined ||
+    data.operatingCostPreviousYear !== undefined ||
+    data.inflationRate !== undefined ||
+    data.calculatedOperatingCost !== undefined ||
+    data.inflationAdjustedOperatingCost !== undefined ||
+    data.operatingPrice !== undefined;
+
+  const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+  if (existing) {
+    if (hasActual) {
+      if (data.actualCurrentBidAmount !== undefined)
+        setPayload.actualCurrentBidAmount = data.actualCurrentBidAmount;
+      if (data.actualCalculatedOperatingCost !== undefined)
+        setPayload.actualCalculatedOperatingCost =
+          data.actualCalculatedOperatingCost;
+      if (data.actualInflationAdjustedOperatingCost !== undefined)
+        setPayload.actualInflationAdjustedOperatingCost =
+          data.actualInflationAdjustedOperatingCost;
+      if (data.actualOperatingPrice !== undefined)
+        setPayload.actualOperatingPrice = data.actualOperatingPrice;
+    } else if (hasInitial) {
+      setPayload.actualCurrentBidAmount =
+        data.currentBidAmount ?? existing.actualCurrentBidAmount;
+      setPayload.actualCalculatedOperatingCost =
+        data.calculatedOperatingCost ?? existing.actualCalculatedOperatingCost;
+      setPayload.actualInflationAdjustedOperatingCost =
+        data.inflationAdjustedOperatingCost ??
+        existing.actualInflationAdjustedOperatingCost;
+      setPayload.actualOperatingPrice =
+        data.operatingPrice ?? existing.actualOperatingPrice;
+    }
+  } else {
+    Object.assign(setPayload, data);
+    setPayload.actualCurrentBidAmount = data.currentBidAmount ?? "0";
+    setPayload.actualCalculatedOperatingCost =
+      data.calculatedOperatingCost ?? "0";
+    setPayload.actualInflationAdjustedOperatingCost =
+      data.inflationAdjustedOperatingCost ?? "0";
+    setPayload.actualOperatingPrice = data.operatingPrice ?? "0";
   }
 
-  // Check if operating expenses exists
-  const existing = await getBidOperatingExpenses(bidId, organizationId);
-
+  let result;
   if (existing) {
+    if (Object.keys(setPayload).length <= 1)
+      return (await getBidOperatingExpenses(bidId, organizationId)) ?? null;
     const [operatingExpenses] = await db
       .update(bidOperatingExpenses)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
+      .set(setPayload as any)
       .where(eq(bidOperatingExpenses.id, existing.id))
       .returning();
-    return operatingExpenses;
+    result = operatingExpenses;
   } else {
     const [operatingExpenses] = await db
       .insert(bidOperatingExpenses)
-      .values({
-        bidId,
-        ...data,
-      })
+      .values({ bidId, ...setPayload } as any)
       .returning();
-    return operatingExpenses;
+    result = operatingExpenses;
   }
+
+  if (!existing && hasInitial) {
+    await recalculateAndApplyBidOperatingExpenses(bidId, organizationId);
+  }
+
+  return (await getBidOperatingExpenses(bidId, organizationId)) ?? result;
 };
 
 export const createBidOperatingExpenses = async (
@@ -934,6 +1096,191 @@ export const deleteBidOperatingExpenses = async (
   return operatingExpenses ?? null;
 };
 
+/**
+ * Calculate operating expense add-on using client's formula:
+ * 1. Overhead ratio = Annual Operating Expenses / Annual Revenue
+ * 2. Overhead allocation = ratio × direct project cost
+ * 3. Inflation offset = allocation × (inflationRate / 100)
+ * 4. Total operating add-on = allocation × (1 + inflationRate/100)
+ * Final bid = direct cost + add-on, rounded up to nearest dollar.
+ */
+export const calculateOperatingExpenseAddOn = (params: {
+  directCost: number;
+  grossRevenuePreviousYear: number;
+  operatingCostPreviousYear: number;
+  inflationRatePercent: number;
+}) => {
+  const {
+    directCost,
+    grossRevenuePreviousYear,
+    operatingCostPreviousYear,
+    inflationRatePercent,
+  } = params;
+
+  if (grossRevenuePreviousYear <= 0 || directCost < 0) {
+    return {
+      overheadRatio: 0,
+      overheadAllocation: 0,
+      inflationOffset: 0,
+      totalOperatingAddOn: 0,
+      finalBidRoundedUp: Math.ceil(directCost),
+    };
+  }
+
+  const overheadRatio = operatingCostPreviousYear / grossRevenuePreviousYear;
+  const overheadAllocation = directCost * overheadRatio;
+  const inflationMultiplier = 1 + inflationRatePercent / 100;
+  const totalOperatingAddOn = overheadAllocation * inflationMultiplier;
+  const inflationOffset = totalOperatingAddOn - overheadAllocation;
+  const totalPrice = directCost + totalOperatingAddOn;
+  const finalBidRoundedUp = Math.ceil(totalPrice);
+
+  return {
+    overheadRatio,
+    overheadAllocation,
+    inflationOffset,
+    totalOperatingAddOn,
+    totalPrice,
+    finalBidRoundedUp,
+  };
+};
+
+/**
+ * Recalculate operating expense add-on from current bid data and apply to
+ * bid_operating_expenses, bid_financial_breakdown, and bids.bidAmount (rounded up).
+ * Uses bid's operating expense row for revenue/cost/inflation, falling back to org defaults.
+ */
+export const recalculateAndApplyBidOperatingExpenses = async (
+  bidId: string,
+  organizationId: string,
+) => {
+  const bid = await getBidById(bidId);
+  if (!bid) return null;
+
+  const breakdown = await getBidFinancialBreakdown(bidId, organizationId);
+  const directCost = breakdown ? parseFloat(breakdown.totalCost ?? "0") : 0;
+
+  const opExRow = await getBidOperatingExpenses(bidId, organizationId);
+  const enabled = opExRow?.enabled ?? false;
+
+  if (!enabled) {
+    // Clear operating add-on: totalPrice = totalCost, bidAmount = ceil(totalCost)
+    const totalPrice = directCost.toFixed(2);
+    const bidAmountRounded = Math.ceil(directCost).toString();
+    const grossProfit = (parseFloat(totalPrice) - directCost).toFixed(2);
+
+    if (breakdown) {
+      await db
+        .update(bidFinancialBreakdown)
+        .set({
+          operatingExpenses: "0",
+          totalPrice,
+          grossProfit,
+          actualOperatingExpenses: "0",
+          actualTotalPrice: totalPrice,
+          actualGrossProfit: grossProfit,
+          updatedAt: new Date(),
+        })
+        .where(eq(bidFinancialBreakdown.id, breakdown.id));
+    }
+    await db
+      .update(bidsTable)
+      .set({ bidAmount: bidAmountRounded, updatedAt: new Date() })
+      .where(eq(bidsTable.id, bidId));
+    return null;
+  }
+
+  // Resolve revenue, operating cost, and inflation from bid row or defaults
+  const defaults = await getOperatingExpenseDefaults();
+  const grossRevenuePreviousYear = parseFloat(
+    opExRow?.grossRevenuePreviousYear ??
+      defaults?.grossRevenuePreviousYear ??
+      "0",
+  );
+  const operatingCostPreviousYear = parseFloat(
+    opExRow?.operatingCostPreviousYear ??
+      defaults?.operatingCostPreviousYear ??
+      "0",
+  );
+  const inflationRatePercent = parseFloat(
+    opExRow?.inflationRate ?? defaults?.inflationRate ?? "0",
+  );
+
+  const calc = calculateOperatingExpenseAddOn({
+    directCost,
+    grossRevenuePreviousYear,
+    operatingCostPreviousYear,
+    inflationRatePercent,
+  });
+
+  const totalOperatingAddOnStr = calc.totalOperatingAddOn.toFixed(2);
+  const totalPriceStr = calc.totalPrice?.toFixed(2) ?? "0.00";
+  const grossProfitStr = calc.totalOperatingAddOn.toFixed(2);
+
+  // Update bid_operating_expenses with calculated fields; keep actual* in sync with initial
+  if (opExRow) {
+    await db
+      .update(bidOperatingExpenses)
+      .set({
+        currentBidAmount: directCost.toFixed(2),
+        calculatedOperatingCost: calc.overheadAllocation.toFixed(2),
+        inflationAdjustedOperatingCost: totalOperatingAddOnStr,
+        operatingPrice: totalOperatingAddOnStr,
+        actualCurrentBidAmount: directCost.toFixed(2),
+        actualCalculatedOperatingCost: calc.overheadAllocation.toFixed(2),
+        actualInflationAdjustedOperatingCost: totalOperatingAddOnStr,
+        actualOperatingPrice: totalOperatingAddOnStr,
+        updatedAt: new Date(),
+      })
+      .where(eq(bidOperatingExpenses.id, opExRow.id));
+  }
+
+  // Update bid_financial_breakdown; keep actual* in sync with initial
+  if (breakdown) {
+    await db
+      .update(bidFinancialBreakdown)
+      .set({
+        operatingExpenses: totalOperatingAddOnStr,
+        totalPrice: totalPriceStr,
+        grossProfit: grossProfitStr,
+        actualOperatingExpenses: totalOperatingAddOnStr,
+        actualTotalPrice: totalPriceStr,
+        actualGrossProfit: grossProfitStr,
+        updatedAt: new Date(),
+      })
+      .where(eq(bidFinancialBreakdown.id, breakdown.id));
+  } else {
+    await db.insert(bidFinancialBreakdown).values({
+      bidId,
+      materialsEquipment: "0",
+      labor: "0",
+      travel: "0",
+      operatingExpenses: totalOperatingAddOnStr,
+      totalCost: directCost.toFixed(2),
+      totalPrice: totalPriceStr,
+      grossProfit: grossProfitStr,
+      actualMaterialsEquipment: "0",
+      actualLabor: "0",
+      actualTravel: "0",
+      actualOperatingExpenses: totalOperatingAddOnStr,
+      actualTotalCost: directCost.toFixed(2),
+      actualTotalPrice: totalPriceStr,
+      actualGrossProfit: grossProfitStr,
+    } as any);
+  }
+
+  // Final bid rounded up to nearest dollar
+  await db
+    .update(bidsTable)
+    .set({
+      bidAmount: calc.finalBidRoundedUp.toString(),
+      updatedAt: new Date(),
+    })
+    .where(eq(bidsTable.id, bidId));
+
+  return calc;
+};
+
 // ============================
 // Materials Operations
 // ============================
@@ -973,8 +1320,26 @@ export const createBidMaterial = async (data: {
   unitCost: string;
   markup: string;
   totalCost: string;
+  totalPrice?: string;
 }) => {
-  const [material] = await db.insert(bidMaterials).values(data).returning();
+  const totalPrice =
+    data.totalPrice ??
+    (
+      parseFloat(data.totalCost) *
+      (1 + parseFloat(data.markup || "0") / 100)
+    ).toFixed(2);
+  const [material] = await db
+    .insert(bidMaterials)
+    .values({
+      ...data,
+      totalPrice,
+      actualQuantity: data.quantity,
+      actualUnitCost: data.unitCost,
+      actualMarkup: data.markup,
+      actualTotalCost: data.totalCost,
+      actualTotalPrice: totalPrice,
+    } as any)
+    .returning();
   return material;
 };
 
@@ -989,14 +1354,54 @@ export const updateBidMaterial = async (
     unitCost: string;
     markup: string;
     totalCost: string;
+    totalPrice: string;
+    actualQuantity: string;
+    actualUnitCost: string;
+    actualMarkup: string;
+    actualTotalCost: string;
+    actualTotalPrice: string;
   }>,
 ) => {
+  const hasActual =
+    data.actualQuantity !== undefined ||
+    data.actualUnitCost !== undefined ||
+    data.actualMarkup !== undefined ||
+    data.actualTotalCost !== undefined ||
+    data.actualTotalPrice !== undefined;
+  const hasInitial =
+    data.quantity !== undefined ||
+    data.unitCost !== undefined ||
+    data.markup !== undefined ||
+    data.totalCost !== undefined ||
+    data.totalPrice !== undefined;
+  const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+  if (hasActual) {
+    if (data.actualQuantity !== undefined)
+      setPayload.actualQuantity = data.actualQuantity;
+    if (data.actualUnitCost !== undefined)
+      setPayload.actualUnitCost = data.actualUnitCost;
+    if (data.actualMarkup !== undefined)
+      setPayload.actualMarkup = data.actualMarkup;
+    if (data.actualTotalCost !== undefined)
+      setPayload.actualTotalCost = data.actualTotalCost;
+    if (data.actualTotalPrice !== undefined)
+      setPayload.actualTotalPrice = data.actualTotalPrice;
+  } else if (hasInitial) {
+    if (data.quantity !== undefined) setPayload.actualQuantity = data.quantity;
+    if (data.unitCost !== undefined) setPayload.actualUnitCost = data.unitCost;
+    if (data.markup !== undefined) setPayload.actualMarkup = data.markup;
+    if (data.totalCost !== undefined)
+      setPayload.actualTotalCost = data.totalCost;
+    if (data.totalPrice !== undefined)
+      setPayload.actualTotalPrice = data.totalPrice;
+    else if (data.totalCost !== undefined)
+      setPayload.actualTotalPrice = data.totalCost;
+  }
+  if (Object.keys(setPayload).length <= 1)
+    return (await getBidMaterialById(id, organizationId)) ?? null;
   const [material] = await db
     .update(bidMaterials)
-    .set({
-      ...data,
-      updatedAt: new Date(),
-    })
+    .set(setPayload as any)
     .where(and(eq(bidMaterials.id, id), eq(bidMaterials.isDeleted, false)))
     .returning();
   return material;
@@ -1035,6 +1440,13 @@ export const getBidLabor = async (bidId: string) => {
       billableRate: bidLabor.billableRate,
       totalCost: bidLabor.totalCost,
       totalPrice: bidLabor.totalPrice,
+      actualDays: bidLabor.actualDays,
+      actualHoursPerDay: bidLabor.actualHoursPerDay,
+      actualTotalHours: bidLabor.actualTotalHours,
+      actualCostRate: bidLabor.actualCostRate,
+      actualBillableRate: bidLabor.actualBillableRate,
+      actualTotalCost: bidLabor.actualTotalCost,
+      actualTotalPrice: bidLabor.actualTotalPrice,
       isDeleted: bidLabor.isDeleted,
       createdAt: bidLabor.createdAt,
       updatedAt: bidLabor.updatedAt,
@@ -1059,6 +1471,13 @@ export const getBidLaborById = async (laborId: string) => {
       billableRate: bidLabor.billableRate,
       totalCost: bidLabor.totalCost,
       totalPrice: bidLabor.totalPrice,
+      actualDays: bidLabor.actualDays,
+      actualHoursPerDay: bidLabor.actualHoursPerDay,
+      actualTotalHours: bidLabor.actualTotalHours,
+      actualCostRate: bidLabor.actualCostRate,
+      actualBillableRate: bidLabor.actualBillableRate,
+      actualTotalCost: bidLabor.actualTotalCost,
+      actualTotalPrice: bidLabor.actualTotalPrice,
       isDeleted: bidLabor.isDeleted,
       createdAt: bidLabor.createdAt,
       updatedAt: bidLabor.updatedAt,
@@ -1081,7 +1500,19 @@ export const createBidLabor = async (data: {
   totalPrice: string;
 }) => {
   try {
-    const [labor] = await db.insert(bidLabor).values(data).returning();
+    const [labor] = await db
+      .insert(bidLabor)
+      .values({
+        ...data,
+        actualDays: data.days,
+        actualHoursPerDay: data.hoursPerDay,
+        actualTotalHours: data.totalHours,
+        actualCostRate: data.costRate,
+        actualBillableRate: data.billableRate,
+        actualTotalCost: data.totalCost,
+        actualTotalPrice: data.totalPrice,
+      } as any)
+      .returning();
     if (!labor) {
       throw new Error("Failed to create labor entry - no data returned");
     }
@@ -1103,14 +1534,65 @@ export const updateBidLabor = async (
     billableRate: string;
     totalCost: string;
     totalPrice: string;
+    actualDays: number;
+    actualHoursPerDay: string;
+    actualTotalHours: string;
+    actualCostRate: string;
+    actualBillableRate: string;
+    actualTotalCost: string;
+    actualTotalPrice: string;
   }>,
 ) => {
+  const hasActual =
+    data.actualDays !== undefined ||
+    data.actualHoursPerDay !== undefined ||
+    data.actualTotalHours !== undefined ||
+    data.actualCostRate !== undefined ||
+    data.actualBillableRate !== undefined ||
+    data.actualTotalCost !== undefined ||
+    data.actualTotalPrice !== undefined;
+  const hasInitial =
+    data.days !== undefined ||
+    data.hoursPerDay !== undefined ||
+    data.totalHours !== undefined ||
+    data.costRate !== undefined ||
+    data.billableRate !== undefined ||
+    data.totalCost !== undefined ||
+    data.totalPrice !== undefined;
+  const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+  if (hasActual) {
+    if (data.actualDays !== undefined) setPayload.actualDays = data.actualDays;
+    if (data.actualHoursPerDay !== undefined)
+      setPayload.actualHoursPerDay = data.actualHoursPerDay;
+    if (data.actualTotalHours !== undefined)
+      setPayload.actualTotalHours = data.actualTotalHours;
+    if (data.actualCostRate !== undefined)
+      setPayload.actualCostRate = data.actualCostRate;
+    if (data.actualBillableRate !== undefined)
+      setPayload.actualBillableRate = data.actualBillableRate;
+    if (data.actualTotalCost !== undefined)
+      setPayload.actualTotalCost = data.actualTotalCost;
+    if (data.actualTotalPrice !== undefined)
+      setPayload.actualTotalPrice = data.actualTotalPrice;
+  } else if (hasInitial) {
+    if (data.days !== undefined) setPayload.actualDays = data.days;
+    if (data.hoursPerDay !== undefined)
+      setPayload.actualHoursPerDay = data.hoursPerDay;
+    if (data.totalHours !== undefined)
+      setPayload.actualTotalHours = data.totalHours;
+    if (data.costRate !== undefined) setPayload.actualCostRate = data.costRate;
+    if (data.billableRate !== undefined)
+      setPayload.actualBillableRate = data.billableRate;
+    if (data.totalCost !== undefined)
+      setPayload.actualTotalCost = data.totalCost;
+    if (data.totalPrice !== undefined)
+      setPayload.actualTotalPrice = data.totalPrice;
+  }
+  if (Object.keys(setPayload).length <= 1)
+    return (await getBidLaborById(id)) ?? null;
   const [labor] = await db
     .update(bidLabor)
-    .set({
-      ...data,
-      updatedAt: new Date(),
-    })
+    .set(setPayload as any)
     .where(and(eq(bidLabor.id, id), eq(bidLabor.isDeleted, false)))
     .returning();
   return labor;
@@ -1199,7 +1681,21 @@ export const createBidTravel = async (data: {
   totalCost: string;
   totalPrice: string;
 }) => {
-  const [travel] = await db.insert(bidTravel).values(data).returning();
+  const [travel] = await db
+    .insert(bidTravel)
+    .values({
+      ...data,
+      actualRoundTripMiles: data.roundTripMiles,
+      actualMileageRate: data.mileageRate,
+      actualVehicleDayRate: data.vehicleDayRate,
+      actualDays: data.days,
+      actualMileageCost: data.mileageCost,
+      actualVehicleCost: data.vehicleCost,
+      actualMarkup: data.markup,
+      actualTotalCost: data.totalCost,
+      actualTotalPrice: data.totalPrice,
+    } as any)
+    .returning();
   return travel;
 };
 
@@ -1257,7 +1753,14 @@ export const createBulkLaborAndTravel = async (
         billableRate: laborData.billableRate,
         totalCost: laborData.totalCost,
         totalPrice: laborData.totalPrice,
-      })
+        actualDays: laborData.days,
+        actualHoursPerDay: laborData.hoursPerDay,
+        actualTotalHours: laborData.totalHours,
+        actualCostRate: laborData.costRate,
+        actualBillableRate: laborData.billableRate,
+        actualTotalCost: laborData.totalCost,
+        actualTotalPrice: laborData.totalPrice,
+      } as any)
       .returning();
     createdLabor.push(labor);
   }
@@ -1280,7 +1783,16 @@ export const createBulkLaborAndTravel = async (
         markup: travelData.markup || "0",
         totalCost: travelData.totalCost,
         totalPrice: travelData.totalPrice,
-      })
+        actualRoundTripMiles: travelData.roundTripMiles,
+        actualMileageRate: travelData.mileageRate,
+        actualVehicleDayRate: travelData.vehicleDayRate,
+        actualDays: travelData.days,
+        actualMileageCost: travelData.mileageCost,
+        actualVehicleCost: travelData.vehicleCost,
+        actualMarkup: travelData.markup || "0",
+        actualTotalCost: travelData.totalCost,
+        actualTotalPrice: travelData.totalPrice,
+      } as any)
       .returning();
     createdTravel.push(travel);
   }
@@ -1305,14 +1817,79 @@ export const updateBidTravel = async (
     markup: string;
     totalCost: string;
     totalPrice: string;
+    actualRoundTripMiles: string;
+    actualMileageRate: string;
+    actualVehicleDayRate: string;
+    actualDays: number;
+    actualMileageCost: string;
+    actualVehicleCost: string;
+    actualMarkup: string;
+    actualTotalCost: string;
+    actualTotalPrice: string;
   }>,
 ) => {
+  const hasActual =
+    data.actualRoundTripMiles !== undefined ||
+    data.actualMileageRate !== undefined ||
+    data.actualVehicleDayRate !== undefined ||
+    data.actualDays !== undefined ||
+    data.actualMileageCost !== undefined ||
+    data.actualVehicleCost !== undefined ||
+    data.actualMarkup !== undefined ||
+    data.actualTotalCost !== undefined ||
+    data.actualTotalPrice !== undefined;
+  const hasInitial =
+    data.roundTripMiles !== undefined ||
+    data.mileageRate !== undefined ||
+    data.vehicleDayRate !== undefined ||
+    data.days !== undefined ||
+    data.mileageCost !== undefined ||
+    data.vehicleCost !== undefined ||
+    data.markup !== undefined ||
+    data.totalCost !== undefined ||
+    data.totalPrice !== undefined;
+  const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+  if (hasActual) {
+    if (data.actualRoundTripMiles !== undefined)
+      setPayload.actualRoundTripMiles = data.actualRoundTripMiles;
+    if (data.actualMileageRate !== undefined)
+      setPayload.actualMileageRate = data.actualMileageRate;
+    if (data.actualVehicleDayRate !== undefined)
+      setPayload.actualVehicleDayRate = data.actualVehicleDayRate;
+    if (data.actualDays !== undefined) setPayload.actualDays = data.actualDays;
+    if (data.actualMileageCost !== undefined)
+      setPayload.actualMileageCost = data.actualMileageCost;
+    if (data.actualVehicleCost !== undefined)
+      setPayload.actualVehicleCost = data.actualVehicleCost;
+    if (data.actualMarkup !== undefined)
+      setPayload.actualMarkup = data.actualMarkup;
+    if (data.actualTotalCost !== undefined)
+      setPayload.actualTotalCost = data.actualTotalCost;
+    if (data.actualTotalPrice !== undefined)
+      setPayload.actualTotalPrice = data.actualTotalPrice;
+  } else if (hasInitial) {
+    if (data.roundTripMiles !== undefined)
+      setPayload.actualRoundTripMiles = data.roundTripMiles;
+    if (data.mileageRate !== undefined)
+      setPayload.actualMileageRate = data.mileageRate;
+    if (data.vehicleDayRate !== undefined)
+      setPayload.actualVehicleDayRate = data.vehicleDayRate;
+    if (data.days !== undefined) setPayload.actualDays = data.days;
+    if (data.mileageCost !== undefined)
+      setPayload.actualMileageCost = data.mileageCost;
+    if (data.vehicleCost !== undefined)
+      setPayload.actualVehicleCost = data.vehicleCost;
+    if (data.markup !== undefined) setPayload.actualMarkup = data.markup;
+    if (data.totalCost !== undefined)
+      setPayload.actualTotalCost = data.totalCost;
+    if (data.totalPrice !== undefined)
+      setPayload.actualTotalPrice = data.totalPrice;
+  }
+  if (Object.keys(setPayload).length <= 1)
+    return (await getBidTravelById(id)) ?? null;
   const [travel] = await db
     .update(bidTravel)
-    .set({
-      ...data,
-      updatedAt: new Date(),
-    })
+    .set(setPayload as any)
     .where(and(eq(bidTravel.id, id), eq(bidTravel.isDeleted, false)))
     .returning();
   return travel;
@@ -1810,6 +2387,13 @@ const createRelatedRecords = async (
     totalCost: "0",
     totalPrice: "0",
     grossProfit: "0",
+    actualMaterialsEquipment: "0",
+    actualLabor: "0",
+    actualTravel: "0",
+    actualOperatingExpenses: "0",
+    actualTotalCost: "0",
+    actualTotalPrice: "0",
+    actualGrossProfit: "0",
   });
 
   // Create operating expenses
@@ -1925,7 +2509,10 @@ export const getBidDocuments = async (
     eq(bidDocuments.isDeleted, false),
   );
 
-  let documentsResult: { document: typeof bidDocuments.$inferSelect; uploadedByName: string | null }[];
+  let documentsResult: {
+    document: typeof bidDocuments.$inferSelect;
+    uploadedByName: string | null;
+  }[];
 
   if (hasTagFilter) {
     const withTagLinks = await db
@@ -1939,9 +2526,7 @@ export const getBidDocuments = async (
         eq(bidDocuments.id, bidDocumentTagLinks.documentId),
       )
       .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
-      .where(
-        and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)),
-      )
+      .where(and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)))
       .orderBy(desc(bidDocuments.createdAt));
     // Dedupe by document id (same doc can appear once per matching tag)
     const seen = new Set<string>();
@@ -1963,7 +2548,10 @@ export const getBidDocuments = async (
   }
 
   const documentIds = documentsResult.map((r) => r.document.id);
-  const documentTagsMap = await getDocumentTagsMapForDocuments(bidId, documentIds);
+  const documentTagsMap = await getDocumentTagsMapForDocuments(
+    bidId,
+    documentIds,
+  );
 
   return documentsResult.map((doc) => ({
     ...doc.document,
@@ -1987,7 +2575,10 @@ async function getDocumentTagsMapForDocuments(
       tagName: bidDocumentTags.name,
     })
     .from(bidDocumentTagLinks)
-    .innerJoin(bidDocumentTags, eq(bidDocumentTagLinks.tagId, bidDocumentTags.id))
+    .innerJoin(
+      bidDocumentTags,
+      eq(bidDocumentTagLinks.tagId, bidDocumentTags.id),
+    )
     .where(
       and(
         eq(bidDocumentTags.bidId, bidId),
@@ -2143,7 +2734,12 @@ export const getBidDocumentTags = async (bidId: string) => {
       count: count(),
     })
     .from(bidDocumentTagLinks)
-    .where(inArray(bidDocumentTagLinks.tagId, tags.map((t) => t.id)))
+    .where(
+      inArray(
+        bidDocumentTagLinks.tagId,
+        tags.map((t) => t.id),
+      ),
+    )
     .groupBy(bidDocumentTagLinks.tagId);
 
   const countByTagId = new Map(
@@ -2185,7 +2781,9 @@ export const updateBidDocumentTag = async (
 };
 
 export const deleteBidDocumentTag = async (tagId: string) => {
-  await db.delete(bidDocumentTagLinks).where(eq(bidDocumentTagLinks.tagId, tagId));
+  await db
+    .delete(bidDocumentTagLinks)
+    .where(eq(bidDocumentTagLinks.tagId, tagId));
   const [tag] = await db
     .delete(bidDocumentTags)
     .where(eq(bidDocumentTags.id, tagId))
@@ -2203,7 +2801,10 @@ export const getDocumentTags = async (
       name: bidDocumentTags.name,
     })
     .from(bidDocumentTagLinks)
-    .innerJoin(bidDocumentTags, eq(bidDocumentTagLinks.tagId, bidDocumentTags.id))
+    .innerJoin(
+      bidDocumentTags,
+      eq(bidDocumentTagLinks.tagId, bidDocumentTags.id),
+    )
     .where(
       and(
         eq(bidDocumentTagLinks.documentId, documentId),
@@ -2253,10 +2854,7 @@ export const linkDocumentTag = async (params: {
     .insert(bidDocumentTagLinks)
     .values({ documentId, tagId })
     .onConflictDoNothing({
-      target: [
-        bidDocumentTagLinks.documentId,
-        bidDocumentTagLinks.tagId,
-      ],
+      target: [bidDocumentTagLinks.documentId, bidDocumentTagLinks.tagId],
     })
     .returning();
 
@@ -2476,9 +3074,9 @@ export const getBidsKPIs = async () => {
         eq(bidsTable.isDeleted, false),
         or(
           eq(bidsTable.status, "submitted"),
-          eq(bidsTable.status, "in_progress")
-        )
-      )
+          eq(bidsTable.status, "in_progress"),
+        ),
+      ),
     );
 
   // Pending bids (status: draft, pending)
@@ -2488,11 +3086,8 @@ export const getBidsKPIs = async () => {
     .where(
       and(
         eq(bidsTable.isDeleted, false),
-        or(
-          eq(bidsTable.status, "draft"),
-          eq(bidsTable.status, "pending")
-        )
-      )
+        or(eq(bidsTable.status, "draft"), eq(bidsTable.status, "pending")),
+      ),
     );
 
   // Won bids (status: accepted, won)
@@ -2502,11 +3097,8 @@ export const getBidsKPIs = async () => {
     .where(
       and(
         eq(bidsTable.isDeleted, false),
-        or(
-          eq(bidsTable.status, "accepted"),
-          eq(bidsTable.status, "won")
-        )
-      )
+        or(eq(bidsTable.status, "accepted"), eq(bidsTable.status, "won")),
+      ),
     );
 
   // Average profit margin
@@ -2522,7 +3114,9 @@ export const getBidsKPIs = async () => {
     activeBids: activeBidsRow?.count || 0,
     pendingBids: pendingBidsRow?.count || 0,
     wonBids: wonBidsRow?.count || 0,
-    avgProfitMargin: Number((Number(avgProfitMarginRow?.avgProfitMargin || 0)).toFixed(2)),
+    avgProfitMargin: Number(
+      Number(avgProfitMarginRow?.avgProfitMargin || 0).toFixed(2),
+    ),
   };
 };
 
@@ -2550,7 +3144,9 @@ export const getBidKPIs = async (bidId: string) => {
     const startDate = new Date(bid.plannedStartDate);
     const endDate = new Date(bid.estimatedCompletion);
     const msPerDay = 24 * 60 * 60 * 1000;
-    calculatedDuration = Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay);
+    calculatedDuration = Math.floor(
+      (endDate.getTime() - startDate.getTime()) / msPerDay,
+    );
   }
 
   return {
@@ -2573,7 +3169,10 @@ const BID_STATUSES_TO_EXPIRE = [
  * Expire bids whose endDate has passed. Used by cron job.
  * Updates status to "expired" and creates history entry when CRON_SYSTEM_USER_ID is set.
  */
-export const expireExpiredBids = async (): Promise<{ expired: number; errors: number }> => {
+export const expireExpiredBids = async (): Promise<{
+  expired: number;
+  errors: number;
+}> => {
   const today = new Date().toISOString().split("T")[0]!;
   const systemUserId = process.env.CRON_SYSTEM_USER_ID;
 

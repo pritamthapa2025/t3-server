@@ -214,6 +214,13 @@ export const createBidSchema = z.object({
           totalCost: z.string().optional(),
           totalPrice: z.string().optional(),
           grossProfit: z.string().optional(),
+          actualMaterialsEquipment: z.string().optional(),
+          actualLabor: z.string().optional(),
+          actualTravel: z.string().optional(),
+          actualOperatingExpenses: z.string().optional(),
+          actualTotalCost: z.string().optional(),
+          actualTotalPrice: z.string().optional(),
+          actualGrossProfit: z.string().optional(),
         })
         .optional(),
 
@@ -230,6 +237,10 @@ export const createBidSchema = z.object({
           applyMarkup: z.boolean().optional(),
           markupPercentage: z.string().optional(),
           operatingPrice: z.string().optional(),
+          actualCurrentBidAmount: z.string().optional(),
+          actualCalculatedOperatingCost: z.string().optional(),
+          actualInflationAdjustedOperatingCost: z.string().optional(),
+          actualOperatingPrice: z.string().optional(),
         })
         .optional(),
 
@@ -243,6 +254,7 @@ export const createBidSchema = z.object({
             unitCost: z.string(),
             markup: z.string().optional(),
             totalCost: z.string(),
+            totalPrice: z.string().optional(),
           }),
         )
         .optional(),
@@ -484,6 +496,13 @@ export const updateBidSchema = z.object({
         totalCost: z.string().optional(),
         totalPrice: z.string().optional(),
         grossProfit: z.string().optional(),
+        actualMaterialsEquipment: z.string().optional(),
+        actualLabor: z.string().optional(),
+        actualTravel: z.string().optional(),
+        actualOperatingExpenses: z.string().optional(),
+        actualTotalCost: z.string().optional(),
+        actualTotalPrice: z.string().optional(),
+        actualGrossProfit: z.string().optional(),
       })
       .optional(),
 
@@ -500,6 +519,10 @@ export const updateBidSchema = z.object({
         applyMarkup: z.boolean().optional(),
         markupPercentage: z.string().optional(),
         operatingPrice: z.string().optional(),
+        actualCurrentBidAmount: z.string().optional(),
+        actualCalculatedOperatingCost: z.string().optional(),
+        actualInflationAdjustedOperatingCost: z.string().optional(),
+        actualOperatingPrice: z.string().optional(),
       })
       .optional(),
 
@@ -513,6 +536,7 @@ export const updateBidSchema = z.object({
           unitCost: z.string(),
           markup: z.string().optional(),
           totalCost: z.string(),
+          totalPrice: z.string().optional(),
         }),
       )
       .optional(),
@@ -672,6 +696,13 @@ export const updateFinancialBreakdownSchema = z.object({
     totalCost: numericStringSchema.optional(),
     totalPrice: numericStringSchema.optional(),
     grossProfit: numericStringSchema.optional(),
+    actualMaterialsEquipment: numericStringSchema.optional(),
+    actualLabor: numericStringSchema.optional(),
+    actualTravel: numericStringSchema.optional(),
+    actualOperatingExpenses: numericStringSchema.optional(),
+    actualTotalCost: numericStringSchema.optional(),
+    actualTotalPrice: numericStringSchema.optional(),
+    actualGrossProfit: numericStringSchema.optional(),
   }),
 });
 
@@ -701,6 +732,10 @@ export const createBidOperatingExpensesSchema = z.object({
     applyMarkup: z.boolean().optional(),
     markupPercentage: numericStringSchema.optional(),
     operatingPrice: numericStringSchema.optional(),
+    actualCurrentBidAmount: numericStringSchema.optional(),
+    actualCalculatedOperatingCost: numericStringSchema.optional(),
+    actualInflationAdjustedOperatingCost: numericStringSchema.optional(),
+    actualOperatingPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -720,6 +755,10 @@ export const updateBidOperatingExpensesSchema = z.object({
     applyMarkup: z.boolean().optional(),
     markupPercentage: numericStringSchema.optional(),
     operatingPrice: numericStringSchema.optional(),
+    actualCurrentBidAmount: numericStringSchema.optional(),
+    actualCalculatedOperatingCost: numericStringSchema.optional(),
+    actualInflationAdjustedOperatingCost: numericStringSchema.optional(),
+    actualOperatingPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -761,6 +800,7 @@ export const createBidMaterialSchema = z.object({
     unitCost: numericStringSchema,
     markup: numericStringSchema.optional().default("0"),
     totalCost: numericStringSchema,
+    totalPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -781,6 +821,12 @@ export const updateBidMaterialSchema = z.object({
     unitCost: numericStringSchema.optional(),
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
+    totalPrice: numericStringSchema.optional(),
+    actualQuantity: numericStringSchema.optional(),
+    actualUnitCost: numericStringSchema.optional(),
+    actualMarkup: numericStringSchema.optional(),
+    actualTotalCost: numericStringSchema.optional(),
+    actualTotalPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -852,6 +898,13 @@ export const updateBidLaborSchema = z.object({
     billableRate: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
     totalPrice: numericStringSchema.optional(),
+    actualDays: z.number().int().positive().optional(),
+    actualHoursPerDay: numericStringSchema.optional(),
+    actualTotalHours: numericStringSchema.optional(),
+    actualCostRate: numericStringSchema.optional(),
+    actualBillableRate: numericStringSchema.optional(),
+    actualTotalCost: numericStringSchema.optional(),
+    actualTotalPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -998,6 +1051,15 @@ export const updateBidTravelSchema = z.object({
     markup: numericStringSchema.optional(),
     totalCost: numericStringSchema.optional(),
     totalPrice: numericStringSchema.optional(),
+    actualRoundTripMiles: numericStringSchema.optional(),
+    actualMileageRate: numericStringSchema.optional(),
+    actualVehicleDayRate: numericStringSchema.optional(),
+    actualDays: z.number().int().positive().optional(),
+    actualMileageCost: numericStringSchema.optional(),
+    actualVehicleCost: numericStringSchema.optional(),
+    actualMarkup: numericStringSchema.optional(),
+    actualTotalCost: numericStringSchema.optional(),
+    actualTotalPrice: numericStringSchema.optional(),
   }),
 });
 
@@ -1319,10 +1381,7 @@ export const getBidDocumentsSchema = z.object({
   query: z
     .object({
       tagIds: z
-        .union([
-          z.string(),
-          z.array(uuidSchema),
-        ])
+        .union([z.string(), z.array(uuidSchema)])
         .optional()
         .transform((v) => {
           if (v === undefined) return undefined;
@@ -1389,12 +1448,14 @@ export const linkDocumentTagSchema = z.object({
     bidId: uuidSchema,
     documentId: uuidSchema,
   }),
-  body: z.object({
-    tagId: uuidSchema.optional(),
-    tagName: z.string().min(1).max(100).optional(),
-  }).refine((data) => data.tagId ?? data.tagName, {
-    message: "Either tagId or tagName is required",
-  }),
+  body: z
+    .object({
+      tagId: uuidSchema.optional(),
+      tagName: z.string().min(1).max(100).optional(),
+    })
+    .refine((data) => data.tagId ?? data.tagName, {
+      message: "Either tagId or tagName is required",
+    }),
 });
 
 export const unlinkDocumentTagSchema = z.object({
@@ -1444,9 +1505,11 @@ export const createBidMediaSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
-  body: z.object({
-    caption: z.string().optional(),
-  }).optional(),
+  body: z
+    .object({
+      caption: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const getBidMediaSchema = z.object({

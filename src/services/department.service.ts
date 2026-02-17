@@ -153,8 +153,8 @@ export const getDepartments = async (
         ) {
           role = "Manager";
         } else if (
-          positionName.includes("technician") ||
-          positionName.includes("engineer")
+          (e.position?.name ?? "").includes("Technician") ||
+          (e.position?.name ?? "").includes("Engineer")
         ) {
           role = "Technician";
         }

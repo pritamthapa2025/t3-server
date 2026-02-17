@@ -167,6 +167,44 @@ export const bidFinancialBreakdown = org.table(
       .notNull()
       .default("0"),
 
+    // Actual (billed) totals - updated when job/change orders modify amounts; initial fields stay as bid
+    actualMaterialsEquipment: numeric("actual_materials_equipment", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    actualLabor: numeric("actual_labor", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
+    actualTravel: numeric("actual_travel", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
+    actualOperatingExpenses: numeric("actual_operating_expenses", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    actualTotalCost: numeric("actual_total_cost", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    actualTotalPrice: numeric("actual_total_price", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    actualGrossProfit: numeric("actual_gross_profit", {
+      precision: 15,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -197,6 +235,16 @@ export const bidMaterials = org.table(
       .notNull()
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
+    totalPrice: numeric("total_price", { precision: 15, scale: 2 })
+      .notNull()
+      .default("0"),
+
+    // Actual (billed) - updated when job/change orders modify line; initial fields stay as bid
+    actualQuantity: numeric("actual_quantity", { precision: 10, scale: 2 }),
+    actualUnitCost: numeric("actual_unit_cost", { precision: 15, scale: 2 }),
+    actualMarkup: numeric("actual_markup", { precision: 5, scale: 2 }),
+    actualTotalCost: numeric("actual_total_cost", { precision: 15, scale: 2 }),
+    actualTotalPrice: numeric("actual_total_price", { precision: 15, scale: 2 }),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -229,6 +277,30 @@ export const bidLabor = org.table(
     }).notNull(),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
+
+    // Actual (billed) - updated when job/change orders modify line; initial fields stay as bid
+    actualDays: integer("actual_days"),
+    actualHoursPerDay: numeric("actual_hours_per_day", {
+      precision: 5,
+      scale: 2,
+    }),
+    actualTotalHours: numeric("actual_total_hours", {
+      precision: 8,
+      scale: 2,
+    }),
+    actualCostRate: numeric("actual_cost_rate", { precision: 10, scale: 2 }),
+    actualBillableRate: numeric("actual_billable_rate", {
+      precision: 10,
+      scale: 2,
+    }),
+    actualTotalCost: numeric("actual_total_cost", {
+      precision: 15,
+      scale: 2,
+    }),
+    actualTotalPrice: numeric("actual_total_price", {
+      precision: 15,
+      scale: 2,
+    }),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -270,6 +342,38 @@ export const bidTravel = org.table(
       .default("0"),
     totalCost: numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
     totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
+
+    // Actual (billed) - updated when job/change orders modify line; initial fields stay as bid
+    actualRoundTripMiles: numeric("actual_round_trip_miles", {
+      precision: 10,
+      scale: 2,
+    }),
+    actualMileageRate: numeric("actual_mileage_rate", {
+      precision: 10,
+      scale: 2,
+    }),
+    actualVehicleDayRate: numeric("actual_vehicle_day_rate", {
+      precision: 10,
+      scale: 2,
+    }),
+    actualDays: integer("actual_days"),
+    actualMileageCost: numeric("actual_mileage_cost", {
+      precision: 15,
+      scale: 2,
+    }),
+    actualVehicleCost: numeric("actual_vehicle_cost", {
+      precision: 15,
+      scale: 2,
+    }),
+    actualMarkup: numeric("actual_markup", { precision: 5, scale: 2 }),
+    actualTotalCost: numeric("actual_total_cost", {
+      precision: 15,
+      scale: 2,
+    }),
+    actualTotalPrice: numeric("actual_total_price", {
+      precision: 15,
+      scale: 2,
+    }),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -326,6 +430,24 @@ export const bidOperatingExpenses = org.table(
       scale: 2,
     }).default("0"),
     operatingPrice: numeric("operating_price", {
+      precision: 15,
+      scale: 2,
+    }).default("0"),
+
+    // Actual (billed) - formula applied to actual direct cost; initial fields stay as bid
+    actualCurrentBidAmount: numeric("actual_current_bid_amount", {
+      precision: 15,
+      scale: 2,
+    }).default("0"),
+    actualCalculatedOperatingCost: numeric(
+      "actual_calculated_operating_cost",
+      { precision: 15, scale: 2 },
+    ).default("0"),
+    actualInflationAdjustedOperatingCost: numeric(
+      "actual_inflation_adjusted_operating_cost",
+      { precision: 15, scale: 2 },
+    ).default("0"),
+    actualOperatingPrice: numeric("actual_operating_price", {
       precision: 15,
       scale: 2,
     }).default("0"),

@@ -6,6 +6,9 @@ import { employees } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { eq, and, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
 
+/** Optional date range filter (YYYY-MM-DD), same pattern as reports API */
+export type DateRangeFilter = { startDate: string; endDate: string };
+
 /**
  * ============================================================================
  * DASHBOARD SERVICE
@@ -16,7 +19,10 @@ import { eq, and, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
 /**
  * Get complete dashboard overview in one call
  */
-export const getDashboardOverview = async (organizationId?: string) => {
+export const getDashboardOverview = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const [
     revenueStats,
     activeJobsStats,
@@ -26,13 +32,13 @@ export const getDashboardOverview = async (organizationId?: string) => {
     performance,
     priorityJobs,
   ] = await Promise.all([
-    getRevenueStats(organizationId),
-    getActiveJobsStats(organizationId),
-    getTeamUtilization(organizationId),
-    getTodaysDispatch(organizationId),
-    getActiveBidsStats(organizationId),
-    getPerformanceOverview(organizationId),
-    getPriorityJobs(organizationId, { limit: 10 }),
+    getRevenueStats(organizationId, dateRange),
+    getActiveJobsStats(organizationId, dateRange),
+    getTeamUtilization(organizationId, dateRange),
+    getTodaysDispatch(organizationId, dateRange),
+    getActiveBidsStats(organizationId, dateRange),
+    getPerformanceOverview(organizationId, dateRange),
+    getPriorityJobs(organizationId, { limit: 10 }, dateRange),
   ]);
 
   return {
@@ -46,14 +52,41 @@ export const getDashboardOverview = async (organizationId?: string) => {
   };
 };
 
+/** Invoice statuses that count as revenue (invoiced; excludes cancelled/void) */
+const REVENUE_INVOICE_STATUSES = [
+  "draft",
+  "pending",
+  "sent",
+  "viewed",
+  "partial",
+  "paid",
+  "overdue",
+] as const;
+
 /**
- * Get revenue statistics for the last 6 months
- * Invoices are scoped by organization via job → bid (invoices table has no organizationId).
+ * Get revenue statistics for the last 6 months (or for date range when provided).
+ * Revenue = invoiced amount by invoice date (all non-cancelled/void invoices), scoped by org via job → bid.
  */
-export const getRevenueStats = async (organizationId?: string) => {
+export const getRevenueStats = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const today = new Date();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(today.getMonth() - 6);
+  const rangeStart = dateRange
+    ? new Date(dateRange.startDate + "T00:00:00.000")
+    : (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 6);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      })();
+  const rangeEnd = dateRange
+    ? new Date(dateRange.endDate + "T23:59:59.999")
+    : (() => {
+        const d = new Date(today);
+        d.setHours(23, 59, 59, 999);
+        return d;
+      })();
 
   let invoiceJobIdFilter: ReturnType<typeof inArray> | undefined;
   if (organizationId) {
@@ -66,6 +99,7 @@ export const getRevenueStats = async (organizationId?: string) => {
     if (jobIds.length === 0) {
       return {
         currentMonthTotal: 0,
+        total: 0,
         growthPercentage: 0,
         chartData: [],
       };
@@ -75,47 +109,79 @@ export const getRevenueStats = async (organizationId?: string) => {
 
   const invoiceWhereBase = and(
     ...(invoiceJobIdFilter ? [invoiceJobIdFilter] : []),
-    eq(invoices.status, "paid"),
+    inArray(invoices.status, [...REVENUE_INVOICE_STATUSES]),
     eq(invoices.isDeleted, false),
+    gte(invoices.invoiceDate, rangeStart),
+    lte(invoices.invoiceDate, rangeEnd),
   );
 
-  // Get monthly revenue from paid invoices
+  // Get monthly revenue by invoice date (same definition as reports)
   const monthlyRevenue = await db
     .select({
-      month: sql<string>`TO_CHAR(${invoices.paidDate}, 'Mon')`,
-      monthNum: sql<number>`EXTRACT(MONTH FROM ${invoices.paidDate})`,
+      month: sql<string>`TO_CHAR(${invoices.invoiceDate}, 'Mon')`,
+      monthNum: sql<number>`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
       revenue: sum(invoices.totalAmount),
     })
     .from(invoices)
-    .where(and(invoiceWhereBase, gte(invoices.paidDate, sixMonthsAgo)))
+    .where(invoiceWhereBase)
     .groupBy(
-      sql`TO_CHAR(${invoices.paidDate}, 'Mon')`,
-      sql`EXTRACT(MONTH FROM ${invoices.paidDate})`,
+      sql`TO_CHAR(${invoices.invoiceDate}, 'Mon')`,
+      sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
     )
-    .orderBy(sql`EXTRACT(MONTH FROM ${invoices.paidDate})`);
+    .orderBy(sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`);
 
-  // Calculate total revenue for current month
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  // "Current" month = last month in range (rangeEnd's month); previous = month before
+  const firstDayOfCurrentMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth(),
+    1,
+  );
+  const lastDayOfCurrentMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
   const currentMonthRevenue = await db
     .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
-    .where(and(invoiceWhereBase, gte(invoices.paidDate, firstDayOfMonth)));
+    .where(
+      and(
+        ...(invoiceJobIdFilter ? [invoiceJobIdFilter] : []),
+        inArray(invoices.status, [...REVENUE_INVOICE_STATUSES]),
+        eq(invoices.isDeleted, false),
+        gte(invoices.invoiceDate, firstDayOfCurrentMonth),
+        lte(invoices.invoiceDate, lastDayOfCurrentMonth),
+      ),
+    );
 
-  // Calculate previous month for comparison
   const firstDayOfPrevMonth = new Date(
-    today.getFullYear(),
-    today.getMonth() - 1,
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth() - 1,
     1,
   );
-  const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  const lastDayOfPrevMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth(),
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
   const previousMonthRevenue = await db
     .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
     .where(
       and(
-        invoiceWhereBase,
-        gte(invoices.paidDate, firstDayOfPrevMonth),
-        lte(invoices.paidDate, lastDayOfPrevMonth),
+        ...(invoiceJobIdFilter ? [invoiceJobIdFilter] : []),
+        inArray(invoices.status, [...REVENUE_INVOICE_STATUSES]),
+        eq(invoices.isDeleted, false),
+        gte(invoices.invoiceDate, firstDayOfPrevMonth),
+        lte(invoices.invoiceDate, lastDayOfPrevMonth),
       ),
     );
 
@@ -126,33 +192,48 @@ export const getRevenueStats = async (organizationId?: string) => {
       ? ((currentTotal - previousTotal) / previousTotal) * 100
       : 0;
 
-  // Format chart data
   const chartData = monthlyRevenue.map((item) => ({
     month: item.month,
     revenue: Number(item.revenue || 0),
-    target: Number(item.revenue || 0) * 0.9, // Target is 90% of revenue for now
+    target: Number(item.revenue || 0) * 0.9,
   }));
+
+  const total = chartData.reduce((sum, d) => sum + d.revenue, 0);
 
   return {
     currentMonthTotal: currentTotal,
+    total,
     growthPercentage: Math.round(growthPercentage),
     chartData,
   };
 };
 
 /**
- * Get active jobs statistics for the last 6 months
+ * Get active jobs statistics for the last 6 months (or for date range when provided)
  */
-export const getActiveJobsStats = async (organizationId?: string) => {
+export const getActiveJobsStats = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const today = new Date();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(today.getMonth() - 6);
+  const rangeStart = dateRange
+    ? new Date(dateRange.startDate)
+    : (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 6);
+        return d;
+      })();
+  const rangeEnd = dateRange ? new Date(dateRange.endDate) : today;
 
   const bidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  // Get jobs started per month via bids.organizationId
+  const dateFilter = and(
+    gte(jobs.actualStartDate, rangeStart),
+    lte(jobs.actualStartDate, rangeEnd),
+  );
+
   const monthlyJobs = await db
     .select({
       month: sql<string>`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
@@ -164,7 +245,7 @@ export const getActiveJobsStats = async (organizationId?: string) => {
     .where(
       and(
         ...(bidOrgFilter ? [bidOrgFilter] : []),
-        gte(jobs.actualStartDate, sixMonthsAgo),
+        dateFilter,
         eq(jobs.isDeleted, false),
       ),
     )
@@ -174,7 +255,6 @@ export const getActiveJobsStats = async (organizationId?: string) => {
     )
     .orderBy(sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`);
 
-  // Get current active jobs count
   const activeJobsCount = await db
     .select({
       count: count(jobs.id),
@@ -189,7 +269,16 @@ export const getActiveJobsStats = async (organizationId?: string) => {
       ),
     );
 
-  // Get last month's active jobs for comparison
+  const firstDayOfPrevMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth() - 1,
+    1,
+  );
+  const lastDayOfPrevMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth(),
+    0,
+  );
   const lastMonthActiveJobs = await db
     .select({
       count: count(jobs.id),
@@ -201,11 +290,8 @@ export const getActiveJobsStats = async (organizationId?: string) => {
         ...(bidOrgFilter ? [bidOrgFilter] : []),
         eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
-        gte(
-          jobs.createdAt,
-          new Date(today.getFullYear(), today.getMonth() - 1, 1),
-        ),
-        lte(jobs.createdAt, new Date(today.getFullYear(), today.getMonth(), 0)),
+        gte(jobs.createdAt, firstDayOfPrevMonth),
+        lte(jobs.createdAt, lastDayOfPrevMonth),
       ),
     );
 
@@ -229,14 +315,12 @@ export const getActiveJobsStats = async (organizationId?: string) => {
 };
 
 /**
- * Get team utilization statistics
+ * Get team utilization statistics (optionally scoped to date range)
  */
-export const getTeamUtilization = async (organizationId?: string) => {
-  const today = new Date();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(today.getMonth() - 6);
-
-  // Get total employees (active = available, on_leave, in_field; no org filter - T3-wide)
+export const getTeamUtilization = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const totalEmployees = await db
     .select({
       count: count(employees.id),
@@ -253,7 +337,13 @@ export const getTeamUtilization = async (organizationId?: string) => {
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  // Get assigned employees count
+  const jobDateFilter = dateRange
+    ? and(
+        sql`${jobs.scheduledStartDate} <= ${dateRange.endDate}`,
+        sql`${jobs.scheduledEndDate} >= ${dateRange.startDate}`,
+      )
+    : undefined;
+
   const assignedEmployees = await db
     .select({
       count: sql<number>`COUNT(DISTINCT ${jobTeamMembers.employeeId})`,
@@ -264,6 +354,7 @@ export const getTeamUtilization = async (organizationId?: string) => {
     .where(
       and(
         ...(assignedOrgFilter ? [assignedOrgFilter] : []),
+        ...(jobDateFilter ? [jobDateFilter] : []),
         eq(jobTeamMembers.isActive, true),
         eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
@@ -274,8 +365,6 @@ export const getTeamUtilization = async (organizationId?: string) => {
   const assigned = Number(assignedEmployees[0]?.count || 0);
   const utilizationPercentage = Math.round((assigned / total) * 100);
 
-  // Monthly utilization: use current utilization for all months (no simulated random)
-  // TODO: replace with real monthly utilization from timesheets when historical data is available
   const chartData = Array.from({ length: 6 }, (_, i) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - i));
@@ -294,15 +383,19 @@ export const getTeamUtilization = async (organizationId?: string) => {
 };
 
 /**
- * Get today's dispatch - employees assigned to jobs today
+ * Get today's dispatch - employees assigned to jobs for today (or for startDate when date range provided)
  */
-export const getTodaysDispatch = async (organizationId?: string) => {
-  const today = new Date().toISOString().split("T")[0];
+export const getTodaysDispatch = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
+  const dispatchDate = dateRange
+    ? dateRange.startDate
+    : new Date().toISOString().split("T")[0];
   const dispatchBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  // Get employees assigned to jobs scheduled for today
   const dispatch = await db
     .select({
       id: employees.id,
@@ -325,8 +418,8 @@ export const getTodaysDispatch = async (organizationId?: string) => {
         eq(jobTeamMembers.isActive, true),
         eq(employees.isDeleted, false),
         eq(jobs.isDeleted, false),
-        sql`${jobs.scheduledStartDate} <= ${today}`,
-        sql`${jobs.scheduledEndDate} >= ${today}`,
+        sql`${jobs.scheduledStartDate} <= ${dispatchDate}`,
+        sql`${jobs.scheduledEndDate} >= ${dispatchDate}`,
       ),
     )
     .limit(20)
@@ -345,14 +438,29 @@ export const getTodaysDispatch = async (organizationId?: string) => {
 };
 
 /**
- * Get active bids statistics
+ * Get active bids statistics (optionally filter by createdAt in date range)
  */
-export const getActiveBidsStats = async (organizationId?: string) => {
+export const getActiveBidsStats = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const bidsOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  // Get active bids (in_progress, pending)
+  const createdAtFilter = dateRange
+    ? and(
+        gte(bidsTable.createdAt, new Date(dateRange.startDate)),
+        lte(bidsTable.createdAt, new Date(dateRange.endDate)),
+      )
+    : undefined;
+
+  const baseWhere = and(
+    ...(bidsOrgFilter ? [bidsOrgFilter] : []),
+    ...(createdAtFilter ? [createdAtFilter] : []),
+    eq(bidsTable.isDeleted, false),
+  );
+
   const activeBids = await db
     .select({
       id: bidsTable.id,
@@ -364,57 +472,36 @@ export const getActiveBidsStats = async (organizationId?: string) => {
     })
     .from(bidsTable)
     .where(
-      and(
-        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
-        sql`${bidsTable.status} IN ('in_progress', 'pending')`,
-        eq(bidsTable.isDeleted, false),
-      ),
+      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'pending')`),
     )
     .orderBy(desc(bidsTable.createdAt))
     .limit(5);
 
-  // Calculate win rate
   const totalBids = await db
     .select({
       count: count(bidsTable.id),
     })
     .from(bidsTable)
-    .where(
-      and(
-        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
-        eq(bidsTable.isDeleted, false),
-      ),
-    );
+    .where(baseWhere);
 
   const wonBids = await db
     .select({
       count: count(bidsTable.id),
     })
     .from(bidsTable)
-    .where(
-      and(
-        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
-        eq(bidsTable.marked, "won"),
-        eq(bidsTable.isDeleted, false),
-      ),
-    );
+    .where(and(baseWhere, eq(bidsTable.marked, "won")));
 
   const total = Number(totalBids[0]?.count || 0);
   const won = Number(wonBids[0]?.count || 0);
   const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-  // Calculate pipeline value
   const pipeline = await db
     .select({
       total: sum(bidsTable.bidAmount),
     })
     .from(bidsTable)
     .where(
-      and(
-        ...(bidsOrgFilter ? [bidsOrgFilter] : []),
-        sql`${bidsTable.status} IN ('in_progress', 'pending')`,
-        eq(bidsTable.isDeleted, false),
-      ),
+      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'pending')`),
     );
 
   const pipelineValue = Number(pipeline[0]?.total || 0);
@@ -430,16 +517,23 @@ export const getActiveBidsStats = async (organizationId?: string) => {
 };
 
 /**
- * Get performance overview
+ * Get performance overview (optionally scoped to date range)
  * Invoices are scoped by organization via job → bid (invoices table has no organizationId).
  */
-export const getPerformanceOverview = async (organizationId?: string) => {
+export const getPerformanceOverview = async (
+  organizationId?: string,
+  dateRange?: DateRangeFilter,
+) => {
   const today = new Date();
+  const rangeEnd = dateRange ? new Date(dateRange.endDate) : today;
   const perfBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  let invoiceJobIdFilter: ReturnType<typeof inArray> | ReturnType<typeof sql> | undefined;
+  let invoiceJobIdFilter:
+    | ReturnType<typeof inArray>
+    | ReturnType<typeof sql>
+    | undefined;
   if (organizationId) {
     const jobIdsResult = await db
       .select({ id: jobs.id })
@@ -451,7 +545,13 @@ export const getPerformanceOverview = async (organizationId?: string) => {
       jobIds.length > 0 ? inArray(invoices.jobId, jobIds) : sql`false`;
   }
 
-  // On-time jobs percentage
+  const completedJobDateFilter = dateRange
+    ? and(
+        gte(jobs.actualEndDate, new Date(dateRange.startDate)),
+        lte(jobs.actualEndDate, new Date(dateRange.endDate)),
+      )
+    : undefined;
+
   const totalCompletedJobs = await db
     .select({ count: count(jobs.id) })
     .from(jobs)
@@ -459,6 +559,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     .where(
       and(
         ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
+        ...(completedJobDateFilter ? [completedJobDateFilter] : []),
         eq(jobs.status, "completed"),
         eq(jobs.isDeleted, false),
       ),
@@ -471,6 +572,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     .where(
       and(
         ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
+        ...(completedJobDateFilter ? [completedJobDateFilter] : []),
         eq(jobs.status, "completed"),
         eq(jobs.isDeleted, false),
         sql`${jobs.actualEndDate} <= ${jobs.scheduledEndDate}`,
@@ -482,16 +584,22 @@ export const getPerformanceOverview = async (organizationId?: string) => {
   const onTimePercentage =
     totalCompleted > 0 ? Math.round((onTime / totalCompleted) * 100) : 0;
 
-  // Placeholder until a ratings table exists; UI can treat null as "N/A"
   const clientRating: number | null = null;
 
-  // Bid win rate
+  const bidDateFilter = dateRange
+    ? and(
+        gte(bidsTable.createdAt, new Date(dateRange.startDate)),
+        lte(bidsTable.createdAt, new Date(dateRange.endDate)),
+      )
+    : undefined;
+
   const totalBids = await db
     .select({ count: count(bidsTable.id) })
     .from(bidsTable)
     .where(
       and(
         ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
+        ...(bidDateFilter ? [bidDateFilter] : []),
         eq(bidsTable.isDeleted, false),
       ),
     );
@@ -502,6 +610,7 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     .where(
       and(
         ...(perfBidOrgFilter ? [perfBidOrgFilter] : []),
+        ...(bidDateFilter ? [bidDateFilter] : []),
         eq(bidsTable.marked, "won"),
         eq(bidsTable.isDeleted, false),
       ),
@@ -511,8 +620,11 @@ export const getPerformanceOverview = async (organizationId?: string) => {
   const won = Number(wonBids[0]?.count || 0);
   const bidWinRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-  // Revenue for current month (invoices scoped via jobIds when org provided)
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const firstDayOfMonth = new Date(
+    rangeEnd.getFullYear(),
+    rangeEnd.getMonth(),
+    1,
+  );
   const currentMonthRevenue = await db
     .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
@@ -526,7 +638,6 @@ export const getPerformanceOverview = async (organizationId?: string) => {
     );
 
   const currentRevenue = Number(currentMonthRevenue[0]?.total || 0);
-  // Placeholder: no goals table yet; target null means "no goal set"
   const monthlyGoalTarget: number | null = null;
   const goalProgress =
     monthlyGoalTarget != null && monthlyGoalTarget > 0
@@ -546,18 +657,25 @@ export const getPerformanceOverview = async (organizationId?: string) => {
 };
 
 /**
- * Get priority jobs for dashboard table
+ * Get priority jobs for dashboard table (optionally filter by due date in range)
  */
 export const getPriorityJobs = async (
   organizationId?: string,
   options: { limit?: number; search?: string } = {},
+  dateRange?: DateRangeFilter,
 ) => {
   const { limit = 10, search } = options;
   const priorityBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  // Build query
+  const dueDateFilter = dateRange
+    ? and(
+        gte(jobs.scheduledEndDate, dateRange.startDate),
+        lte(jobs.scheduledEndDate, dateRange.endDate),
+      )
+    : undefined;
+
   let query = db
     .select({
       id: jobs.id,
@@ -573,13 +691,13 @@ export const getPriorityJobs = async (
     .where(
       and(
         ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
+        ...(dueDateFilter ? [dueDateFilter] : []),
         eq(jobs.isDeleted, false),
         sql`${jobs.status} IN ('in_progress', 'planned', 'on_hold')`,
       ),
     )
     .$dynamic();
 
-  // Add search filter if provided
   if (search) {
     query = query.where(
       sql`(

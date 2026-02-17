@@ -23,13 +23,45 @@ import { organizations } from "../drizzle/schema/client.schema.js";
  */
 export const getInvoices = async (req: Request, res: Response) => {
   try {
-    // Simple pagination options - only include if defined
-    const options: { page?: number; limit?: number } = {};
+    // Build options with pagination and filters
+    const options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+      dueDateStart?: string;
+      dueDateEnd?: string;
+      jobId?: string;
+    } = {};
+    
     if (req.query.page) {
       options.page = parseInt(req.query.page as string, 10);
     }
     if (req.query.limit) {
       options.limit = parseInt(req.query.limit as string, 10);
+    }
+    if (req.query.status) {
+      options.status = req.query.status as string;
+    }
+    if (req.query.search) {
+      options.search = req.query.search as string;
+    }
+    if (req.query.startDate) {
+      options.startDate = req.query.startDate as string;
+    }
+    if (req.query.endDate) {
+      options.endDate = req.query.endDate as string;
+    }
+    if (req.query.dueDateStart) {
+      options.dueDateStart = req.query.dueDateStart as string;
+    }
+    if (req.query.dueDateEnd) {
+      options.dueDateEnd = req.query.dueDateEnd as string;
+    }
+    if (req.query.jobId) {
+      options.jobId = req.query.jobId as string;
     }
 
     const organizationId = req.query.organizationId as string | undefined;

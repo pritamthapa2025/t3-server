@@ -247,20 +247,66 @@ export const getClientById = async (id: string) => {
 
   if (!row) return null;
 
-  // Get primary contact
-  const [primaryContact] = await db
+  // Get all contacts (not just primary)
+  const contacts = await db
     .select()
     .from(clientContacts)
     .where(
       and(
         eq(clientContacts.organizationId, id),
-        eq(clientContacts.isPrimary, true),
         eq(clientContacts.isDeleted, false),
       ),
     )
-    .limit(1);
+    .orderBy(desc(clientContacts.isPrimary), desc(clientContacts.createdAt));
+
+  // Get properties
+  const propertiesList = await db
+    .select()
+    .from(properties)
+    .where(
+      and(
+        eq(properties.organizationId, id),
+        eq(properties.isDeleted, false),
+      ),
+    )
+    .orderBy(desc(properties.createdAt));
+
+  // Get jobs through bids
+  const jobsList = await db
+    .select({
+      job: jobs,
+      bid: bidsTable,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.organizationId, id),
+        eq(jobs.isDeleted, false),
+      ),
+    )
+    .orderBy(desc(jobs.createdAt));
+
+  // Get invoicing summary
+  const [invoicingSummary] = await db
+    .select({
+      totalInvoiced: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+      totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
+      totalOutstanding: sql<string>`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`,
+      invoiceCount: count(invoices.id),
+    })
+    .from(invoices)
+    .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.organizationId, id),
+        eq(invoices.isDeleted, false),
+      ),
+    );
 
   const { createdByName, organization, clientType } = row;
+  const primaryContact = contacts.find(c => c.isPrimary);
 
   return {
     organization: {
@@ -271,6 +317,43 @@ export const getClientById = async (id: string) => {
       phone: primaryContact?.phone ?? null,
     },
     clientType,
+    contacts: contacts.map(contact => ({
+      id: contact.id,
+      fullName: contact.fullName,
+      email: contact.email,
+      phone: contact.phone,
+      title: contact.title,
+      isPrimary: contact.isPrimary,
+      picture: contact.picture,
+      createdAt: contact.createdAt,
+    })),
+    properties: propertiesList.map(property => ({
+      id: property.id,
+      propertyName: property.propertyName,
+      propertyType: property.propertyType,
+      addressLine1: property.addressLine1,
+      city: property.city,
+      state: property.state,
+      zipCode: property.zipCode,
+      createdAt: property.createdAt,
+    })),
+    jobs: jobsList.map(item => ({
+      id: item.job.id,
+      name: item.job.name,
+      jobNumber: item.job.jobNumber,
+      status: item.job.status,
+      startDate: item.job.startDate,
+      endDate: item.job.endDate,
+      contractValue: item.job.contractValue,
+      bidAmount: item.bid.bidAmount,
+      createdAt: item.job.createdAt,
+    })),
+    invoicing: {
+      totalInvoiced: parseFloat(invoicingSummary?.totalInvoiced ?? "0"),
+      totalPaid: parseFloat(invoicingSummary?.totalPaid ?? "0"),
+      totalOutstanding: parseFloat(invoicingSummary?.totalOutstanding ?? "0"),
+      invoiceCount: Number(invoicingSummary?.invoiceCount ?? 0),
+    },
   };
 };
 

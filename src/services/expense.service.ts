@@ -17,6 +17,7 @@ import {
   expenseReceipts,
 } from "../drizzle/schema/expenses.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 /** Expense category enum values with display labels (for dropdown) */
 const EXPENSE_CATEGORIES: { value: string; label: string }[] = [
@@ -105,6 +106,27 @@ export async function getExpenses(
       ),
     );
   }
+  if (filters?.expenseType) {
+    whereConditions.push(
+      eq(
+        expenses.expenseType,
+        filters.expenseType as (typeof expenses.$inferSelect)["expenseType"],
+      ),
+    );
+  }
+  if (filters?.paymentMethod) {
+    whereConditions.push(
+      eq(
+        expenses.paymentMethod,
+        filters.paymentMethod as (typeof expenses.$inferSelect)["paymentMethod"],
+      ),
+    );
+  }
+  if (filters?.vendor) {
+    whereConditions.push(
+      sql`LOWER(${expenses.vendor}) LIKE LOWER(${`%${filters.vendor}%`})`,
+    );
+  }
   if (filters?.category) {
     whereConditions.push(
       eq(expenses.category, filters.category as typeof expenses.$inferSelect.category),
@@ -125,6 +147,42 @@ export async function getExpenses(
     whereConditions.push(lte(expenses.expenseDate, filters.endDate as string));
   }
 
+  // If filtering by employeeId, we need to join through createdBy → users → employees
+  const needsEmployeeJoin = !!filters?.employeeId;
+
+  if (needsEmployeeJoin) {
+    whereConditions.push(eq(employees.id, filters.employeeId as number));
+
+    const [totalRow] = await db
+      .select({ total: count() })
+      .from(expenses)
+      .innerJoin(users, eq(expenses.createdBy, users.id))
+      .innerJoin(employees, eq(users.id, employees.userId))
+      .where(and(...whereConditions));
+
+    const data = await db
+      .select({ ...getTableColumns(expenses) })
+      .from(expenses)
+      .innerJoin(users, eq(expenses.createdBy, users.id))
+      .innerJoin(employees, eq(users.id, employees.userId))
+      .where(and(...whereConditions))
+      .orderBy(desc(expenses.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const total = totalRow?.total ?? 0;
+    return {
+      data,
+      total,
+      pagination: {
+        page: Math.floor(offset / limit) + 1,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  // Standard query without employee join
   const [totalRow] = await db
     .select({ total: count() })
     .from(expenses)

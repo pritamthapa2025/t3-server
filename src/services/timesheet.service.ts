@@ -1288,25 +1288,34 @@ export const canApproveTimesheet = async (
     .limit(1);
 
   if (!employee?.userId) {
-    return { allowed: false, message: "Employee or user not found for timesheet" };
+    return {
+      allowed: false,
+      message: "Employee or user not found for timesheet",
+    };
   }
 
   const submitterRole = await getUserRoles(employee.userId);
   const approverRole = await getUserRoles(approverUserId);
 
-  const submitterRoleName = submitterRole?.roleName?.trim().toLowerCase() ?? "";
+  const submitterRoleNameRaw = submitterRole?.roleName?.trim() ?? "";
+  const submitterRoleName = submitterRoleNameRaw.toLowerCase();
   const approverRoleName = approverRole?.roleName?.trim().toLowerCase() ?? "";
 
   if (!approverRoleName) {
     return { allowed: false, message: "Approver has no role assigned" };
   }
 
-  // Technician's timesheet (including "Field Technician"): Manager or Executive can approve
-  if (submitterRoleName.includes("technician")) {
-    const allowed = approverRoleName === "manager" || approverRoleName === "executive";
+  // Technician's timesheet: Manager or Executive can approve (case-sensitive role name)
+  if (submitterRoleNameRaw === "Technician") {
+    const allowed =
+      approverRoleName === "manager" || approverRoleName === "executive";
     return allowed
       ? { allowed: true }
-      : { allowed: false, message: "Only a Manager or Executive can approve a Technician's timesheet" };
+      : {
+          allowed: false,
+          message:
+            "Only a Manager or Executive can approve a Technician's timesheet",
+        };
   }
 
   // Manager's timesheet: only Executive can approve
@@ -1314,14 +1323,20 @@ export const canApproveTimesheet = async (
     const allowed = approverRoleName === "executive";
     return allowed
       ? { allowed: true }
-      : { allowed: false, message: "Only an Executive can approve a Manager's timesheet" };
+      : {
+          allowed: false,
+          message: "Only an Executive can approve a Manager's timesheet",
+        };
   }
 
   // Executive or any other role: only Executive can approve
   const allowed = approverRoleName === "executive";
   return allowed
     ? { allowed: true }
-    : { allowed: false, message: "Only an Executive can approve this timesheet" };
+    : {
+        allowed: false,
+        message: "Only an Executive can approve this timesheet",
+      };
 };
 
 export const approveTimesheet = async (

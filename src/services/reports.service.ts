@@ -236,7 +236,12 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
     .where(
       and(
         eq(jobs.isDeleted, false),
-        inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
+        inArray(jobs.status, [
+          "planned",
+          "scheduled",
+          "in_progress",
+          "on_hold",
+        ]),
         ...jobDateConditions,
       ),
     );
@@ -281,7 +286,9 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
       );
     const prevRevenue = parseFloat(prevRevenueQuery[0]?.total || "0");
     if (prevRevenue > 0) {
-      revenueGrowth = Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100);
+      revenueGrowth = Math.round(
+        ((totalRevenue - prevRevenue) / prevRevenue) * 100,
+      );
     } else if (totalRevenue > 0) {
       revenueGrowth = 100;
     } else {
@@ -1530,7 +1537,7 @@ export const getTechnicianProductivityReport = async (
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(userRoles, eq(users.id, userRoles.userId))
     .leftJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(and(...conditions, eq(roles.name, "technician")))
+    .where(and(...conditions, eq(roles.name, "Technician")))
     .groupBy(employees.id, users.fullName);
 
   return productivityData.map((p) => {
@@ -1555,35 +1562,44 @@ export const getTechnicianQualityReport = async (
   organizationId: string | undefined,
   filters?: TechnicianPerformanceFilter,
 ) => {
-  const conditions = [eq(jobs.isDeleted, false)];
+  // Start from technicians (employees with role Technician) so we return all of them
+  // with job counts from bids assigned to them, even when count is 0
+  const technicianConditions = [eq(roles.name, "Technician")];
+  if (filters?.technicianId) {
+    technicianConditions.push(eq(employees.id, filters.technicianId));
+  }
 
+  const jobConditions = [eq(jobs.isDeleted, false)];
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    jobConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    jobConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
   }
   if (organizationId) {
-    conditions.push(eq(bidsTable.organizationId, organizationId));
+    jobConditions.push(eq(bidsTable.organizationId, organizationId));
   }
 
-  // This would need callback/reopen tracking - returning placeholder
   const technicianData = await db
     .select({
       employeeName: users.fullName,
       totalJobs: sql<number>`COUNT(${jobs.id})`,
     })
-    .from(jobs)
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(users, eq(bidsTable.assignedTo, users.id))
-    .leftJoin(employees, eq(users.id, employees.userId))
-    .leftJoin(userRoles, eq(users.id, userRoles.userId))
-    .leftJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(and(...conditions, eq(roles.name, "technician")))
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(
+      bidsTable,
+      and(eq(bidsTable.assignedTo, users.id), eq(bidsTable.isDeleted, false)),
+    )
+    .leftJoin(jobs, and(eq(jobs.bidId, bidsTable.id), ...jobConditions))
+    .where(and(...technicianConditions))
     .groupBy(employees.id, users.fullName);
 
   return technicianData.map((t) => ({
     name: t.employeeName,
+    totalJobs: Number(t.totalJobs),
     callbackRate: 0, // Would need callback tracking
     reopenRate: 0, // Would need reopen tracking
     jobIssues: 0, // Would need issue tracking
@@ -1594,36 +1610,74 @@ export const getTechnicianProfitContribution = async (
   organizationId: string | undefined,
   filters?: TechnicianPerformanceFilter,
 ) => {
-  const conditions = [eq(jobs.isDeleted, false), eq(jobs.status, "completed")];
+  // Subqueries: revenue and cost per job (avoids invoice×expense Cartesian product)
+  const jobRevenueSq = db
+    .select({
+      jobId: invoices.jobId,
+      revenue:
+        sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`.as(
+          "revenue",
+        ),
+    })
+    .from(invoices)
+    .where(sql`${invoices.jobId} IS NOT NULL`)
+    .groupBy(invoices.jobId)
+    .as("job_rev");
 
+  const jobCostSq = db
+    .select({
+      jobId: expenses.jobId,
+      cost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`.as(
+        "cost",
+      ),
+    })
+    .from(expenses)
+    .where(
+      and(eq(expenses.isDeleted, false), sql`${expenses.jobId} IS NOT NULL`),
+    )
+    .groupBy(expenses.jobId)
+    .as("job_cost");
+
+  const technicianConditions = [eq(roles.name, "Technician")];
+  if (filters?.technicianId) {
+    technicianConditions.push(eq(employees.id, filters.technicianId));
+  }
+
+  const bidJoinConditions = [
+    eq(bidsTable.assignedTo, users.id),
+    eq(bidsTable.isDeleted, false),
+  ];
+  if (organizationId) {
+    bidJoinConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const jobJoinConditions = [
+    eq(jobs.bidId, bidsTable.id),
+    eq(jobs.isDeleted, false),
+  ];
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    jobJoinConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
-  }
-  if (filters?.technicianId) {
-    conditions.push(eq(employees.id, filters.technicianId));
-  }
-  if (organizationId) {
-    conditions.push(eq(bidsTable.organizationId, organizationId));
+    jobJoinConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
   }
 
+  // Start from technicians so we return all of them with revenue/cost (0 or summed)
   const profitData = await db
     .select({
       employeeName: users.fullName,
-      revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
-      cost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
+      revenue: sql<string>`COALESCE(SUM(CAST(${jobRevenueSq.revenue} AS NUMERIC)), 0)`,
+      cost: sql<string>`COALESCE(SUM(CAST(${jobCostSq.cost} AS NUMERIC)), 0)`,
     })
-    .from(jobs)
-    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(users, eq(bidsTable.assignedTo, users.id))
-    .leftJoin(employees, eq(users.id, employees.userId))
-    .leftJoin(userRoles, eq(users.id, userRoles.userId))
-    .leftJoin(roles, eq(userRoles.roleId, roles.id))
-    .leftJoin(invoices, eq(jobs.id, invoices.jobId))
-    .leftJoin(expenses, eq(jobs.id, expenses.jobId))
-    .where(and(...conditions, eq(roles.name, "technician")))
+    .from(employees)
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(bidsTable, and(...bidJoinConditions))
+    .leftJoin(jobs, and(...jobJoinConditions))
+    .leftJoin(jobRevenueSq, eq(jobs.id, jobRevenueSq.jobId))
+    .leftJoin(jobCostSq, eq(jobs.id, jobCostSq.jobId))
+    .where(and(...technicianConditions))
     .groupBy(employees.id, users.fullName);
 
   return profitData.map((p) => {

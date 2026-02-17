@@ -1,5 +1,13 @@
 import { Router, type IRouter } from "express";
 import {
+  getFinancialDashboardHandler,
+  getFinancialSummarySectionHandler,
+  getFinancialJobsSummarySectionHandler,
+  getFinancialCostCategoriesSectionHandler,
+  getFinancialProfitabilitySectionHandler,
+  getFinancialProfitTrendSectionHandler,
+  getFinancialForecastingSectionHandler,
+  getFinancialReportsSectionHandler,
   getFinancialSummaryHandler,
   createFinancialSummaryHandler,
   updateFinancialSummaryHandler,
@@ -30,6 +38,7 @@ import {
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
+  getFinancialDashboardQuerySchema,
   getFinancialSummaryQuerySchema,
   createFinancialSummarySchema,
   updateFinancialSummarySchema,
@@ -67,7 +76,60 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
-// Financial Summary Routes
+// ============================
+// Financial module – report-style section APIs (one per tab/area)
+// ============================
+// GET /api/v1/org/financial/summary – Top-level KPIs
+router.get(
+  "/financial/summary",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialSummarySectionHandler
+);
+// GET /api/v1/org/financial/jobs-summary – Jobs list for Summary tab table
+router.get(
+  "/financial/jobs-summary",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialJobsSummarySectionHandler
+);
+// GET /api/v1/org/financial/cost-categories – Cost breakdown (donut + Budget at Risk)
+router.get(
+  "/financial/cost-categories",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialCostCategoriesSectionHandler
+);
+// GET /api/v1/org/financial/profitability – Projected vs actual, job profitability, trend
+router.get(
+  "/financial/profitability",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialProfitabilitySectionHandler
+);
+// GET /api/v1/org/financial/profit-trend – Trend data only (chart)
+router.get(
+  "/financial/profit-trend",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialProfitTrendSectionHandler
+);
+// GET /api/v1/org/financial/forecasting – Cash flow projection, scenarios, revenue forecast
+router.get(
+  "/financial/forecasting",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialForecastingSectionHandler
+);
+// GET /api/v1/org/financial/reports – Report definitions (Reports & Exports tab)
+router.get(
+  "/financial/reports",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialReportsSectionHandler
+);
+
+// GET /api/v1/org/financial/dashboard – Optional: single aggregate call
+router.get(
+  "/financial/dashboard",
+  validate(getFinancialDashboardQuerySchema),
+  getFinancialDashboardHandler
+);
+
+// Financial Summary Routes (CRUD)
 router
   .route("/financial-summary")
   .get(validate(getFinancialSummaryQuerySchema), getFinancialSummaryHandler)

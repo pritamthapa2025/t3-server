@@ -207,6 +207,7 @@ export const getExpensesQuerySchema = z.object({
     jobId: uuidSchema.optional(),
     sourceId: uuidSchema.optional(),
     bidId: uuidSchema.optional(),
+    vendor: z.string().optional(),
     startDate: dateString.optional(),
     endDate: dateString.optional(),
     submittedStartDate: dateString.optional(),

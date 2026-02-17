@@ -92,6 +92,7 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
       category: req.query.category as string,
       jobId: req.query.jobId as string,
       bidId: req.query.bidId as string,
+      vendor: req.query.vendor as string,
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
       submittedStartDate: req.query.submittedStartDate as string,

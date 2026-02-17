@@ -426,7 +426,9 @@ export const prepareInvoiceDataForPDF = (
     // Client Info
     clientName: client?.name || "",
     contactName:
-      options?.primaryContact?.fullName?.trim() || client?.primaryContactName || "",
+      options?.primaryContact?.fullName?.trim() ||
+      client?.primaryContactName ||
+      "",
     billingAddressLine1: invoice.billingAddressLine1 || client?.address || "",
     billingAddressLine2: invoice.billingAddressLine2 || "",
     billingCity,
@@ -480,7 +482,7 @@ export const prepareInvoiceDataForPDF = (
       : "0.00",
     hasOperatingExpenses: Boolean(
       financialBreakdown?.operatingExpenses &&
-      Number(financialBreakdown.operatingExpenses) > 0
+        Number(financialBreakdown.operatingExpenses) > 0
     ),
 
     // Totals - use financial breakdown if available, otherwise use invoice totals
@@ -594,7 +596,7 @@ export const prepareQuoteDataForPDF = (
   const totalPrice =
     financialBreakdown?.totalPrice != null
       ? Number(financialBreakdown.totalPrice)
-      : NaN;
+        : NaN;
   const totalAmount = Number.isFinite(totalPrice)
     ? totalPrice.toFixed(2)
     : "0.00";
@@ -636,7 +638,7 @@ export const prepareQuoteDataForPDF = (
     : "0.00";
   const hasOperatingExpenses = Boolean(
     financialBreakdown?.operatingExpenses &&
-    Number(financialBreakdown.operatingExpenses) > 0
+      Number(financialBreakdown.operatingExpenses) > 0
   );
 
   return {
