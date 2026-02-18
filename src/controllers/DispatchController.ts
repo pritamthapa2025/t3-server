@@ -5,6 +5,10 @@ import {
   isDatabaseError,
 } from "../utils/database-error-parser.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
 import {
   getDispatchTasks,
   getDispatchTaskById,
@@ -21,6 +25,7 @@ import {
   getAvailableEmployeesForDispatch,
   getEmployeesWithAssignedTasks,
   getDispatchKPIs,
+  bulkDeleteDispatchTasks,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -58,7 +63,27 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
 
-    const result = await getDispatchTasks(offset, limit, filters);
+    // assigned_only: Technicians see only dispatch tasks they are assigned to
+    const userId = req.user?.id;
+    let dispatchOptions: { ownEmployeeId: number } | undefined;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "dispatch");
+      if (dataFilter.assignedOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (emp) dispatchOptions = { ownEmployeeId: emp.id };
+      }
+    }
+
+    const result = await getDispatchTasks(
+      offset,
+      limit,
+      filters,
+      dispatchOptions,
+    );
 
     logger.info("Dispatch tasks fetched successfully");
     return res.status(200).json({
@@ -274,7 +299,12 @@ export const deleteDispatchTaskHandler = async (
       });
     }
 
-    const deletedTask = await deleteDispatchTask(id);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    const deletedTask = await deleteDispatchTask(id, userId);
 
     if (!deletedTask) {
       return res.status(404).json({
@@ -646,5 +676,30 @@ export const getDispatchKPIsHandler = async (req: Request, res: Response) => {
       success: false,
       message: error.message || "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteDispatchTasksHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteDispatchTasks(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} dispatch tasks by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} dispatch task(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete dispatch tasks error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

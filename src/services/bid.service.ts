@@ -142,6 +142,11 @@ async function getPropertyMinimal(propertyId: string | null | undefined) {
   return p ?? null;
 }
 
+export type GetBidsFilterOptions = {
+  userId: string;
+  applyAssignedOrTeamFilter: boolean;
+};
+
 export const getBids = async (
   organizationId: string | undefined,
   offset: number,
@@ -153,6 +158,7 @@ export const getBids = async (
     assignedTo?: string;
     search?: string;
   },
+  options?: GetBidsFilterOptions,
 ) => {
   // Build where conditions array - organizationId is optional
   const whereConditions = [eq(bidsTable.isDeleted, false)];
@@ -182,6 +188,12 @@ export const getBids = async (
         ilike(bidsTable.siteAddress, `%${filters.search}%`),
       )!,
     );
+  }
+
+  // assigned_only: Technicians see only bids where they are explicitly assignedTo (bids.assigned_to)
+  // Bids with assignedTo=null are excluded - user must be in the assignedTo field
+  if (options?.applyAssignedOrTeamFilter && options?.userId) {
+    whereConditions.push(eq(bidsTable.assignedTo, options.userId));
   }
 
   // Always have at least isDeleted condition, so whereCondition is always defined
@@ -723,12 +735,19 @@ export const updateBid = async (
   return getBidById(id);
 };
 
-export const deleteBid = async (id: string, organizationId: string) => {
+export const deleteBid = async (
+  id: string,
+  organizationId: string,
+  deletedBy: string,
+) => {
+  const now = new Date();
   const [bid] = await db
     .update(bidsTable)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      deletedBy,
+      updatedAt: now,
     })
     .where(
       and(
@@ -3217,4 +3236,18 @@ export const expireExpiredBids = async (): Promise<{
   }
 
   return { expired, errors };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteBids = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(bidsTable)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(bidsTable.id, ids), eq(bidsTable.isDeleted, false)))
+    .returning({ id: bidsTable.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

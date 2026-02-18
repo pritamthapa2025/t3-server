@@ -15,22 +15,49 @@ import {
   getMyWeeklyTimesheets,
   createTimesheetWithClockData,
   getTimesheetKPIs,
+  bulkDeleteTimesheets,
 } from "../services/timesheet.service.js";
 import {
   syncPayrollFromApprovedTimesheet,
   recalcPayrollForEmployeeWeek,
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 export const getTimesheetsHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
-
     const offset = (page - 1) * limit;
+    const userId = req.user?.id;
 
-    const timesheets = await getTimesheets(offset, limit, search);
+    let timesheetOptions: { ownEmployeeId?: number } | undefined;
+
+    // own_only: Technicians can only see their own timesheets
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "timesheet");
+      if (dataFilter.ownOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (emp) {
+          timesheetOptions = { ownEmployeeId: emp.id };
+        }
+      }
+    }
+
+    const timesheets = await getTimesheets(
+      offset,
+      limit,
+      search,
+      timesheetOptions,
+    );
 
     logger.info("Timesheets fetched successfully");
     return res.status(200).json({
@@ -47,7 +74,7 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
 
 export const getTimesheetsByEmployeeHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -65,7 +92,7 @@ export const getTimesheetsByEmployeeHandler = async (
       search,
       employeeId,
       dateFrom,
-      dateTo
+      dateTo,
     );
 
     logger.info("Timesheets by employee fetched successfully");
@@ -117,11 +144,11 @@ export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
     const myWeeklyTimesheets = await getMyWeeklyTimesheets(
       currentUser.employeeId,
       startDate,
-      search as string | undefined
+      search as string | undefined,
     );
 
     logger.info(
-      `My weekly timesheets fetched successfully for employee: ${currentUser.employeeId}, week: ${startDate}`
+      `My weekly timesheets fetched successfully for employee: ${currentUser.employeeId}, week: ${startDate}`,
     );
     return res.status(200).json({
       success: true,
@@ -140,7 +167,7 @@ export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
 
 export const getWeeklyTimesheetsByEmployeeHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { weekStartDate, employeeId, departmentId, status, page, limit } =
@@ -150,17 +177,22 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
     let employeeIds: number[] | undefined;
     if (employeeId) {
       if (Array.isArray(employeeId)) {
-        employeeIds = employeeId.map((id) => parseInt(id as string, 10)).filter((id) => !isNaN(id));
+        employeeIds = employeeId
+          .map((id) => parseInt(id as string, 10))
+          .filter((id) => !isNaN(id));
       } else {
         const str = employeeId.toString().trim();
         // Remove brackets if present
-        const cleaned = str.replace(/^\[|\]$/g, '');
+        const cleaned = str.replace(/^\[|\]$/g, "");
         // Split by comma and parse
-        const ids = cleaned.split(',').map((id) => {
-          const trimmed = id.trim();
-          return parseInt(trimmed, 10);
-        }).filter((id) => !isNaN(id) && id > 0);
-        
+        const ids = cleaned
+          .split(",")
+          .map((id) => {
+            const trimmed = id.trim();
+            return parseInt(trimmed, 10);
+          })
+          .filter((id) => !isNaN(id) && id > 0);
+
         employeeIds = ids.length > 0 ? ids : undefined;
       }
     }
@@ -171,7 +203,7 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
       departmentId ? parseInt(departmentId as string, 10) : undefined,
       status as string | undefined,
       page ? parseInt(page as string, 10) : 1,
-      limit ? parseInt(limit as string, 10) : 10
+      limit ? parseInt(limit as string, 10) : 10,
     );
 
     logger.info("Weekly timesheets by employee fetched successfully");
@@ -199,6 +231,25 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Timesheet not found",
       });
+    }
+
+    // own_only: Technicians can only view their own timesheets
+    const userId = req.user?.id;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "timesheet");
+      if (dataFilter.ownOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (!emp || timesheet.employeeId !== emp.id) {
+          return res.status(403).json({
+            success: false,
+            message: "Access denied. You can only view your own timesheets.",
+          });
+        }
+      }
     }
 
     logger.info("Timesheet fetched successfully");
@@ -321,7 +372,12 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as unknown as number;
 
-    const timesheet = await deleteTimesheet(id);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    const timesheet = await deleteTimesheet(id, userId);
     if (!timesheet) {
       return res.status(404).send("Timesheet not found");
     }
@@ -423,7 +479,7 @@ export const clockOutHandler = async (req: Request, res: Response) => {
 
 export const createTimesheetWithClockDataHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const {
@@ -545,7 +601,9 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
     if (!approvalCheck.allowed) {
       return res.status(403).json({
         success: false,
-        message: approvalCheck.message ?? "You are not allowed to approve this timesheet",
+        message:
+          approvalCheck.message ??
+          "You are not allowed to approve this timesheet",
       });
     }
 
@@ -556,8 +614,13 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
     try {
       payrollSync = await syncPayrollFromApprovedTimesheet(timesheetId);
     } catch (payrollError: any) {
-      logger.warn(`Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`);
-      payrollSync = { synced: false, reason: payrollError?.message ?? "Payroll sync failed" };
+      logger.warn(
+        `Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`,
+      );
+      payrollSync = {
+        synced: false,
+        reason: payrollError?.message ?? "Payroll sync failed",
+      };
     }
 
     logger.info(`Timesheet ${timesheetId} approved by ${approvedBy}`);
@@ -602,11 +665,15 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
       timesheetId,
       rejectedBy,
       rejectionReason,
-      notes
+      notes,
     );
 
     // Recalc payroll for this employee/week so the rejected day is excluded (hourly only)
-    if (timesheet && existingTimesheet?.employeeId != null && existingTimesheet?.sheetDate) {
+    if (
+      timesheet &&
+      existingTimesheet?.employeeId != null &&
+      existingTimesheet?.sheetDate
+    ) {
       try {
         await recalcPayrollForEmployeeWeek(
           Number(existingTimesheet.employeeId),
@@ -631,5 +698,30 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteTimesheetsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: number[] };
+    const result = await bulkDeleteTimesheets(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} timesheets by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} timesheet(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete timesheets error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

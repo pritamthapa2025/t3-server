@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
 
 // Access control: use USER data (req.user.id), not organization.
 // Organization = CLIENT data (see .cursorrules). For bid handlers, get client org from the bid (bid.organizationId) when needed.
@@ -37,11 +38,6 @@ const validateParams = (
 
 import { logger } from "../utils/logger.js";
 import {
-  checkBidNumberExists,
-  validateUniqueFields,
-  buildConflictResponse,
-} from "../utils/validation-helpers.js";
-import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
@@ -54,6 +50,7 @@ import {
   createBid,
   updateBid,
   deleteBid,
+  bulkDeleteBids,
   getBidFinancialBreakdown,
   updateBidFinancialBreakdown,
   getBidMaterials,
@@ -157,11 +154,17 @@ export const getBidsHandler = async (req: Request, res: Response) => {
       filters.assignedTo = req.query.assignedTo as string;
     if (req.query.search) filters.search = req.query.search as string;
 
+    const dataFilter = await getDataFilterConditions(userId, "bids");
+    const bidOptions = dataFilter.assignedOnly
+      ? { userId, applyAssignedOrTeamFilter: true }
+      : undefined;
+
     const bids = await getBids(
       organizationId,
       offset,
       limit,
       Object.keys(filters).length > 0 ? filters : undefined,
+      bidOptions,
     );
 
     logger.info("Bids fetched successfully");
@@ -198,6 +201,15 @@ export const getBidByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Users with view_assigned can only view bids they are assigned to
+    if (req.userAccessLevel === "view_assigned" && bid.assignedTo !== userId) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have permission to view this bid. You can only view bids assigned to you.",
+      });
+    }
+
     // Get documents and client (organization) info for the bid
     const [documents, clientInfo] = await Promise.all([
       getBidDocuments(id!),
@@ -229,7 +241,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const createdBy = userId;
-    const { bidNumber, organizationId } = req.body;
+    const { organizationId } = req.body;
 
     // organizationId is required - it's the CLIENT organization ID (not T3)
     // Bids are created FOR client organizations BY T3 employees
@@ -239,25 +251,6 @@ export const createBidHandler = async (req: Request, res: Response) => {
         message:
           "organizationId is required. This should be the client organization ID.",
       });
-    }
-
-    // Pre-validate unique fields before attempting to create
-    const uniqueFieldChecks = [];
-
-    // Check bid number uniqueness within the organization
-    if (bidNumber) {
-      uniqueFieldChecks.push({
-        field: "bidNumber",
-        value: bidNumber,
-        checkFunction: () => checkBidNumberExists(bidNumber, organizationId),
-        message: `A bid with number '${bidNumber}' already exists in this organization`,
-      });
-    }
-
-    // Validate all unique fields
-    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
-    if (validationErrors.length > 0) {
-      return res.status(409).json(buildConflictResponse(validationErrors));
     }
 
     // Get user's role to determine bid status
@@ -282,6 +275,9 @@ export const createBidHandler = async (req: Request, res: Response) => {
       designBuildData,
       ...bidFields
     } = req.body;
+
+    // Strip auto-generated field - bidNumber is always system-generated
+    delete bidFields.bidNumber;
 
     // Create bid with only bid fields (excluding nested objects)
     const bidData = {
@@ -468,7 +464,6 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const performedBy = req.user!.id;
-    const { bidNumber } = req.body;
 
     // Get original bid for history tracking; client org comes from the bid
     const originalBid = await getBidById(id!);
@@ -480,25 +475,6 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     }
 
     const clientOrgId = originalBid.organizationId;
-
-    // Pre-validate unique fields before attempting to update
-    const uniqueFieldChecks = [];
-
-    // Check bid number uniqueness (if provided and different from current)
-    if (bidNumber && bidNumber !== originalBid.bidNumber) {
-      uniqueFieldChecks.push({
-        field: "bidNumber",
-        value: bidNumber,
-        checkFunction: () => checkBidNumberExists(bidNumber, clientOrgId, id),
-        message: `A bid with number '${bidNumber}' already exists in this organization`,
-      });
-    }
-
-    // Validate all unique fields
-    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
-    if (validationErrors.length > 0) {
-      return res.status(409).json(buildConflictResponse(validationErrors));
-    }
 
     // Extract nested objects from request body (same as create)
     const {
@@ -514,6 +490,9 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       documentIdsToDelete,
       ...bidFields
     } = req.body;
+
+    // Strip auto-generated field - bidNumber is always system-generated
+    delete bidFields.bidNumber;
 
     // Update bid with only bid fields (excluding nested objects)
     const updatedBid = await updateBid(id!, clientOrgId, bidFields);
@@ -848,7 +827,7 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const deletedBid = await deleteBid(id!, existingBid.organizationId);
+    const deletedBid = await deleteBid(id!, existingBid.organizationId, performedBy);
 
     if (!deletedBid) {
       return res.status(404).json({
@@ -2942,6 +2921,19 @@ export const getBidWithAllDataHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Users with view_assigned can only view bids they are assigned to
+    const bidForAccessCheck = bidData.bid as { assignedTo?: string | null };
+    if (
+      req.userAccessLevel === "view_assigned" &&
+      bidForAccessCheck?.assignedTo !== userId
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have permission to view this bid. You can only view bids assigned to you.",
+      });
+    }
+
     // Same format as POST create: bid fields at top level of data (no nested bid object), plus financialBreakdown, materials, labor, travel, documents, media, etc.
     const { bid, ...rest } = bidData;
     logger.info("Bid with all data fetched successfully");
@@ -2967,6 +2959,18 @@ export const getRelatedBidsHandler = async (req: Request, res: Response) => {
     const bidId = asSingleString(req.params.bidId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    // Users with view_assigned must be assigned to the parent bid to view related bids
+    if (req.userAccessLevel === "view_assigned") {
+      const parentBid = await getBidByIdSimple(bidId!);
+      if (!parentBid || parentBid.assignedTo !== userId) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You do not have permission to view this bid. You can only view bids assigned to you.",
+        });
+      }
+    }
 
     const result = await getRelatedBids(bidId!);
 
@@ -3125,8 +3129,9 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
             .map((s) => s.trim())
             .filter(Boolean)
         : undefined;
-    const options =
-      tagIds?.length ? ({ tagIds } as { tagIds: string[] }) : undefined;
+    const options = tagIds?.length
+      ? ({ tagIds } as { tagIds: string[] })
+      : undefined;
     const documents = await getBidDocuments(bidId!, options);
 
     logger.info(`Bid documents fetched successfully for bid ${bidId}`);
@@ -3340,7 +3345,10 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
 // Bid Document Tags Handlers
 // ============================
 
-export const getBidDocumentTagsHandler = async (req: Request, res: Response) => {
+export const getBidDocumentTagsHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["bidId"])) return;
     const bidId = asSingleString(req.params.bidId);
@@ -3677,7 +3685,9 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
 
     // Extract files with pattern media_0, media_1, etc.
     const files = (req.files as Express.Multer.File[]) || [];
-    const mediaFiles = files.filter((file) => file.fieldname.startsWith("media_"));
+    const mediaFiles = files.filter((file) =>
+      file.fieldname.startsWith("media_"),
+    );
 
     if (mediaFiles.length === 0) {
       return res.status(400).json({
@@ -3728,8 +3738,14 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
 
         uploadedMedia.push(media);
       } catch (uploadError: any) {
-        logger.logApiError(`File upload error for ${file.originalname}`, uploadError, req);
-        errors.push(`Failed to upload ${file.originalname}: ${uploadError.message}`);
+        logger.logApiError(
+          `File upload error for ${file.originalname}`,
+          uploadError,
+          req,
+        );
+        errors.push(
+          `Failed to upload ${file.originalname}: ${uploadError.message}`,
+        );
       }
     }
 
@@ -3741,7 +3757,9 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
       });
     }
 
-    logger.info(`${uploadedMedia.length} media files uploaded for bid ${bidId}`);
+    logger.info(
+      `${uploadedMedia.length} media files uploaded for bid ${bidId}`,
+    );
     return res.status(201).json({
       success: true,
       data: uploadedMedia,
@@ -3755,7 +3773,9 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
       message: "Internal server error",
       error:
         process.env.NODE_ENV === "development"
-          ? (error instanceof Error ? error.message : String(error))
+          ? error instanceof Error
+            ? error.message
+            : String(error)
           : undefined,
     });
   }
@@ -3918,7 +3938,9 @@ export const updateBidMediaHandler = async (req: Request, res: Response) => {
       message: "Internal server error",
       error:
         process.env.NODE_ENV === "development"
-          ? (error instanceof Error ? error.message : String(error))
+          ? error instanceof Error
+            ? error.message
+            : String(error)
           : undefined,
     });
   }
@@ -4011,11 +4033,14 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
     );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
-    const contactForQuote = bid.primaryContact ?? (
-      client.organization.primaryContact && client.organization.email
-        ? { fullName: client.organization.primaryContact, email: client.organization.email }
-        : null
-    );
+    const contactForQuote =
+      bid.primaryContact ??
+      (client.organization.primaryContact && client.organization.email
+        ? {
+            fullName: client.organization.primaryContact,
+            email: client.organization.email,
+          }
+        : null);
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -4083,11 +4108,14 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
     );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
-    const contactForQuote = bid.primaryContact ?? (
-      client.organization.primaryContact && client.organization.email
-        ? { fullName: client.organization.primaryContact, email: client.organization.email }
-        : null
-    );
+    const contactForQuote =
+      bid.primaryContact ??
+      (client.organization.primaryContact && client.organization.email
+        ? {
+            fullName: client.organization.primaryContact,
+            email: client.organization.email,
+          }
+        : null);
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -4150,11 +4178,14 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     }
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
-    const primaryContact = bid.primaryContact ?? (
-      client.organization.primaryContact && client.organization.email
-        ? { fullName: client.organization.primaryContact, email: client.organization.email }
-        : null
-    );
+    const primaryContact =
+      bid.primaryContact ??
+      (client.organization.primaryContact && client.organization.email
+        ? {
+            fullName: client.organization.primaryContact,
+            email: client.organization.email,
+          }
+        : null);
 
     if (!primaryContact?.email) {
       return res.status(400).json({
@@ -4179,7 +4210,10 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
 
     const pdfBuffer = await generateQuotePDF(pdfData);
 
-    const { subject, message } = req.body as { subject?: string; message?: string };
+    const { subject, message } = req.body as {
+      subject?: string;
+      message?: string;
+    };
 
     await sendQuoteEmailService(
       primaryContact.email,
@@ -4251,11 +4285,14 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
     );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
-    const primaryContact = bid.primaryContact ?? (
-      client.organization.primaryContact && client.organization.email
-        ? { fullName: client.organization.primaryContact, email: client.organization.email }
-        : null
-    );
+    const primaryContact =
+      bid.primaryContact ??
+      (client.organization.primaryContact && client.organization.email
+        ? {
+            fullName: client.organization.primaryContact,
+            email: client.organization.email,
+          }
+        : null);
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -4275,10 +4312,9 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       };
     } catch (err: any) {
       pdfError = err?.message ?? String(err);
-      logger.warn(
-        `Send-test quote: Failed to generate PDF: ${pdfError}`,
-        { stack: err?.stack },
-      );
+      logger.warn(`Send-test quote: Failed to generate PDF: ${pdfError}`, {
+        stack: err?.stack,
+      });
     }
 
     const body = req.body as { subject?: string; message?: string } | undefined;
@@ -4375,5 +4411,30 @@ export const getBidKPIsHandler = async (req: Request, res: Response) => {
       message: "Failed to fetch bid KPIs",
       error: error.message,
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteBidsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteBids(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} bids by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} bid(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete bids error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

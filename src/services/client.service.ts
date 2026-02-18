@@ -55,6 +55,7 @@ export const getClients = async (
   offset: number,
   limit: number,
   filters?: ClientFilters,
+  options?: { ownEmployeeId?: number },
 ): Promise<ClientListResult> => {
   try {
     let whereCondition = eq(organizations.isDeleted, false);
@@ -87,6 +88,23 @@ export const getClients = async (
             ilike(organizations.website, `%${filters.search}%`),
             ilike(organizations.streetAddress, `%${filters.search}%`),
           ),
+        ) ?? whereCondition;
+    }
+
+    // view_assigned: Technicians only see clients that have jobs they're team members of
+    if (options?.ownEmployeeId !== undefined) {
+      whereCondition =
+        and(
+          whereCondition,
+          sql`EXISTS (
+            SELECT 1 FROM crm.bids b
+            INNER JOIN org.jobs j ON j.bid_id = b.id
+            INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
+            WHERE b.organization_id = ${organizations.id}
+              AND jtm.employee_id = ${options.ownEmployeeId}
+              AND jtm.is_active = true
+              AND j.is_deleted = false
+          )`,
         ) ?? whereCondition;
     }
 
@@ -124,51 +142,60 @@ export const getClients = async (
       };
     }
 
-    const [primaryContactsRows, activeJobsRows, financialRows] = await Promise.all([
-      db
-        .select({
-          organizationId: clientContacts.organizationId,
-          fullName: clientContacts.fullName,
-          email: clientContacts.email,
-          phone: clientContacts.phone,
-        })
-        .from(clientContacts)
-        .where(
-          and(
-            inArray(clientContacts.organizationId, orgIds),
-            eq(clientContacts.isPrimary, true),
-            eq(clientContacts.isDeleted, false),
+    const [primaryContactsRows, activeJobsRows, financialRows] =
+      await Promise.all([
+        db
+          .select({
+            organizationId: clientContacts.organizationId,
+            fullName: clientContacts.fullName,
+            email: clientContacts.email,
+            phone: clientContacts.phone,
+          })
+          .from(clientContacts)
+          .where(
+            and(
+              inArray(clientContacts.organizationId, orgIds),
+              eq(clientContacts.isPrimary, true),
+              eq(clientContacts.isDeleted, false),
+            ),
           ),
-        ),
-      db
-        .select({
-          organizationId: bidsTable.organizationId,
-          count: count(),
-        })
-        .from(jobs)
-        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-        .where(
-          and(
-            inArray(bidsTable.organizationId, orgIds),
-            eq(jobs.isDeleted, false),
-            inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
-          ),
-        )
-        .groupBy(bidsTable.organizationId),
-      db
-        .select({
-          organizationId: bidsTable.organizationId,
-          totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
-          totalOutstanding: sql<string>`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`,
-        })
-        .from(invoices)
-        .innerJoin(jobs, eq(invoices.jobId, jobs.id))
-        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-        .where(
-          and(inArray(bidsTable.organizationId, orgIds), eq(invoices.isDeleted, false)),
-        )
-        .groupBy(bidsTable.organizationId),
-    ]);
+        db
+          .select({
+            organizationId: bidsTable.organizationId,
+            count: count(),
+          })
+          .from(jobs)
+          .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+          .where(
+            and(
+              inArray(bidsTable.organizationId, orgIds),
+              eq(jobs.isDeleted, false),
+              inArray(jobs.status, [
+                "planned",
+                "scheduled",
+                "in_progress",
+                "on_hold",
+              ]),
+            ),
+          )
+          .groupBy(bidsTable.organizationId),
+        db
+          .select({
+            organizationId: bidsTable.organizationId,
+            totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
+            totalOutstanding: sql<string>`COALESCE(SUM(CAST(${invoices.balanceDue} AS NUMERIC)), 0)`,
+          })
+          .from(invoices)
+          .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+          .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+          .where(
+            and(
+              inArray(bidsTable.organizationId, orgIds),
+              eq(invoices.isDeleted, false),
+            ),
+          )
+          .groupBy(bidsTable.organizationId),
+      ]);
 
     const primaryContactByOrgId = new Map<string, ClientListPrimaryContact>();
     for (const row of primaryContactsRows) {
@@ -264,10 +291,7 @@ export const getClientById = async (id: string) => {
     .select()
     .from(properties)
     .where(
-      and(
-        eq(properties.organizationId, id),
-        eq(properties.isDeleted, false),
-      ),
+      and(eq(properties.organizationId, id), eq(properties.isDeleted, false)),
     )
     .orderBy(desc(properties.createdAt));
 
@@ -279,12 +303,7 @@ export const getClientById = async (id: string) => {
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, id),
-        eq(jobs.isDeleted, false),
-      ),
-    )
+    .where(and(eq(bidsTable.organizationId, id), eq(jobs.isDeleted, false)))
     .orderBy(desc(jobs.createdAt));
 
   // Get invoicing summary
@@ -299,14 +318,11 @@ export const getClientById = async (id: string) => {
     .innerJoin(jobs, eq(invoices.jobId, jobs.id))
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
-      and(
-        eq(bidsTable.organizationId, id),
-        eq(invoices.isDeleted, false),
-      ),
+      and(eq(bidsTable.organizationId, id), eq(invoices.isDeleted, false)),
     );
 
   const { createdByName, organization, clientType } = row;
-  const primaryContact = contacts.find(c => c.isPrimary);
+  const primaryContact = contacts.find((c) => c.isPrimary);
 
   return {
     organization: {
@@ -317,7 +333,7 @@ export const getClientById = async (id: string) => {
       phone: primaryContact?.phone ?? null,
     },
     clientType,
-    contacts: contacts.map(contact => ({
+    contacts: contacts.map((contact) => ({
       id: contact.id,
       fullName: contact.fullName,
       email: contact.email,
@@ -327,7 +343,7 @@ export const getClientById = async (id: string) => {
       picture: contact.picture,
       createdAt: contact.createdAt,
     })),
-    properties: propertiesList.map(property => ({
+    properties: propertiesList.map((property) => ({
       id: property.id,
       propertyName: property.propertyName,
       propertyType: property.propertyType,
@@ -337,7 +353,7 @@ export const getClientById = async (id: string) => {
       zipCode: property.zipCode,
       createdAt: property.createdAt,
     })),
-    jobs: jobsList.map(item => ({
+    jobs: jobsList.map((item) => ({
       id: item.job.id,
       name: item.job.name,
       jobNumber: item.job.jobNumber,
@@ -641,12 +657,15 @@ export const updateClient = async (
 // Keep original function for backward compatibility
 export const updateOrganization = updateClient;
 
-export const deleteClient = async (id: string) => {
+export const deleteClient = async (id: string, deletedBy?: string) => {
+  const now = new Date();
   const result = await db
     .update(organizations)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
     })
     .where(and(eq(organizations.id, id), eq(organizations.isDeleted, false)))
     .returning();
@@ -1331,7 +1350,7 @@ export const getClientKPIs = async (
       .select({ count: count() })
       .from(organizations)
       .where(eq(organizations.isDeleted, false)),
-    
+
     // Active clients: orgs with jobs in active statuses
     db
       .selectDistinct({ clientOrgId: bidsTable.organizationId })
@@ -1341,10 +1360,15 @@ export const getClientKPIs = async (
         and(
           eq(bidsTable.isDeleted, false),
           eq(jobs.isDeleted, false),
-          inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]),
+          inArray(jobs.status, [
+            "planned",
+            "scheduled",
+            "in_progress",
+            "on_hold",
+          ]),
         ),
       ),
-    
+
     // Pending orders: jobs in "planned" status (not yet started)
     db
       .select({ count: count() })
@@ -1357,7 +1381,7 @@ export const getClientKPIs = async (
           eq(jobs.status, "planned"),
         ),
       ),
-    
+
     // Total revenue: sum of all invoices
     db
       .select({
@@ -1365,7 +1389,7 @@ export const getClientKPIs = async (
       })
       .from(invoices)
       .where(eq(invoices.isDeleted, false)),
-    
+
     // New clients this month: organizations created this month
     db
       .select({ count: count() })
@@ -1512,4 +1536,18 @@ export const updateClientSettings = async (
     console.error("Error updating client settings:", error);
     throw error;
   }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteClients = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(organizations)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(organizations.id, ids), eq(organizations.isDeleted, false)))
+    .returning({ id: organizations.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

@@ -1,13 +1,4 @@
-import {
-  count,
-  eq,
-  desc,
-  and,
-  ilike,
-  or,
-  sql,
-  inArray,
-} from "drizzle-orm";
+import { count, eq, desc, and, ilike, or, sql, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
   properties,
@@ -21,6 +12,11 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 
+export type GetPropertiesOptions = {
+  /** When true, only return properties linked to jobs the employee is assigned to/team member of */
+  ownEmployeeId?: number;
+};
+
 // Get properties with pagination and filtering
 export const getProperties = async (
   offset: number,
@@ -32,7 +28,8 @@ export const getProperties = async (
     city?: string;
     state?: string;
     search?: string;
-  }
+  },
+  options?: GetPropertiesOptions,
 ) => {
   let whereConditions = [eq(properties.isDeleted, false)];
 
@@ -42,7 +39,7 @@ export const getProperties = async (
   }
   if (filters?.propertyType) {
     whereConditions.push(
-      eq(properties.propertyType, filters.propertyType as any)
+      eq(properties.propertyType, filters.propertyType as any),
     );
   }
 
@@ -65,46 +62,52 @@ export const getProperties = async (
               "scheduled",
               "in_progress",
               "on_hold",
-            ] as any)
-          )
+            ] as any),
+          ),
         );
 
       const organizationIdsWithActiveJobs = organizationsWithActiveJobs
         .map((j) => j.organizationId)
         .filter((id) => id !== null) as string[];
-      
+
       // Get property IDs for these organizations
-      const propertiesWithActiveJobs = organizationIdsWithActiveJobs.length > 0
-        ? await db
-            .select({ id: properties.id })
-            .from(properties)
-            .where(
-              and(
-                inArray(properties.organizationId, organizationIdsWithActiveJobs),
-                eq(properties.isDeleted, false)
+      const propertiesWithActiveJobs =
+        organizationIdsWithActiveJobs.length > 0
+          ? await db
+              .select({ id: properties.id })
+              .from(properties)
+              .where(
+                and(
+                  inArray(
+                    properties.organizationId,
+                    organizationIdsWithActiveJobs,
+                  ),
+                  eq(properties.isDeleted, false),
+                ),
               )
-            )
-        : [];
-      
-      const propertyIdsWithActiveJobs = propertiesWithActiveJobs.map((p) => p.id);
+          : [];
+
+      const propertyIdsWithActiveJobs = propertiesWithActiveJobs.map(
+        (p) => p.id,
+      );
 
       // Properties with status "under_construction" OR properties with active jobs
       if (propertyIdsWithActiveJobs.length > 0) {
         whereConditions.push(
           or(
             eq(properties.status, "under_construction" as any),
-            inArray(properties.id, propertyIdsWithActiveJobs)
-          )!
+            inArray(properties.id, propertyIdsWithActiveJobs),
+          )!,
         );
       } else {
         // Only properties with status "under_construction" if no active jobs
         whereConditions.push(
-          eq(properties.status, "under_construction" as any)
+          eq(properties.status, "under_construction" as any),
         );
       }
     } else {
       whereConditions.push(
-        eq(properties.status, filters.status.toLowerCase() as any)
+        eq(properties.status, filters.status.toLowerCase() as any),
       );
     }
   }
@@ -116,6 +119,21 @@ export const getProperties = async (
     whereConditions.push(eq(properties.state, filters.state));
   }
 
+  // view_assigned: Technicians see only properties linked to jobs they are team members of
+  if (options?.ownEmployeeId !== undefined) {
+    whereConditions.push(
+      sql`EXISTS (
+        SELECT 1 FROM org.jobs j
+        INNER JOIN crm.bids b ON b.id = j.bid_id
+        INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
+        WHERE b.property_id = ${properties.id}
+          AND jtm.employee_id = ${options.ownEmployeeId}
+          AND jtm.is_active = true
+          AND j.is_deleted = false
+      )`,
+    );
+  }
+
   // Enhanced search - includes organization name
   if (filters?.search) {
     const searchTerm = `%${filters.search}%`;
@@ -125,8 +143,8 @@ export const getProperties = async (
         ilike(properties.propertyCode, searchTerm),
         ilike(properties.addressLine1, searchTerm),
         ilike(properties.city, searchTerm),
-        ilike(organizations.name, searchTerm)
-      )!
+        ilike(organizations.name, searchTerm),
+      )!,
     );
   }
 
@@ -181,8 +199,8 @@ export const getProperties = async (
     new Set(
       propertiesResult
         .map((p) => p.organizationId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0)
-    )
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
   );
 
   // Jobs are linked through bid → organization (jobs table has bid_id, not property_id)
@@ -200,8 +218,8 @@ export const getProperties = async (
             and(
               eq(jobs.isDeleted, false),
               eq(bidsTable.isDeleted, false),
-              inArray(bidsTable.organizationId, organizationIds)
-            )
+              inArray(bidsTable.organizationId, organizationIds),
+            ),
           )
           .groupBy(bidsTable.organizationId)
       : [];
@@ -226,8 +244,8 @@ export const getProperties = async (
                 "scheduled",
                 "in_progress",
                 "on_hold",
-              ] as any)
-            )
+              ] as any),
+            ),
           )
           .groupBy(bidsTable.organizationId)
       : [];
@@ -246,7 +264,7 @@ export const getProperties = async (
             .join(",")}]::uuid[])
             AND is_deleted = false
           ORDER BY property_id, service_date DESC
-        `)
+        `),
         )
       : { rows: [] };
 
@@ -254,20 +272,24 @@ export const getProperties = async (
 
   // Create lookup maps for O(1) access
   const totalJobsMap = new Map(
-    allJobsCounts.map((j) => [j.organizationId, Number(j.totalJobs)])
+    allJobsCounts.map((j) => [j.organizationId, Number(j.totalJobs)]),
   );
   const activeJobsMap = new Map(
-    activeJobsCounts.map((j) => [j.organizationId, Number(j.activeJobs)])
+    activeJobsCounts.map((j) => [j.organizationId, Number(j.activeJobs)]),
   );
   const lastServiceMap = new Map(
-    lastServiceDates.map((s) => [s.property_id, s.service_date])
+    lastServiceDates.map((s) => [s.property_id, s.service_date]),
   );
 
   // Enrich each property with job counts and last service date
   // Note: Jobs are now linked to organizations, so we use organizationId for mapping
   const enrichedProperties = propertiesResult.map((property) => {
-    const totalJobs = property.organizationId ? totalJobsMap.get(property.organizationId) || 0 : 0;
-    const activeJobs = property.organizationId ? activeJobsMap.get(property.organizationId) || 0 : 0;
+    const totalJobs = property.organizationId
+      ? totalJobsMap.get(property.organizationId) || 0
+      : 0;
+    const activeJobs = property.organizationId
+      ? activeJobsMap.get(property.organizationId) || 0
+      : 0;
     const lastService = lastServiceMap.get(property.id) || null;
 
     // Determine display status - if has active jobs, show "Under Service"
@@ -327,10 +349,8 @@ export const getPropertyById = async (id: string) => {
     return null;
   }
 
-
   const baseProperty = propertyQuery[0]!;
 
-  
   // Get createdBy user name
   let createdByName: string | null = null;
   if (baseProperty.createdBy) {
@@ -381,7 +401,7 @@ export const getPropertyById = async (id: string) => {
   // Only query if property has an organizationId
   let totalJobs = 0;
   let activeJobs = 0;
-  
+
   if (property.organizationId) {
     const [totalJobsResult, activeJobsResult] = await Promise.all([
       db
@@ -391,8 +411,8 @@ export const getPropertyById = async (id: string) => {
         .where(
           and(
             eq(bidsTable.organizationId, property.organizationId),
-            eq(jobs.isDeleted, false)
-          )
+            eq(jobs.isDeleted, false),
+          ),
         ),
       db
         .select({ count: count() })
@@ -407,11 +427,11 @@ export const getPropertyById = async (id: string) => {
               "scheduled",
               "in_progress",
               "on_hold",
-            ] as any)
-          )
+            ] as any),
+          ),
         ),
     ]);
-    
+
     totalJobs = Number(totalJobsResult[0]?.count || 0);
     activeJobs = Number(activeJobsResult[0]?.count || 0);
   }
@@ -425,8 +445,8 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(propertyServiceHistory.propertyId, id),
-        eq(propertyServiceHistory.isDeleted, false)
-      )
+        eq(propertyServiceHistory.isDeleted, false),
+      ),
     )
     .orderBy(desc(propertyServiceHistory.serviceDate))
     .limit(1);
@@ -440,12 +460,12 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(propertyContacts.propertyId, id),
-        eq(propertyContacts.isDeleted, false)
-      )
+        eq(propertyContacts.isDeleted, false),
+      ),
     )
     .orderBy(
       desc(propertyContacts.isPrimary),
-      desc(propertyContacts.createdAt)
+      desc(propertyContacts.createdAt),
     );
 
   // Get equipment
@@ -455,8 +475,8 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(propertyEquipment.propertyId, id),
-        eq(propertyEquipment.isDeleted, false)
-      )
+        eq(propertyEquipment.isDeleted, false),
+      ),
     )
     .orderBy(propertyEquipment.equipmentType, propertyEquipment.location);
 
@@ -481,13 +501,13 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(bidsTable.organizationId, property.organizationId),
-        eq(jobs.isDeleted, false)
-      )
+        eq(jobs.isDeleted, false),
+      ),
     )
     .orderBy(
       desc(jobs.actualEndDate),
       desc(jobs.scheduledStartDate),
-      desc(jobs.createdAt)
+      desc(jobs.createdAt),
     );
 
   // Get service history entries
@@ -506,8 +526,8 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(propertyServiceHistory.propertyId, id),
-        eq(propertyServiceHistory.isDeleted, false)
-      )
+        eq(propertyServiceHistory.isDeleted, false),
+      ),
     )
     .orderBy(desc(propertyServiceHistory.serviceDate));
 
@@ -527,7 +547,7 @@ export const getPropertyById = async (id: string) => {
       const start = new Date(job.actualStartDate);
       const end = new Date(job.actualEndDate);
       duration = Math.round(
-        (end.getTime() - start.getTime()) / (1000 * 60 * 60)
+        (end.getTime() - start.getTime()) / (1000 * 60 * 60),
       );
     }
 
@@ -536,7 +556,7 @@ export const getPropertyById = async (id: string) => {
     const notesText = job.completionNotes || job.description || "";
     // Look for patterns like "Model XYZ-500", "x5", etc.
     const partsMatches = notesText.match(
-      /([A-Z0-9-]+(?:\s+Model\s+[A-Z0-9-]+)?|[A-Za-z\s]+x\d+)/gi
+      /([A-Z0-9-]+(?:\s+Model\s+[A-Z0-9-]+)?|[A-Za-z\s]+x\d+)/gi,
     );
     if (partsMatches) {
       partsUsed.push(...partsMatches.slice(0, 5)); // Limit to 5 parts
@@ -608,8 +628,8 @@ export const getPropertyById = async (id: string) => {
     .where(
       and(
         eq(propertyDocuments.propertyId, id),
-        eq(propertyDocuments.isDeleted, false)
-      )
+        eq(propertyDocuments.isDeleted, false),
+      ),
     )
     .groupBy(propertyDocuments.documentType);
 
@@ -833,8 +853,8 @@ export const getPropertyEquipment = async (propertyId: string) => {
     .where(
       and(
         eq(propertyEquipment.propertyId, propertyId),
-        eq(propertyEquipment.isDeleted, false)
-      )
+        eq(propertyEquipment.isDeleted, false),
+      ),
     )
     .orderBy(propertyEquipment.equipmentType, propertyEquipment.location);
 };
@@ -844,10 +864,7 @@ export const getPropertyEquipmentById = async (id: string) => {
     .select()
     .from(propertyEquipment)
     .where(
-      and(
-        eq(propertyEquipment.id, id),
-        eq(propertyEquipment.isDeleted, false)
-      )
+      and(eq(propertyEquipment.id, id), eq(propertyEquipment.isDeleted, false)),
     )
     .limit(1);
   return equipment || null;
@@ -870,7 +887,7 @@ export const updatePropertyEquipment = async (
     status?: string;
     condition?: string;
     notes?: string;
-  }>
+  }>,
 ) => {
   const updateData: any = {
     ...data,
@@ -879,20 +896,21 @@ export const updatePropertyEquipment = async (
 
   // Convert date strings to Date objects if provided
   if (data.installDate) {
-    updateData.installDate = new Date(data.installDate).toISOString().split("T")[0];
+    updateData.installDate = new Date(data.installDate)
+      .toISOString()
+      .split("T")[0];
   }
   if (data.warrantyExpiration) {
-    updateData.warrantyExpiration = new Date(data.warrantyExpiration).toISOString().split("T")[0];
+    updateData.warrantyExpiration = new Date(data.warrantyExpiration)
+      .toISOString()
+      .split("T")[0];
   }
 
   const [equipment] = await db
     .update(propertyEquipment)
     .set(updateData)
     .where(
-      and(
-        eq(propertyEquipment.id, id),
-        eq(propertyEquipment.isDeleted, false)
-      )
+      and(eq(propertyEquipment.id, id), eq(propertyEquipment.isDeleted, false)),
     )
     .returning();
 
@@ -907,10 +925,7 @@ export const deletePropertyEquipment = async (id: string) => {
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(propertyEquipment.id, id),
-        eq(propertyEquipment.isDeleted, false)
-      )
+      and(eq(propertyEquipment.id, id), eq(propertyEquipment.isDeleted, false)),
     )
     .returning();
 
@@ -937,7 +952,7 @@ export const createServiceHistoryEntry = async (data: {
 
 export const getPropertyServiceHistory = async (
   propertyId: string,
-  limit = 50
+  limit = 50,
 ) => {
   return await db
     .select({
@@ -963,8 +978,8 @@ export const getPropertyServiceHistory = async (
     .where(
       and(
         eq(propertyServiceHistory.propertyId, propertyId),
-        eq(propertyServiceHistory.isDeleted, false)
-      )
+        eq(propertyServiceHistory.isDeleted, false),
+      ),
     )
     .orderBy(desc(propertyServiceHistory.serviceDate))
     .limit(limit);
@@ -986,10 +1001,7 @@ export const createPropertyContact = async (data: {
   availableHours?: string;
   notes?: string;
 }) => {
-  const [contact] = await db
-    .insert(propertyContacts)
-    .values(data)
-    .returning();
+  const [contact] = await db.insert(propertyContacts).values(data).returning();
 
   return contact;
 };
@@ -1042,8 +1054,8 @@ export const getPropertyKPIs = async () => {
       .where(
         and(
           eq(properties.isDeleted, false),
-          eq(properties.status, "active" as any)
-        )
+          eq(properties.status, "active" as any),
+        ),
       ),
 
     // 3. Under Service (properties with status "under_construction" OR properties with active jobs)
@@ -1065,7 +1077,7 @@ export const getPropertyKPIs = async () => {
                 AND j.status IN ('planned', 'scheduled', 'in_progress', 'on_hold')
             )
           )
-      `)
+      `),
     ),
 
     // 4. Total Jobs (all non-deleted jobs)

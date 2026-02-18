@@ -33,7 +33,45 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
 
-export const getEmployees = async (offset: number, limit: number) => {
+export const getEmployees = async (
+  offset: number,
+  limit: number,
+  filters?: {
+    search?: string;
+    status?: string;
+    departmentId?: number;
+  },
+) => {
+  const conditions: ReturnType<typeof eq>[] = [eq(employees.isDeleted, false)];
+
+  if (filters?.status) {
+    conditions.push(
+      eq(
+        employees.status,
+        filters.status as
+          | "available"
+          | "on_leave"
+          | "in_field"
+          | "terminated"
+          | "suspended",
+      ),
+    );
+  }
+  if (filters?.departmentId) {
+    conditions.push(eq(employees.departmentId, filters.departmentId));
+  }
+  if (filters?.search) {
+    conditions.push(
+      or(
+        ilike(users.fullName, `%${filters.search}%`),
+        ilike(users.email, `%${filters.search}%`),
+        ilike(employees.employeeId, `%${filters.search}%`),
+      )!,
+    );
+  }
+
+  const whereClause = and(...conditions);
+
   // Get employees with all related data for table view
   const result = await db
     .select({
@@ -61,23 +99,21 @@ export const getEmployees = async (offset: number, limit: number) => {
       // Position data (Job Title)
       positionId: positions.id,
       positionName: positions.name,
-
-      // Remove organization data - employees don't belong to client orgs
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
-    // Remove organization join - employees are T3 internal staff
-    .where(eq(employees.isDeleted, false))
+    .where(whereClause)
     .limit(limit)
     .offset(offset);
 
-  // Get total count for pagination
+  // Get total count for pagination (includes same joins for search filter)
   const totalResult = await db
     .select({ count: count() })
     .from(employees)
-    .where(eq(employees.isDeleted, false));
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(whereClause);
 
   const total = totalResult[0]?.count ?? 0;
 
@@ -619,13 +655,14 @@ export const generateEmployeeId = async (): Promise<string> => {
 };
 
 /**
- * Get employee KPIs (total, active, on leave, new hires)
+ * Get employee KPIs (total, active, in field, attendance, timesheet violations)
  */
 export const getEmployeeKPIs = async (): Promise<{
   totalEmployees: number;
   activeEmployees: number;
-  onLeave: number;
-  newHires: number;
+  inField: number;
+  attendance: number;
+  timesheetViolations: number;
 }> => {
   const notDeleted = eq(employees.isDeleted, false);
 
@@ -642,33 +679,38 @@ export const getEmployeeKPIs = async (): Promise<{
     .where(and(notDeleted, inArray(employees.status, activeStatuses)));
   const activeEmployees = Number(activeRow?.count ?? 0);
 
-  const [onLeaveRow] = await db
+  const [inFieldRow] = await db
     .select({ count: count() })
     .from(employees)
-    .where(and(notDeleted, eq(employees.status, "on_leave")));
-  const onLeave = Number(onLeaveRow?.count ?? 0);
+    .where(and(notDeleted, eq(employees.status, "in_field")));
+  const inField = Number(inFieldRow?.count ?? 0);
 
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const [newHiresRow] = await db
-    .select({ count: count() })
-    .from(employees)
+  // Attendance: count of employees who have at least one timesheet submitted today
+  const todayStr = new Date().toISOString().split("T")[0]!;
+  const [attendanceRow] = await db
+    .select({ count: sql<number>`count(distinct ${timesheets.employeeId})` })
+    .from(timesheets)
     .where(
       and(
-        notDeleted,
-        or(
-          gte(employees.hireDate, thirtyDaysAgo.toISOString().split("T")[0]!),
-          gte(employees.startDate, thirtyDaysAgo),
-        )!,
+        eq(timesheets.sheetDate, todayStr),
+        inArray(timesheets.status, ["submitted", "approved"]),
       ),
     );
-  const newHires = Number(newHiresRow?.count ?? 0);
+  const attendance = Number(attendanceRow?.count ?? 0);
+
+  // Timesheet violations: sum of violations across all active employees
+  const [violationsRow] = await db
+    .select({ total: sql<number>`coalesce(sum(${employees.violations}), 0)` })
+    .from(employees)
+    .where(notDeleted);
+  const timesheetViolations = Number(violationsRow?.total ?? 0);
 
   return {
     totalEmployees,
     activeEmployees,
-    onLeave,
-    newHires,
+    inField,
+    attendance,
+    timesheetViolations,
   };
 };
 
@@ -698,14 +740,13 @@ async function getPayDefaultsFromPosition(positionId: number): Promise<{
 
 export const createEmployee = async (data: {
   userId: string;
-  employeeId?: string;
   departmentId?: number;
   positionId?: number;
   reportsTo?: string;
   startDate?: Date;
 }) => {
-  // Auto-generate employeeId if not provided (T3 employees don't need organizationId)
-  const employeeId = data.employeeId || (await generateEmployeeId());
+  // Always auto-generate employeeId - never accept from external input
+  const employeeId = await generateEmployeeId();
 
   let payType: string | null = null;
   let hourlyRate: string | null = null;
@@ -735,7 +776,6 @@ export const updateEmployee = async (
   id: number,
   data: {
     userId?: string;
-    employeeId?: string;
     departmentId?: number;
     positionId?: number;
     reportsTo?: string;
@@ -747,7 +787,6 @@ export const updateEmployee = async (
 ) => {
   const updateData: {
     userId?: string;
-    employeeId?: string | null;
     departmentId?: number | null;
     positionId?: number | null;
     reportsTo?: string | null;
@@ -764,9 +803,6 @@ export const updateEmployee = async (
 
   if (data.userId !== undefined) {
     updateData.userId = data.userId;
-  }
-  if (data.employeeId !== undefined) {
-    updateData.employeeId = data.employeeId || null;
   }
   if (data.departmentId !== undefined) {
     updateData.departmentId = data.departmentId || null;
@@ -804,10 +840,17 @@ export const updateEmployee = async (
   return employee || null;
 };
 
-export const deleteEmployee = async (id: number) => {
+export const deleteEmployee = async (id: number, deletedBy?: string) => {
+  const now = new Date();
   const [employee] = await db
-    .delete(employees)
-    .where(eq(employees.id, id))
+    .update(employees)
+    .set({
+      isDeleted: true,
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
+    })
+    .where(and(eq(employees.id, id), eq(employees.isDeleted, false)))
     .returning();
   return employee || null;
 };
@@ -1200,4 +1243,21 @@ export const getEmployeeJobsAndDispatchForDate = async (
     jobs: Array.from(jobMap.values()),
     dispatchTasks: dispatchTasksList,
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteEmployees = async (
+  ids: number[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(employees)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(employees.id, ids), eq(employees.isDeleted, false)))
+    .returning({ id: employees.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

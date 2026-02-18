@@ -932,9 +932,10 @@ export const deleteInvoice = async (
   organizationId: string,
   deletedBy: string,
 ) => {
+  const now = new Date();
   await db
     .update(invoices)
-    .set({ isDeleted: true, updatedAt: new Date() })
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
     .where(eq(invoices.id, invoiceId));
 
   await createInvoiceHistoryEntry(
@@ -1476,4 +1477,18 @@ export const deletePaymentForInvoice = async (
   await recalculateInvoiceTotals(invoiceId);
 
   return { success: true };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteInvoices = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(invoices)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(invoices.id, ids), eq(invoices.isDeleted, false)))
+    .returning({ id: invoices.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

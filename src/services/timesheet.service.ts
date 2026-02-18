@@ -24,8 +24,14 @@ export const getTimesheets = async (
   offset: number,
   limit: number,
   search?: string,
+  options?: { ownEmployeeId?: number },
 ) => {
   let whereConditions: any[] = [];
+
+  // own_only: scope to a specific employee (Technician sees only their timesheets)
+  if (options?.ownEmployeeId !== undefined) {
+    whereConditions.push(eq(timesheets.employeeId, options.ownEmployeeId));
+  }
 
   // Add search filter if provided
   if (search) {
@@ -351,10 +357,17 @@ export const updateTimesheet = async (
   return timesheet || null;
 };
 
-export const deleteTimesheet = async (id: number) => {
+export const deleteTimesheet = async (id: number, deletedBy: string) => {
+  const now = new Date();
   const [timesheet] = await db
-    .delete(timesheets)
-    .where(eq(timesheets.id, id))
+    .update(timesheets)
+    .set({
+      isDeleted: true,
+      deletedAt: now,
+      deletedBy,
+      updatedAt: now,
+    })
+    .where(and(eq(timesheets.id, id), eq(timesheets.isDeleted, false)))
     .returning();
   return timesheet || null;
 };
@@ -1564,4 +1577,21 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       label: `${rejectedEntries} Awaiting technician edits`,
     },
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteTimesheets = async (
+  ids: number[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(timesheets)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(timesheets.id, ids), eq(timesheets.isDeleted, false)))
+    .returning({ id: timesheets.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

@@ -1,13 +1,19 @@
 import * as brevo from "@getbrevo/brevo";
 import { logger } from "../utils/logger.js";
-import type { Notification, EmailTemplateData } from "../types/notification.types.js";
+import type {
+  Notification,
+  EmailTemplateData,
+} from "../types/notification.types.js";
 
 const apiKey = process.env.BREVO_API_KEY;
-const senderEmail = process.env.BREVO_SENDER_EMAIL || "notifications@t3mechanical.com";
+const senderEmail =
+  process.env.BREVO_SENDER_EMAIL || "notifications@t3mechanical.com";
 const senderName = "T3 Mechanical";
 
 if (!apiKey) {
-  logger.warn("⚠️ BREVO_API_KEY not configured. Email notifications will not be sent.");
+  logger.warn(
+    "⚠️ BREVO_API_KEY not configured. Email notifications will not be sent.",
+  );
 }
 
 // Initialize Brevo API client
@@ -25,7 +31,7 @@ export class NotificationEmailService {
   async sendNotificationEmail(
     recipientEmail: string,
     recipientName: string,
-    notification: Notification
+    notification: Notification,
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!apiInstance) {
       logger.warn("Brevo API not initialized. Skipping email notification.");
@@ -36,7 +42,7 @@ export class NotificationEmailService {
       const actionUrl = notification.actionUrl
         ? `${process.env.CLIENT_URL}${notification.actionUrl}`
         : undefined;
-      
+
       const templateData: EmailTemplateData = {
         recipientName: recipientName || "User",
         title: notification.title,
@@ -50,14 +56,15 @@ export class NotificationEmailService {
       const sendSmtpEmail = new brevo.SendSmtpEmail();
       sendSmtpEmail.sender = { name: senderName, email: senderEmail };
       sendSmtpEmail.to = [{ email: recipientEmail, name: recipientName }];
-      sendSmtpEmail.subject = notification.title;
+      sendSmtpEmail.subject = `[T3 Mechanical] ${notification.title}`;
       sendSmtpEmail.htmlContent = htmlContent;
 
       const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
-      const messageId = response.body?.messageId || response.body?.['messageId'];
+      const messageId =
+        response.body?.messageId || response.body?.["messageId"];
 
       logger.info(
-        `✅ Email sent successfully to ${recipientEmail} (MessageId: ${messageId})`
+        `✅ Email sent successfully to ${recipientEmail} (MessageId: ${messageId})`,
       );
 
       return { success: true, messageId: messageId as string };
@@ -178,8 +185,9 @@ export class NotificationEmailService {
       }
     </div>
     <div class="footer">
-      <p>This is an automated notification from T3 Mechanical</p>
-      <p>If you have questions, please contact your administrator</p>
+      <p>This is an automated notification from T3 Mechanical.</p>
+      <p>For questions, contact your administrator or support team.</p>
+      <p style="font-size: 11px; color: #999; margin-top: 12px;">If you did not expect this notification, please verify your account security.</p>
     </div>
   </div>
 </body>
@@ -195,7 +203,7 @@ export class NotificationEmailService {
       email: string;
       name: string;
       notification: Notification;
-    }>
+    }>,
   ): Promise<Array<{ email: string; success: boolean; error?: string }>> {
     const results = [];
 
@@ -203,7 +211,7 @@ export class NotificationEmailService {
       const result = await this.sendNotificationEmail(
         item.email,
         item.name,
-        item.notification
+        item.notification,
       );
       results.push({
         email: item.email,
@@ -247,7 +255,7 @@ export class NotificationEmailService {
     const result = await this.sendNotificationEmail(
       recipientEmail,
       "Test User",
-      testNotification
+      testNotification,
     );
 
     return result.success;

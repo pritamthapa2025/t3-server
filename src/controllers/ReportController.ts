@@ -1,4 +1,25 @@
 import type { Request, Response, NextFunction } from "express";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
+
+/** Resolve the calling user's employeeId when `ownOnly` is enforced for a module. */
+async function resolveOwnTechnicianId(
+  req: Request,
+  module: string,
+): Promise<number | undefined> {
+  const userId = req.user?.id;
+  if (!userId) return undefined;
+  const dataFilter = await getDataFilterConditions(userId, module);
+  if (!dataFilter.ownOnly) return undefined;
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+  return emp?.id;
+}
 import {
   getCompanySummaryKPIs,
   getMonthlyRevenueTrend,
@@ -41,7 +62,7 @@ import {
 export const getCompanySummaryKPIsHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
@@ -68,7 +89,7 @@ export const getCompanySummaryKPIsHandler = async (
 export const getMonthlyRevenueTrendHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
@@ -95,7 +116,7 @@ export const getMonthlyRevenueTrendHandler = async (
 export const getJobPerformanceDataHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
@@ -122,7 +143,7 @@ export const getJobPerformanceDataHandler = async (
 export const getClientRevenueDistributionHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
@@ -149,7 +170,7 @@ export const getClientRevenueDistributionHandler = async (
 export const getFinancialKPIsHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -179,7 +200,7 @@ export const getFinancialKPIsHandler = async (
 export const getProfitAndLossHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -209,7 +230,7 @@ export const getProfitAndLossHandler = async (
 export const getCashFlowForecastHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -239,7 +260,7 @@ export const getCashFlowForecastHandler = async (
 export const getRevenueByClientHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -269,7 +290,7 @@ export const getRevenueByClientHandler = async (
 export const getExpenseByCategoryHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -300,7 +321,7 @@ export const getExpenseByCategoryHandler = async (
 export const getMonthlyExpenseTrendHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -331,7 +352,7 @@ export const getMonthlyExpenseTrendHandler = async (
 export const getVendorSpendHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -362,17 +383,23 @@ export const getVendorSpendHandler = async (
 export const getTechnicianHoursHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own hours report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const hours = await getTechnicianHoursReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -386,17 +413,23 @@ export const getTechnicianHoursHandler = async (
 export const getLaborCostHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own labor cost report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const laborCost = await getLaborCostReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -410,17 +443,23 @@ export const getLaborCostHandler = async (
 export const getAttendanceHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own attendance report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const attendance = await getAttendanceReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -438,7 +477,7 @@ export const getAttendanceHandler = async (
 export const getFleetUsageHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -462,7 +501,7 @@ export const getFleetUsageHandler = async (
 export const getFleetMaintenanceHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -486,7 +525,7 @@ export const getFleetMaintenanceHandler = async (
 export const getFuelExpenseHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -514,7 +553,7 @@ export const getFuelExpenseHandler = async (
 export const getInventoryValuationHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -538,7 +577,7 @@ export const getInventoryValuationHandler = async (
 export const getStockMovementHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -562,7 +601,7 @@ export const getStockMovementHandler = async (
 export const getLowStockItemsHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -590,7 +629,7 @@ export const getLowStockItemsHandler = async (
 export const getClientSpendHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -613,7 +652,7 @@ export const getClientSpendHandler = async (
 export const getClientOutstandingHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -640,17 +679,23 @@ export const getClientOutstandingHandler = async (
 export const getTechnicianProductivityHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own productivity report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const productivity = await getTechnicianProductivityReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -664,17 +709,23 @@ export const getTechnicianProductivityHandler = async (
 export const getTechnicianQualityHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own quality report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const quality = await getTechnicianQualityReport(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -688,17 +739,23 @@ export const getTechnicianQualityHandler = async (
 export const getTechnicianProfitHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
     const { startDate, endDate, technicianId, managerId } = req.query;
 
+    // view_own: Technicians see only their own profit contribution report
+    const ownTechnicianId = await resolveOwnTechnicianId(req, "reports");
+    const resolvedTechnicianId =
+      ownTechnicianId ??
+      (technicianId ? parseInt(technicianId as string) : undefined);
+
     const profit = await getTechnicianProfitContribution(organizationId, {
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
-      technicianId: technicianId ? parseInt(technicianId as string) : undefined,
+      technicianId: resolvedTechnicianId,
       managerId: managerId ? parseInt(managerId as string) : undefined,
     });
 
@@ -716,12 +773,13 @@ export const getTechnicianProfitHandler = async (
 export const getJobStatusSummaryHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } =
+      req.query;
 
     const summary = await getJobStatusSummary(organizationId, {
       startDate: startDate as string | undefined,
@@ -742,12 +800,13 @@ export const getJobStatusSummaryHandler = async (
 export const getJobProfitabilityHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } =
+      req.query;
 
     const profitability = await getJobProfitability(organizationId, {
       startDate: startDate as string | undefined,
@@ -768,12 +827,13 @@ export const getJobProfitabilityHandler = async (
 export const getJobCostBreakdownHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } =
+      req.query;
 
     const breakdown = await getJobCostBreakdown(organizationId, {
       startDate: startDate as string | undefined,
@@ -794,12 +854,13 @@ export const getJobCostBreakdownHandler = async (
 export const getJobTimelineHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
 
-    const { startDate, endDate, jobType, status, managerId, technicianId } = req.query;
+    const { startDate, endDate, jobType, status, managerId, technicianId } =
+      req.query;
 
     const timeline = await getJobTimeline(organizationId, {
       startDate: startDate as string | undefined,
@@ -824,7 +885,7 @@ export const getJobTimelineHandler = async (
 export const getInvoiceSummaryHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -848,7 +909,7 @@ export const getInvoiceSummaryHandler = async (
 export const getCustomerAgingHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
@@ -872,7 +933,7 @@ export const getCustomerAgingHandler = async (
 export const getPaymentCollectionHandler = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;

@@ -12,6 +12,7 @@ import {
   getPayrollRunById,
   getPayrollRuns,
   createPayrollRun,
+  bulkDeletePayrollRuns,
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -489,5 +490,30 @@ export const processPayrollRunHandler = async (req: Request, res: Response) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeletePayrollRunsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeletePayrollRuns(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} payroll runs by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} payroll run(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete payroll runs error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

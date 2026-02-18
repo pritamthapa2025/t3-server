@@ -7,6 +7,13 @@ const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
   message: "Must be a valid number (e.g., 100 or 99.99)",
 });
 
+const ratingSchema = z
+  .string()
+  .regex(/^\d+(\.\d+)?$/, { message: "Rating must be a valid number" })
+  .refine((val) => parseFloat(val) >= 0 && parseFloat(val) <= 10, {
+    message: "Rating must be between 0 and 10",
+  });
+
 // ============================
 // Enum Schemas
 // ============================
@@ -341,7 +348,7 @@ export const createPurchaseOrderSchema = z.object({
           unitCost: numericStringSchema,
           expectedDeliveryDate: z.string().optional(),
           notes: z.string().optional(),
-        })
+        }),
       )
       .min(1, "At least one item must be included in the purchase order"),
   }),
@@ -390,7 +397,7 @@ export const receivePurchaseOrderSchema = z.object({
           quantityReceived: numericStringSchema,
           actualDeliveryDate: z.string().optional(),
           notes: z.string().optional(),
-        })
+        }),
       )
       .min(1, "At least one item must be included in the receipt"),
     locationId: uuidSchema.optional(),
@@ -427,10 +434,6 @@ export const getSuppliersQuerySchema = z.object({
 
 export const createSupplierSchema = z.object({
   body: z.object({
-    supplierCode: z
-      .string()
-      .max(50, "Supplier code is too long (maximum 50 characters)")
-      .optional(),
     name: z
       .string()
       .min(1, "Supplier name is required and cannot be empty")
@@ -441,7 +444,7 @@ export const createSupplierSchema = z.object({
     email: z
       .string()
       .email(
-        "Please provide a valid email address (e.g., supplier@example.com)"
+        "Please provide a valid email address (e.g., supplier@example.com)",
       )
       .max(150, "Email address is too long (maximum 150 characters)")
       .trim()
@@ -457,7 +460,7 @@ export const createSupplierSchema = z.object({
     accountNumber: z.string().max(100).optional(),
     paymentTerms: z.string().max(100).optional(),
     creditLimit: numericStringSchema.optional(),
-    rating: numericStringSchema.optional(),
+    rating: ratingSchema.optional(),
     leadTimeDays: z.number().int().optional(),
     isPreferred: z.boolean().optional().default(false),
     notes: z.string().optional(),
@@ -469,14 +472,13 @@ export const updateSupplierSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    supplierCode: z.string().max(50).optional(),
     name: z.string().min(1).max(255).optional(),
     legalName: z.string().max(255).optional(),
     contactName: z.string().max(150).optional(),
     email: z
       .string()
       .email(
-        "Please provide a valid email address (e.g., supplier@example.com)"
+        "Please provide a valid email address (e.g., supplier@example.com)",
       )
       .max(150, "Email address is too long (maximum 150 characters)")
       .trim()
@@ -492,7 +494,7 @@ export const updateSupplierSchema = z.object({
     accountNumber: z.string().max(100).optional(),
     paymentTerms: z.string().max(100).optional(),
     creditLimit: numericStringSchema.optional(),
-    rating: numericStringSchema.optional(),
+    rating: ratingSchema.optional(),
     leadTimeDays: z.number().int().optional(),
     isActive: z.boolean().optional(),
     isPreferred: z.boolean().optional(),
@@ -526,10 +528,6 @@ export const getLocationsQuerySchema = z.object({
 
 export const createLocationSchema = z.object({
   body: z.object({
-    locationCode: z
-      .string()
-      .max(50, "Location code is too long (maximum 50 characters)")
-      .optional(),
     name: z
       .string()
       .min(1, "Location name is required and cannot be empty")
@@ -554,7 +552,6 @@ export const updateLocationSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    locationCode: z.string().max(50).optional(),
     name: z.string().min(1).max(255).optional(),
     locationType: z.string().max(50).optional(),
     parentLocationId: uuidSchema.optional(),
@@ -592,7 +589,7 @@ export const createCategorySchema = z.object({
 
 export const updateCategorySchema = z.object({
   params: z.object({
-    id: z.number().int().positive(),
+    id: z.coerce.number().int().positive(),
   }),
   body: z.object({
     name: z.string().min(1).max(100).optional(),
@@ -607,7 +604,7 @@ export const updateCategorySchema = z.object({
 
 export const deleteCategorySchema = z.object({
   params: z.object({
-    id: z.number().int().positive(),
+    id: z.coerce.number().int().positive(),
   }),
 });
 
@@ -617,7 +614,7 @@ export const deleteCategorySchema = z.object({
 
 export const deleteUnitSchema = z.object({
   params: z.object({
-    id: z.number().int().positive(),
+    id: z.coerce.number().int().positive(),
   }),
 });
 
@@ -711,7 +708,7 @@ export const receivePartialPurchaseOrderSchema = z.object({
           quantityReceived: numericStringSchema,
           actualDeliveryDate: z.string().optional(),
           notes: z.string().optional(),
-        })
+        }),
       )
       .min(1, "At least one item must be received"),
     locationId: uuidSchema.optional(),
@@ -767,7 +764,3 @@ export const deleteSchema = z.object({
     id: uuidSchema,
   }),
 });
-
-
-
-

@@ -11,6 +11,7 @@ import {
   getViolationWatchlist,
   getViolationCounts,
   createEmployeeViolation,
+  bulkDeleteComplianceCases,
 } from "../services/compliance.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -224,7 +225,8 @@ export const deleteComplianceCaseHandler = async (
       });
     }
 
-    const deletedCase = await deleteComplianceCase(id);
+    const userId = req.user?.id;
+    const deletedCase = await deleteComplianceCase(id, userId);
 
     if (!deletedCase) {
       return res.status(404).json({
@@ -398,5 +400,30 @@ export const getViolationCountsHandler = async (
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteComplianceCasesHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteComplianceCases(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} compliance cases by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} compliance case(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete compliance cases error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

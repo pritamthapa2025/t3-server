@@ -23,6 +23,7 @@ import {
   or,
   inArray,
   getTableColumns,
+  sql,
 } from "drizzle-orm";
 import type {
   CreateDispatchTaskData,
@@ -39,6 +40,10 @@ import type {
 const createdByUser = alias(users, "created_by_user");
 
 // Get Dispatch Tasks with Pagination
+export type GetDispatchTasksOptions = {
+  ownEmployeeId: number;
+};
+
 export const getDispatchTasks = async (
   offset: number,
   limit: number,
@@ -53,6 +58,7 @@ export const getDispatchTasks = async (
     sortBy?: string;
     sortOrder?: "asc" | "desc";
   },
+  options?: GetDispatchTasksOptions,
 ) => {
   const {
     search,
@@ -84,6 +90,13 @@ export const getDispatchTasks = async (
         like(dispatchTasks.title, `%${search}%`),
         like(dispatchTasks.description, `%${search}%`),
       )!,
+    );
+  }
+
+  // assigned_only: Technicians see only tasks they are assigned to
+  if (options?.ownEmployeeId !== undefined) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM org.dispatch_assignments da WHERE da.task_id = ${dispatchTasks.id} AND da.technician_id = ${options.ownEmployeeId} AND da.is_deleted = false)`,
     );
   }
 
@@ -300,12 +313,15 @@ export const updateDispatchTask = async (
 };
 
 // Soft Delete Dispatch Task
-export const deleteDispatchTask = async (id: string) => {
+export const deleteDispatchTask = async (id: string, deletedBy: string) => {
+  const now = new Date();
   const result = await db
     .update(dispatchTasks)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      deletedBy,
+      updatedAt: now,
     })
     .where(and(eq(dispatchTasks.id, id), eq(dispatchTasks.isDeleted, false)))
     .returning();
@@ -816,9 +832,9 @@ export const getDispatchKPIs = async () => {
         eq(dispatchTasks.isDeleted, false),
         or(
           eq(dispatchTasks.status, "assigned"),
-          eq(dispatchTasks.status, "in_progress")
-        )
-      )
+          eq(dispatchTasks.status, "in_progress"),
+        ),
+      ),
     );
 
   // Completed today (status: completed and endTime is today)
@@ -835,8 +851,8 @@ export const getDispatchKPIs = async () => {
         eq(dispatchTasks.isDeleted, false),
         eq(dispatchTasks.status, "completed"),
         gte(dispatchTasks.endTime, today),
-        lte(dispatchTasks.endTime, tomorrow)
-      )
+        lte(dispatchTasks.endTime, tomorrow),
+      ),
     );
 
   // Available technicians (employees with status = 'available')
@@ -844,10 +860,7 @@ export const getDispatchKPIs = async () => {
     .select({ count: count() })
     .from(employees)
     .where(
-      and(
-        eq(employees.isDeleted, false),
-        eq(employees.status, "available")
-      )
+      and(eq(employees.isDeleted, false), eq(employees.status, "available")),
     );
 
   // In field (employees with status = 'in_field')
@@ -855,10 +868,7 @@ export const getDispatchKPIs = async () => {
     .select({ count: count() })
     .from(employees)
     .where(
-      and(
-        eq(employees.isDeleted, false),
-        eq(employees.status, "in_field")
-      )
+      and(eq(employees.isDeleted, false), eq(employees.status, "in_field")),
     );
 
   // Overdue tasks (endTime < now and status not completed/cancelled)
@@ -873,9 +883,9 @@ export const getDispatchKPIs = async () => {
         or(
           eq(dispatchTasks.status, "pending"),
           eq(dispatchTasks.status, "assigned"),
-          eq(dispatchTasks.status, "in_progress")
-        )
-      )
+          eq(dispatchTasks.status, "in_progress"),
+        ),
+      ),
     );
 
   return {
@@ -885,4 +895,21 @@ export const getDispatchKPIs = async () => {
     inField: inFieldRow?.count || 0,
     overdueTasks: overdueTasksRow?.count || 0,
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteDispatchTasks = async (
+  ids: string[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(dispatchTasks)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(dispatchTasks.id, ids), eq(dispatchTasks.isDeleted, false)))
+    .returning({ id: dispatchTasks.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

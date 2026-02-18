@@ -68,8 +68,10 @@ import {
   completeCountHandler,
   getCountItemsHandler,
   recordCountItemHandler,
+  bulkDeleteInventoryItemsHandler,
 } from "../../controllers/InventoryController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getInventoryItemsQuerySchema,
@@ -115,6 +117,7 @@ import {
   uuidParamSchema,
   deleteSchema,
 } from "../../validations/inventory.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
@@ -164,26 +167,39 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
+// Feature shorthand constants
+// Technicians: view only; Managers: add/edit; Executives: delete + all
+const viewInventory = authorizeFeature("inventory", "view_inventory");
+const addItem = authorizeFeature("inventory", "add_item");
+const editItem = authorizeFeature("inventory", "edit_item");
+const deleteItem = authorizeFeature("inventory", "delete_item");
+const adjustQuantity = authorizeFeature("inventory", "adjust_quantity");
+// Purchase orders and suppliers — Manager/Executive only (reuses add_item gate)
+const managePOs = authorizeFeature("inventory", "add_item");
+
 // ============================
 // Inventory Items Routes
 // ============================
 
 router.get(
   "/items",
+  viewInventory,
   validate(getInventoryItemsQuerySchema),
   getInventoryItemsHandler,
 );
 
 router.get(
   "/items/:id",
+  viewInventory,
   validate(getInventoryItemByIdSchema),
   getInventoryItemByIdHandler,
 );
 
+// Create item — Manager/Executive only
 router.post(
   "/items",
+  addItem,
   (req, res, next) => {
-    // Apply multer only if Content-Type is multipart/form-data
     if (req.headers["content-type"]?.includes("multipart/form-data")) {
       upload(req, res, (err) => {
         if (err) {
@@ -192,7 +208,6 @@ router.post(
         next();
       });
     } else {
-      // Skip multer for JSON requests
       next();
     }
   },
@@ -200,26 +215,32 @@ router.post(
   createInventoryItemHandler,
 );
 
+// Edit item — Manager/Executive only
 router.put(
   "/items/:id",
+  editItem,
   validate(updateInventoryItemSchema),
   updateInventoryItemHandler,
 );
 
+// Delete item — Executive only
 router.delete(
   "/items/:id",
+  deleteItem,
   validate(deleteInventoryItemSchema),
   deleteInventoryItemHandler,
 );
 
 router.get(
   "/items/:id/history",
+  viewInventory,
   validate(uuidParamSchema),
   getItemHistoryHandler,
 );
 
 router.get(
   "/items/:id/transactions",
+  viewInventory,
   validate(uuidParamSchema),
   getItemTransactionsHandler,
 );
@@ -228,348 +249,447 @@ router.get(
 // Dashboard & Summary Routes
 // ============================
 
-router.get("/dashboard", getDashboardHandler);
-router.get("/stats/by-category", getStatsByCategoryHandler);
-router.get("/stats/by-location", getStatsByLocationHandler);
-router.get("/stats/by-status", getStatsByStatusHandler);
+router.get("/dashboard", viewInventory, getDashboardHandler);
+router.get("/stats/by-category", viewInventory, getStatsByCategoryHandler);
+router.get("/stats/by-location", viewInventory, getStatsByLocationHandler);
+router.get("/stats/by-status", viewInventory, getStatsByStatusHandler);
 
 // ============================
-// Transaction Routes
+// Transaction Routes — Technicians can confirm receipts
 // ============================
 
 router.get(
   "/transactions",
+  viewInventory,
   validate(getInventoryTransactionsQuerySchema),
   getTransactionsHandler,
 );
 
 router.post(
   "/transactions",
+  viewInventory,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
-// Convenient transaction endpoints by type
+// Confirm receipt (mark as received) — Technicians can do this
 router.post(
   "/transactions/receipt",
+  viewInventory,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
+// These transactions modify inventory quantities — Manager/Executive only
 router.post(
   "/transactions/issue",
+  adjustQuantity,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
 router.post(
   "/transactions/adjustment",
+  adjustQuantity,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
 router.post(
   "/transactions/transfer",
+  adjustQuantity,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
 router.post(
   "/transactions/return",
+  viewInventory,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
 router.post(
   "/transactions/write-off",
+  adjustQuantity,
   validate(createTransactionSchema),
   createTransactionHandler,
 );
 
 // ============================
-// Allocation Routes
+// Allocation Routes — Manager/Executive only
 // ============================
 
 router.get(
   "/allocations",
+  viewInventory,
   validate(getAllocationsQuerySchema),
   getAllocationsHandler,
 );
 
 router.get(
   "/allocations/:id",
+  viewInventory,
   validate(uuidParamSchema),
   getAllocationByIdHandler,
 );
 
 router.post(
   "/allocations",
+  addItem,
   validate(createAllocationSchema),
   createAllocationHandler,
 );
 
 router.put(
   "/allocations/:id",
+  editItem,
   validate(updateAllocationSchema),
   updateAllocationHandler,
 );
 
 router.delete(
   "/allocations/:id",
+  editItem,
   validate(deleteSchema),
   cancelAllocationHandler,
 );
 
 router.post(
   "/allocations/:id/issue",
+  editItem,
   validate(issueAllocationSchema),
   issueAllocationHandler,
 );
 
 router.post(
   "/allocations/:id/return",
+  viewInventory,
   validate(returnAllocationSchema),
   returnAllocationHandler,
 );
 
 router.get(
   "/allocations/job/:jobId",
+  viewInventory,
   validate(uuidParamSchema),
   getAllocationsByJobHandler,
 );
 
 router.get(
   "/allocations/bid/:bidId",
+  viewInventory,
   validate(uuidParamSchema),
   getAllocationsByBidHandler,
 );
 
 // ============================
-// Purchase Order Routes
+// Purchase Order Routes — Manager/Executive only
 // ============================
 
 router.get(
   "/purchase-orders",
+  managePOs,
   validate(getPurchaseOrdersQuerySchema),
   getPurchaseOrdersHandler,
 );
 
 router.get(
   "/purchase-orders/:id",
+  managePOs,
   validate(getPurchaseOrderByIdSchema),
   getPurchaseOrderByIdHandler,
 );
 
 router.post(
   "/purchase-orders",
+  managePOs,
   validate(createPurchaseOrderSchema),
   createPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id",
+  managePOs,
   validate(updatePurchaseOrderSchema),
   updatePurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/approve",
+  managePOs,
   validate(approvePurchaseOrderSchema),
   approvePurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/send",
+  managePOs,
   validate(sendPurchaseOrderSchema),
   sendPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/cancel",
+  managePOs,
   validate(cancelPurchaseOrderSchema),
   cancelPurchaseOrderHandler,
 );
 
 router.put(
   "/purchase-orders/:id/close",
+  managePOs,
   validate(closePurchaseOrderSchema),
   closePurchaseOrderHandler,
 );
 
 router.post(
   "/purchase-orders/:id/receive",
+  viewInventory,
   validate(receivePurchaseOrderSchema),
   receivePurchaseOrderHandler,
 );
 
 router.post(
   "/purchase-orders/:id/receive-partial",
+  viewInventory,
   validate(receivePartialPurchaseOrderSchema),
   receivePartialPurchaseOrderHandler,
 );
 
-// PO Line Item Routes
+// PO Line Item Routes — Manager/Executive only
 router.post(
   "/purchase-orders/:id/items",
+  managePOs,
   validate(addPurchaseOrderItemSchema),
   addPurchaseOrderItemHandler,
 );
 
 router.put(
   "/purchase-order-items/:id",
+  managePOs,
   validate(updatePurchaseOrderItemSchema),
   updatePurchaseOrderItemHandler,
 );
 
 router.delete(
   "/purchase-order-items/:id",
+  managePOs,
   validate(deletePurchaseOrderItemSchema),
   deletePurchaseOrderItemHandler,
 );
 
 router.get(
   "/purchase-orders/:id/items",
+  managePOs,
   validate(uuidParamSchema),
   getPurchaseOrderItemsHandler,
 );
 
 // ============================
-// Supplier Routes
+// Supplier Routes — all can view; Manager/Executive can manage
 // ============================
 
 router.get(
   "/suppliers",
+  viewInventory,
   validate(getSuppliersQuerySchema),
   getSuppliersHandler,
 );
 
-router.get("/suppliers/:id", validate(uuidParamSchema), getSupplierByIdHandler);
+router.get(
+  "/suppliers/:id",
+  viewInventory,
+  validate(uuidParamSchema),
+  getSupplierByIdHandler,
+);
 
 router.post(
   "/suppliers",
+  addItem,
   validate(createSupplierSchema),
   createSupplierHandler,
 );
 
 router.put(
   "/suppliers/:id",
+  editItem,
   validate(updateSupplierSchema),
   updateSupplierHandler,
 );
 
-router.delete("/suppliers/:id", validate(deleteSchema), deleteSupplierHandler);
+router.delete(
+  "/suppliers/:id",
+  deleteItem,
+  validate(deleteSchema),
+  deleteSupplierHandler,
+);
 
 // ============================
-// Location Routes
+// Location Routes — all can view; Manager/Executive can manage
 // ============================
 
 router.get(
   "/locations",
+  viewInventory,
   validate(getLocationsQuerySchema),
   getLocationsHandler,
 );
 
-router.get("/locations/:id", validate(uuidParamSchema), getLocationByIdHandler);
+router.get(
+  "/locations/:id",
+  viewInventory,
+  validate(uuidParamSchema),
+  getLocationByIdHandler,
+);
 
 router.post(
   "/locations",
+  addItem,
   validate(createLocationSchema),
   createLocationHandler,
 );
 
 router.put(
   "/locations/:id",
+  editItem,
   validate(updateLocationSchema),
   updateLocationHandler,
 );
 
-router.delete("/locations/:id", validate(deleteSchema), deleteLocationHandler);
+router.delete(
+  "/locations/:id",
+  editItem,
+  validate(deleteSchema),
+  deleteLocationHandler,
+);
 
 // ============================
-// Category Routes
+// Category Routes — all can view; Manager/Executive can manage
 // ============================
 
-router.get("/categories", getCategoriesHandler);
+router.get("/categories", viewInventory, getCategoriesHandler);
 
 router.post(
   "/categories",
+  addItem,
   validate(createCategorySchema),
   createCategoryHandler,
 );
 
 router.put(
   "/categories/:id",
+  editItem,
   validate(updateCategorySchema),
   updateCategoryHandler,
 );
 
 router.delete(
   "/categories/:id",
+  editItem,
   validate(deleteCategorySchema),
   deleteCategoryHandler,
 );
 
 // ============================
-// Units of Measure Routes
+// Units of Measure Routes — all can view; Manager/Executive can manage
 // ============================
 
-router.get("/units", getUnitsHandler);
-router.post("/units", createUnitHandler);
-router.put("/units/:id", updateUnitHandler);
+router.get("/units", viewInventory, getUnitsHandler);
+router.post("/units", addItem, createUnitHandler);
+router.put("/units/:id", editItem, updateUnitHandler);
 
-router.delete("/units/:id", validate(deleteUnitSchema), deleteUnitHandler);
+router.delete(
+  "/units/:id",
+  editItem,
+  validate(deleteUnitSchema),
+  deleteUnitHandler,
+);
 
 // ============================
-// Stock Alert Routes
+// Stock Alert Routes — Manager/Executive only
 // ============================
 
-router.get("/alerts", getAlertsHandler);
-router.get("/alerts/unresolved", getUnresolvedAlertsHandler);
+router.get("/alerts", managePOs, getAlertsHandler);
+router.get("/alerts/unresolved", managePOs, getUnresolvedAlertsHandler);
 
 router.put(
   "/alerts/:id/acknowledge",
+  managePOs,
   validate(acknowledgeAlertSchema),
   acknowledgeAlertHandler,
 );
 
 router.put(
   "/alerts/:id/resolve",
+  managePOs,
   validate(resolveAlertSchema),
   resolveAlertHandler,
 );
 
-router.post("/alerts/trigger-check", triggerAlertCheckHandler);
+router.post("/alerts/trigger-check", managePOs, triggerAlertCheckHandler);
 
 // ============================
-// Physical Count Routes
+// Physical Count Routes — Manager/Executive only
 // ============================
 
-router.get("/counts", getCountsHandler);
+router.get("/counts", managePOs, getCountsHandler);
 
-router.get("/counts/:id", validate(uuidParamSchema), getCountByIdHandler);
+router.get(
+  "/counts/:id",
+  managePOs,
+  validate(uuidParamSchema),
+  getCountByIdHandler,
+);
 
-router.post("/counts", validate(createCountSchema), createCountHandler);
+router.post(
+  "/counts",
+  managePOs,
+  validate(createCountSchema),
+  createCountHandler,
+);
 
-router.put("/counts/:id", validate(updateCountSchema), updateCountHandler);
+router.put(
+  "/counts/:id",
+  managePOs,
+  validate(updateCountSchema),
+  updateCountHandler,
+);
 
-router.post("/counts/:id/start", validate(uuidParamSchema), startCountHandler);
+router.post(
+  "/counts/:id/start",
+  managePOs,
+  validate(uuidParamSchema),
+  startCountHandler,
+);
 
 router.post(
   "/counts/:id/complete",
+  managePOs,
   validate(uuidParamSchema),
   completeCountHandler,
 );
 
 router.get(
   "/counts/:id/items",
+  managePOs,
   validate(uuidParamSchema),
   getCountItemsHandler,
 );
 
 router.put(
   "/counts/:countId/items/:itemId",
+  managePOs,
   validate(recordCountItemSchema),
   recordCountItemHandler,
+);
+
+// Bulk delete inventory items (Executive only)
+router.post(
+  "/inventory/bulk-delete",
+  authorizeFeature("inventory", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteInventoryItemsHandler,
 );
 
 export default router;

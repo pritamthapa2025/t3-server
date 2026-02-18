@@ -12,9 +12,12 @@ import {
   getPayrollRunByIdHandler,
   createPayrollRunHandler,
   processPayrollRunHandler,
+  bulkDeletePayrollRunsHandler,
 } from "../../controllers/PayrollController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getPayrollDashboardQuerySchema,
   getPayrollEntriesQuerySchema,
@@ -114,5 +117,13 @@ router
     validate(processPayrollRunSchema),
     processPayrollRunHandler
   );
+
+// Bulk delete payroll runs (Executive only)
+router.post(
+  "/payroll/runs/bulk-delete",
+  authorizeFeature("payroll", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeletePayrollRunsHandler,
+);
 
 export default router;

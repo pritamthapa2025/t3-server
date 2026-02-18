@@ -18,6 +18,7 @@ import {
   updateExpenseReceiptHandler,
   deleteExpenseReceiptHandler,
   getExpensesKPIsHandler,
+  bulkDeleteExpensesHandler,
 } from "../../controllers/ExpenseController.js";
 import {
   getExpenseReportsHandler,
@@ -37,8 +38,10 @@ import {
   getMileageSummaryHandler,
 } from "../../controllers/MileageController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
   // Expense Categories (enum list for dropdown)
   getExpenseCategoriesQuerySchema,
@@ -277,6 +280,14 @@ router.delete(
   "/expenses/:expenseId/receipts/:receiptId",
   validate(deleteExpenseReceiptSchema),
   deleteExpenseReceiptHandler,
+);
+
+// Bulk delete expenses (Executive only)
+router.post(
+  "/expenses/bulk-delete",
+  authorizeFeature("expenses", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteExpensesHandler,
 );
 
 export default router;

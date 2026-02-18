@@ -12,6 +12,7 @@ import {
   getInspectorsHandler,
   getTechniciansHandler,
   getUnassignedDriversHandler,
+  bulkDeleteEmployeesHandler,
 } from "../../controllers/EmployeeController.js";
 import {
   getEmployeeReviews,
@@ -20,8 +21,10 @@ import {
   getEmployeeReviewSummary,
 } from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { userTransformer } from "../../middleware/response-transformer.js";
+import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getEmployeesQuerySchema,
   getEmployeesSimpleQuerySchema,
@@ -163,6 +166,14 @@ router.get(
   "/employees/:employeeId/reviews/summary",
   validate(getEmployeeReviewSummarySchema),
   getEmployeeReviewSummary,
+);
+
+// Bulk delete employees (Executive only)
+router.post(
+  "/employees/bulk-delete",
+  authorizeFeature("team", "bulk_delete"),
+  validate(bulkDeleteIntSchema),
+  bulkDeleteEmployeesHandler,
 );
 
 export default router;

@@ -1,12 +1,5 @@
 import { db } from "../config/db.js";
 import {
-  employeeComplianceCases,
-  employeeViolationHistory,
-} from "../drizzle/schema/compliance.schema.js";
-import { employees, departments } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
-import { alias } from "drizzle-orm/pg-core";
-import {
   eq,
   and,
   desc,
@@ -20,7 +13,15 @@ import {
   like,
   or,
   getTableColumns,
+  inArray,
 } from "drizzle-orm";
+import {
+  employeeComplianceCases,
+  employeeViolationHistory,
+} from "../drizzle/schema/compliance.schema.js";
+import { employees, departments } from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
+import { alias } from "drizzle-orm/pg-core";
 import type {
   CreateComplianceCaseData,
   UpdateComplianceCaseData,
@@ -403,8 +404,8 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   // Validate organizationId (client ID) - only include if it's a valid UUID
   const validatedOrgId = validateOrganizationId(data.organizationId);
 
-  // Auto-generate case number if not provided
-  const caseNumber = data.caseNumber || (await generateCaseNumber());
+  // Always auto-generate case number - never accept from external input
+  const caseNumber = await generateCaseNumber();
 
   const insertData: any = {
     employeeId: data.employeeId,
@@ -472,6 +473,9 @@ export const updateComplianceCase = async (
 ) => {
   const updateData: any = { ...data };
 
+  // Strip auto-generated field - caseNumber cannot be changed after creation
+  delete updateData.caseNumber;
+
   // Handle date conversions
   if (data.dueDate) {
     updateData.dueDate =
@@ -512,12 +516,15 @@ export const updateComplianceCase = async (
 };
 
 // Soft Delete Compliance Case
-export const deleteComplianceCase = async (id: string) => {
+export const deleteComplianceCase = async (id: string, deletedBy?: string) => {
+  const now = new Date();
   const result = await db
     .update(employeeComplianceCases)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
     })
     .where(
       and(
@@ -811,4 +818,26 @@ export const createEmployeeViolation = async (data: {
     .returning();
 
   return violation;
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteComplianceCases = async (
+  ids: string[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(employeeComplianceCases)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(
+      and(
+        inArray(employeeComplianceCases.id, ids),
+        eq(employeeComplianceCases.isDeleted, false),
+      ),
+    )
+    .returning({ id: employeeComplianceCases.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

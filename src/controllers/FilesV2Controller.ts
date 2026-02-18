@@ -6,6 +6,7 @@
 import type { Request, Response, NextFunction } from "express";
 import * as FilesV2Service from "../services/files-v2.service.js";
 import type { PaginationParams, FileSourceTable } from "../types/files-v2.types.js";
+import type { BulkDeleteFilesSchema } from "../validations/files-v2.validations.js";
 
 /**
  * Get recent files (last 14 days) with pagination
@@ -285,6 +286,34 @@ export async function getEmployeeDocumentFilesHandler(
 
     const result = await FilesV2Service.getEmployeeDocumentFiles(pagination);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Bulk soft-delete files (Option C – 30-day trash bin).
+ * Sets isDeleted=true + deletedAt=now. Files stay in DO Spaces until the cron purges them.
+ * POST /api/v1/org/files/bulk-delete
+ *
+ * Body: { files: [{ fileId: string, source: FileSourceTable }] }
+ */
+export async function bulkDeleteFilesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const userId: string = (req as any).user?.id ?? (req as any).userId;
+    const { files } = req.body as BulkDeleteFilesSchema;
+
+    const result = await FilesV2Service.bulkSoftDeleteFiles(files, userId);
+
+    res.json({
+      success: true,
+      message: `${result.deleted} file(s) moved to trash. They will be permanently deleted from storage after 30 days.`,
+      data: result,
+    });
   } catch (error) {
     next(error);
   }

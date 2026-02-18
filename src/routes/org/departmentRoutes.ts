@@ -7,11 +7,14 @@ import {
   deleteDepartmentHandler,
   getDepartmentKPIsHandler,
   getDepartmentsListHandler,
+  bulkDeleteDepartmentsHandler,
 } from "../../controllers/DepartmentController.js";
 import { getUsersByRolesHandler } from "../../controllers/UserControler.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
+import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getDepartmentsQuerySchema,
   getDepartmentByIdSchema,
@@ -44,5 +47,13 @@ router
   .get(validate(getDepartmentByIdSchema), getDepartmentByIdHandler)
   .put(validate(updateDepartmentSchema), updateDepartmentHandler)
   .delete(validate(deleteDepartmentSchema), deleteDepartmentHandler);
+
+// Bulk delete departments (Executive only)
+router.post(
+  "/departments/bulk-delete",
+  authorizeFeature("departments", "bulk_delete"),
+  validate(bulkDeleteIntSchema),
+  bulkDeleteDepartmentsHandler,
+);
 
 export default router;

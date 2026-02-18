@@ -70,8 +70,13 @@ import {
   getJobInvoiceKPIsHandler,
   getJobLaborCostTrackingHandler,
   getJobsKPIsHandler,
+  bulkDeleteJobsHandler,
 } from "../../controllers/JobController.js";
 import { authenticate } from "../../middleware/auth.js";
+import {
+  authorizeFeature,
+  authorizeAnyFeature,
+} from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getJobsQuerySchema,
@@ -142,6 +147,7 @@ import {
   getJobInvoiceKPIsSchema,
   getJobLaborCostTrackingSchema,
 } from "../../validations/job.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
@@ -234,201 +240,218 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
+// Shorthand: view feature covers Technician (view_assigned) + Manager/Executive (view)
+const viewJobs = authorizeAnyFeature("jobs", ["view_jobs", "view"]);
+const createJob = authorizeFeature("jobs", "create_job");
+const editJob = authorizeAnyFeature("jobs", ["edit_job", "edit"]);
+const deleteJob = authorizeFeature("jobs", "delete_job");
+const viewBudget = authorizeFeature("jobs", "view_budget");
+const viewExpenses = authorizeAnyFeature("jobs", ["view_expenses", "add_expense"]);
+const addExpense = authorizeFeature("jobs", "add_expense");
+const approveExpenses = authorizeFeature("jobs", "approve_expenses");
+const uploadPhotos = authorizeFeature("jobs", "upload_photos");
+
 // Main Job Routes
 
 // KPIs Route (must be before /jobs/:id to avoid parameter conflicts)
-router.get("/jobs/kpis", getJobsKPIsHandler);
+router.get("/jobs/kpis", viewJobs, getJobsKPIsHandler);
 
 router
   .route("/jobs")
-  .get(validate(getJobsQuerySchema), getJobsHandler)
-  .post(validate(createJobSchema), createJobHandler);
+  .get(viewJobs, validate(getJobsQuerySchema), getJobsHandler)
+  .post(createJob, validate(createJobSchema), createJobHandler);
 
-// PUT updates job data AND all associated bid data (materials, labor, travel, financial breakdown, operating expenses, type-specific data, timeline, notes, documents, media)
+// PUT updates job data AND all associated bid data
 router
   .route("/jobs/:id")
-  .get(validate(getJobByIdSchema), getJobByIdHandler)
+  .get(viewJobs, validate(getJobByIdSchema), getJobByIdHandler)
   .put(
+    editJob,
     uploadJobDocuments,
     handleMulterError,
     parseFormData,
     validate(updateJobSchema),
     updateJobHandler,
   )
-  .delete(validate(deleteJobSchema), deleteJobHandler);
+  .delete(deleteJob, validate(deleteJobSchema), deleteJobHandler);
 
 // Get job with all related data
 router
   .route("/jobs/:id/complete")
-  .get(validate(getJobWithAllDataSchema), getJobWithAllDataHandler);
+  .get(viewJobs, validate(getJobWithAllDataSchema), getJobWithAllDataHandler);
 
-// Get job invoice KPIs
+// Get job invoice KPIs (Manager/Executive only — financial data)
 router
   .route("/jobs/:jobId/invoices/kpis")
-  .get(validate(getJobInvoiceKPIsSchema), getJobInvoiceKPIsHandler);
+  .get(viewBudget, validate(getJobInvoiceKPIsSchema), getJobInvoiceKPIsHandler);
 
-// Get job labor cost tracking (based on dispatch assignments)
+// Get job labor cost tracking (Manager/Executive only — financial data)
 router
   .route("/jobs/:jobId/labor/cost-tracking")
-  .get(validate(getJobLaborCostTrackingSchema), getJobLaborCostTrackingHandler);
+  .get(viewBudget, validate(getJobLaborCostTrackingSchema), getJobLaborCostTrackingHandler);
 
-// Team Members Routes
+// Team Members Routes (Manager/Executive only — job management)
 
 router
   .route("/jobs/:jobId/team-members")
-  .get(validate(getJobTeamMembersSchema), getJobTeamMembersHandler)
-  .post(validate(addJobTeamMemberSchema), addJobTeamMemberHandler);
+  .get(editJob, validate(getJobTeamMembersSchema), getJobTeamMembersHandler)
+  .post(editJob, validate(addJobTeamMemberSchema), addJobTeamMemberHandler);
 
 router
   .route("/jobs/:jobId/team-members/:employeeId")
-  .delete(validate(removeJobTeamMemberSchema), removeJobTeamMemberHandler);
+  .delete(editJob, validate(removeJobTeamMemberSchema), removeJobTeamMemberHandler);
 
-// Financial Summary Routes
+// Financial Summary Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/financial-summary")
-  .get(validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
+  .get(viewBudget, validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
   .put(
+    editJob,
     validate(updateJobFinancialSummarySchema),
     updateJobFinancialSummaryHandler,
   );
 
-// Financial Breakdown Routes
+// Financial Breakdown Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/financial-breakdown")
-  .get(getJobFinancialBreakdownHandler)
+  .get(viewBudget, getJobFinancialBreakdownHandler)
   .put(
+    editJob,
     validate(updateJobFinancialBreakdownSchema),
     updateJobFinancialBreakdownHandler,
   );
 
-// Materials Routes
+// Materials Routes (Manager/Executive only — bid cost data)
 
 router
   .route("/jobs/:jobId/materials")
-  .get(validate(getJobMaterialsSchema), getJobMaterialsHandler)
-  .post(validate(createJobMaterialSchema), createJobMaterialHandler);
+  .get(editJob, validate(getJobMaterialsSchema), getJobMaterialsHandler)
+  .post(editJob, validate(createJobMaterialSchema), createJobMaterialHandler);
 
 router
   .route("/jobs/:jobId/materials/:materialId")
-  .get(validate(getJobMaterialByIdSchema), getJobMaterialByIdHandler)
-  .put(validate(updateJobMaterialSchema), updateJobMaterialHandler)
-  .delete(validate(deleteJobMaterialSchema), deleteJobMaterialHandler);
+  .get(editJob, validate(getJobMaterialByIdSchema), getJobMaterialByIdHandler)
+  .put(editJob, validate(updateJobMaterialSchema), updateJobMaterialHandler)
+  .delete(editJob, validate(deleteJobMaterialSchema), deleteJobMaterialHandler);
 
-// Labor Routes
+// Labor Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/labor")
-  .get(validate(getJobLaborSchema), getJobLaborHandler)
-  .post(validate(createJobLaborSchema), createJobLaborHandler);
+  .get(editJob, validate(getJobLaborSchema), getJobLaborHandler)
+  .post(editJob, validate(createJobLaborSchema), createJobLaborHandler);
 
 router
   .route("/jobs/:jobId/labor/:laborId")
-  .get(validate(getJobLaborByIdSchema), getJobLaborByIdHandler)
-  .put(validate(updateJobLaborSchema), updateJobLaborHandler)
-  .delete(validate(deleteJobLaborSchema), deleteJobLaborHandler);
+  .get(editJob, validate(getJobLaborByIdSchema), getJobLaborByIdHandler)
+  .put(editJob, validate(updateJobLaborSchema), updateJobLaborHandler)
+  .delete(editJob, validate(deleteJobLaborSchema), deleteJobLaborHandler);
 
-// Travel Routes
+// Travel Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/travel")
-  .get(validate(getJobTravelSchema), getJobTravelHandler)
-  .post(validate(createJobTravelSchema), createJobTravelHandler);
+  .get(editJob, validate(getJobTravelSchema), getJobTravelHandler)
+  .post(editJob, validate(createJobTravelSchema), createJobTravelHandler);
 
 router
   .route("/jobs/:jobId/travel/:travelId")
-  .get(validate(getJobTravelByIdSchema), getJobTravelByIdHandler)
-  .put(validate(updateJobTravelSchema), updateJobTravelHandler)
-  .delete(validate(deleteJobTravelSchema), deleteJobTravelHandler);
+  .get(editJob, validate(getJobTravelByIdSchema), getJobTravelByIdHandler)
+  .put(editJob, validate(updateJobTravelSchema), updateJobTravelHandler)
+  .delete(editJob, validate(deleteJobTravelSchema), deleteJobTravelHandler);
 
-// Operating Expenses Routes
+// Operating Expenses Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/operating-expenses")
-  .get(validate(getJobOperatingExpensesSchema), getJobOperatingExpensesHandler)
+  .get(editJob, validate(getJobOperatingExpensesSchema), getJobOperatingExpensesHandler)
   .put(
+    editJob,
     validate(updateJobOperatingExpensesSchema),
     updateJobOperatingExpensesHandler,
   );
 
-// Timeline Routes
+// Timeline Routes (all job viewers can read; Manager/Executive can write)
 
 router
   .route("/jobs/:jobId/timeline")
-  .get(validate(getJobTimelineSchema), getJobTimelineHandler)
-  .post(validate(createJobTimelineEventSchema), createJobTimelineEventHandler);
+  .get(viewJobs, validate(getJobTimelineSchema), getJobTimelineHandler)
+  .post(editJob, validate(createJobTimelineEventSchema), createJobTimelineEventHandler);
 
 router
   .route("/jobs/:jobId/timeline/:eventId")
-  .get(validate(getJobTimelineEventByIdSchema), getJobTimelineEventByIdHandler)
-  .put(validate(updateJobTimelineEventSchema), updateJobTimelineEventHandler)
+  .get(viewJobs, validate(getJobTimelineEventByIdSchema), getJobTimelineEventByIdHandler)
+  .put(editJob, validate(updateJobTimelineEventSchema), updateJobTimelineEventHandler)
   .delete(
+    editJob,
     validate(deleteJobTimelineEventSchema),
     deleteJobTimelineEventHandler,
   );
 
-// Notes Routes
+// Notes Routes (all job viewers can read and write notes)
 
 router
   .route("/jobs/:jobId/notes")
-  .get(validate(getJobNotesSchema), getJobNotesHandler)
-  .post(validate(createJobNoteSchema), createJobNoteHandler);
+  .get(viewJobs, validate(getJobNotesSchema), getJobNotesHandler)
+  .post(viewJobs, validate(createJobNoteSchema), createJobNoteHandler);
 
 router
   .route("/jobs/:jobId/notes/:noteId")
-  .get(validate(getJobNoteByIdSchema), getJobNoteByIdHandler)
-  .put(validate(updateJobNoteSchema), updateJobNoteHandler)
-  .delete(validate(deleteJobNoteSchema), deleteJobNoteHandler);
+  .get(viewJobs, validate(getJobNoteByIdSchema), getJobNoteByIdHandler)
+  .put(editJob, validate(updateJobNoteSchema), updateJobNoteHandler)
+  .delete(editJob, validate(deleteJobNoteSchema), deleteJobNoteHandler);
 
-// History Routes (Read-only)
+// History Routes (Read-only — all job viewers)
 
 router
   .route("/jobs/:jobId/history")
-  .get(validate(getJobHistorySchema), getJobHistoryHandler);
+  .get(viewJobs, validate(getJobHistorySchema), getJobHistoryHandler);
 
-// Tasks Routes
+// Tasks Routes (Manager/Executive create; all viewers can read)
 
 router
   .route("/jobs/:jobId/tasks")
-  .get(validate(getJobTasksSchema), getJobTasksHandler)
-  .post(validate(createJobTaskSchema), createJobTaskHandler);
+  .get(viewJobs, validate(getJobTasksSchema), getJobTasksHandler)
+  .post(editJob, validate(createJobTaskSchema), createJobTaskHandler);
 
 router
   .route("/jobs/:jobId/tasks/:taskId")
-  .get(validate(getJobTaskByIdSchema), getJobTaskByIdHandler)
-  .put(validate(updateJobTaskSchema), updateJobTaskHandler)
-  .delete(validate(deleteJobTaskSchema), deleteJobTaskHandler);
+  .get(viewJobs, validate(getJobTaskByIdSchema), getJobTaskByIdHandler)
+  .put(editJob, validate(updateJobTaskSchema), updateJobTaskHandler)
+  .delete(editJob, validate(deleteJobTaskSchema), deleteJobTaskHandler);
 
-// Task Comments Routes
+// Task Comments Routes (all viewers can comment)
 router
   .route("/jobs/:jobId/tasks/:taskId/comments")
-  .get(validate(getTaskCommentsSchema), getTaskCommentsHandler)
-  .post(validate(createTaskCommentSchema), createTaskCommentHandler);
+  .get(viewJobs, validate(getTaskCommentsSchema), getTaskCommentsHandler)
+  .post(viewJobs, validate(createTaskCommentSchema), createTaskCommentHandler);
 
 router
   .route("/jobs/:jobId/tasks/:taskId/comments/:id")
-  .get(validate(getTaskCommentByIdSchema), getTaskCommentByIdHandler)
-  .put(validate(updateTaskCommentSchema), updateTaskCommentHandler)
-  .delete(validate(deleteTaskCommentSchema), deleteTaskCommentHandler);
+  .get(viewJobs, validate(getTaskCommentByIdSchema), getTaskCommentByIdHandler)
+  .put(editJob, validate(updateTaskCommentSchema), updateTaskCommentHandler)
+  .delete(editJob, validate(deleteTaskCommentSchema), deleteTaskCommentHandler);
 
-// Survey Routes: /org/jobs/:jobId/survey and /org/jobs/:jobId/survey/:id
+// Survey Routes (all assigned viewers can access)
 router
   .route("/jobs/:jobId/survey")
-  .get(validate(getJobSurveysSchema), getJobSurveysHandler)
-  .post(validate(createJobSurveySchema), createJobSurveyHandler);
+  .get(viewJobs, validate(getJobSurveysSchema), getJobSurveysHandler)
+  .post(viewJobs, validate(createJobSurveySchema), createJobSurveyHandler);
 
 router
   .route("/jobs/:jobId/survey/:id")
-  .get(validate(getJobSurveyByIdSchema), getJobSurveyByIdHandler)
-  .put(validate(updateJobSurveySchema), updateJobSurveyHandler)
-  .delete(validate(deleteJobSurveySchema), deleteJobSurveyHandler);
+  .get(viewJobs, validate(getJobSurveyByIdSchema), getJobSurveyByIdHandler)
+  .put(editJob, validate(updateJobSurveySchema), updateJobSurveyHandler)
+  .delete(editJob, validate(deleteJobSurveySchema), deleteJobSurveyHandler);
 
-// Expenses Routes (POST/PUT support form-data: receipt file + data JSON)
+// Expenses Routes — Technicians can add expenses; Managers/Executives can approve/view all
 router
   .route("/jobs/:jobId/expenses")
-  .get(validate(getJobExpensesSchema), getJobExpensesHandler)
+  .get(viewExpenses, validate(getJobExpensesSchema), getJobExpensesHandler)
   .post(
+    addExpense,
     (req, res, next) => {
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
         uploadReceipt(req, res, (err) => {
@@ -446,8 +469,9 @@ router
 
 router
   .route("/jobs/:jobId/expenses/:expenseId")
-  .get(validate(getJobExpenseByIdSchema), getJobExpenseByIdHandler)
+  .get(viewExpenses, validate(getJobExpenseByIdSchema), getJobExpenseByIdHandler)
   .put(
+    addExpense,
     (req, res, next) => {
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
         uploadReceipt(req, res, (err) => {
@@ -462,14 +486,15 @@ router
     validate(updateJobExpenseSchema),
     updateJobExpenseHandler,
   )
-  .delete(validate(deleteJobExpenseSchema), deleteJobExpenseHandler);
+  .delete(approveExpenses, validate(deleteJobExpenseSchema), deleteJobExpenseHandler);
 
-// Documents Routes
+// Documents Routes — all assigned users can upload; Manager/Executive manage
 
 router
   .route("/jobs/:jobId/documents")
-  .get(validate(getJobDocumentsSchema), getJobDocumentsHandler)
+  .get(viewJobs, validate(getJobDocumentsSchema), getJobDocumentsHandler)
   .post(
+    uploadPhotos,
     uploadJobDocuments,
     handleMulterError,
     validate(createJobDocumentsSchema),
@@ -478,13 +503,22 @@ router
 
 router
   .route("/jobs/:jobId/documents/:documentId")
-  .get(validate(getJobDocumentByIdSchema), getJobDocumentByIdHandler)
+  .get(viewJobs, validate(getJobDocumentByIdSchema), getJobDocumentByIdHandler)
   .put(
+    editJob,
     uploadJobDocuments,
     handleMulterError,
     validate(updateJobDocumentSchema),
     updateJobDocumentHandler,
   )
-  .delete(validate(deleteJobDocumentSchema), deleteJobDocumentHandler);
+  .delete(editJob, validate(deleteJobDocumentSchema), deleteJobDocumentHandler);
+
+// Bulk delete jobs (Executive only)
+router.post(
+  "/jobs/bulk-delete",
+  authorizeFeature("jobs", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteJobsHandler,
+);
 
 export default router;

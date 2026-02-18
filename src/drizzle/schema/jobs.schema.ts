@@ -37,7 +37,7 @@ export const jobs: any = org.table(
     // Relationships
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id), // Reference to bid - organization and property can be derived from bid
+      .references(() => bidsTable.id, { onDelete: "cascade" }), // Reference to bid - organization and property can be derived from bid
 
     // Basic Info
     description: text("description"),
@@ -73,6 +73,8 @@ export const jobs: any = org.table(
     // Metadata
     createdBy: uuid("created_by").references(() => users.id),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -95,10 +97,10 @@ export const jobTeamMembers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     positionId: integer("position_id").references(() => positions.id),
     assignedDate: date("assigned_date").defaultNow(),
@@ -147,7 +149,7 @@ export const jobTasks = org.table(
     taskNumber: varchar("task_number", { length: 100 }).notNull(), // TASK-2025-0001 (auto-generated, name-year-4digit)
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
 
     taskName: varchar("task_name", { length: 255 }).notNull(),
     description: text("description"),
@@ -188,7 +190,7 @@ export const taskComments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobTaskId: uuid("job_task_id")
       .notNull()
-      .references(() => jobTasks.id),
+      .references(() => jobTasks.id, { onDelete: "cascade" }),
 
     comment: text("comment").notNull(),
 
@@ -215,7 +217,7 @@ export const jobExpenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
 
     expenseType: varchar("expense_type", { length: 100 }),
     category: expenseCategoryEnum("category").notNull(),
@@ -257,13 +259,13 @@ export const jobSurveys = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
 
     // Survey Information (Create New Survey)
     buildingNumber: varchar("building_number", { length: 100 }),
     unitTagLabel: varchar("unit_tag_label", { length: 100 }),
     unitLocation: varchar("unit_location", { length: 255 }),
-    technicianId: integer("technician_id").references(() => employees.id),
+    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "cascade" }),
     make: varchar("make", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
     serialNumber: varchar("serial_number", { length: 255 }),

@@ -48,7 +48,7 @@ export const expenses = org.table(
 
     // Category (enum: materials, equipment, fleet, etc.)
     category: expenseCategoryEnum("category").notNull().default("other"),
-    jobId: uuid("job_id").references(() => jobs.id), // Optional - only for job-related expenses
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }), // Optional - only for job-related expenses
 
     // Source tracking
     sourceId: uuid("source_id"), // Links to source record (job_expense.id, fleet_repair.id, purchase_order.id, etc.)
@@ -132,6 +132,8 @@ export const expenses = org.table(
       .references(() => users.id),
 
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -146,6 +148,7 @@ export const expenses = org.table(
     index("idx_expenses_submitted_date").on(table.submittedDate),
     index("idx_expenses_approved_by").on(table.approvedBy),
     index("idx_expenses_is_deleted").on(table.isDeleted),
+    index("idx_expenses_deleted_at").on(table.deletedAt),
     index("idx_expenses_created_at").on(table.createdAt),
     index("idx_expenses_number").on(table.expenseNumber),
   ],
@@ -164,10 +167,10 @@ export const expenseReports = org.table(
     // Relationships
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     // Report Details
     status: expenseReportStatusEnum("status").notNull().default("draft"),
@@ -257,13 +260,13 @@ export const expenseReportItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     reportId: uuid("report_id")
       .notNull()
-      .references(() => expenseReports.id),
+      .references(() => expenseReports.id, { onDelete: "cascade" }),
     expenseId: uuid("expense_id")
       .notNull()
-      .references(() => expenses.id),
+      .references(() => expenses.id, { onDelete: "cascade" }),
 
     // Metadata
     addedAt: timestamp("added_at").defaultNow(),
@@ -291,7 +294,7 @@ export const expenseReceipts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     expenseId: uuid("expense_id")
       .notNull()
-      .references(() => expenses.id),
+      .references(() => expenses.id, { onDelete: "cascade" }),
 
     // Document Details
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -335,8 +338,8 @@ export const expenseApprovals: any = org.table(
   "expense_approvals",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    expenseId: uuid("expense_id").references(() => expenses.id),
-    reportId: uuid("report_id").references(() => expenseReports.id),
+    expenseId: uuid("expense_id").references(() => expenses.id, { onDelete: "cascade" }),
+    reportId: uuid("report_id").references(() => expenseReports.id, { onDelete: "cascade" }),
 
     // Approval Details
     approvalLevel: integer("approval_level").notNull(), // 1 = Manager, 2 = Finance, etc.
@@ -387,11 +390,11 @@ export const expenseAllocations = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     expenseId: uuid("expense_id")
       .notNull()
-      .references(() => expenses.id),
+      .references(() => expenses.id, { onDelete: "cascade" }),
 
     // Allocation Target
     allocationType: varchar("allocation_type", { length: 50 }).notNull(), // "job", "department", "general"
-    jobId: uuid("job_id").references(() => jobs.id),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
     departmentId: integer("department_id"), // Will reference departments
 
     // Allocation Details
@@ -428,7 +431,7 @@ export const mileageLogs = org.table(
   "mileage_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    expenseId: uuid("expense_id").references(() => expenses.id),
+    expenseId: uuid("expense_id").references(() => expenses.id, { onDelete: "cascade" }),
 
     // Trip Details
     date: date("date").notNull(),
@@ -449,7 +452,7 @@ export const mileageLogs = org.table(
     odometerEnd: integer("odometer_end"),
 
     // Job/Project Allocation
-    jobId: uuid("job_id").references(() => jobs.id),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
 
     // GPS/Tracking
     gpsStartCoordinates: varchar("gps_start_coordinates", { length: 50 }),
@@ -492,11 +495,11 @@ export const expenseReimbursements = org.table(
     // Relationships
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id),
-    reportId: uuid("report_id").references(() => expenseReports.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
+    reportId: uuid("report_id").references(() => expenseReports.id, { onDelete: "cascade" }),
 
     // Reimbursement Details
     status: reimbursementStatusEnum("status").notNull().default("pending"),
@@ -555,13 +558,13 @@ export const expenseReimbursementItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     reimbursementId: uuid("reimbursement_id")
       .notNull()
-      .references(() => expenseReimbursements.id),
+      .references(() => expenseReimbursements.id, { onDelete: "cascade" }),
     expenseId: uuid("expense_id")
       .notNull()
-      .references(() => expenses.id),
+      .references(() => expenses.id, { onDelete: "cascade" }),
 
     // Reimbursement Details
     reimbursementAmount: numeric("reimbursement_amount", {
@@ -596,7 +599,7 @@ export const expenseBudgets = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     // Budget Scope
     name: varchar("name", { length: 255 }).notNull(),
@@ -606,8 +609,8 @@ export const expenseBudgets = org.table(
     // References
     category: expenseCategoryEnum("category"), // When budgetType is "category"
     departmentId: integer("department_id"), // Will reference departments
-    employeeId: integer("employee_id").references(() => employees.id),
-    jobId: uuid("job_id").references(() => jobs.id),
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
 
     // Period
     budgetPeriod: budgetPeriodEnum("budget_period").notNull(),
@@ -675,7 +678,7 @@ export const expenseHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     expenseId: uuid("expense_id")
       .notNull()
-      .references(() => expenses.id),
+      .references(() => expenses.id, { onDelete: "cascade" }),
 
     // History Details
     action: varchar("action", { length: 100 }).notNull(), // "created", "status_changed", "amount_updated", "approved", "rejected", etc.
@@ -684,7 +687,7 @@ export const expenseHistory = org.table(
     description: text("description"),
 
     // Context
-    reportId: uuid("report_id").references(() => expenseReports.id),
+    reportId: uuid("report_id").references(() => expenseReports.id, { onDelete: "cascade" }),
 
     // Metadata
     performedBy: uuid("performed_by")

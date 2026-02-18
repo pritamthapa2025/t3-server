@@ -41,6 +41,8 @@ export const departments = org.table(
     isActive: boolean("is_active").default(true).notNull(),
     sortOrder: integer("sort_order"),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id, {}),
 
     // Timestamps
     createdAt: timestamp("created_at").defaultNow(),
@@ -55,6 +57,7 @@ export const departments = org.table(
     index("idx_departments_lead").on(table.leadId),
     // Index for soft delete filtering
     index("idx_departments_deleted").on(table.isDeleted),
+    index("idx_departments_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -132,6 +135,8 @@ export const employees = org.table(
     note: jsonb("note"),
     status: employeeStatusEnum("status").notNull().default("available"),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id, {}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -174,7 +179,7 @@ export const employeeReviews = org.table("employee_reviews", {
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id")
     .notNull()
-    .references(() => employees.id), // no cascade, no null
+    .references(() => employees.id, { onDelete: "cascade" }),
   reviewerId: uuid("reviewer_id").references(() => users.id), // keep reviewer reference
   title: varchar("title", { length: 150 }), // e.g. "Q4 2024 Review"
   reviewDate: timestamp("review_date").defaultNow(),
@@ -196,7 +201,7 @@ export const employeeDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     // File Information
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -217,6 +222,7 @@ export const employeeDocuments = org.table(
       .references(() => users.id),
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -227,5 +233,6 @@ export const employeeDocuments = org.table(
     index("idx_employee_documents_uploaded_by").on(table.uploadedBy),
     index("idx_employee_documents_starred").on(table.isStarred),
     index("idx_employee_documents_is_deleted").on(table.isDeleted),
+    index("idx_employee_documents_deleted_at").on(table.deletedAt),
   ],
 );

@@ -37,11 +37,6 @@ const validateParams = (
 
 import { logger } from "../utils/logger.js";
 import {
-  checkJobNumberExists,
-  validateUniqueFields,
-  buildConflictResponse,
-} from "../utils/validation-helpers.js";
-import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
@@ -109,9 +104,11 @@ import {
   getJobInvoiceKPIs,
   getJobLaborCostTracking,
   getJobsKPIs,
+  bulkDeleteJobs,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
 
 // ============================
 // Main Job Operations
@@ -137,10 +134,16 @@ export const getJobsHandler = async (req: Request, res: Response) => {
     if (req.query.priority) filters.priority = req.query.priority as string;
     if (req.query.search) filters.search = req.query.search as string;
 
+    const dataFilter = await getDataFilterConditions(userId, "jobs");
+    const options = dataFilter.assignedOnly
+      ? { userId, applyAssignedOrTeamFilter: true }
+      : undefined;
+
     const jobs = await getJobs(
       offset,
       limit,
       Object.keys(filters).length > 0 ? filters : undefined,
+      options,
     );
 
     logger.info("Jobs fetched successfully");
@@ -167,7 +170,12 @@ export const getJobByIdHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const job = await getJobById(id!);
+    const dataFilter = await getDataFilterConditions(userId, "jobs");
+    const options = dataFilter.assignedOnly
+      ? { userId, applyAssignedOrTeamFilter: true }
+      : undefined;
+
+    const job = await getJobById(id!, options);
 
     if (!job) {
       return res.status(404).json({
@@ -200,7 +208,7 @@ export const createJobHandler = async (req: Request, res: Response) => {
   try {
     // Remove organization validation - trust bid ID access
     const createdBy = req.user!.id;
-    const { jobNumber, bidId } = req.body;
+    const { bidId } = req.body;
 
     // Validate bidId is provided
     if (!bidId) {
@@ -220,29 +228,10 @@ export const createJobHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Use the bid's organizationId for validation
-    const organizationId = bid.organizationId;
-
-    // Pre-validate unique fields before attempting to create
-    const uniqueFieldChecks = [];
-
-    // Check job number uniqueness within the bid's organization
-    if (jobNumber) {
-      uniqueFieldChecks.push({
-        field: "jobNumber",
-        value: jobNumber,
-        checkFunction: () => checkJobNumberExists(jobNumber, organizationId),
-        message: `A job with number '${jobNumber}' already exists in this organization`,
-      });
-    }
-
-    // Validate all unique fields
-    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
-    if (validationErrors.length > 0) {
-      return res.status(409).json(buildConflictResponse(validationErrors));
-    }
-
     const { assignedTeamMembers, ...jobFields } = req.body;
+
+    // Strip auto-generated field - jobNumber is always system-generated
+    delete jobFields.jobNumber;
 
     const jobData = {
       ...jobFields,
@@ -315,7 +304,6 @@ export const updateJobHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const performedBy = req.user!.id;
-    const { jobNumber } = req.body;
 
     // Get original job for history tracking
     const originalJob = await getJobById(id!);
@@ -328,26 +316,6 @@ export const updateJobHandler = async (req: Request, res: Response) => {
 
     const clientOrgId = originalJob.organizationId;
     const bidId = originalJob.bidId;
-
-    // Pre-validate unique fields before attempting to update
-    const uniqueFieldChecks = [];
-
-    // Check job number uniqueness (if provided and different from current)
-    if (jobNumber && jobNumber !== originalJob.jobNumber) {
-      uniqueFieldChecks.push({
-        field: "jobNumber",
-        value: jobNumber,
-        checkFunction: () =>
-          checkJobNumberExists(jobNumber, originalJob.organizationId, id),
-        message: `A job with number '${jobNumber}' already exists in this organization`,
-      });
-    }
-
-    // Validate all unique fields
-    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
-    if (validationErrors.length > 0) {
-      return res.status(409).json(buildConflictResponse(validationErrors));
-    }
 
     // Extract nested bid objects from request body
     const {
@@ -369,6 +337,9 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       mediaIdsToDelete,
       ...jobFields
     } = req.body;
+
+    // Strip auto-generated field - jobNumber is always system-generated
+    delete jobFields.jobNumber;
 
     // Update job with only job fields
     const updatedJob = await updateJob(id!, jobFields);
@@ -659,7 +630,10 @@ export const updateJobHandler = async (req: Request, res: Response) => {
 
           uploadedMedia.push(media);
         } catch (uploadError: any) {
-          logger.error(`Error uploading media ${file.originalname}:`, uploadError);
+          logger.error(
+            `Error uploading media ${file.originalname}:`,
+            uploadError,
+          );
         }
       }
 
@@ -843,9 +817,9 @@ export const deleteJobHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    const _performedBy = req.user!.id;
+    const performedBy = req.user!.id;
 
-    const deletedJob = await deleteJob(id!);
+    const deletedJob = await deleteJob(id!, performedBy);
 
     if (!deletedJob) {
       return res.status(404).json({
@@ -2658,7 +2632,10 @@ export const getTaskCommentsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getTaskCommentByIdHandler = async (req: Request, res: Response) => {
+export const getTaskCommentByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["jobId", "taskId", "id"])) return;
     const jobId = asSingleString(req.params.jobId);
@@ -3691,5 +3668,30 @@ export const getJobsKPIsHandler = async (req: Request, res: Response) => {
       success: false,
       message: error.message || "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteJobsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteJobs(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} jobs by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} job(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete jobs error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

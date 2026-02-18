@@ -3,7 +3,7 @@ import { getUserModulePermissions } from "./featurePermission.service.js";
 /**
  * UI Permissions Service
  * Handles UI element visibility and field access control for frontend
- */ 
+ */
 
 export interface UIConfig {
   visibleElements: string[];
@@ -28,11 +28,14 @@ export interface ModuleUIConfig {
     isVisible: boolean;
     isEnabled: boolean;
   }>;
-  fieldPermissions: Record<string, {
-    accessLevel: string; // "hidden", "readonly", "editable"
-    visible: boolean;
-    editable: boolean;
-  }>;
+  fieldPermissions: Record<
+    string,
+    {
+      accessLevel: string; // "hidden", "readonly", "editable"
+      visible: boolean;
+      editable: boolean;
+    }
+  >;
   dataFilters: {
     assignedOnly: boolean;
     departmentOnly: boolean;
@@ -47,13 +50,13 @@ export interface ModuleUIConfig {
  */
 export const getModuleUIConfig = async (
   userId: string,
-  module: string
+  module: string,
 ): Promise<ModuleUIConfig> => {
   const permissions = await getUserModulePermissions(userId, module);
 
   // Process features to determine available actions
   const availableActions: string[] = [];
-  const processedFeatures = permissions.features.map(f => {
+  const processedFeatures = permissions.features.map((f) => {
     const available = f.accessLevel !== "none";
     if (available) {
       availableActions.push(f.featureCode);
@@ -66,7 +69,7 @@ export const getModuleUIConfig = async (
   });
 
   // Process UI elements
-  const processedUIElements = permissions.uiElements.map(ui => ({
+  const processedUIElements = permissions.uiElements.map((ui) => ({
     elementCode: ui.elementCode,
     elementType: ui.elementType as string,
     isVisible: ui.isVisible ?? true,
@@ -74,13 +77,18 @@ export const getModuleUIConfig = async (
   }));
 
   // Process field permissions
-  const processedFieldPermissions: Record<string, {
-    accessLevel: string;
-    visible: boolean;
-    editable: boolean;
-  }> = {};
+  const processedFieldPermissions: Record<
+    string,
+    {
+      accessLevel: string;
+      visible: boolean;
+      editable: boolean;
+    }
+  > = {};
 
-  for (const [fieldName, perm] of Object.entries(permissions.fieldPermissions)) {
+  for (const [fieldName, perm] of Object.entries(
+    permissions.fieldPermissions,
+  )) {
     processedFieldPermissions[fieldName] = {
       accessLevel: perm.accessLevel,
       visible: perm.accessLevel !== "hidden",
@@ -90,10 +98,16 @@ export const getModuleUIConfig = async (
 
   // Process data filters
   const dataFilters = {
-    assignedOnly: permissions.dataFilters.some(f => f.filterType === "assigned_only"),
-    departmentOnly: permissions.dataFilters.some(f => f.filterType === "department_only"),
-    ownOnly: permissions.dataFilters.some(f => f.filterType === "own_only"),
-    hideFinancial: permissions.dataFilters.some(f => f.filterType === "hide_financial"),
+    assignedOnly: permissions.dataFilters.some(
+      (f) => f.filterType === "assigned_only",
+    ),
+    departmentOnly: permissions.dataFilters.some(
+      (f) => f.filterType === "department_only",
+    ),
+    ownOnly: permissions.dataFilters.some((f) => f.filterType === "own_only"),
+    hideFinancial: permissions.dataFilters.some(
+      (f) => f.filterType === "hide_financial",
+    ),
   };
 
   return {
@@ -112,31 +126,31 @@ export const getModuleUIConfig = async (
  */
 export const getSimpleUIConfig = async (
   userId: string,
-  module: string
+  module: string,
 ): Promise<UIConfig> => {
   const fullConfig = await getModuleUIConfig(userId, module);
 
   return {
     visibleElements: fullConfig.uiElements
-      .filter(ui => ui.isVisible)
-      .map(ui => ui.elementCode),
-    
+      .filter((ui) => ui.isVisible)
+      .map((ui) => ui.elementCode),
+
     enabledElements: fullConfig.uiElements
-      .filter(ui => ui.isVisible && ui.isEnabled)
-      .map(ui => ui.elementCode),
-    
+      .filter((ui) => ui.isVisible && ui.isEnabled)
+      .map((ui) => ui.elementCode),
+
     hiddenFields: Object.entries(fullConfig.fieldPermissions)
       .filter(([_, perm]) => !perm.visible)
       .map(([fieldName]) => fieldName),
-    
+
     readonlyFields: Object.entries(fullConfig.fieldPermissions)
       .filter(([_, perm]) => perm.visible && !perm.editable)
       .map(([fieldName]) => fieldName),
-    
+
     visibleSections: fullConfig.uiElements
-      .filter(ui => ui.elementType === "section" && ui.isVisible)
-      .map(ui => ui.elementCode),
-    
+      .filter((ui) => ui.elementType === "section" && ui.isVisible)
+      .map((ui) => ui.elementCode),
+
     availableActions: fullConfig.availableActions,
   };
 };
@@ -147,7 +161,7 @@ export const getSimpleUIConfig = async (
 export const isUIElementVisible = async (
   userId: string,
   module: string,
-  elementCode: string
+  elementCode: string,
 ): Promise<boolean> => {
   const config = await getSimpleUIConfig(userId, module);
   return config.visibleElements.includes(elementCode);
@@ -159,7 +173,7 @@ export const isUIElementVisible = async (
 export const isFieldHidden = async (
   userId: string,
   module: string,
-  fieldName: string
+  fieldName: string,
 ): Promise<boolean> => {
   const config = await getSimpleUIConfig(userId, module);
   return config.hiddenFields.includes(fieldName);
@@ -171,22 +185,46 @@ export const isFieldHidden = async (
  */
 export const getDashboardConfig = async (userId: string) => {
   const config = await getModuleUIConfig(userId, "dashboard");
-  
+
   // Role-specific dashboard layouts from CSV
   const dashboardLayouts = {
-    "Technician": {
+    Technician: {
       cards: ["my_tasks_card", "my_jobs_card"],
       sections: ["my_dispatch", "my_timesheet"],
-      hiddenSections: ["team_performance", "financial_summary", "revenue_chart", "profit_loss"],
+      hiddenSections: [
+        "team_performance",
+        "financial_summary",
+        "revenue_chart",
+        "profit_loss",
+      ],
     },
-    "Manager": {
-      cards: ["my_tasks_card", "my_jobs_card", "team_performance_card", "job_pipeline_card", "invoice_queue_card"],
+    Manager: {
+      cards: [
+        "my_tasks_card",
+        "my_jobs_card",
+        "team_performance_card",
+        "job_pipeline_card",
+        "invoice_queue_card",
+      ],
       sections: ["team_performance", "job_pipeline", "invoice_queue"],
       hiddenSections: ["financial_summary", "profit_loss", "cash_flow"],
     },
-    "Executive": {
-      cards: ["my_tasks_card", "my_jobs_card", "team_performance_card", "financial_summary_card", "revenue_chart", "profit_loss_chart"],
-      sections: ["financial_summary", "profit_loss", "cash_flow", "team_performance", "job_pipeline"],
+    Executive: {
+      cards: [
+        "my_tasks_card",
+        "my_jobs_card",
+        "team_performance_card",
+        "financial_summary_card",
+        "revenue_chart",
+        "profit_loss_chart",
+      ],
+      sections: [
+        "financial_summary",
+        "profit_loss",
+        "cash_flow",
+        "team_performance",
+        "job_pipeline",
+      ],
       hiddenSections: [],
     },
   };
@@ -209,12 +247,28 @@ export const getDashboardConfig = async (userId: string) => {
 export const getNavigationConfig = async (userId: string) => {
   // Get all modules the user has access to
   const modulePermissions: Record<string, ModuleUIConfig> = {};
-  
+
   const modules = [
-    "dashboard", "bids", "jobs", "clients", "properties", "fleet",
-    "team", "timesheet", "tasks", "dispatch", "inventory",
-    "expenses", "invoicing", "documents", "performance", "files",
-    "financial", "payroll", "reports", "settings"
+    "dashboard",
+    "bids",
+    "jobs",
+    "clients",
+    "properties",
+    "fleet",
+    "team",
+    "timesheet",
+    "tasks",
+    "dispatch",
+    "inventory",
+    "expenses",
+    "invoicing",
+    "documents",
+    "performance",
+    "files",
+    "financial",
+    "payroll",
+    "reports",
+    "settings",
   ];
 
   for (const module of modules) {
@@ -256,8 +310,11 @@ export const getNavigationConfig = async (userId: string) => {
     }>,
   };
 
-  // Module metadata
-  const moduleMetadata = {
+  // Module metadata (optional route overrides default /:module)
+  const moduleMetadata: Record<
+    string,
+    { label: string; icon: string; category: string; route?: string }
+  > = {
     dashboard: { label: "Dashboard", icon: "dashboard", category: "main" },
     jobs: { label: "Jobs", icon: "briefcase", category: "main" },
     bids: { label: "Bids", icon: "file-contract", category: "main" },
@@ -270,12 +327,25 @@ export const getNavigationConfig = async (userId: string) => {
     dispatch: { label: "Dispatch", icon: "route", category: "main" },
     inventory: { label: "Inventory", icon: "boxes", category: "main" },
     expenses: { label: "Expenses", icon: "receipt", category: "main" },
-    invoicing: { label: "Invoicing", icon: "file-invoice", category: "financial" },
+    invoicing: {
+      label: "Invoicing",
+      icon: "file-invoice",
+      category: "financial",
+    },
     documents: { label: "Documents", icon: "folder", category: "main" },
     files: { label: "Files", icon: "folder-open", category: "main" },
     performance: { label: "Performance", icon: "chart-line", category: "main" },
-    financial: { label: "Financial", icon: "dollar-sign", category: "financial" },
-    payroll: { label: "Payroll", icon: "money-bill", category: "financial" },
+    financial: {
+      label: "Financial",
+      icon: "dollar-sign",
+      category: "financial",
+    },
+    payroll: {
+      label: "Payroll",
+      icon: "money-bill",
+      category: "financial",
+      route: "/team/payroll",
+    },
     reports: { label: "Reports", icon: "chart-bar", category: "settings" },
     settings: { label: "Settings", icon: "cog", category: "settings" },
   };
@@ -289,7 +359,7 @@ export const getNavigationConfig = async (userId: string) => {
       module,
       label: metadata.label,
       icon: metadata.icon,
-      route: `/${module}`,
+      route: metadata.route ?? `/${module}`,
       features: config.availableActions,
     };
 
@@ -316,21 +386,21 @@ export const getNavigationConfig = async (userId: string) => {
 /**
  * Get button permissions for a specific module
  */
-export const getButtonPermissions = async (
-  userId: string,
-  module: string
-) => {
+export const getButtonPermissions = async (userId: string, module: string) => {
   const config = await getModuleUIConfig(userId, module);
-  
+
   const buttons = config.uiElements
-    .filter(ui => ui.elementType === "button")
-    .reduce((acc, ui) => {
-      acc[ui.elementCode] = {
-        visible: ui.isVisible,
-        enabled: ui.isEnabled,
-      };
-      return acc;
-    }, {} as Record<string, { visible: boolean; enabled: boolean }>);
+    .filter((ui) => ui.elementType === "button")
+    .reduce(
+      (acc, ui) => {
+        acc[ui.elementCode] = {
+          visible: ui.isVisible,
+          enabled: ui.isEnabled,
+        };
+        return acc;
+      },
+      {} as Record<string, { visible: boolean; enabled: boolean }>,
+    );
 
   return buttons;
 };
@@ -342,14 +412,14 @@ export const getButtonPermissions = async (
 export const filterDataByFieldPermissions = async (
   userId: string,
   module: string,
-  data: any
+  data: any,
 ): Promise<{
   filteredData: any;
   readonlyFields: string[];
   hiddenFields: string[];
 }> => {
   const config = await getModuleUIConfig(userId, module);
-  
+
   const filteredData = { ...data };
   const readonlyFields: string[] = [];
   const hiddenFields: string[] = [];

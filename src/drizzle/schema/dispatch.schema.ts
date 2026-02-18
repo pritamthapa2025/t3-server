@@ -39,7 +39,7 @@ export const dispatchTasks = org.table(
     // Job Relationship
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
 
     // Task Details
     title: varchar("title", { length: 255 }).notNull(),
@@ -62,6 +62,8 @@ export const dispatchTasks = org.table(
     // Metadata
     createdBy: uuid("created_by").references(() => users.id),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -93,10 +95,10 @@ export const dispatchAssignments = org.table(
     // Relationships
     taskId: uuid("task_id")
       .notNull()
-      .references(() => dispatchTasks.id),
+      .references(() => dispatchTasks.id, { onDelete: "cascade" }),
     technicianId: integer("technician_id")
       .notNull()
-      .references(() => employees.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     // Assignment Status
     status: dispatchAssignmentStatusEnum("status").notNull().default("pending"), // pending, started, completed

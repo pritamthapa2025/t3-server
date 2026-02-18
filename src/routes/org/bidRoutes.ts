@@ -73,6 +73,7 @@ import {
   sendQuoteEmailTest,
   getBidsKPIsHandler,
   getBidKPIsHandler,
+  bulkDeleteBidsHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -151,6 +152,7 @@ import {
   sendQuoteSchema,
   sendQuoteTestSchema,
 } from "../../validations/bid.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
@@ -262,12 +264,16 @@ router.use(generalTransformer);
 // Main Bid Routes
 
 // KPIs Route (must be before /bids/:id to avoid parameter conflicts)
-router.get("/bids/kpis", authorizeFeature("bids", "view"), getBidsKPIsHandler);
+router.get(
+  "/bids/kpis",
+  authorizeAnyFeature("bids", ["view", "view_bids"]),
+  getBidsKPIsHandler,
+);
 
 router
   .route("/bids")
   .get(
-    authorizeFeature("bids", "view"),
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getBidsQuerySchema),
     getBidsHandler,
   )
@@ -285,7 +291,7 @@ router
 router
   .route("/bids/:id")
   .get(
-    authorizeFeature("bids", "view"),
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getBidByIdSchema),
     getBidByIdHandler,
   )
@@ -307,7 +313,7 @@ router
 router
   .route("/bids/:id/complete")
   .get(
-    authorizeFeature("bids", "view"),
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getBidWithAllDataSchema),
     getBidWithAllDataHandler,
   );
@@ -316,7 +322,7 @@ router
 router
   .route("/bids/:bidId/related-bids")
   .get(
-    authorizeFeature("bids", "view"),
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getRelatedBidsSchema),
     getRelatedBidsHandler,
   );
@@ -468,7 +474,7 @@ router
 router
   .route("/bids/:bidId/kpis")
   .get(
-    authorizeFeature("bids", "view"),
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getBidKPIsSchema),
     getBidKPIsHandler,
   );
@@ -547,13 +553,13 @@ router
 // Quote PDF routes
 router.get(
   "/bids/:id/pdf",
-  authorizeFeature("bids", "view"),
+  authorizeAnyFeature("bids", ["view", "view_bids"]),
   validate(downloadBidQuotePDFSchema),
   downloadBidQuotePDF,
 );
 router.get(
   "/bids/:id/pdf/preview",
-  authorizeFeature("bids", "view"),
+  authorizeAnyFeature("bids", ["view", "view_bids"]),
   validate(previewBidQuotePDFSchema),
   previewBidQuotePDF,
 );
@@ -572,6 +578,14 @@ router.post(
   authorizeFeature("bids", "create"),
   validate(sendQuoteTestSchema),
   sendQuoteEmailTest,
+);
+
+// Bulk delete bids (Executive only)
+router.post(
+  "/bids/bulk-delete",
+  authorizeFeature("bids", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteBidsHandler,
 );
 
 export default router;

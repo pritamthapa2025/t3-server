@@ -26,58 +26,89 @@ import {
   getInvoicePaymentSchema,
   deleteInvoicePaymentSchema,
 } from "../../validations/invoicing.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 
 const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
 
+// Invoicing is Manager/Executive only — Technicians have no access
+const viewInvoices = authorizeFeature("financial", "view_invoices");
+const createInvoice = authorizeFeature("financial", "create_invoice");
+const editInvoice = authorizeFeature("financial", "edit_invoice");
+const deleteInvoice = authorizeFeature("financial", "delete_invoice");
+const sendInvoice = authorizeFeature("financial", "send_invoice");
+const recordPayment = authorizeFeature("financial", "record_payment");
+
 // ==================== INVOICE ROUTES ====================
 
-// Get invoices (list): organizationId is optional; response includes organizationName (jobId → bidId → organizationId → name)
+// Get invoices (list) and create: Manager/Executive only
 router
   .route("/invoices")
-  .get(validate(getInvoicesSchema), invoiceController.getInvoices)
-  .post(validate(createInvoiceSchema), invoiceController.createInvoice);
+  .get(viewInvoices, validate(getInvoicesSchema), invoiceController.getInvoices)
+  .post(
+    createInvoice,
+    validate(createInvoiceSchema),
+    invoiceController.createInvoice,
+  );
 
-// Get invoice KPIs
+// Get invoice KPIs — Manager/Executive only
 router.get(
   "/invoices/kpis",
+  viewInvoices,
   validate(getInvoiceKPIsSchema),
   invoiceController.getInvoiceKPIs,
 );
 
-// Get invoice by ID, Update invoice, Delete invoice (soft delete)
+// Get invoice by ID, Update invoice, Delete invoice
 router
   .route("/invoices/:id")
-  .get(validate(getInvoiceByIdSchema), invoiceController.getInvoiceById)
-  .put(validate(updateInvoiceByIdSchema), invoiceController.updateInvoice)
-  .delete(validate(deleteInvoiceByIdSchema), invoiceController.deleteInvoice);
+  .get(
+    viewInvoices,
+    validate(getInvoiceByIdSchema),
+    invoiceController.getInvoiceById,
+  )
+  .put(
+    editInvoice,
+    validate(updateInvoiceByIdSchema),
+    invoiceController.updateInvoice,
+  )
+  .delete(
+    deleteInvoice,
+    validate(deleteInvoiceByIdSchema),
+    invoiceController.deleteInvoice,
+  );
 
-// Send invoice via email
+// Send invoice via email — Manager/Executive only
 router.post(
   "/invoices/:id/send",
+  sendInvoice,
   validate(sendInvoiceByIdSchema),
   invoiceController.sendInvoiceEmail,
 );
 
-// Send invoice to test email (pritam.thapa@quixta.in), does not update invoice status
+// Send test email — Manager/Executive only
 router.post(
   "/invoices/:id/send-test",
+  sendInvoice,
   validate(sendInvoiceTestByIdSchema),
   invoiceController.sendInvoiceEmailTest,
 );
 
-// Mark invoice as paid
+// Mark invoice as paid — Manager/Executive only
 router.post(
   "/invoices/:id/mark-paid",
+  recordPayment,
   validate(markInvoicePaidByIdSchema),
   invoiceController.markInvoiceAsPaid,
 );
 
-// Void invoice
+// Void invoice — Manager/Executive only
 router.post(
   "/invoices/:id/void",
+  editInvoice,
   validate(voidInvoiceByIdSchema),
   invoiceController.voidInvoice,
 );
@@ -88,10 +119,12 @@ router.post(
 router
   .route("/invoices/:invoiceId/line-items")
   .get(
+    viewInvoices,
     validate(getInvoiceLineItemsSchema),
     invoiceController.getInvoiceLineItems,
   )
   .post(
+    editInvoice,
     validate(createInvoiceLineItemForInvoiceSchema),
     invoiceController.createInvoiceLineItem,
   );
@@ -100,47 +133,79 @@ router
 router
   .route("/invoices/:invoiceId/line-items/:lineItemId")
   .get(
+    viewInvoices,
     validate(getInvoiceLineItemByIdSchema),
     invoiceController.getInvoiceLineItem,
   )
   .put(
+    editInvoice,
     validate(updateInvoiceLineItemByIdSchema),
     invoiceController.updateInvoiceLineItem,
   )
   .delete(
+    editInvoice,
     validate(deleteInvoiceLineItemByIdSchema),
     invoiceController.deleteInvoiceLineItem,
   );
 
 // ==================== INVOICE PDF ROUTES ====================
 
-// Download invoice as PDF
+// Download/preview invoice PDF — Manager/Executive only
 router.get(
   "/invoices/:id/pdf",
+  viewInvoices,
   validate(downloadInvoicePDFSchema),
   invoiceController.downloadInvoicePDF,
 );
 
-// Preview invoice PDF (inline display)
 router.get(
   "/invoices/:id/pdf/preview",
+  viewInvoices,
   validate(previewInvoicePDFSchema),
   invoiceController.previewInvoicePDF,
 );
 
 // ==================== INVOICE PAYMENT ROUTES ====================
 
-// Get all payments for an invoice, Create payment for invoice
+// Get/Create payments — Manager/Executive only
 router
   .route("/invoices/:invoiceId/payments")
-  .get(validate(getInvoicePaymentsSchema), invoiceController.getInvoicePayments)
-  .post(validate(createInvoicePaymentSchema), invoiceController.createInvoicePayment);
+  .get(
+    viewInvoices,
+    validate(getInvoicePaymentsSchema),
+    invoiceController.getInvoicePayments,
+  )
+  .post(
+    recordPayment,
+    validate(createInvoicePaymentSchema),
+    invoiceController.createInvoicePayment,
+  );
 
-// Get payment by ID, Update payment, Delete payment
+// Get/Update/Delete payment by ID
 router
   .route("/invoices/:invoiceId/payments/:paymentId")
-  .get(validate(getInvoicePaymentSchema), invoiceController.getInvoicePayment)
-  .put(validate(updateInvoicePaymentSchema), invoiceController.updateInvoicePayment)
-  .delete(validate(deleteInvoicePaymentSchema), invoiceController.deleteInvoicePayment);
+  .get(
+    viewInvoices,
+    validate(getInvoicePaymentSchema),
+    invoiceController.getInvoicePayment,
+  )
+  .put(
+    recordPayment,
+    validate(updateInvoicePaymentSchema),
+    invoiceController.updateInvoicePayment,
+  )
+  .delete(
+    deleteInvoice,
+    validate(deleteInvoicePaymentSchema),
+    invoiceController.deleteInvoicePayment,
+  );
+
+// Bulk delete invoices (Executive only)
+router.post(
+  "/invoices/bulk-delete",
+  authorizeFeature("invoicing", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  invoiceController.bulkDeleteInvoicesHandler,
+);
 
 export default router;

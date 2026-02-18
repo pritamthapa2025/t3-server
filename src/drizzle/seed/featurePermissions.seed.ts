@@ -315,6 +315,20 @@ const FEATURES_DATA = [
   { module: "files", featureCode: "upload", featureName: "Upload Files", description: "Upload files" },
   { module: "files", featureCode: "edit", featureName: "Edit Files", description: "Edit file metadata" },
   { module: "files", featureCode: "delete", featureName: "Delete Files", description: "Delete files" },
+
+  // === BULK DELETE — Executive only ===
+  { module: "bids",       featureCode: "bulk_delete", featureName: "Bulk Delete Bids",       description: "Bulk soft-delete bids (Executive only)" },
+  { module: "jobs",       featureCode: "bulk_delete", featureName: "Bulk Delete Jobs",       description: "Bulk soft-delete jobs (Executive only)" },
+  { module: "dispatch",   featureCode: "bulk_delete", featureName: "Bulk Delete Dispatch",   description: "Bulk soft-delete dispatch tasks (Executive only)" },
+  { module: "timesheet",  featureCode: "bulk_delete", featureName: "Bulk Delete Timesheets", description: "Bulk soft-delete timesheets (Executive only)" },
+  { module: "expenses",   featureCode: "bulk_delete", featureName: "Bulk Delete Expenses",   description: "Bulk soft-delete expenses (Executive only)" },
+  { module: "invoicing",  featureCode: "bulk_delete", featureName: "Bulk Delete Invoices",   description: "Bulk soft-delete invoices (Executive only)" },
+  { module: "clients",    featureCode: "bulk_delete", featureName: "Bulk Delete Clients",    description: "Bulk soft-delete clients (Executive only)" },
+  { module: "team",       featureCode: "bulk_delete", featureName: "Bulk Delete Team",       description: "Bulk soft-delete employees/departments (Executive only)" },
+  { module: "payroll",    featureCode: "bulk_delete", featureName: "Bulk Delete Payroll",    description: "Bulk soft-delete payroll runs (Executive only)" },
+  { module: "compliance", featureCode: "bulk_delete", featureName: "Bulk Delete Compliance", description: "Bulk soft-delete compliance cases (Executive only)" },
+  { module: "fleet",      featureCode: "bulk_delete", featureName: "Bulk Delete Fleet",      description: "Bulk soft-delete vehicles (Executive only)" },
+  { module: "inventory",  featureCode: "bulk_delete", featureName: "Bulk Delete Inventory",  description: "Bulk soft-delete inventory items (Executive only)" },
 ];
 
 /**
@@ -1050,6 +1064,55 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.EXECUTIVE, module: "documents", featureCode: "upload", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "documents", featureCode: "edit", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "documents", featureCode: "delete", accessLevel: "admin" },
+
+  // === BULK DELETE — Executive = delete_all, Manager = none, Technician = none ===
+  { roleId: ROLES.EXECUTIVE,  module: "bids",       featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "bids",       featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "bids",       featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "jobs",       featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "jobs",       featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "jobs",       featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "dispatch",   featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "dispatch",   featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "dispatch",   featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "timesheet",  featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "timesheet",  featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "timesheet",  featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "expenses",   featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "expenses",   featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses",   featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "invoicing",  featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "invoicing",  featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing",  featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "clients",    featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "clients",    featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "clients",    featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "team",       featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "team",       featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "team",       featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "payroll",    featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "payroll",    featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "payroll",    featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "compliance", featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "compliance", featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "compliance", featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "fleet",      featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "fleet",      featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "fleet",      featureCode: "bulk_delete", accessLevel: "none" },
+
+  { roleId: ROLES.EXECUTIVE,  module: "inventory",  featureCode: "bulk_delete", accessLevel: "delete_all" },
+  { roleId: ROLES.MANAGER,    module: "inventory",  featureCode: "bulk_delete", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "inventory",  featureCode: "bulk_delete", accessLevel: "none" },
 ];
 
 /**

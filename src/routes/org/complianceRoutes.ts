@@ -10,9 +10,12 @@ import {
   getViolationCountsHandler,
   updateCaseStatusHandler,
   createEmployeeViolationHandler,
+  bulkDeleteComplianceCasesHandler,
 } from "../../controllers/ComplianceController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getDashboardKPIsQuerySchema,
   getComplianceCasesQuerySchema,
@@ -76,6 +79,14 @@ router.get(
   "/violations/counts",
   validate(getViolationCountsQuerySchema),
   getViolationCountsHandler
+);
+
+// Bulk delete compliance cases (Executive only)
+router.post(
+  "/compliance/bulk-delete",
+  authorizeFeature("compliance", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteComplianceCasesHandler,
 );
 
 export default router;

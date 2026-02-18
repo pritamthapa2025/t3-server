@@ -1006,11 +1006,16 @@ export const updateDepartment = async (
   });
 };
 
-export const deleteDepartment = async (id: number) => {
-  // Soft delete: set isDeleted to true instead of hard delete
+export const deleteDepartment = async (id: number, deletedBy?: string) => {
+  const now = new Date();
   const [department] = await db
     .update(departments)
-    .set({ isDeleted: true, updatedAt: new Date() })
+    .set({
+      isDeleted: true,
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
+    })
     .where(and(eq(departments.id, id), eq(departments.isDeleted, false)))
     .returning();
   return department || null;
@@ -1152,4 +1157,21 @@ export const getDepartmentKPIs = async () => {
       label: "Rolling 30 days",
     },
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteDepartments = async (
+  ids: number[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(departments)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(departments.id, ids), eq(departments.isDeleted, false)))
+    .returning({ id: departments.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

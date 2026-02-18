@@ -49,8 +49,13 @@ import {
   createVehicleDocumentHandler,
   updateVehicleDocumentHandler,
   deleteVehicleDocumentHandler,
+  bulkDeleteVehiclesHandler,
 } from "../../controllers/FleetController.js";
 import { authenticate } from "../../middleware/auth.js";
+import {
+  authorizeFeature,
+  authorizeAnyFeature,
+} from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getFleetDashboardKPIsQuerySchema,
@@ -102,6 +107,7 @@ import {
   updateVehicleDocumentByVehicleSchema,
   deleteVehicleDocumentByVehicleSchema,
 } from "../../validations/fleet.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
@@ -225,7 +231,9 @@ const uploadVehicleDocument = multer({
 // Normalize vehicle document upload: set req.file from whichever field was used
 const normalizeVehicleDocumentFile = (req: any, _res: any, next: any) => {
   if (req.file) return next();
-  const files = req.files as { file?: Express.Multer.File[]; document?: Express.Multer.File[] } | undefined;
+  const files = req.files as
+    | { file?: Express.Multer.File[]; document?: Express.Multer.File[] }
+    | undefined;
   if (files?.file?.[0]) req.file = files.file[0];
   else if (files?.document?.[0]) req.file = files.document[0];
   next();
@@ -237,12 +245,26 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
+// Feature shorthand constants based on seed data:
+// view_fleet: Technician=view_assigned, Manager=view, Executive=admin
+// add_vehicle: Technician=none, Manager=none, Executive=admin
+// edit_vehicle_info: Technician=none, Manager=edit_all, Executive=admin
+// delete_vehicle: Technician=none, Manager=none, Executive=admin
+const viewFleet = authorizeFeature("fleet", "view_fleet");
+const addVehicle = authorizeFeature("fleet", "add_vehicle");
+const editVehicle = authorizeAnyFeature("fleet", [
+  "edit_vehicle_info",
+  "edit_vehicle",
+]);
+const deleteVehicle = authorizeFeature("fleet", "delete_vehicle");
+
 // ============================
-// Dashboard Routes
+// Dashboard Routes — all fleet viewers
 // ============================
 
 router.get(
   "/dashboard",
+  viewFleet,
   validate(getFleetDashboardKPIsQuerySchema),
   getFleetDashboardKPIsHandler,
 );
@@ -253,8 +275,9 @@ router.get(
 
 router
   .route("/vehicles")
-  .get(validate(getVehiclesQuerySchema), getVehiclesHandler)
+  .get(viewFleet, validate(getVehiclesQuerySchema), getVehiclesHandler)
   .post(
+    addVehicle, // Executive only
     uploadVehicle,
     handleMulterError,
     parseFormData,
@@ -264,32 +287,45 @@ router
 
 router
   .route("/vehicles/:id")
-  .get(validate(getVehicleByIdSchema), getVehicleByIdHandler)
+  .get(viewFleet, validate(getVehicleByIdSchema), getVehicleByIdHandler)
   .put(
+    editVehicle, // Manager/Executive
     uploadVehicle,
     handleMulterError,
     parseFormData,
     validate(updateVehicleSchema),
     updateVehicleHandler,
   )
-  .delete(validate(deleteVehicleSchema), deleteVehicleHandler);
+  .delete(deleteVehicle, validate(deleteVehicleSchema), deleteVehicleHandler); // Executive only
 
+// Vehicle settings — Manager/Executive only (financial and operational settings)
 router
   .route("/vehicles/:id/settings")
-  .get(validate(getVehicleSettingsSchema), getVehicleSettingsHandler)
-  .put(validate(updateVehicleSettingsSchema), updateVehicleSettingsHandler);
+  .get(
+    editVehicle,
+    validate(getVehicleSettingsSchema),
+    getVehicleSettingsHandler,
+  )
+  .put(
+    editVehicle,
+    validate(updateVehicleSettingsSchema),
+    updateVehicleSettingsHandler,
+  );
 
 // ============================
 // Nested: /vehicles/:vehicleId/maintenance | repairs | inspections | fuel | check-in-out
 // ============================
 
+// Maintenance: Technicians can view + submit their assigned; Managers/Executives manage all
 router
   .route("/vehicles/:vehicleId/maintenance")
   .get(
+    viewFleet,
     validate(getMaintenanceRecordsByVehicleQuerySchema),
     getMaintenanceRecordsHandler,
   )
   .post(
+    viewFleet, // Technicians can submit maintenance records for their assigned vehicles
     validate(createMaintenanceRecordByVehicleSchema),
     createMaintenanceRecordHandler,
   );
@@ -297,39 +333,63 @@ router
 router
   .route("/vehicles/:vehicleId/maintenance/:id")
   .get(
+    viewFleet,
     validate(getMaintenanceRecordByVehicleByIdSchema),
     getMaintenanceRecordByIdHandler,
   )
   .put(
+    editVehicle, // Manager/Executive only
     validate(updateMaintenanceRecordByVehicleSchema),
     updateMaintenanceRecordHandler,
   )
   .delete(
+    editVehicle, // Manager/Executive only
     validate(deleteMaintenanceRecordByVehicleSchema),
     deleteMaintenanceRecordHandler,
   );
 
+// Repairs: Technicians can view assigned; Managers/Executives manage all
 router
   .route("/vehicles/:vehicleId/repairs")
-  .get(validate(getRepairRecordsByVehicleQuerySchema), getRepairRecordsHandler)
-  .post(validate(createRepairRecordByVehicleSchema), createRepairRecordHandler);
+  .get(
+    viewFleet,
+    validate(getRepairRecordsByVehicleQuerySchema),
+    getRepairRecordsHandler,
+  )
+  .post(
+    viewFleet,
+    validate(createRepairRecordByVehicleSchema),
+    createRepairRecordHandler,
+  );
 
 router
   .route("/vehicles/:vehicleId/repairs/:id")
-  .get(validate(getRepairRecordByVehicleByIdSchema), getRepairRecordByIdHandler)
-  .put(validate(updateRepairRecordByVehicleSchema), updateRepairRecordHandler)
+  .get(
+    viewFleet,
+    validate(getRepairRecordByVehicleByIdSchema),
+    getRepairRecordByIdHandler,
+  )
+  .put(
+    editVehicle,
+    validate(updateRepairRecordByVehicleSchema),
+    updateRepairRecordHandler,
+  )
   .delete(
+    editVehicle,
     validate(deleteRepairRecordByVehicleSchema),
     deleteRepairRecordHandler,
   );
 
+// Safety Inspections: Technicians can view + perform on assigned vehicles
 router
   .route("/vehicles/:vehicleId/inspections")
   .get(
+    viewFleet,
     validate(getSafetyInspectionsByVehicleQuerySchema),
     getSafetyInspectionsHandler,
   )
   .post(
+    viewFleet, // Technicians can perform safety inspections on assigned vehicles
     uploadInspectionImages,
     handleMulterError,
     parseFormData,
@@ -340,10 +400,12 @@ router
 router
   .route("/vehicles/:vehicleId/inspections/:id")
   .get(
+    viewFleet,
     validate(getSafetyInspectionByVehicleByIdSchema),
     getSafetyInspectionByIdHandler,
   )
   .put(
+    viewFleet, // Technicians can update their own inspections
     uploadInspectionImages,
     handleMulterError,
     parseFormData,
@@ -351,40 +413,67 @@ router
     updateSafetyInspectionHandler,
   )
   .delete(
+    editVehicle, // Manager/Executive only
     validate(deleteSafetyInspectionByVehicleSchema),
     deleteSafetyInspectionHandler,
   );
 
 router.get(
   "/vehicles/:vehicleId/inspections/:inspectionId/items",
+  viewFleet,
   validate(getSafetyInspectionItemsByVehicleSchema),
   getSafetyInspectionItemsHandler,
 );
 
 router.post(
   "/vehicles/:vehicleId/inspections/items",
+  viewFleet,
   validate(createSafetyInspectionItemByVehicleSchema),
   createSafetyInspectionItemHandler,
 );
 
+// Fuel: Technicians can view + record for assigned vehicles
 router
   .route("/vehicles/:vehicleId/fuel")
-  .get(validate(getFuelRecordsByVehicleQuerySchema), getFuelRecordsHandler)
-  .post(validate(createFuelRecordByVehicleSchema), createFuelRecordHandler);
+  .get(
+    viewFleet,
+    validate(getFuelRecordsByVehicleQuerySchema),
+    getFuelRecordsHandler,
+  )
+  .post(
+    viewFleet,
+    validate(createFuelRecordByVehicleSchema),
+    createFuelRecordHandler,
+  );
 
 router
   .route("/vehicles/:vehicleId/fuel/:id")
-  .get(validate(getFuelRecordByVehicleByIdSchema), getFuelRecordByIdHandler)
-  .put(validate(updateFuelRecordByVehicleSchema), updateFuelRecordHandler)
-  .delete(validate(deleteFuelRecordByVehicleSchema), deleteFuelRecordHandler);
+  .get(
+    viewFleet,
+    validate(getFuelRecordByVehicleByIdSchema),
+    getFuelRecordByIdHandler,
+  )
+  .put(
+    viewFleet,
+    validate(updateFuelRecordByVehicleSchema),
+    updateFuelRecordHandler,
+  )
+  .delete(
+    editVehicle,
+    validate(deleteFuelRecordByVehicleSchema),
+    deleteFuelRecordHandler,
+  );
 
+// Check-In/Out: Technicians can check in/out assigned vehicles
 router
   .route("/vehicles/:vehicleId/check-in-out")
   .get(
+    viewFleet,
     validate(getCheckInOutRecordsByVehicleQuerySchema),
     getCheckInOutRecordsHandler,
   )
   .post(
+    viewFleet,
     validate(createCheckInOutRecordByVehicleSchema),
     createCheckInOutRecordHandler,
   );
@@ -392,42 +481,53 @@ router
 router
   .route("/vehicles/:vehicleId/check-in-out/:id")
   .get(
+    viewFleet,
     validate(getCheckInOutRecordByVehicleByIdSchema),
     getCheckInOutRecordByIdHandler,
   )
   .put(
+    viewFleet,
     validate(updateCheckInOutRecordByVehicleSchema),
     updateCheckInOutRecordHandler,
   )
   .delete(
+    editVehicle,
     validate(deleteCheckInOutRecordByVehicleSchema),
     deleteCheckInOutRecordHandler,
   );
 
 // ============================
-// Assignment History Routes (by vehicle)
+// Assignment History Routes — all fleet viewers
 // ============================
 
 router.get(
   "/vehicles/:vehicleId/assignment-history",
+  viewFleet,
   validate(getAssignmentHistoryByVehicleQuerySchema),
   getAssignmentHistoryHandler,
 );
 
+// Metrics — Manager/Executive only (financial and cost data)
 router.get(
   "/vehicles/:vehicleId/metrics",
+  editVehicle,
   validate(getVehicleMetricsByVehicleSchema),
   getVehicleMetricsHandler,
 );
 
 // ============================
-// Vehicle Media Routes (by vehicle)
+// Vehicle Media Routes — Technicians can view + upload for assigned vehicles
 // ============================
 
 router
   .route("/vehicles/:vehicleId/media")
-  .get(validate(getVehicleMediaByVehicleQuerySchema), getVehicleMediaHandler)
+  .get(
+    viewFleet,
+    validate(getVehicleMediaByVehicleQuerySchema),
+    getVehicleMediaHandler,
+  )
   .post(
+    viewFleet, // Technicians can upload photos for assigned vehicles
     uploadVehicleMedia,
     handleMulterError,
     validate(createVehicleMediaByVehicleSchema),
@@ -436,25 +536,32 @@ router
 
 router
   .route("/vehicles/:vehicleId/media/:id")
-  .get(validate(getVehicleMediaByVehicleByIdSchema), getVehicleMediaByIdHandler)
+  .get(
+    viewFleet,
+    validate(getVehicleMediaByVehicleByIdSchema),
+    getVehicleMediaByIdHandler,
+  )
   .put(
+    viewFleet,
     uploadVehicleMedia,
     handleMulterError,
     validate(updateVehicleMediaByVehicleSchema),
     updateVehicleMediaHandler,
   )
   .delete(
+    editVehicle, // Manager/Executive can delete media
     validate(deleteVehicleMediaByVehicleSchema),
     deleteVehicleMediaHandler,
   );
 
 // ============================
-// Vehicle Documents Routes (by vehicle)
+// Vehicle Documents Routes — Technicians can view + submit for assigned vehicles
 // ============================
 
-// Presigned URL for direct upload (faster: client uploads to storage, then registers document)
+// Presigned URL for direct upload
 router.post(
   "/vehicles/:vehicleId/documents/presigned-url",
+  viewFleet,
   validate(getVehicleDocumentPresignedUrlSchema),
   getVehicleDocumentPresignedUrlHandler,
 );
@@ -462,10 +569,12 @@ router.post(
 router
   .route("/vehicles/:vehicleId/documents")
   .get(
+    viewFleet,
     validate(getVehicleDocumentsByVehicleQuerySchema),
     getVehicleDocumentsHandler,
   )
   .post(
+    viewFleet, // Technicians can submit documents (requires approval)
     uploadVehicleDocument,
     normalizeVehicleDocumentFile,
     handleMulterError,
@@ -476,10 +585,12 @@ router
 router
   .route("/vehicles/:vehicleId/documents/:id")
   .get(
+    viewFleet,
     validate(getVehicleDocumentByVehicleByIdSchema),
     getVehicleDocumentByIdHandler,
   )
   .put(
+    editVehicle, // Manager/Executive can edit documents
     uploadVehicleDocument,
     normalizeVehicleDocumentFile,
     handleMulterError,
@@ -487,8 +598,17 @@ router
     updateVehicleDocumentHandler,
   )
   .delete(
+    editVehicle, // Manager/Executive can delete documents
     validate(deleteVehicleDocumentByVehicleSchema),
     deleteVehicleDocumentHandler,
   );
+
+// Bulk delete vehicles (Executive only)
+router.post(
+  "/vehicles/bulk-delete",
+  authorizeFeature("fleet", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteVehiclesHandler,
+);
 
 export default router;

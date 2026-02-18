@@ -63,6 +63,7 @@ import {
   removeDocumentCategoryLink,
   getClientSettings,
   updateClientSettings,
+  bulkDeleteClients,
 } from "../services/client.service.js";
 import {
   uploadToSpaces,
@@ -71,7 +72,6 @@ import {
 import { logger } from "../utils/logger.js";
 import {
   checkOrganizationNameExists,
-  checkClientIdExists,
   checkClientTypeNameExists,
   checkIndustryClassificationNameExists,
   checkIndustryClassificationCodeExists,
@@ -82,6 +82,10 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 // Get all clients with pagination
 export const getClientsHandler = async (req: Request, res: Response) => {
@@ -123,10 +127,26 @@ export const getClientsHandler = async (req: Request, res: Response) => {
     }
     if (search) filters.search = search;
 
+    // view_assigned: Technicians only see clients they have jobs assigned to/team members of
+    const userId = req.user?.id;
+    let clientOptions: { ownEmployeeId?: number } | undefined;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "clients");
+      if (dataFilter.assignedOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (emp) clientOptions = { ownEmployeeId: emp.id };
+      }
+    }
+
     const result = await getClients(
       offset,
       limit,
       Object.keys(filters).length > 0 ? filters : undefined,
+      clientOptions,
     );
 
     logger.info("Clients fetched successfully");
@@ -306,15 +326,8 @@ export const createClientHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Check client ID uniqueness
-    if (clientData.clientId) {
-      uniqueFieldChecks.push({
-        field: "clientId",
-        value: clientData.clientId,
-        checkFunction: () => checkClientIdExists(clientData.clientId),
-        message: `Client ID '${clientData.clientId}' is already in use`,
-      });
-    }
+    // Strip auto-generated field - clientId is always system-generated
+    delete clientData.clientId;
 
     // Validate all unique fields
     const validationErrors = await validateUniqueFields(uniqueFieldChecks);
@@ -486,18 +499,8 @@ export const updateClientHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Check client ID uniqueness (if provided and different from current)
-    if (
-      updateData.clientId &&
-      updateData.clientId !== existingClient.organization.clientId
-    ) {
-      uniqueFieldChecks.push({
-        field: "clientId",
-        value: updateData.clientId,
-        checkFunction: () => checkClientIdExists(updateData.clientId, id),
-        message: `Client ID '${updateData.clientId}' is already in use`,
-      });
-    }
+    // Strip auto-generated field - clientId is always system-generated and cannot be changed
+    delete updateData.clientId;
 
     // Validate all unique fields
     const validationErrors = await validateUniqueFields(uniqueFieldChecks);
@@ -558,7 +561,8 @@ export const deleteClientHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Client ID is required" });
     }
 
-    const success = await deleteClient(id);
+    const userId = req.user?.id;
+    const success = await deleteClient(id, userId);
 
     if (!success) {
       return res
@@ -2574,5 +2578,30 @@ export const updateClientSettingsHandler = async (
       detail:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteClientsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteClients(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} clients by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} client(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete clients error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

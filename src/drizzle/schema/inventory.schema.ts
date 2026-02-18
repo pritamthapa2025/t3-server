@@ -148,7 +148,7 @@ export const inventorySuppliers = org.table(
     creditLimit: numeric("credit_limit", { precision: 15, scale: 2 }),
 
     // Performance Tracking
-    rating: numeric("rating", { precision: 3, scale: 2 }), // 0.00 to 5.00
+    rating: numeric("rating", { precision: 4, scale: 2 }), // 0.00 to 10.00
     leadTimeDays: integer("lead_time_days"), // Average lead time
 
     // Status
@@ -344,6 +344,8 @@ export const inventoryItems = org.table(
     notes: text("notes"),
 
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -356,6 +358,7 @@ export const inventoryItems = org.table(
     index("idx_inventory_items_barcode").on(table.barcode),
     index("idx_inventory_items_active").on(table.isActive),
     index("idx_inventory_items_deleted").on(table.isDeleted),
+    index("idx_inventory_items_deleted_at").on(table.deletedAt),
     // Composite index for low stock queries
     index("idx_inventory_items_stock_check").on(
       table.quantityOnHand,
@@ -374,10 +377,10 @@ export const inventoryItemLocations = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
     locationId: uuid("location_id")
       .notNull()
-      .references(() => inventoryLocations.id),
+      .references(() => inventoryLocations.id, { onDelete: "cascade" }),
 
     quantity: numeric("quantity", { precision: 10, scale: 2 })
       .notNull()
@@ -414,8 +417,8 @@ export const inventoryTransactions = org.table(
     // Item & Location
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
-    locationId: uuid("location_id").references(() => inventoryLocations.id, {}),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "cascade" }),
 
     // Transaction Details
     transactionType: inventoryTransactionTypeEnum("transaction_type").notNull(),
@@ -432,16 +435,19 @@ export const inventoryTransactions = org.table(
     // Related Records
     purchaseOrderId: uuid("purchase_order_id").references(
       () => inventoryPurchaseOrders.id,
+      { onDelete: "cascade" },
     ),
-    jobId: uuid("job_id").references(() => jobs.id),
-    bidId: uuid("bid_id").references(() => bidsTable.id, {}),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "cascade" }),
 
     // Transfer details (if transaction_type = 'transfer')
     fromLocationId: uuid("from_location_id").references(
       () => inventoryLocations.id,
+      { onDelete: "cascade" },
     ),
     toLocationId: uuid("to_location_id").references(
       () => inventoryLocations.id,
+      { onDelete: "cascade" },
     ),
 
     // Tracking
@@ -563,10 +569,10 @@ export const inventoryPurchaseOrderItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     purchaseOrderId: uuid("purchase_order_id")
       .notNull()
-      .references(() => inventoryPurchaseOrders.id),
+      .references(() => inventoryPurchaseOrders.id, { onDelete: "cascade" }),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     // Quantities
     quantityOrdered: numeric("quantity_ordered", { precision: 10, scale: 2 })
@@ -607,11 +613,11 @@ export const inventoryAllocations = org.table(
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     // Allocated To
-    jobId: uuid("job_id").references(() => jobs.id),
-    bidId: uuid("bid_id").references(() => bidsTable.id, {}),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "cascade" }),
 
     // Quantity
     quantityAllocated: numeric("quantity_allocated", {
@@ -672,7 +678,7 @@ export const inventoryStockAlerts = org.table(
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     alertType: varchar("alert_type", { length: 50 }).notNull(), // low_stock, out_of_stock, overstock, expiring
     severity: varchar("severity", { length: 20 }).notNull(), // info, warning, critical
@@ -721,7 +727,7 @@ export const inventoryItemHistory = org.table(
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     action: varchar("action", { length: 100 }).notNull(), // created, updated, deleted, price_changed, etc.
     fieldChanged: varchar("field_changed", { length: 100 }), // Field name that changed
@@ -759,7 +765,7 @@ export const inventoryPriceHistory = org.table(
 
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     // Price Information
     priceType: varchar("price_type", { length: 50 }).notNull(), // unit_cost, purchase_price, selling_price
@@ -767,9 +773,10 @@ export const inventoryPriceHistory = org.table(
     newPrice: numeric("new_price", { precision: 15, scale: 2 }).notNull(),
 
     // Context
-    supplierId: uuid("supplier_id").references(() => inventorySuppliers.id),
+    supplierId: uuid("supplier_id").references(() => inventorySuppliers.id, { onDelete: "cascade" }),
     purchaseOrderId: uuid("purchase_order_id").references(
       () => inventoryPurchaseOrders.id,
+      { onDelete: "cascade" },
     ),
     reason: varchar("reason", { length: 100 }), // supplier_change, market_adjustment, purchase_order, etc.
 
@@ -808,7 +815,7 @@ export const inventoryCounts = org.table(
     countNumber: varchar("count_number", { length: 100 }).notNull(), // CNT-2025-0001
     countType: varchar("count_type", { length: 50 }).notNull(), // full, cycle, spot
 
-    locationId: uuid("location_id").references(() => inventoryLocations.id, {}),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "cascade" }),
 
     // Dates
     countDate: date("count_date").notNull(),
@@ -846,10 +853,10 @@ export const inventoryCountItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     countId: uuid("count_id")
       .notNull()
-      .references(() => inventoryCounts.id),
+      .references(() => inventoryCounts.id, { onDelete: "cascade" }),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id),
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     // Quantities
     systemQuantity: numeric("system_quantity", { precision: 10, scale: 2 })

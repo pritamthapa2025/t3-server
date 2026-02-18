@@ -4,6 +4,7 @@ import {
   serial,
   text,
   varchar,
+  boolean,
   timestamp,
   integer,
   numeric,
@@ -32,7 +33,7 @@ export const timesheets = org.table(
 
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     sheetDate: date("sheet_date").notNull(),
 
@@ -54,6 +55,9 @@ export const timesheets = org.table(
     rejectedBy: uuid("rejected_by").references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
 
+    isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -64,6 +68,8 @@ export const timesheets = org.table(
     index("idx_timesheets_status").on(table.status),
     index("idx_timesheets_approved_by").on(table.approvedBy),
     index("idx_timesheets_rejected_by").on(table.rejectedBy),
+    index("idx_timesheets_is_deleted").on(table.isDeleted),
+    index("idx_timesheets_deleted_at").on(table.deletedAt),
   ]
 );
 
@@ -81,7 +87,7 @@ export const timesheetApprovals = org.table(
 
     timesheetId: integer("timesheet_id")
       .notNull()
-      .references(() => timesheets.id),
+      .references(() => timesheets.id, { onDelete: "cascade" }),
 
     action: varchar("action", { length: 50 }).notNull(),
 

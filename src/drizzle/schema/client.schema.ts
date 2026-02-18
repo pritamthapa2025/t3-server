@@ -118,6 +118,8 @@ export const organizations: any = org.table(
     // Metadata
     createdBy: uuid("created_by").references(() => users.id, {}),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id, {}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -129,6 +131,7 @@ export const organizations: any = org.table(
     index("idx_orgs_industry_id").on(table.industryClassificationId),
     index("idx_orgs_number_of_employees").on(table.numberOfEmployees),
     index("idx_orgs_is_deleted").on(table.isDeleted),
+    index("idx_orgs_deleted_at").on(table.deletedAt),
     index("idx_orgs_billing_contact").on(table.billingContactId),
     index("idx_orgs_city_state").on(table.city, table.state),
   ],
@@ -144,7 +147,7 @@ export const userOrganizations = org.table(
       .references(() => users.id),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     userType: userOrganizationTypeEnum("user_type")
       .notNull()
@@ -179,7 +182,7 @@ export const clientContacts = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     // Contact Info
     fullName: varchar("full_name", { length: 150 }).notNull(),
@@ -214,7 +217,7 @@ export const clientNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     noteType: varchar("note_type", { length: 50 }), // call, meeting, email, general
     subject: varchar("subject", { length: 255 }),
@@ -242,7 +245,7 @@ export const clientDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -256,12 +259,14 @@ export const clientDocuments = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
     index("idx_client_docs_org").on(table.organizationId),
     index("idx_client_docs_starred").on(table.isStarred),
+    index("idx_client_docs_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -291,7 +296,7 @@ export const clientDocumentCategories: any = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => clientDocuments.id),
+      .references(() => clientDocuments.id, { onDelete: "cascade" }),
     categoryId: integer("category_id")
       .notNull()
       .references(() => documentCategories.id),
@@ -311,7 +316,7 @@ export const properties = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     // Basic Info
     propertyName: varchar("property_name", { length: 255 }).notNull(),
@@ -467,6 +472,7 @@ export const propertyDocuments = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -474,6 +480,7 @@ export const propertyDocuments = org.table(
     index("idx_property_docs_property").on(table.propertyId),
     index("idx_property_docs_type").on(table.documentType),
     index("idx_property_docs_starred").on(table.isStarred),
+    index("idx_property_docs_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -660,7 +667,7 @@ export const financialReports = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     reportKey: varchar("report_key", { length: 50 }).notNull(),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),

@@ -18,12 +18,16 @@ import {
 } from "../services/property.service.js";
 import { logger } from "../utils/logger.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
 
 // Helper function to validate required params
 const validateParams = (
   req: Request,
   res: Response,
-  paramNames: string[]
+  paramNames: string[],
 ): boolean => {
   for (const paramName of paramNames) {
     if (!req.params[paramName]) {
@@ -64,10 +68,26 @@ export const getPropertiesHandler = async (req: Request, res: Response) => {
     if (req.query.state) filters.state = req.query.state as string;
     if (search) filters.search = search;
 
+    // view_assigned: Technicians see only properties for jobs they're team members of
+    const userId = req.user?.id;
+    let propertyOptions: { ownEmployeeId?: number } | undefined;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "properties");
+      if (dataFilter.assignedOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (emp) propertyOptions = { ownEmployeeId: emp.id };
+      }
+    }
+
     const result = await getProperties(
       offset,
       limit,
-      Object.keys(filters).length > 0 ? filters : undefined
+      Object.keys(filters).length > 0 ? filters : undefined,
+      propertyOptions,
     );
 
     logger.info("Properties fetched successfully");
@@ -209,7 +229,7 @@ export const deletePropertyHandler = async (req: Request, res: Response) => {
 // Create property contact
 export const createPropertyContactHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!validateParams(req, res, ["propertyId"])) return;
@@ -246,7 +266,7 @@ export const createPropertyContactHandler = async (
 // Get property equipment
 export const getPropertyEquipmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const propertyId = asSingleString(req.params.propertyId);
@@ -275,7 +295,7 @@ export const getPropertyEquipmentHandler = async (
 // Get property equipment by ID
 export const getPropertyEquipmentByIdHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const id = asSingleString(req.params.id);
@@ -310,7 +330,7 @@ export const getPropertyEquipmentByIdHandler = async (
 // Create property equipment
 export const createPropertyEquipmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const propertyId = asSingleString(req.params.propertyId);
@@ -338,7 +358,7 @@ export const createPropertyEquipmentHandler = async (
 // Update property equipment
 export const updatePropertyEquipmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const id = asSingleString(req.params.id);
@@ -374,7 +394,7 @@ export const updatePropertyEquipmentHandler = async (
 // Delete property equipment
 export const deletePropertyEquipmentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const id = asSingleString(req.params.id);
@@ -409,7 +429,7 @@ export const deletePropertyEquipmentHandler = async (
 // Create property document
 export const createPropertyDocumentHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   let uploadedFilePath: string | null = null;
   try {
@@ -457,7 +477,7 @@ export const createPropertyDocumentHandler = async (
         const uploadResult = await uploadToSpaces(
           file.buffer,
           file.originalname,
-          "property-documents"
+          "property-documents",
         );
         uploadedFilePath = uploadResult.url;
         documentData.filePath = uploadedFilePath;
@@ -516,7 +536,7 @@ export const createPropertyDocumentHandler = async (
 // Create service history entry
 export const createServiceHistoryHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const propertyId = asSingleString(req.params.propertyId);

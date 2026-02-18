@@ -1,4 +1,4 @@
-import { count, eq, and, desc, asc, or, ilike } from "drizzle-orm";
+import { count, eq, and, desc, asc, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -304,14 +304,17 @@ export const updateInventoryItem = async (
   return updatedItem!;
 };
 
-export const deleteInventoryItem = async (id: string, _userId: string) => {
+export const deleteInventoryItem = async (id: string, deletedBy?: string) => {
+  const now = new Date();
   const [deletedItem] = await db
     .update(inventoryItems)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
     })
-    .where(eq(inventoryItems.id, id))
+    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.isDeleted, false)))
     .returning();
 
   if (!deletedItem) throw new Error("Item not found");
@@ -338,4 +341,21 @@ export const getItemHistory = async (itemId: string) => {
     ...r.history,
     performedByUser: r.user,
   }));
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteInventoryItems = async (
+  ids: string[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(inventoryItems)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(inventoryItems.id, ids), eq(inventoryItems.isDeleted, false)))
+    .returning({ id: inventoryItems.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

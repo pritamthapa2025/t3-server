@@ -68,10 +68,12 @@ export const vehicles = org.table(
     status: vehicleStatusEnum("status").notNull().default("active"),
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
+      { onDelete: "cascade" },
     ), // Current driver assignment
-    currentJobId: uuid("current_job_id").references(() => jobs.id), // Currently assigned job
+    currentJobId: uuid("current_job_id").references(() => jobs.id, { onDelete: "cascade" }), // Currently assigned job
     currentDispatchTaskId: uuid("current_dispatch_task_id").references(
       () => dispatchTasks.id,
+      { onDelete: "cascade" },
     ), // T3 internal: link to dispatch task (no organization; data in employees/positions/departments)
 
     // Current Metrics
@@ -172,6 +174,8 @@ export const vehicles = org.table(
     // Metadata
     createdBy: uuid("created_by").references(() => users.id),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -185,6 +189,7 @@ export const vehicles = org.table(
     index("idx_vehicles_next_service").on(table.nextServiceDue),
     index("idx_vehicles_next_inspection").on(table.nextInspectionDue),
     index("idx_vehicles_is_deleted").on(table.isDeleted),
+    index("idx_vehicles_deleted_at").on(table.deletedAt),
     // Composite index for active vehicles
     index("idx_vehicles_active").on(table.status, table.isDeleted),
   ],
@@ -202,7 +207,7 @@ export const maintenanceRecords = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Maintenance Details
     type: varchar("type", { length: 100 }).notNull(), // Oil Change, Tire Rotation, etc.
@@ -226,6 +231,7 @@ export const maintenanceRecords = org.table(
     // Assignment
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
+      { onDelete: "cascade" },
     ),
 
     // Approval Workflow
@@ -272,7 +278,7 @@ export const repairRecords = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Repair Details
     type: varchar("type", { length: 100 }).notNull(), // Brake System Repair, Engine Diagnostics, etc.
@@ -298,6 +304,7 @@ export const repairRecords = org.table(
     // Assignment
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
+      { onDelete: "cascade" },
     ),
 
     // Linking
@@ -355,7 +362,7 @@ export const safetyInspections = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Inspection Details
     date: date("date").notNull(),
@@ -367,7 +374,7 @@ export const safetyInspections = org.table(
     // Inspection Data
     checklist: jsonb("checklist"), // JSON checklist data
     isTeamMember: boolean("is_team_member").notNull(),
-    employeeId: integer("employee_id").references(() => employees.id),
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
     exteriorPhotos: jsonb("exterior_photos"), // Array of photo URLs
     interiorPhotos: jsonb("interior_photos"), // Array of photo URLs
 
@@ -402,7 +409,7 @@ export const safetyInspectionItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     inspectionId: uuid("inspection_id")
       .notNull()
-      .references(() => safetyInspections.id),
+      .references(() => safetyInspections.id, { onDelete: "cascade" }),
 
     // Item Details
     category: varchar("category", { length: 100 }).notNull(), // Lights, Fluids, Tires, Brakes
@@ -434,7 +441,7 @@ export const fuelRecords = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Fuel Details
     date: date("date").notNull(),
@@ -451,7 +458,7 @@ export const fuelRecords = org.table(
     fuelType: fuelTypeEnum("fuel_type").notNull(), // gasoline, diesel, electric
 
     // Employee Tracking
-    employeeId: integer("employee_id").references(() => employees.id), // Who fueled
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Who fueled
     employeeName: varchar("employee_name", { length: 255 }),
 
     // Notes
@@ -486,7 +493,7 @@ export const checkInOutRecords = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Record Type
     type: checkInOutTypeEnum("type").notNull(), // check_in, check_out
@@ -501,7 +508,7 @@ export const checkInOutRecords = org.table(
     fuelLevel: numeric("fuel_level", { precision: 5, scale: 2 }).notNull(), // Percentage
 
     // Job (references jobs.id)
-    jobId: uuid("job_id").references(() => jobs.id),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
 
     // Notes
     notes: text("notes"),
@@ -535,9 +542,9 @@ export const assignmentHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
-    employeeId: integer("employee_id").references(() => employees.id), // Driver assigned for this period
-    jobId: uuid("job_id").references(() => jobs.id), // Job the driver was assigned to for this period
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Driver assigned for this period
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }), // Job the driver was assigned to for this period
 
     // Assignment Period
     startDate: date("start_date").notNull(),
@@ -581,7 +588,7 @@ export const vehicleMedia = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // File Information
     name: varchar("name", { length: 255 }).notNull(), // File name
@@ -600,6 +607,7 @@ export const vehicleMedia = org.table(
     uploadedDate: date("uploaded_date").notNull().defaultNow(),
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -609,6 +617,7 @@ export const vehicleMedia = org.table(
     index("idx_vehicle_media_uploaded_by").on(table.uploadedBy),
     index("idx_vehicle_media_starred").on(table.isStarred),
     index("idx_vehicle_media_is_deleted").on(table.isDeleted),
+    index("idx_vehicle_media_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -624,7 +633,7 @@ export const vehicleDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // File Information
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -645,6 +654,7 @@ export const vehicleDocuments = org.table(
       .references(() => users.id),
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -655,6 +665,7 @@ export const vehicleDocuments = org.table(
     index("idx_vehicle_documents_uploaded_by").on(table.uploadedBy),
     index("idx_vehicle_documents_starred").on(table.isStarred),
     index("idx_vehicle_documents_is_deleted").on(table.isDeleted),
+    index("idx_vehicle_documents_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -670,7 +681,7 @@ export const vehicleMetrics = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id)
+      .references(() => vehicles.id, { onDelete: "cascade" })
       .unique(), // One metrics record per vehicle
 
     // Performance Metrics
@@ -733,7 +744,7 @@ export const vehicleHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => vehicles.id),
+      .references(() => vehicles.id, { onDelete: "cascade" }),
 
     // Change Details
     action: varchar("action", { length: 100 }).notNull(), // status_changed, assigned, maintenance_scheduled, etc.

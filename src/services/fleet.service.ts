@@ -29,6 +29,7 @@ import {
   isNotNull,
   getTableColumns,
   notInArray,
+  inArray,
 } from "drizzle-orm";
 import type {
   CreateVehicleData,
@@ -313,6 +314,7 @@ export const generateVehicleId = async (): Promise<string> => {
 
 // Create Vehicle
 export const createVehicle = async (data: CreateVehicleData) => {
+  // Always auto-generate vehicleId - ignore any value from input
   const vehicleId = await generateVehicleId();
   const insertData: any = {
     vehicleId,
@@ -382,8 +384,7 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
     updatedAt: new Date(),
   };
 
-  // Update only provided fields
-  if (data.vehicleId !== undefined) updateData.vehicleId = data.vehicleId;
+  // Update only provided fields (vehicleId is auto-generated and cannot be changed)
   if (data.make !== undefined) updateData.make = data.make;
   if (data.model !== undefined) updateData.model = data.model;
   if (data.year !== undefined) updateData.year = data.year;
@@ -527,12 +528,15 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
 };
 
 // Soft Delete Vehicle
-export const deleteVehicle = async (id: string) => {
+export const deleteVehicle = async (id: string, deletedBy?: string) => {
+  const now = new Date();
   const result = await db
     .update(vehicles)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
     })
     .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)))
     .returning();
@@ -1924,10 +1928,7 @@ export const createCheckInOutRecord = async (
       .select({ currentJobId: vehicles.currentJobId })
       .from(vehicles)
       .where(
-        and(
-          eq(vehicles.id, data.vehicleId),
-          eq(vehicles.isDeleted, false),
-        ),
+        and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)),
       )
       .limit(1);
     if (vehicle?.currentJobId) insertData.jobId = vehicle.currentJobId;
@@ -2427,4 +2428,18 @@ export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
     totalFuelCost: totalFuelCostResult[0]?.total || "0",
     averageMPG: avgMPGResult.rows[0]?.avgMPG || "0",
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteVehicles = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(vehicles)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(vehicles.id, ids), eq(vehicles.isDeleted, false)))
+    .returning({ id: vehicles.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

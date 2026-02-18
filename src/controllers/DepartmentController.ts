@@ -7,6 +7,7 @@ import {
   deleteDepartment,
   getDepartmentKPIs,
   getDepartmentsList,
+  bulkDeleteDepartments,
 } from "../services/department.service.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -261,7 +262,8 @@ export const deleteDepartmentHandler = async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string);
 
-    const department = await deleteDepartment(id);
+    const userId = req.user?.id;
+    const department = await deleteDepartment(id, userId);
     if (!department) {
       return res.status(404).json({
         success: false,
@@ -319,5 +321,30 @@ export const getDepartmentKPIsHandler = async (req: Request, res: Response) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteDepartmentsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: number[] };
+    const result = await bulkDeleteDepartments(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} departments by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} department(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete departments error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

@@ -7,6 +7,27 @@ import {
   getDefaultExpenseCategory,
 } from "../services/expense.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+
+const INVENTORY_FINANCIAL_FIELDS = [
+  "unitCost",
+  "lastPurchasePrice",
+  "averageCost",
+  "sellingPrice",
+] as const;
+
+function stripFinancialFields<T extends Record<string, unknown>>(
+  item: T,
+): Omit<T, "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice"> {
+  const result = { ...item };
+  for (const field of INVENTORY_FINANCIAL_FIELDS) {
+    delete result[field];
+  }
+  return result as Omit<
+    T,
+    "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice"
+  >;
+}
 
 // ============================
 // Helper Functions
@@ -69,11 +90,25 @@ export const getInventoryItemsHandler = async (req: Request, res: Response) => {
       filters,
     );
 
+    // hide_financial: Technicians cannot see cost/price fields
+    const userId = req.user?.id;
+    let hideFinancial = false;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "inventory");
+      hideFinancial = dataFilter.hideFinancial ?? false;
+    }
+
+    const data = hideFinancial
+      ? result.data.map((item: Record<string, unknown>) =>
+          stripFinancialFields(item),
+        )
+      : result.data;
+
     logger.info("Inventory items fetched successfully");
     res.status(200).json({
       success: true,
       message: "Inventory items retrieved successfully",
-      data: result.data,
+      data,
       total: result.total,
       pagination: result.pagination,
     });
@@ -105,11 +140,21 @@ export const getInventoryItemByIdHandler = async (
       });
     }
 
+    // hide_financial: Technicians cannot see cost/price fields
+    const userId = req.user?.id;
+    let hideFinancial = false;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "inventory");
+      hideFinancial = dataFilter.hideFinancial ?? false;
+    }
+
     logger.info(`Inventory item ${validId} fetched successfully`);
     res.status(200).json({
       success: true,
       message: "Inventory item retrieved successfully",
-      data: item,
+      data: hideFinancial
+        ? stripFinancialFields(item as Record<string, unknown>)
+        : item,
     });
   } catch (error: any) {
     logger.logApiError("Error fetching inventory item by ID", error, req);
@@ -209,7 +254,11 @@ export const createInventoryItemHandler = async (
             source: "inventory",
           });
         } catch (expenseErr) {
-          logger.logApiError("Error creating expense from inventory item", expenseErr, req);
+          logger.logApiError(
+            "Error creating expense from inventory item",
+            expenseErr,
+            req,
+          );
         }
       }
     }
@@ -916,7 +965,11 @@ export const approvePurchaseOrderHandler = async (
     if (!userId) return;
 
     const isExpense = Boolean(req.body?.isExpense);
-    const approvedPO = await inventoryService.approvePurchaseOrder(id!, userId, isExpense);
+    const approvedPO = await inventoryService.approvePurchaseOrder(
+      id!,
+      userId,
+      isExpense,
+    );
 
     logger.info(`Purchase order ${id} approved successfully`);
     res.status(200).json({
@@ -1992,5 +2045,30 @@ export const recordCountItemHandler = async (req: Request, res: Response) => {
       message: "Failed to record count item",
       error: error.message,
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteInventoryItemsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await inventoryService.bulkDeleteInventoryItems(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} inventory items by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} inventory item(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete inventory items error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

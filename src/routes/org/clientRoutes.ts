@@ -43,10 +43,13 @@ import {
   removeDocumentCategoryHandler,
   getClientSettingsHandler,
   updateClientSettingsHandler,
+  bulkDeleteClientsHandler,
 } from "../../controllers/ClientController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getClientsQuerySchema,
   getClientByIdSchema,
@@ -109,8 +112,8 @@ const upload = multer({
     } else {
       cb(
         new Error(
-          "Only image files and documents are allowed (PNG, JPG, SVG, PDF, DOC, DOCX, XLSX, XLS, CSV, TXT)"
-        )
+          "Only image files and documents are allowed (PNG, JPG, SVG, PDF, DOC, DOCX, XLSX, XLS, CSV, TXT)",
+        ),
       );
     }
   },
@@ -191,162 +194,230 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
-// Client KPIs route
-router.get("/clients/kpis", getClientKPIsHandler);
+// Feature shorthand constants
+// Technicians can view basic info; Managers/Executives have full access
+const viewClients = authorizeFeature("clients", "view_clients");
+const createClient = authorizeFeature("clients", "create_client");
+const editClient = authorizeFeature("clients", "edit_client");
+const deleteClient = authorizeFeature("clients", "delete_client");
+const addContacts = authorizeFeature("clients", "add_contacts");
+const viewFinancial = authorizeFeature("clients", "view_financial_info");
 
-// Reference data routes
+// Client KPIs route — Manager/Executive only (financial data)
+router.get("/clients/kpis", viewFinancial, getClientKPIsHandler);
+
+// Reference data routes — Manager/Executive only (write); all can read
 router
   .route("/client-types")
-  .get(getClientTypesHandler)
-  .post(validate(createClientTypeSchema), createClientTypeHandler);
+  .get(viewClients, getClientTypesHandler)
+  .post(editClient, validate(createClientTypeSchema), createClientTypeHandler);
 
 router
   .route("/client-types/:id")
-  .get(validate(getClientTypeByIdSchema), getClientTypeByIdHandler)
-  .put(validate(updateClientTypeSchema), updateClientTypeHandler)
-  .delete(deleteClientTypeHandler);
+  .get(viewClients, validate(getClientTypeByIdSchema), getClientTypeByIdHandler)
+  .put(editClient, validate(updateClientTypeSchema), updateClientTypeHandler)
+  .delete(editClient, deleteClientTypeHandler);
 
 router
   .route("/industry-classifications")
-  .get(getIndustryClassificationsHandler)
+  .get(viewClients, getIndustryClassificationsHandler)
   .post(
+    editClient,
     validate(createIndustryClassificationSchema),
-    createIndustryClassificationHandler
+    createIndustryClassificationHandler,
   );
 
 router
   .route("/industry-classifications/:id")
-  .get(validate(getIndustryClassificationByIdSchema), getIndustryClassificationByIdHandler)
-  .put(
-    validate(updateIndustryClassificationSchema),
-    updateIndustryClassificationHandler
+  .get(
+    viewClients,
+    validate(getIndustryClassificationByIdSchema),
+    getIndustryClassificationByIdHandler,
   )
-  .delete(deleteIndustryClassificationHandler);
+  .put(
+    editClient,
+    validate(updateIndustryClassificationSchema),
+    updateIndustryClassificationHandler,
+  )
+  .delete(editClient, deleteIndustryClassificationHandler);
 
 // Main client routes
 router
   .route("/clients")
-  .get(validate(getClientsQuerySchema), getClientsHandler)
+  .get(viewClients, validate(getClientsQuerySchema), getClientsHandler)
   .post(
+    createClient,
     upload,
     handleMulterError,
     parseFormData,
     validate(createClientSchema),
-    createClientHandler
+    createClientHandler,
   );
 
 router
   .route("/clients/:id")
-  .get(validate(getClientByIdSchema), getClientByIdHandler)
+  .get(viewClients, validate(getClientByIdSchema), getClientByIdHandler)
   .put(
+    editClient,
     upload,
     handleMulterError,
     parseFormData,
     validate(updateClientSchema),
-    updateClientHandler
+    updateClientHandler,
   )
-  .delete(validate(deleteClientSchema), deleteClientHandler);
+  .delete(deleteClient, validate(deleteClientSchema), deleteClientHandler);
 
-// Client settings routes - get and update settings fields
+// Client settings routes — Manager/Executive (financial/billing settings)
 router
   .route("/clients/:id/settings")
-  .get(validate(getClientSettingsSchema), getClientSettingsHandler)
-  .put(validate(updateClientSettingsSchema), updateClientSettingsHandler);
+  .get(
+    viewFinancial,
+    validate(getClientSettingsSchema),
+    getClientSettingsHandler,
+  )
+  .put(
+    editClient,
+    validate(updateClientSettingsSchema),
+    updateClientSettingsHandler,
+  );
 
-// Client contacts routes
+// Client contacts routes — Technicians can view; Managers/Executives can manage
 router
   .route("/clients/:id/contacts")
-  .get(validate(getClientContactsSchema), getClientContactsHandler)
+  .get(viewClients, validate(getClientContactsSchema), getClientContactsHandler)
   .post(
+    addContacts,
     uploadContactPicture,
     handleMulterError,
     validate(createClientContactSchema),
-    createClientContactHandler
+    createClientContactHandler,
   );
 
 router
   .route("/clients/:id/contacts/:contactId")
-  .get(validate(getClientContactByIdSchema), getClientContactByIdHandler)
+  .get(
+    viewClients,
+    validate(getClientContactByIdSchema),
+    getClientContactByIdHandler,
+  )
   .put(
+    addContacts,
     uploadContactPicture,
     handleMulterError,
     validate(updateClientContactSchema),
-    updateClientContactHandler
+    updateClientContactHandler,
   )
-  .delete(validate(deleteClientContactSchema), deleteClientContactHandler);
+  .delete(
+    addContacts,
+    validate(deleteClientContactSchema),
+    deleteClientContactHandler,
+  );
 
-// Client notes routes
+// Client notes routes — all viewers can read; Manager/Executive can manage
 router
   .route("/clients/:id/notes")
-  .get(validate(getClientNotesSchema), getClientNotesHandler)
-  .post(validate(createClientNoteSchema), createClientNoteHandler);
+  .get(viewClients, validate(getClientNotesSchema), getClientNotesHandler)
+  .post(editClient, validate(createClientNoteSchema), createClientNoteHandler);
 
 router
   .route("/clients/:id/notes/:noteId")
-  .get(validate(getClientNoteByIdSchema), getClientNoteByIdHandler)
-  .put(validate(updateClientNoteSchema), updateClientNoteHandler)
-  .delete(validate(deleteClientNoteSchema), deleteClientNoteHandler);
+  .get(viewClients, validate(getClientNoteByIdSchema), getClientNoteByIdHandler)
+  .put(editClient, validate(updateClientNoteSchema), updateClientNoteHandler)
+  .delete(
+    editClient,
+    validate(deleteClientNoteSchema),
+    deleteClientNoteHandler,
+  );
 
-// Client documents routes
+// Client documents routes — Technician can upload job-related; Manager/Executive manage all
 router
   .route("/clients/:id/documents")
-  .get(validate(getClientDocumentsSchema), getClientDocumentsHandler)
+  .get(
+    viewClients,
+    validate(getClientDocumentsSchema),
+    getClientDocumentsHandler,
+  )
   .post(
+    viewClients,
     uploadDocument,
     handleMulterError,
     validate(createClientDocumentSchema),
-    createClientDocumentHandler
+    createClientDocumentHandler,
   );
 
 router
   .route("/clients/:id/documents/:documentId")
-  .get(getClientDocumentByIdHandler)
+  .get(viewClients, getClientDocumentByIdHandler)
   .put(
+    editClient,
     uploadDocument,
     handleMulterError,
     validate(updateClientDocumentSchema),
-    updateClientDocumentHandler
+    updateClientDocumentHandler,
   )
-  .delete(deleteClientDocumentHandler);
+  .delete(editClient, deleteClientDocumentHandler);
 
-// Create category and assign to document
+// Create category and assign to document — Manager/Executive only
 router
   .route("/clients/:id/documents/:documentId/categories")
   .post(
+    editClient,
     validate(createCategoryAndAssignToDocumentSchema),
-    createCategoryAndAssignToDocumentHandler
+    createCategoryAndAssignToDocumentHandler,
   );
 
 router
   .route("/clients/:id/documents/:documentId/categories")
-  .get(getClientDocumentCategoriesHandler);
+  .get(viewClients, getClientDocumentCategoriesHandler);
 
-// Remove category from document
+// Remove category from document — Manager/Executive only
 router
   .route("/clients/:id/documents/:documentId/categories/:categoryId")
-  .delete(removeDocumentCategoryHandler);
+  .delete(editClient, removeDocumentCategoryHandler);
 
-// Document Categories routes
+// Document Categories routes — all can view; Manager/Executive can manage
 router
   .route("/document-categories")
-  .get(getDocumentCategoriesHandler)
-  .post(validate(createDocumentCategorySchema), createDocumentCategoryHandler);
+  .get(viewClients, getDocumentCategoriesHandler)
+  .post(
+    editClient,
+    validate(createDocumentCategorySchema),
+    createDocumentCategoryHandler,
+  );
 
 router
   .route("/document-categories/:id")
-  .get(validate(getDocumentCategoryByIdSchema), getDocumentCategoryByIdHandler)
-  .put(validate(updateDocumentCategorySchema), updateDocumentCategoryHandler)
+  .get(
+    viewClients,
+    validate(getDocumentCategoryByIdSchema),
+    getDocumentCategoryByIdHandler,
+  )
+  .put(
+    editClient,
+    validate(updateDocumentCategorySchema),
+    updateDocumentCategoryHandler,
+  )
   .delete(
+    editClient,
     validate(deleteDocumentCategorySchema),
-    deleteDocumentCategoryHandler
+    deleteDocumentCategoryHandler,
   );
 
-// Document Category Assignment routes
+// Document Category Assignment routes — Manager/Executive only
 router
   .route("/documents/:documentId/categories")
   .put(
+    editClient,
     validate(assignDocumentCategoriesSchema),
-    assignDocumentCategoriesHandler
+    assignDocumentCategoriesHandler,
   );
+
+// Bulk delete clients (Executive only)
+router.post(
+  "/clients/bulk-delete",
+  authorizeFeature("clients", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteClientsHandler,
+);
 
 export default router;

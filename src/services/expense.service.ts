@@ -8,6 +8,7 @@ import {
   getTableColumns,
   sql,
   or,
+  inArray,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
@@ -379,11 +380,18 @@ export async function updateExpense(
 export async function deleteExpense(
   _organizationId: string | undefined,
   id: string,
+  deletedBy?: string,
 ) {
+  const now = new Date();
   const conditions = [eq(expenses.id, id), eq(expenses.isDeleted, false)];
   const [row] = await db
     .update(expenses)
-    .set({ isDeleted: true, updatedAt: new Date() })
+    .set({
+      isDeleted: true,
+      deletedAt: now,
+      ...(deletedBy ? { deletedBy } : {}),
+      updatedAt: now,
+    })
     .where(and(...conditions))
     .returning();
   return row ?? null;
@@ -773,3 +781,17 @@ export async function getExpensesKPIs() {
     operatingExpenses: operatingExpenses.toFixed(2),
   };
 }
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteExpenses = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(expenses)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(expenses.id, ids), eq(expenses.isDeleted, false)))
+    .returning({ id: expenses.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
+};

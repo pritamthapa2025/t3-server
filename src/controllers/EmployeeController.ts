@@ -12,6 +12,7 @@ import {
   createEmployee,
   updateEmployee,
   deleteEmployee,
+  bulkDeleteEmployees,
 } from "../services/employee.service.js";
 import {
   createUser,
@@ -33,7 +34,6 @@ import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
 import {
   checkEmailExists,
-  checkEmployeeIdExists,
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
@@ -49,11 +49,19 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string | undefined;
+    const status = req.query.status as string | undefined;
+    const departmentId = req.query.departmentId
+      ? parseInt(req.query.departmentId as string, 10)
+      : undefined;
 
     const offset = (page - 1) * limit;
 
-    // All T3 employees - no organization filtering needed
-    const result = await getEmployees(offset, limit);
+    const result = await getEmployees(offset, limit, {
+      ...(search !== undefined && { search }),
+      ...(status !== undefined && { status }),
+      ...(departmentId !== undefined && { departmentId }),
+    });
 
     logger.info("Employees fetched successfully");
     return res.status(200).json({
@@ -257,9 +265,8 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       dateOfBirth,
       emergencyContactName,
       emergencyContactPhone,
-      // Employee fields
+      // Employee fields (employeeId is auto-generated - never read from body)
       userId,
-      employeeId,
       departmentId,
       positionId,
       reportsTo,
@@ -284,16 +291,6 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
         value: email,
         checkFunction: () => checkEmailExists(email),
         message: `An account with email '${email}' already exists`,
-      });
-    }
-
-    // Check employeeId uniqueness (if provided)
-    if (employeeId) {
-      uniqueFieldChecks.push({
-        field: "employeeId",
-        value: employeeId,
-        checkFunction: () => checkEmployeeIdExists(employeeId),
-        message: `Employee ID '${employeeId}' is already in use`,
       });
     }
 
@@ -440,7 +437,6 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
     try {
       employee = await createEmployee({
         userId: finalUserId,
-        employeeId,
         departmentId,
         positionId,
         reportsTo,
@@ -825,7 +821,8 @@ export const deleteEmployeeHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const employee = await deleteEmployee(id);
+    const userId = req.user?.id;
+    const employee = await deleteEmployee(id, userId);
     if (!employee) {
       return res.status(404).json({
         success: false,
@@ -882,5 +879,30 @@ export const getEmployeeKPIsHandler = async (req: Request, res: Response) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteEmployeesHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: number[] };
+    const result = await bulkDeleteEmployees(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} employees by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} employee(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete employees error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

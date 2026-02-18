@@ -39,7 +39,7 @@ export const invoices: any = org.table(
     invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
 
     // Relationships
-    jobId: uuid("job_id").references(() => jobs.id),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
 
     // Invoice Details
     invoiceType: invoiceTypeEnum("invoice_type").notNull().default("standard"),
@@ -116,7 +116,7 @@ export const invoices: any = org.table(
     recurringStartDate: date("recurring_start_date"),
     recurringEndDate: date("recurring_end_date"),
     nextInvoiceDate: date("next_invoice_date"),
-    parentInvoiceId: uuid("parent_invoice_id").references(() => invoices.id), // For recurring invoice series
+    parentInvoiceId: uuid("parent_invoice_id").references(() => invoices.id, { onDelete: "cascade" }), // For recurring invoice series
 
     // Email & Communication
     emailSent: boolean("email_sent").default(false),
@@ -132,6 +132,8 @@ export const invoices: any = org.table(
     approvedAt: timestamp("approved_at"),
 
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -145,6 +147,7 @@ export const invoices: any = org.table(
     index("idx_invoices_invoice_date").on(table.invoiceDate),
     index("idx_invoices_due_date").on(table.dueDate),
     index("idx_invoices_is_deleted").on(table.isDeleted),
+    index("idx_invoices_deleted_at").on(table.deletedAt),
     index("idx_invoices_created_at").on(table.createdAt),
     index("idx_invoices_recurring").on(
       table.isRecurring,
@@ -163,7 +166,7 @@ export const invoiceLineItems = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // Line Item Details
     title: varchar("title", { length: 255 }).notNull(),
@@ -207,7 +210,7 @@ export const payments = org.table(
     // Relationship
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // Payment Details
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
@@ -245,7 +248,7 @@ export const invoiceDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // Document Details
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -263,6 +266,7 @@ export const invoiceDocuments = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -270,6 +274,7 @@ export const invoiceDocuments = org.table(
     index("idx_invoice_documents_type").on(table.documentType),
     index("idx_invoice_documents_uploaded_by").on(table.uploadedBy),
     index("idx_invoice_documents_starred").on(table.isStarred),
+    index("idx_invoice_documents_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -283,7 +288,7 @@ export const paymentDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     paymentId: uuid("payment_id")
       .notNull()
-      .references(() => payments.id),
+      .references(() => payments.id, { onDelete: "cascade" }),
 
     // Document Details
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -321,7 +326,7 @@ export const invoiceHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // History Details
     action: varchar("action", { length: 100 }).notNull(), // "created", "status_changed", "amount_updated", "sent", "paid", etc.
@@ -354,7 +359,7 @@ export const paymentHistory = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     paymentId: uuid("payment_id")
       .notNull()
-      .references(() => payments.id),
+      .references(() => payments.id, { onDelete: "cascade" }),
 
     // History Details
     action: varchar("action", { length: 100 }).notNull(), // "created", "status_changed", "processed", "cleared", etc.
@@ -387,7 +392,7 @@ export const invoiceReminders = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // Reminder Details
     reminderType: varchar("reminder_type", { length: 50 }), // "overdue", "due_soon", "custom"
@@ -428,9 +433,9 @@ export const creditNotes = org.table(
     // Relationships
     clientId: uuid("client_id")
       .notNull()
-      .references(() => organizations.id),
-    invoiceId: uuid("invoice_id").references(() => invoices.id), // If credit note is for specific invoice
-    paymentId: uuid("payment_id").references(() => payments.id), // If credit note is for specific payment
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "cascade" }), // If credit note is for specific invoice
+    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "cascade" }), // If credit note is for specific payment
 
     // Credit Note Details
     creditNoteDate: date("credit_note_date").notNull(),
@@ -486,10 +491,10 @@ export const creditNoteApplications = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     creditNoteId: uuid("credit_note_id")
       .notNull()
-      .references(() => creditNotes.id),
+      .references(() => creditNotes.id, { onDelete: "cascade" }),
     invoiceId: uuid("invoice_id")
       .notNull()
-      .references(() => invoices.id),
+      .references(() => invoices.id, { onDelete: "cascade" }),
 
     // Application Details
     appliedAmount: numeric("applied_amount", {

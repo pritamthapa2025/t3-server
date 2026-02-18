@@ -16,6 +16,7 @@ import {
   updateExpenseReceipt,
   deleteExpenseReceipt,
   getExpensesKPIs,
+  bulkDeleteExpenses,
 } from "../services/expense.service.js";
 import {
   getExpenseSummary,
@@ -26,6 +27,20 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
+
+/** Resolve employeeId from userId (null if user has no employee record) */
+async function resolveEmployeeId(userId: string): Promise<number | null> {
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+  return emp?.id ?? null;
+}
 
 // ============================
 // Expense Categories Controllers
@@ -81,6 +96,7 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
+    const userId = req.user?.id;
 
     const filters = {
       status: req.query.status as string,
@@ -116,6 +132,17 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
       sortOrder: req.query.sortOrder as "asc" | "desc",
       includeDeleted: req.query.includeDeleted === "true",
     };
+
+    // own_only: Technicians can only see their own expenses
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "expenses");
+      if (dataFilter.ownOnly && filters.employeeId === undefined) {
+        const empId = await resolveEmployeeId(userId);
+        if (empId !== null) {
+          filters.employeeId = empId;
+        }
+      }
+    }
 
     // Clean up undefined values from filters
     const cleanFilters = Object.fromEntries(
@@ -169,6 +196,18 @@ export const getExpenseByIdHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Expense not found",
       });
+    }
+
+    // own_only: Technicians can only view their own expenses
+    const userId = req.user?.id;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "expenses");
+      if (dataFilter.ownOnly && expense.createdBy !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. You can only view your own expenses.",
+        });
+      }
     }
 
     logger.info("Expense fetched successfully");
@@ -275,7 +314,8 @@ export const deleteExpenseHandler = async (req: Request, res: Response) => {
         message: "Expense ID is required",
       });
     }
-    const expense = await deleteExpense(undefined, id);
+    const userId = req.user?.id;
+    const expense = await deleteExpense(undefined, id, userId);
 
     if (!expense) {
       return res.status(404).json({
@@ -810,5 +850,30 @@ export const getExpensesKPIsHandler = async (req: Request, res: Response) => {
       success: false,
       message: error.message || "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteExpensesHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteExpenses(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} expenses by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} expense(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete expenses error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

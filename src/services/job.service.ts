@@ -9,6 +9,7 @@ import {
   ilike,
   max,
   lte,
+  inArray,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
@@ -75,6 +76,12 @@ import {
 // Main Job Operations
 // ============================
 
+/** Options for assigned/team-member filtering (e.g. Technician sees only their jobs) */
+export type GetJobsFilterOptions = {
+  userId: string;
+  applyAssignedOrTeamFilter: boolean;
+};
+
 export const getJobs = async (
   offset: number,
   limit: number,
@@ -83,6 +90,7 @@ export const getJobs = async (
     priority?: string;
     search?: string;
   },
+  options?: GetJobsFilterOptions,
 ) => {
   let whereCondition = and(eq(jobs.isDeleted, false));
 
@@ -101,8 +109,6 @@ export const getJobs = async (
     );
   }
 
-  // Note: assignedTo filter removed - use team members endpoint to filter by assigned employees
-
   if (filters?.search) {
     whereCondition = and(
       whereCondition,
@@ -113,7 +119,26 @@ export const getJobs = async (
     );
   }
 
-  // Get all jobs without organization filter
+  // Technician / assigned-only: show jobs where (1) bid.assignedTo = userId OR (2) user is in job_team_members
+  if (options?.applyAssignedOrTeamFilter && options?.userId) {
+    const [emp] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.userId, options.userId))
+      .limit(1);
+    const employeeId = emp?.id ?? null;
+
+    const assignedOrTeamCondition =
+      employeeId === null
+        ? eq(bidsTable.assignedTo, options.userId)
+        : or(
+            eq(bidsTable.assignedTo, options.userId),
+            sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+          );
+    whereCondition = and(whereCondition, assignedOrTeamCondition);
+  }
+
+  // Get all jobs (with optional assigned/team filter)
   const jobsData = await db
     .select({
       job: jobs,
@@ -189,7 +214,30 @@ export const getJobs = async (
   };
 };
 
-export const getJobById = async (id: string) => {
+export const getJobById = async (
+  id: string,
+  options?: GetJobsFilterOptions,
+) => {
+  let whereCondition = and(eq(jobs.id, id), eq(jobs.isDeleted, false));
+
+  if (options?.applyAssignedOrTeamFilter && options?.userId) {
+    const [emp] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.userId, options.userId))
+      .limit(1);
+    const employeeId = emp?.id ?? null;
+
+    const assignedOrTeamCondition =
+      employeeId === null
+        ? eq(bidsTable.assignedTo, options.userId)
+        : or(
+            eq(bidsTable.assignedTo, options.userId),
+            sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+          );
+    whereCondition = and(whereCondition, assignedOrTeamCondition);
+  }
+
   const [result] = await db
     .select({
       jobs: jobs,
@@ -202,7 +250,7 @@ export const getJobById = async (id: string) => {
       and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
     )
     .leftJoin(users, eq(jobs.createdBy, users.id))
-    .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)));
+    .where(whereCondition);
   if (!result) return null;
 
   // Get bid with primaryContact and property (minimal data)
@@ -220,6 +268,11 @@ export const getJobById = async (id: string) => {
     financialBreakdown,
   );
 
+  const progress = await getJobProgressPercentages(
+    result.jobs.id,
+    result.bid.actualTotalPrice ?? null,
+  );
+
   // Return job with bid priority and name, plus primaryContact, property, and summary
   return {
     ...result.jobs,
@@ -235,6 +288,8 @@ export const getJobById = async (id: string) => {
     startDate: jobSummary.startDate,
     endDate: jobSummary.endDate,
     remaining: jobSummary.remaining,
+    paymentProgressPercent: progress.paymentProgressPercent,
+    taskProgressPercent: progress.taskProgressPercent,
   };
 };
 
@@ -477,12 +532,15 @@ export const updateJob = async (
   };
 };
 
-export const deleteJob = async (id: string) => {
+export const deleteJob = async (id: string, deletedBy: string) => {
+  const now = new Date();
   const [job] = await db
     .update(jobs)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      deletedAt: now,
+      deletedBy,
+      updatedAt: now,
     })
     .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)))
     .returning();
@@ -704,6 +762,11 @@ export const getJobWithAllData = async (jobId: string) => {
     financialBreakdown,
   );
 
+  const progress = await getJobProgressPercentages(
+    jobId,
+    bid?.actualTotalPrice ?? null,
+  );
+
   return {
     job: {
       ...jobData.job,
@@ -716,6 +779,8 @@ export const getJobWithAllData = async (jobId: string) => {
       startDate: jobSummary.startDate,
       endDate: jobSummary.endDate,
       remaining: jobSummary.remaining,
+      paymentProgressPercent: progress.paymentProgressPercent,
+      taskProgressPercent: progress.taskProgressPercent,
       bid: bid
         ? {
             id: bid.id,
@@ -2764,6 +2829,44 @@ export const deleteJobDocument = async (
 };
 
 /**
+ * Get payment and task progress percentages for a job.
+ * - paymentProgressPercent: (total paid from invoices / bid actualTotalPrice) * 100
+ * - taskProgressPercent: (completed tasks / total tasks) * 100
+ */
+export const getJobProgressPercentages = async (
+  jobId: string,
+  actualTotalPrice: string | null,
+): Promise<{ paymentProgressPercent: number; taskProgressPercent: number }> => {
+  const [invoiceRow, taskRows] = await Promise.all([
+    db
+      .select({
+        totalPaid: sql<string>`COALESCE(SUM(${invoices.amountPaid}), 0)`,
+      })
+      .from(invoices)
+      .where(and(eq(invoices.jobId, jobId), eq(invoices.isDeleted, false))),
+    db
+      .select({
+        total: count(),
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${jobTasks.status} = 'completed')`,
+      })
+      .from(jobTasks)
+      .where(and(eq(jobTasks.jobId, jobId), eq(jobTasks.isDeleted, false))),
+  ]);
+
+  const totalPaid = parseFloat(invoiceRow[0]?.totalPaid ?? "0");
+  const denom = actualTotalPrice ? parseFloat(actualTotalPrice) : 0;
+  const paymentProgressPercent =
+    denom > 0 ? Math.round((totalPaid / denom) * 100) : 0;
+
+  const taskTotal = Number(taskRows[0]?.total ?? 0);
+  const taskCompleted = Number(taskRows[0]?.completed ?? 0);
+  const taskProgressPercent =
+    taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 0;
+
+  return { paymentProgressPercent, taskProgressPercent };
+};
+
+/**
  * Get invoice KPIs for a specific job
  * Returns: totalDue, totalInvoiced, invoiceOverdue count, invoicesCreated count
  */
@@ -3065,4 +3168,18 @@ export const getJobsKPIs = async () => {
     avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin || 0),
     overdueJobs: overdueJobsRow?.count || 0,
   };
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteJobs = async (ids: string[], deletedBy: string) => {
+  const now = new Date();
+  const result = await db
+    .update(jobs)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(jobs.id, ids), eq(jobs.isDeleted, false)))
+    .returning({ id: jobs.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

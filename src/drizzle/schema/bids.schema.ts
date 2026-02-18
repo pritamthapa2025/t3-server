@@ -107,6 +107,8 @@ export const bidsTable: any = org.table(
     convertToJob: boolean("convert_to_job").default(false),
 
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -636,6 +638,7 @@ export const bidDocuments = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -644,6 +647,7 @@ export const bidDocuments = org.table(
     index("idx_bid_documents_type").on(table.documentType),
     index("idx_bid_documents_uploaded_by").on(table.uploadedBy),
     index("idx_bid_documents_starred").on(table.isStarred),
+    index("idx_bid_documents_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -717,6 +721,7 @@ export const bidMedia = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -725,6 +730,7 @@ export const bidMedia = org.table(
     index("idx_bid_media_type").on(table.mediaType),
     index("idx_bid_media_uploaded_by").on(table.uploadedBy),
     index("idx_bid_media_starred").on(table.isStarred),
+    index("idx_bid_media_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -753,6 +759,7 @@ export const bidPlanSpecFiles = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -760,6 +767,7 @@ export const bidPlanSpecFiles = org.table(
     index("idx_bid_plan_spec_files_bid_id").on(table.bidId),
     index("idx_bid_plan_spec_files_type").on(table.fileType),
     index("idx_bid_plan_spec_files_starred").on(table.isStarred),
+    index("idx_bid_plan_spec_files_deleted_at").on(table.deletedAt),
   ],
 );
 
@@ -787,12 +795,14 @@ export const bidDesignBuildFiles = org.table(
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
     index("idx_bid_design_build_files_org").on(table.organizationId),
     index("idx_bid_design_build_files_bid_id").on(table.bidId),
     index("idx_bid_design_build_files_starred").on(table.isStarred),
+    index("idx_bid_design_build_files_deleted_at").on(table.deletedAt),
   ],
 );
 

@@ -398,14 +398,17 @@ export const createExpenseReport = async (
   // Calculate totals
   const totals = calculateReportTotals(expenseValidation);
 
+  // Strip auto-generated fields from reportData before insert
+  const { reportNumber: _ignoredReportNumber, ...safeReportData } = reportData;
+
   // Create the report
   const newReport = await db
     .insert(expenseReports)
     .values({
-      reportNumber,
+      reportNumber, // Always use system-generated value
       organizationId: resolvedOrgId,
       employeeId,
-      ...reportData,
+      ...safeReportData,
       ...totals,
       createdBy,
       createdAt: new Date(),
@@ -441,6 +444,9 @@ export const updateExpenseReport = async (
   updateData: any,
   _updatedBy: string,
 ) => {
+  // Strip auto-generated field - reportNumber cannot be changed after creation
+  delete updateData.reportNumber;
+
   const reportConditions = [
     eq(expenseReports.id, id),
     eq(expenseReports.isDeleted, false),

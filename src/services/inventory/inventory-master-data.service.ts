@@ -140,8 +140,8 @@ export const createSupplier = async (data: any) => {
       taxId: data.taxId,
       accountNumber: data.accountNumber,
       paymentTerms: data.paymentTerms,
-      creditLimit: data.creditLimit,
-      rating: data.rating,
+      creditLimit: data.creditLimit != null ? data.creditLimit.toString() : undefined,
+      rating: data.rating != null ? data.rating.toString() : undefined,
       leadTimeDays: data.leadTimeDays,
       isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
       notes: data.notes,
@@ -154,9 +154,19 @@ export const createSupplier = async (data: any) => {
 };
 
 export const updateSupplier = async (id: string, data: any) => {
+  // Strip auto-generated field - supplierCode cannot be changed after creation
+  const { supplierCode: _ignored, ...safeData } = data;
+
+  if (safeData.creditLimit != null) {
+    safeData.creditLimit = safeData.creditLimit.toString();
+  }
+  if (safeData.rating != null) {
+    safeData.rating = safeData.rating.toString();
+  }
+
   const [updatedSupplier] = await db
     .update(inventorySuppliers)
-    .set(data)
+    .set(safeData)
     .where(eq(inventorySuppliers.id, id))
     .returning();
 
@@ -288,8 +298,8 @@ export const getLocationById = async (id: string) => {
 };
 
 export const createLocation = async (data: any) => {
-  // Auto-generate location code if not provided
-  const locationCode = data.locationCode || (await generateLocationCode());
+  // Always auto-generate location code - never accept from external input
+  const locationCode = await generateLocationCode();
 
   const [newLocation] = (await db
     .insert(inventoryLocations)
@@ -320,9 +330,7 @@ export const updateLocation = async (id: string, data: any) => {
     updatedAt: new Date(),
   };
 
-  // Only update provided fields
-  if (data.locationCode !== undefined)
-    updateData.locationCode = data.locationCode;
+  // Only update provided fields (locationCode is auto-generated and cannot be changed)
   if (data.name !== undefined) updateData.name = data.name;
   if (data.locationType !== undefined)
     updateData.locationType = data.locationType;
@@ -383,6 +391,9 @@ export const createCategory = async (data: any) => {
       name: data.name,
       description: data.description,
       code: data.code,
+      color: data.color,
+      icon: data.icon,
+      sortOrder: data.sortOrder,
     })
     .returning();
 

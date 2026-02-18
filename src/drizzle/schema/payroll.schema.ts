@@ -112,7 +112,7 @@ export const employeeCompensation = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, ),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     // Pay Structure
     baseSalary: numeric("base_salary", { precision: 15, scale: 2 }),
@@ -233,6 +233,8 @@ export const payrollRuns = org.table(
 
     notes: text("notes"),
     isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id, {}),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -241,6 +243,7 @@ export const payrollRuns = org.table(
     index("idx_payroll_runs_status").on(table.status),
     index("idx_payroll_runs_pay_period").on(table.payPeriodId),
     index("idx_payroll_runs_processed_at").on(table.processedAt),
+    index("idx_payroll_runs_deleted_at").on(table.deletedAt),
   ]
 );
 
@@ -254,10 +257,10 @@ export const payrollEntries = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollRunId: uuid("payroll_run_id")
       .notNull()
-      .references(() => payrollRuns.id, ),
+      .references(() => payrollRuns.id, { onDelete: "cascade" }),
     employeeId: integer("employee_id")
       .notNull()
-      .references(() => employees.id, ),
+      .references(() => employees.id, { onDelete: "cascade" }),
 
     // Entry Details
     entryNumber: varchar("entry_number", { length: 50 }).notNull(), // PAY-W-2025-50-001
@@ -390,7 +393,7 @@ export const timesheetPayrollIntegrationLog = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollEntryId: uuid("payroll_entry_id")
       .notNull()
-      .references(() => payrollEntries.id, ),
+      .references(() => payrollEntries.id, { onDelete: "cascade" }),
 
     // Source timesheet tracking
     timesheetIds: jsonb("timesheet_ids").notNull(), // Array of timesheet IDs that contributed
@@ -440,10 +443,10 @@ export const payrollTimesheetEntries = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollEntryId: uuid("payroll_entry_id")
       .notNull()
-      .references(() => payrollEntries.id, ),
+      .references(() => payrollEntries.id, { onDelete: "cascade" }),
     timesheetId: integer("timesheet_id")
       .notNull()
-      .references(() => timesheets.id, ),
+      .references(() => timesheets.id, { onDelete: "cascade" }),
 
     // Hours from timesheet
     hoursIncluded: numeric("hours_included", {
@@ -460,7 +463,7 @@ export const payrollTimesheetEntries = org.table(
     }).default("0"),
 
     // Job allocation (if timesheet has job references)
-    jobId: uuid("job_id").references(() => jobs.id, ),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
     jobHours: numeric("job_hours", { precision: 8, scale: 2 }).default("0"),
 
     // Processing details
@@ -490,9 +493,10 @@ export const payrollApprovalWorkflow = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     payrollRunId: uuid("payroll_run_id")
       .notNull()
-      .references(() => payrollRuns.id, ),
+      .references(() => payrollRuns.id, { onDelete: "cascade" }),
     payrollEntryId: uuid("payroll_entry_id").references(
       () => payrollEntries.id,
+      { onDelete: "cascade" },
     ),
 
     // Workflow details

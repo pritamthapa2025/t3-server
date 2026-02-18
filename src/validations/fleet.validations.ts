@@ -74,7 +74,6 @@ export const updateVehicleSettingsSchema = z.object({
 
 export const createVehicleSchema = z.object({
   body: z.object({
-    vehicleId: z.string().min(1).max(50).optional(), // Auto-generated as VEH-000001 if omitted
     make: z.string().min(1).max(100),
     model: z.string().min(1).max(100),
     year: z.number().int().min(1900).max(2100),
@@ -122,7 +121,6 @@ export const updateVehicleSchema = z.object({
     id: uuidSchema,
   }),
   body: z.object({
-    vehicleId: z.string().min(1).max(50).optional(),
     make: z.string().min(1).max(100).optional(),
     model: z.string().min(1).max(100).optional(),
     year: z.number().int().min(1900).max(2100).optional(),

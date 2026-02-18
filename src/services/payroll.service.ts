@@ -9,6 +9,7 @@ import {
   lte,
   ilike,
   ne,
+  inArray,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
 import {
@@ -1587,4 +1588,21 @@ const getWeekNumber = (date: Date): number => {
   const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
   const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
   return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeletePayrollRuns = async (
+  ids: string[],
+  deletedBy: string,
+) => {
+  const now = new Date();
+  const result = await db
+    .update(payrollRuns)
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+    .where(and(inArray(payrollRuns.id, ids), eq(payrollRuns.isDeleted, false)))
+    .returning({ id: payrollRuns.id });
+  return { deleted: result.length, skipped: ids.length - result.length };
 };

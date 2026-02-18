@@ -77,10 +77,6 @@ export const getJobByIdSchema = z.object({
 
 export const createJobSchema = z.object({
   body: z.object({
-    jobNumber: z
-      .string()
-      .max(100, "Job number is too long (maximum 100 characters)")
-      .optional(),
     status: jobStatusEnum.optional().default("planned"),
     priority: jobPriorityEnum.optional(), // Updates the associated bid's priority
     jobType: z.string().max(100).optional(),

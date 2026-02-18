@@ -48,6 +48,7 @@ import {
   updateVehicleDocument,
   deleteVehicleDocument,
   getFleetDashboardKPIs,
+  bulkDeleteVehicles,
 } from "../services/fleet.service.js";
 import {
   createExpenseFromSource,
@@ -59,6 +60,11 @@ import {
   getPresignedUploadUrl,
 } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
+import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { db } from "../config/db.js";
+import { eq, and } from "drizzle-orm";
+import { employees } from "../drizzle/schema/org.schema.js";
+import { vehicles } from "../drizzle/schema/fleet.schema.js";
 
 // ============================
 // DASHBOARD KPIs HANDLERS
@@ -108,6 +114,20 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
     if (sortBy) filters.sortBy = sortBy as string;
     if (sortOrder) filters.sortOrder = sortOrder as "asc" | "desc";
 
+    // assigned_only: Technicians see only vehicles assigned to them
+    const userId = req.user?.id;
+    if (userId && filters.assignedToEmployeeId === undefined) {
+      const dataFilter = await getDataFilterConditions(userId, "fleet");
+      if (dataFilter.assignedOnly) {
+        const [emp] = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.userId, userId))
+          .limit(1);
+        if (emp) filters.assignedToEmployeeId = emp.id;
+      }
+    }
+
     const result = await getVehicles(offset, limit, filters);
 
     logger.info("Vehicles fetched successfully");
@@ -124,6 +144,46 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
       message: "Internal server error",
     });
   }
+};
+
+/** Check if user with assigned_only can access this vehicle. Returns true if allowed, sends 403 and returns false otherwise. */
+const checkVehicleAssignedAccess = async (
+  req: Request,
+  res: Response,
+  vehicleOrId: { assignedToEmployeeId?: number | null } | string,
+): Promise<boolean> => {
+  const userId = req.user?.id;
+  if (!userId) return true;
+
+  const dataFilter = await getDataFilterConditions(userId, "fleet");
+  if (!dataFilter.assignedOnly) return true;
+
+  let assignedToEmployeeId: number | null | undefined;
+  if (typeof vehicleOrId === "string") {
+    const [row] = await db
+      .select({ assignedToEmployeeId: vehicles.assignedToEmployeeId })
+      .from(vehicles)
+      .where(and(eq(vehicles.id, vehicleOrId), eq(vehicles.isDeleted, false)))
+      .limit(1);
+    assignedToEmployeeId = row?.assignedToEmployeeId ?? null;
+  } else {
+    assignedToEmployeeId = vehicleOrId.assignedToEmployeeId;
+  }
+
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+
+  if (!emp || assignedToEmployeeId !== emp.id) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view vehicles assigned to you.",
+    });
+    return false;
+  }
+  return true;
 };
 
 export const getVehicleByIdHandler = async (req: Request, res: Response) => {
@@ -144,6 +204,8 @@ export const getVehicleByIdHandler = async (req: Request, res: Response) => {
         message: "Vehicle not found",
       });
     }
+
+    if (!(await checkVehicleAssignedAccess(req, res, vehicle))) return;
 
     logger.info(`Vehicle ${id} fetched successfully`);
     return res.status(200).json({
@@ -248,6 +310,7 @@ export const updateVehicleHandler = async (req: Request, res: Response) => {
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, id))) return;
     const updateData = { ...req.body };
 
     // Upload vehicle image to Digital Ocean Spaces if file provided (field: "vehicle")
@@ -314,8 +377,10 @@ export const deleteVehicleHandler = async (req: Request, res: Response) => {
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, id))) return;
 
-    const deletedVehicle = await deleteVehicle(id);
+    const userId = req.user?.id;
+    const deletedVehicle = await deleteVehicle(id, userId);
 
     if (!deletedVehicle) {
       return res.status(404).json({
@@ -354,6 +419,7 @@ export const getVehicleSettingsHandler = async (
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, id))) return;
     const settings = await getVehicleSettings(id);
     if (!settings) {
       return res.status(404).json({
@@ -386,6 +452,7 @@ export const updateVehicleSettingsHandler = async (
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, id))) return;
     const settings = await updateVehicleSettings(id, req.body);
     if (!settings) {
       return res.status(404).json({
@@ -415,6 +482,11 @@ export const getMaintenanceRecordsHandler = async (
   res: Response,
 ) => {
   try {
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
+    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const {
@@ -429,7 +501,6 @@ export const getMaintenanceRecordsHandler = async (
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-    const vehicleIdFromPath = req.params.vehicleId;
     if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
     else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (status) filters.status = status as string;
@@ -468,6 +539,7 @@ export const getMaintenanceRecordByIdHandler = async (
         message: "Maintenance record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
 
     const record = await getMaintenanceRecordById(id);
 
@@ -504,7 +576,8 @@ export const createMaintenanceRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleIdFromPath = req.params.vehicleId;
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -548,6 +621,7 @@ export const updateMaintenanceRecordHandler = async (
         message: "Maintenance record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
     const isExpense = Boolean(req.body?.isExpense);
     const updateData = { ...req.body };
     delete (updateData as Record<string, unknown>).isExpense;
@@ -628,6 +702,7 @@ export const deleteMaintenanceRecordHandler = async (
         message: "Maintenance record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
 
     const deletedRecord = await deleteMaintenanceRecord(id);
 
@@ -664,6 +739,11 @@ export const deleteMaintenanceRecordHandler = async (
 
 export const getRepairRecordsHandler = async (req: Request, res: Response) => {
   try {
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
+    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const {
@@ -678,7 +758,6 @@ export const getRepairRecordsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-    const vehicleIdFromPath = req.params.vehicleId;
     if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
     else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (status) filters.status = status as string;
@@ -717,6 +796,7 @@ export const getRepairRecordByIdHandler = async (
         message: "Repair record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
 
     const record = await getRepairRecordById(id);
 
@@ -752,7 +832,8 @@ export const createRepairRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleIdFromPath = req.params.vehicleId;
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -796,6 +877,7 @@ export const updateRepairRecordHandler = async (
         message: "Repair record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
     const isExpense = Boolean(req.body?.isExpense);
     const updateData = { ...req.body };
     delete (updateData as Record<string, unknown>).isExpense;
@@ -876,6 +958,7 @@ export const deleteRepairRecordHandler = async (
         message: "Repair record ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
 
     const deletedRecord = await deleteRepairRecord(id);
 
@@ -915,6 +998,11 @@ export const getSafetyInspectionsHandler = async (
   res: Response,
 ) => {
   try {
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
+    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const { vehicleId, overallStatus, sortBy, sortOrder } = req.query;
@@ -922,7 +1010,6 @@ export const getSafetyInspectionsHandler = async (
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-    const vehicleIdFromPath = req.params.vehicleId;
     if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
     else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (overallStatus) filters.overallStatus = overallStatus as string;
@@ -960,6 +1047,7 @@ export const getSafetyInspectionByIdHandler = async (
         message: "Safety inspection ID is required",
       });
     }
+    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
 
     const inspection = await getSafetyInspectionById(id);
 
@@ -995,7 +1083,8 @@ export const createSafetyInspectionHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleIdFromPath = req.params.vehicleId;
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
     const inspectionData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -1260,6 +1349,11 @@ export const createSafetyInspectionItemHandler = async (
 
 export const getFuelRecordsHandler = async (req: Request, res: Response) => {
   try {
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
+    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const { vehicleId, fuelType, sortBy, sortOrder } = req.query;
@@ -1267,7 +1361,6 @@ export const getFuelRecordsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-    const vehicleIdFromPath = req.params.vehicleId;
     if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
     else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (fuelType) filters.fuelType = fuelType as string;
@@ -1334,7 +1427,8 @@ export const getFuelRecordByIdHandler = async (req: Request, res: Response) => {
 
 export const createFuelRecordHandler = async (req: Request, res: Response) => {
   try {
-    const vehicleIdFromPath = req.params.vehicleId;
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -1456,6 +1550,11 @@ export const getCheckInOutRecordsHandler = async (
   res: Response,
 ) => {
   try {
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
+    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const { vehicleId, type, sortBy, sortOrder } = req.query;
@@ -1463,7 +1562,6 @@ export const getCheckInOutRecordsHandler = async (
     const offset = (page - 1) * limit;
 
     const filters: any = {};
-    const vehicleIdFromPath = req.params.vehicleId;
     if (vehicleIdFromPath) filters.vehicleId = vehicleIdFromPath;
     else if (vehicleId) filters.vehicleId = vehicleId as string;
     if (type) filters.type = type as string;
@@ -1536,7 +1634,8 @@ export const createCheckInOutRecordHandler = async (
   res: Response,
 ) => {
   try {
-    const vehicleIdFromPath = req.params.vehicleId;
+    const vehicleIdFromPath = req.params.vehicleId as string | undefined;
+    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -1671,6 +1770,7 @@ export const getAssignmentHistoryHandler = async (
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -1716,6 +1816,7 @@ export const getVehicleMetricsHandler = async (req: Request, res: Response) => {
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const metrics = await getVehicleMetrics(vehicleId);
     if (!metrics) {
       return res.status(404).json({
@@ -1749,6 +1850,7 @@ export const getVehicleMediaHandler = async (req: Request, res: Response) => {
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -1810,6 +1912,13 @@ export const createVehicleMediaHandler = async (
 ) => {
   try {
     const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const uploadedBy = req.user?.id;
     if (!uploadedBy) {
       return res.status(401).json({
@@ -1989,6 +2098,7 @@ export const getVehicleDocumentsHandler = async (
         message: "Vehicle ID is required",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
@@ -2095,6 +2205,13 @@ export const createVehicleDocumentHandler = async (
 ) => {
   try {
     const vehicleId = asSingleString(req.params.vehicleId);
+    if (!vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID is required",
+      });
+    }
+    if (!(await checkVehicleAssignedAccess(req, res, vehicleId))) return;
     const uploadedBy = req.user?.id;
     if (!uploadedBy) {
       return res.status(401).json({
@@ -2262,5 +2379,30 @@ export const deleteVehicleDocumentHandler = async (
       success: false,
       message: error.message || "Internal server error",
     });
+  }
+};
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteVehiclesHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await bulkDeleteVehicles(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} vehicles by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} vehicle(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete vehicles error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

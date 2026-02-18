@@ -4,7 +4,7 @@
  * with organized hierarchical structure for executives
  */
 
-import { eq, and, sql, gte, desc, or, isNull, notInArray } from "drizzle-orm";
+import { eq, and, sql, gte, lte, desc, or, isNull, notInArray, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -673,4 +673,167 @@ export async function getEmployeeDocumentFiles(
       totalPages: Math.ceil(total / limit),
     },
   };
+}
+
+// ============================================================================
+// BULK SOFT DELETE
+// ============================================================================
+
+type FileRef = {
+  fileId: string;
+  source:
+    | "bid_documents"
+    | "bid_media"
+    | "bid_plan_spec"
+    | "bid_design_build"
+    | "vehicle_documents"
+    | "vehicle_media"
+    | "client_documents"
+    | "property_documents"
+    | "invoice_documents"
+    | "employee_documents";
+};
+
+/**
+ * Bulk soft-delete files (Option C – trash bin).
+ * Sets isDeleted=true and deletedAt=now on each file row.
+ * The actual object in DO Spaces is NOT deleted yet – the cron job handles that after 30 days.
+ */
+export async function bulkSoftDeleteFiles(
+  files: FileRef[],
+  _deletedByUserId: string,
+): Promise<{ deleted: number; skipped: number }> {
+  const now = new Date();
+  let deleted = 0;
+  let skipped = 0;
+
+  // Group by source table so we can do one UPDATE per table
+  const bySource = files.reduce<Record<string, string[]>>((acc, f) => {
+    if (!acc[f.source]) acc[f.source] = [];
+    acc[f.source]!.push(f.fileId);
+    return acc;
+  }, {});
+
+  const tableMap: Record<string, typeof bidDocuments> = {
+    bid_documents: bidDocuments as any,
+    bid_media: bidMedia as any,
+    bid_plan_spec: bidPlanSpecFiles as any,
+    bid_design_build: bidDesignBuildFiles as any,
+    vehicle_documents: vehicleDocuments as any,
+    vehicle_media: vehicleMedia as any,
+    client_documents: clientDocuments as any,
+    property_documents: propertyDocuments as any,
+    invoice_documents: invoiceDocuments as any,
+    employee_documents: employeeDocuments as any,
+  };
+
+  for (const [source, ids] of Object.entries(bySource)) {
+    const table = tableMap[source];
+    if (!table) {
+      skipped += ids.length;
+      continue;
+    }
+
+    const result = await db
+      .update(table)
+      .set({ isDeleted: true, deletedAt: now, updatedAt: now } as any)
+      .where(
+        and(
+          inArray((table as any).id, ids),
+          eq((table as any).isDeleted, false),
+        ),
+      )
+      .returning({ id: (table as any).id });
+
+    deleted += result.length;
+    skipped += ids.length - result.length;
+  }
+
+  return { deleted, skipped };
+}
+
+// ============================================================================
+// CRON: PURGE EXPIRED DELETED FILES (>30 days)
+// ============================================================================
+
+/**
+ * Finds all file rows that have been soft-deleted for more than 30 days,
+ * deletes the actual object from DO Spaces, then hard-deletes the DB row.
+ *
+ * Call this from the cron endpoint GET /api/v1/cron/purge-deleted-files
+ */
+export async function purgeExpiredDeletedFiles(): Promise<{
+  purged: number;
+  errors: number;
+  details: string[];
+}> {
+  const { deleteFromSpaces } = await import("./storage.service.js");
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+
+  let purged = 0;
+  let errors = 0;
+  const details: string[] = [];
+
+  // Each entry: [table, filePathColumn, urlColumn (for vehicle_media which uses url instead of filePath)]
+  type TableEntry = {
+    table: any;
+    source: string;
+    pathField: string;
+    urlField?: string;
+  };
+
+  const tables: TableEntry[] = [
+    { table: bidDocuments, source: "bid_documents", pathField: "filePath" },
+    { table: bidMedia, source: "bid_media", pathField: "filePath" },
+    { table: bidPlanSpecFiles, source: "bid_plan_spec", pathField: "filePath" },
+    { table: bidDesignBuildFiles, source: "bid_design_build", pathField: "filePath" },
+    { table: vehicleDocuments, source: "vehicle_documents", pathField: "filePath" },
+    { table: vehicleMedia, source: "vehicle_media", pathField: "url" }, // vehicleMedia stores full URL in `url`
+    { table: clientDocuments, source: "client_documents", pathField: "filePath" },
+    { table: propertyDocuments, source: "property_documents", pathField: "filePath" },
+    { table: invoiceDocuments, source: "invoice_documents", pathField: "filePath" },
+    { table: employeeDocuments, source: "employee_documents", pathField: "filePath" },
+  ];
+
+  for (const entry of tables) {
+    try {
+      const rows: Array<{ id: string; path: string | null }> = await db
+        .select({
+          id: entry.table.id,
+          path: entry.table[entry.pathField],
+        })
+        .from(entry.table)
+        .where(
+          and(
+            eq(entry.table.isDeleted, true),
+            lte(entry.table.deletedAt, cutoff),
+          ),
+        );
+
+      for (const row of rows) {
+        try {
+          if (row.path) {
+            await deleteFromSpaces(row.path);
+          }
+
+          await db.delete(entry.table).where(eq(entry.table.id, row.id));
+          purged++;
+          details.push(`Purged ${entry.source}:${row.id}`);
+        } catch (err) {
+          errors++;
+          details.push(
+            `Error purging ${entry.source}:${row.id} – ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    } catch (err) {
+      errors++;
+      details.push(
+        `Error querying ${entry.source} – ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return { purged, errors, details };
 }

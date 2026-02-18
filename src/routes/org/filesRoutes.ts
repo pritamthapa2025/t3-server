@@ -11,11 +11,13 @@ import { validate } from "../../middleware/validate.js";
 import {
   paginationSchema,
   toggleStarSchema,
+  bulkDeleteFilesSchema,
 } from "../../validations/files-v2.validations.js";
 import * as FilesV2Controller from "../../controllers/FilesV2Controller.js";
 
 const queryPaginationSchema = z.object({ query: paginationSchema });
 const bodyToggleStarSchema = z.object({ body: toggleStarSchema });
+const bodyBulkDeleteSchema = z.object({ body: bulkDeleteFilesSchema });
 
 const router: IRouter = Router();
 
@@ -42,11 +44,22 @@ router.get(
   FilesV2Controller.getStarredFilesHandler
 );
 
-// PUT /api/v1/org/files-v2/star
+// PUT /api/v1/org/files/star
 router.put(
   "/star",
   validate(bodyToggleStarSchema),
-  FilesV2Controller.toggleFileStarHandler
+  FilesV2Controller.toggleFileStarHandler,
+);
+
+/**
+ * POST /api/v1/org/files/bulk-delete
+ * Soft-delete multiple files at once (trash bin – 30-day grace period before DO Spaces purge).
+ * Body: { files: [{ fileId: string, source: FileSourceTable }] }
+ */
+router.post(
+  "/bulk-delete",
+  validate(bodyBulkDeleteSchema),
+  FilesV2Controller.bulkDeleteFilesHandler,
 );
 
 /**

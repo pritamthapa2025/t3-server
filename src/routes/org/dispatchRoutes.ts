@@ -16,8 +16,13 @@ import {
   getAvailableEmployeesHandler,
   getEmployeesWithAssignedTasksHandler,
   getDispatchKPIsHandler,
+  bulkDeleteDispatchTasksHandler,
 } from "../../controllers/DispatchController.js";
 import { authenticate } from "../../middleware/auth.js";
+import {
+  authorizeFeature,
+  authorizeAnyFeature,
+} from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getDispatchTasksQuerySchema,
@@ -35,6 +40,7 @@ import {
   getAvailableEmployeesQuerySchema,
   getEmployeesWithAssignedTasksQuerySchema,
 } from "../../validations/dispatch.validations.js";
+import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
@@ -99,17 +105,34 @@ router.use(authenticate);
 // Apply timezone transformation to all GET responses
 router.use(generalTransformer);
 
+// Feature shorthand constants
+// Technicians: view own + confirm; Managers/Executives: create/edit/delete
+const viewDispatch = authorizeAnyFeature("dispatch", [
+  "view_daily_dispatch",
+  "view_own",
+  "view_all",
+]);
+const createDispatch = authorizeFeature("dispatch", "create_dispatch");
+const editDispatch = authorizeFeature("dispatch", "edit_dispatch");
+
 // ============================
 // Dispatch Tasks Routes
 // ============================
 
-// KPIs Route
-router.get("/dispatch/kpis", getDispatchKPIsHandler);
+// KPIs Route — Manager/Executive only (overview of all dispatch)
+router.get("/dispatch/kpis", createDispatch, getDispatchKPIsHandler);
 
+// List dispatch tasks: all can view; Technicians see only their own (filtered in service)
+// Create dispatch: Manager/Executive only
 router
   .route("/tasks")
-  .get(validate(getDispatchTasksQuerySchema), getDispatchTasksHandler)
+  .get(
+    viewDispatch,
+    validate(getDispatchTasksQuerySchema),
+    getDispatchTasksHandler,
+  )
   .post(
+    createDispatch,
     uploadDispatchAttachments,
     handleMulterError,
     parseFormData,
@@ -119,18 +142,28 @@ router
 
 router
   .route("/tasks/:id")
-  .get(validate(getDispatchTaskByIdSchema), getDispatchTaskByIdHandler)
+  .get(
+    viewDispatch,
+    validate(getDispatchTaskByIdSchema),
+    getDispatchTaskByIdHandler,
+  )
   .put(
+    editDispatch,
     uploadDispatchAttachments,
     handleMulterError,
     parseFormData,
     validate(updateDispatchTaskSchema),
     updateDispatchTaskHandler,
   )
-  .delete(validate(deleteDispatchTaskSchema), deleteDispatchTaskHandler);
+  .delete(
+    editDispatch,
+    validate(deleteDispatchTaskSchema),
+    deleteDispatchTaskHandler,
+  );
 
 router.get(
   "/tasks/:taskId/assignments",
+  viewDispatch,
   validate(getAssignmentsByTaskIdSchema),
   getAssignmentsByTaskIdHandler,
 );
@@ -139,13 +172,16 @@ router.get(
 // Dispatch Assignments Routes
 // ============================
 
+// All roles can view their assignments; Managers/Executives manage all
 router
   .route("/assignments")
   .get(
+    viewDispatch,
     validate(getDispatchAssignmentsQuerySchema),
     getDispatchAssignmentsHandler,
   )
   .post(
+    createDispatch,
     validate(createDispatchAssignmentSchema),
     createDispatchAssignmentHandler,
   );
@@ -153,36 +189,52 @@ router
 router
   .route("/assignments/:id")
   .get(
+    viewDispatch,
     validate(getDispatchAssignmentByIdSchema),
     getDispatchAssignmentByIdHandler,
   )
   .put(
+    // Technicians can confirm their own dispatch; Managers/Executives can edit all
+    authorizeAnyFeature("dispatch", ["confirm_dispatch", "edit_dispatch"]),
     validate(updateDispatchAssignmentSchema),
     updateDispatchAssignmentHandler,
   )
   .delete(
+    editDispatch,
     validate(deleteDispatchAssignmentSchema),
     deleteDispatchAssignmentHandler,
   );
 
+// Technician's own assignments — all can view their own
 router.get(
   "/technicians/:technicianId/assignments",
+  viewDispatch,
   validate(getAssignmentsByTechnicianIdSchema),
   getAssignmentsByTechnicianIdHandler,
 );
 
-// Available employees for dispatch (status = 'available' from employees table)
+// Available employees for dispatch planning — Manager/Executive only
 router.get(
   "/available-employees",
+  createDispatch,
   validate(getAvailableEmployeesQuerySchema),
   getAvailableEmployeesHandler,
 );
 
-// Employees with assigned dispatch tasks (each employee has tasks array; empty if none)
+// Employees with assigned dispatch tasks — Manager/Executive only
 router.get(
   "/employees-with-tasks",
+  createDispatch,
   validate(getEmployeesWithAssignedTasksQuerySchema),
   getEmployeesWithAssignedTasksHandler,
+);
+
+// Bulk delete dispatch tasks (Executive only)
+router.post(
+  "/dispatch/bulk-delete",
+  authorizeFeature("dispatch", "bulk_delete"),
+  validate(bulkDeleteUuidSchema),
+  bulkDeleteDispatchTasksHandler,
 );
 
 export default router;

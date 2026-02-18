@@ -2401,3 +2401,28 @@ export const deleteInvoicePayment = async (
     });
   }
 };
+
+// ===========================================================================
+// Bulk Delete
+// ===========================================================================
+
+export const bulkDeleteInvoicesHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId)
+      return res.status(403).json({ success: false, message: "Authentication required" });
+
+    const { ids } = req.body as { ids: string[] };
+    const result = await invoicingService.bulkDeleteInvoices(ids, userId);
+
+    logger.info(`Bulk deleted ${result.deleted} invoices by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.deleted} invoice(s) deleted. ${result.skipped} skipped (already deleted or not found).`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Bulk delete invoices error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
