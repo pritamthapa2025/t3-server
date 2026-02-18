@@ -612,6 +612,18 @@ export const deleteCategorySchema = z.object({
 // Unit of Measure Validations
 // ============================
 
+export const updateUnitSchema = z.object({
+  params: z.object({
+    id: z.coerce.number().int().positive(),
+  }),
+  body: z.object({
+    name: z.string().min(1).max(100).optional(),
+    abbreviation: z.string().max(20).optional(),
+    unitType: z.string().max(50).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+
 export const deleteUnitSchema = z.object({
   params: z.object({
     id: z.coerce.number().int().positive(),

@@ -2,7 +2,13 @@ import { Router, type IRouter } from "express";
 import * as DashboardController from "../../controllers/DashboardController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { dashboardDateRangeQuerySchema } from "../../validations/dashboard.validations.js";
+import {
+  dashboardDateRangeQuerySchema,
+  createRevenueTargetSchema,
+  updateRevenueTargetSchema,
+  revenueTargetIdParamSchema,
+  revenueTargetListQuerySchema,
+} from "../../validations/dashboard.validations.js";
 
 const router: IRouter = Router();
 
@@ -65,5 +71,18 @@ router.get(
   validate(dashboardDateRangeQuerySchema),
   DashboardController.getPriorityJobs,
 );
+
+// ─── Revenue Targets / Goals ──────────────────────────────────────────────────
+
+router
+  .route("/goals")
+  .get(authenticate, validate(revenueTargetListQuerySchema), DashboardController.listRevenueTargets)
+  .post(authenticate, validate(createRevenueTargetSchema), DashboardController.createRevenueTarget);
+
+router
+  .route("/goals/:id")
+  .get(authenticate, validate(revenueTargetIdParamSchema), DashboardController.getRevenueTargetById)
+  .put(authenticate, validate(updateRevenueTargetSchema), DashboardController.updateRevenueTarget)
+  .delete(authenticate, validate(revenueTargetIdParamSchema), DashboardController.deleteRevenueTarget);
 
 export default router;

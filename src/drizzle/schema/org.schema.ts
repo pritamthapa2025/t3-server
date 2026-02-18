@@ -192,6 +192,45 @@ export const employeeReviews = org.table("employee_reviews", {
 });
 
 /**
+ * Revenue Targets Table
+ * Monthly revenue goals set by admins for dashboard tracking
+ */
+export const revenueTargets = org.table(
+  "revenue_targets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    // Target period (unique per month+year)
+    month: integer("month").notNull(), // 1–12
+    year: integer("year").notNull(), // e.g. 2025
+
+    // Goal value
+    targetAmount: numeric("target_amount", { precision: 15, scale: 2 }).notNull(),
+
+    // Optional label/description
+    label: varchar("label", { length: 150 }),
+    notes: text("notes"),
+
+    // Metadata
+    createdBy: uuid("created_by").references(() => users.id),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    isDeleted: boolean("is_deleted").default(false).notNull(),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: uuid("deleted_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Only one active target per month+year
+    unique("unique_revenue_target_month_year").on(table.month, table.year),
+    index("idx_revenue_targets_year").on(table.year),
+    index("idx_revenue_targets_month_year").on(table.month, table.year),
+    index("idx_revenue_targets_is_deleted").on(table.isDeleted),
+    index("idx_revenue_targets_created_by").on(table.createdBy),
+  ],
+);
+
+/**
  * Employee Documents Table
  * Documents for employees (resume, certifications, ID, W4, etc.)
  */

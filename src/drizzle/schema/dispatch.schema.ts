@@ -49,6 +49,7 @@ export const dispatchTasks = org.table(
     status: dispatchTaskStatusEnum("status").notNull().default("pending"), // pending, assigned, in_progress, completed, cancelled
 
     // Scheduling
+
     startTime: timestamp("start_time").notNull(), // ISO datetime
     endTime: timestamp("end_time").notNull(), // ISO datetime
     estimatedDuration: integer("estimated_duration"), // Duration in minutes

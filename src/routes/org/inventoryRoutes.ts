@@ -108,6 +108,7 @@ import {
   createCategorySchema,
   updateCategorySchema,
   deleteCategorySchema,
+  updateUnitSchema,
   deleteUnitSchema,
   acknowledgeAlertSchema,
   resolveAlertSchema,
@@ -597,7 +598,12 @@ router.delete(
 
 router.get("/units", viewInventory, getUnitsHandler);
 router.post("/units", addItem, createUnitHandler);
-router.put("/units/:id", editItem, updateUnitHandler);
+router.put(
+  "/units/:id",
+  editItem,
+  validate(updateUnitSchema),
+  updateUnitHandler,
+);
 
 router.delete(
   "/units/:id",

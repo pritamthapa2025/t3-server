@@ -174,3 +174,105 @@ export const getPriorityJobs = async (req: Request, res: Response) => {
     return errorResponse(res, error.message, 500);
   }
 };
+
+// ─── Revenue Target Controllers ───────────────────────────────────────────────
+
+/**
+ * List revenue targets
+ * GET /api/org/dashboard/goals
+ * Query: year (optional)
+ */
+export const listRevenueTargets = async (req: Request, res: Response) => {
+  try {
+    const { year } = (req as any).query ?? {};
+    const targets = await DashboardService.listRevenueTargets(
+      year ? parseInt(year as string) : undefined,
+    );
+    return successResponse(res, targets, "Revenue targets retrieved");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Get a single revenue target by id
+ * GET /api/org/dashboard/goals/:id
+ */
+export const getRevenueTargetById = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const target = await DashboardService.getRevenueTargetById(id);
+    if (!target) return errorResponse(res, "Revenue target not found", 404);
+    return successResponse(res, target, "Revenue target retrieved");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Create a revenue target
+ * POST /api/org/dashboard/goals
+ */
+export const createRevenueTarget = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id as string | undefined;
+    const { month, year, targetAmount, label, notes } = req.body;
+    const target = await DashboardService.createRevenueTarget({
+      month,
+      year,
+      targetAmount,
+      label,
+      notes,
+      createdBy: userId,
+    });
+    return successResponse(res, target, "Revenue target created", 201);
+  } catch (error: any) {
+    if (error.code === "23505") {
+      return errorResponse(res, "A revenue target for this month and year already exists", 409);
+    }
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Update a revenue target
+ * PUT /api/org/dashboard/goals/:id
+ */
+export const updateRevenueTarget = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const userId = req.user?.id as string | undefined;
+    const { month, year, targetAmount, label, notes } = req.body;
+    const target = await DashboardService.updateRevenueTarget(id, {
+      month,
+      year,
+      targetAmount,
+      label,
+      notes,
+      updatedBy: userId,
+    });
+    if (!target) return errorResponse(res, "Revenue target not found", 404);
+    return successResponse(res, target, "Revenue target updated");
+  } catch (error: any) {
+    if (error.code === "23505") {
+      return errorResponse(res, "A revenue target for this month and year already exists", 409);
+    }
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Delete (soft) a revenue target
+ * DELETE /api/org/dashboard/goals/:id
+ */
+export const deleteRevenueTarget = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const userId = req.user?.id as string | undefined;
+    const result = await DashboardService.deleteRevenueTarget(id, userId);
+    if (!result) return errorResponse(res, "Revenue target not found", 404);
+    return successResponse(res, result, "Revenue target deleted");
+  } catch (error: any) {
+    return errorResponse(res, error.message, 500);
+  }
+};

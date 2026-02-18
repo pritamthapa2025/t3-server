@@ -149,8 +149,9 @@ export const checkAndCreateAlert = async (itemId: string) => {
       await db.insert(inventoryStockAlerts).values({
         itemId,
         alertType: qtyOnHand === 0 ? "out_of_stock" : "low_stock",
-        severity: qtyOnHand === 0 ? "critical" : "warning", // Required field
+        severity: qtyOnHand === 0 ? "critical" : "warning",
         currentQuantity: currentItem.quantityOnHand,
+        thresholdQuantity: currentItem.reorderLevel,
         message:
             qtyOnHand === 0
             ? `Item ${currentItem.name} is out of stock`
