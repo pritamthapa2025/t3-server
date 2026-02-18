@@ -780,14 +780,34 @@ export const getFinancialSummarySection = async (
   return { data: summary };
 };
 
-/** GET /financial/jobs-summary – Jobs list for Summary tab table */
+export interface FinancialJobsSummaryPagination {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+/** GET /financial/jobs-summary – Jobs list for Summary tab table (supports pagination + search) */
 export const getFinancialJobsSummarySection = async (
   organizationId: string | undefined,
-  filters?: FinancialDashboardFilters
+  filters?: FinancialDashboardFilters,
+  pagination?: FinancialJobsSummaryPagination
 ) => {
-  // Allow fetching without organizationId (returns all jobs across all organizations)
   const dateFilters = { startDate: filters?.startDate, endDate: filters?.endDate };
-  const profitabilityRows = await getJobProfitability(organizationId, dateFilters);
+  const page = Math.max(1, pagination?.page ?? 1);
+  const limit = Math.min(100, Math.max(1, pagination?.limit ?? 10));
+  const search = pagination?.search?.trim() || undefined;
+  const opts =
+    search != null || pagination?.page != null || pagination?.limit != null
+      ? { limit, offset: (page - 1) * limit, ...(search !== undefined ? { search } : {}) }
+      : undefined;
+
+  const result = await getJobProfitability(organizationId, dateFilters, opts);
+  const profitabilityRows = Array.isArray(result)
+    ? result
+    : result.data;
+  const totalCount = Array.isArray(result)
+    ? result.length
+    : result.total;
   const jobIds = profitabilityRows.map((j: { id: string }) => j.id);
   const contractByJob: Map<string, number> = new Map();
   const startDateByJob: Map<string, string> = new Map();
@@ -892,7 +912,13 @@ export const getFinancialJobsSummarySection = async (
       };
     }
   );
-  return { data };
+  const totalPages = opts ? Math.ceil(totalCount / limit) || 1 : 1;
+  const paginationLimit = opts ? limit : totalCount;
+  return {
+    data,
+    total: totalCount,
+    pagination: { page: opts ? page : 1, limit: paginationLimit, totalPages },
+  };
 };
 
 /** GET /financial/cost-categories – Cost breakdown for Cost Breakdown tab */
@@ -1024,7 +1050,8 @@ export const getFinancialProfitabilitySection = async (
 ) => {
   const dateFilters = { startDate: filters?.startDate, endDate: filters?.endDate };
   const summary = await buildSummary(organizationId, filters);
-  const profitabilityRows = await getJobProfitability(organizationId, dateFilters);
+  const result = await getJobProfitability(organizationId, dateFilters);
+  const profitabilityRows = Array.isArray(result) ? result : result.data;
   const jobProfitability = profitabilityRows.map(
     (j: {
       id: string;
@@ -1159,7 +1186,7 @@ export const getFinancialDashboard = async (
 ) => {
   const [summaryRes, jobsRes, categoriesRes, profitabilityRes, reportsRes] = await Promise.all([
     getFinancialSummarySection(organizationId, filters),
-    getFinancialJobsSummarySection(organizationId, filters),
+    getFinancialJobsSummarySection(organizationId, filters, { page: 1, limit: 10 }),
     getFinancialCostCategoriesSection(organizationId, filters),
     getFinancialProfitabilitySection(organizationId, filters),
     getFinancialReportsSection(organizationId),
@@ -1168,6 +1195,8 @@ export const getFinancialDashboard = async (
   return {
     summary: summaryRes.data,
     jobsFinancialList: jobsRes.data,
+    jobsTotal: jobsRes.total,
+    jobsPagination: jobsRes.pagination,
     financialCostCategories: categoriesRes.data,
     totalCost: categoriesRes.totalCost,
     jobProfitability: profitabilityRes.data.jobProfitability,

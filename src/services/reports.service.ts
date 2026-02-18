@@ -1,4 +1,4 @@
-import { count, eq, and, desc, sql, gte, lte, or, inArray } from "drizzle-orm";
+import { count, eq, and, desc, sql, gte, lte, or, inArray, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -1749,10 +1749,21 @@ export const getJobStatusSummary = async (
   return summary;
 };
 
+export interface GetJobProfitabilityOptions {
+  limit?: number;
+  offset?: number;
+  search?: string;
+}
+
+/** When opts (limit/offset/search) is provided, returns { data, total }. Otherwise returns array (legacy). */
 export const getJobProfitability = async (
   organizationId: string | undefined,
   filters?: JobReportFilter,
-) => {
+  opts?: GetJobProfitabilityOptions,
+): Promise<
+  | { id: string; jobNumber: string | null; jobName: string; clientName: string | null; revenue: number; totalExpenses: number; profit: number; profitMargin: number }[]
+  | { data: { id: string; jobNumber: string | null; jobName: string; clientName: string | null; revenue: number; totalExpenses: number; profit: number; profitMargin: number }[]; total: number }
+> => {
   const conditions = [
     ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
@@ -1769,6 +1780,67 @@ export const getJobProfitability = async (
   }
   if (filters?.status) {
     conditions.push(eq(jobs.status, filters.status));
+  }
+  if (opts?.search?.trim()) {
+    const term = `%${opts.search.trim()}%`;
+    conditions.push(
+      or(
+        ilike(bidsTable.projectName, term),
+        ilike(jobs.jobNumber, term),
+        ilike(organizations.name, term),
+      )!
+    );
+  }
+
+  const limit = opts?.limit ?? 500;
+  const offset = opts?.offset ?? 0;
+
+  if (opts != null && (opts.limit != null || opts.offset != null || opts.search != null)) {
+    const [countResult, profitabilityData] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(jobs)
+        .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
+        .where(and(...conditions)),
+      db
+        .select({
+          jobId: jobs.id,
+          jobNumber: jobs.jobNumber,
+          jobName: bidsTable.projectName,
+          clientName: organizations.name,
+          revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+          totalExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
+        })
+        .from(jobs)
+        .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
+        .leftJoin(invoices, eq(jobs.id, invoices.jobId))
+        .leftJoin(expenses, eq(jobs.id, expenses.jobId))
+        .where(and(...conditions))
+        .groupBy(jobs.id, jobs.jobNumber, bidsTable.projectName, organizations.name)
+        .limit(limit)
+        .offset(offset),
+    ]);
+    const total = Number(countResult[0]?.count ?? 0);
+    const data = profitabilityData.map((j) => {
+      const revenue = parseFloat(j.revenue);
+      const totalExpenses = parseFloat(j.totalExpenses);
+      const profit = revenue - totalExpenses;
+      const profitMargin =
+        revenue > 0 ? Number(((profit / revenue) * 100).toFixed(1)) : 0;
+      return {
+        id: j.jobId,
+        jobNumber: j.jobNumber || null,
+        jobName: j.jobName || "Unnamed Job",
+        clientName: j.clientName || null,
+        revenue,
+        totalExpenses,
+        profit,
+        profitMargin,
+      };
+    });
+    return { data, total };
   }
 
   const profitabilityData = await db
@@ -1787,7 +1859,8 @@ export const getJobProfitability = async (
     .leftJoin(expenses, eq(jobs.id, expenses.jobId))
     .where(and(...conditions))
     .groupBy(jobs.id, jobs.jobNumber, bidsTable.projectName, organizations.name)
-    .limit(500);
+    .limit(limit)
+    .offset(offset);
 
   return profitabilityData.map((j) => {
     const revenue = parseFloat(j.revenue);
@@ -1795,7 +1868,6 @@ export const getJobProfitability = async (
     const profit = revenue - totalExpenses;
     const profitMargin =
       revenue > 0 ? Number(((profit / revenue) * 100).toFixed(1)) : 0;
-
     return {
       id: j.jobId,
       jobNumber: j.jobNumber || null,

@@ -39,6 +39,7 @@ import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getFinancialDashboardQuerySchema,
+  getFinancialJobsSummaryQuerySchema,
   getFinancialSummaryQuerySchema,
   createFinancialSummarySchema,
   updateFinancialSummarySchema,
@@ -85,10 +86,10 @@ router.get(
   validate(getFinancialDashboardQuerySchema),
   getFinancialSummarySectionHandler
 );
-// GET /api/v1/org/financial/jobs-summary – Jobs list for Summary tab table
+// GET /api/v1/org/financial/jobs-summary – Jobs list for Summary tab table (pagination + search)
 router.get(
   "/financial/jobs-summary",
-  validate(getFinancialDashboardQuerySchema),
+  validate(getFinancialJobsSummaryQuerySchema),
   getFinancialJobsSummarySectionHandler
 );
 // GET /api/v1/org/financial/cost-categories – Cost breakdown (donut + Budget at Risk)
