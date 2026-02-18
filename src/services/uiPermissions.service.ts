@@ -220,7 +220,8 @@ export const getNavigationConfig = async (userId: string) => {
   for (const module of modules) {
     try {
       const config = await getModuleUIConfig(userId, module);
-      if (config.features.length > 0) {
+      // Only include module if user has at least one non-"none" feature (availableActions)
+      if (config.availableActions.length > 0) {
         modulePermissions[module] = config;
       }
     } catch {
