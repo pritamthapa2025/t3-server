@@ -3079,14 +3079,14 @@ export const getBidsKPIs = async () => {
       ),
     );
 
-  // Pending bids (status: draft, pending)
+  // Draft bids (awaiting executive approval when created by manager)
   const [pendingBidsRow] = await db
     .select({ count: count() })
     .from(bidsTable)
     .where(
       and(
         eq(bidsTable.isDeleted, false),
-        or(eq(bidsTable.status, "draft"), eq(bidsTable.status, "pending")),
+        eq(bidsTable.status, "draft"),
       ),
     );
 
@@ -3160,7 +3160,6 @@ export const getBidKPIs = async (bidId: string) => {
 /** Statuses that should be auto-expired when endDate has passed */
 const BID_STATUSES_TO_EXPIRE = [
   "draft",
-  "pending",
   "submitted",
   "in_progress",
 ] as const;
