@@ -472,7 +472,7 @@ export const getActiveBidsStats = async (
     })
     .from(bidsTable)
     .where(
-      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'pending')`),
+      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'submitted')`),
     )
     .orderBy(desc(bidsTable.createdAt))
     .limit(5);
@@ -501,7 +501,7 @@ export const getActiveBidsStats = async (
     })
     .from(bidsTable)
     .where(
-      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'pending')`),
+      and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'submitted')`),
     );
 
   const pipelineValue = Number(pipeline[0]?.total || 0);

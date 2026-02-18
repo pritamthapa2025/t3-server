@@ -14,6 +14,24 @@ export const getFinancialDashboardQuerySchema = z.object({
   }),
 });
 
+// Jobs summary – pagination and search
+export const getFinancialJobsSummaryQuerySchema = z.object({
+  query: z.object({
+    organizationId: uuidSchema.optional(),
+    startDate: dateSchema.optional(),
+    endDate: dateSchema.optional(),
+    page: z
+      .string()
+      .optional()
+      .transform((v) => (v ? Math.max(1, parseInt(v, 10) || 1) : 1)),
+    limit: z
+      .string()
+      .optional()
+      .transform((v) => (v ? Math.min(100, Math.max(1, parseInt(v, 10) || 10)) : 10)),
+    search: z.string().max(200).optional(),
+  }),
+});
+
 // Financial Summary Validations
 export const getFinancialSummaryQuerySchema = z.object({
   query: z.object({

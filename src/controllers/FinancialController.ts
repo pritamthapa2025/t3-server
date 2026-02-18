@@ -92,10 +92,16 @@ export const getFinancialJobsSummarySectionHandler = async (
     const organizationId = (req.query.organizationId as string) || undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
-    const result = await getFinancialJobsSummarySection(organizationId, {
-      startDate,
-      endDate,
-    });
+    const pageRaw = req.query.page;
+    const limitRaw = req.query.limit;
+    const page = typeof pageRaw === "string" ? Math.max(1, parseInt(pageRaw, 10) || 1) : 1;
+    const limit = typeof limitRaw === "string" ? Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 10)) : 10;
+    const search = (req.query.search as string) || undefined;
+    const result = await getFinancialJobsSummarySection(
+      organizationId,
+      { startDate, endDate },
+      { page, limit, ...(search !== undefined ? { search } : {}) }
+    );
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     logger.logApiError("Financial error", error, req);
