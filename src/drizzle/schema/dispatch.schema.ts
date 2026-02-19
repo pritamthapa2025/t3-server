@@ -98,8 +98,7 @@ export const dispatchAssignments = org.table(
       .notNull()
       .references(() => dispatchTasks.id, { onDelete: "cascade" }),
     technicianId: integer("technician_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Assignment Status
     status: dispatchAssignmentStatusEnum("status").notNull().default("pending"), // pending, started, completed

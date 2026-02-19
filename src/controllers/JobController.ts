@@ -110,6 +110,31 @@ import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 
+/**
+ * Checks whether the requesting user (if subject to assigned_only filter) is
+ * a team member on the given job.
+ * Returns true if access is allowed, false after sending a 404 response
+ * (consistent with how getJobByIdHandler handles this case).
+ */
+const checkJobAssignedAccess = async (
+  req: Request,
+  res: Response,
+  jobId: string,
+): Promise<boolean> => {
+  const userId = req.user?.id;
+  if (!userId) return true;
+
+  const dataFilter = await getDataFilterConditions(userId, "jobs");
+  if (!dataFilter.assignedOnly) return true;
+
+  const job = await getJobById(jobId, { userId, applyAssignedOrTeamFilter: true });
+  if (!job) {
+    res.status(404).json({ success: false, message: "Job not found" });
+    return false;
+  }
+  return true;
+};
+
 // ============================
 // Main Job Operations
 // ============================
@@ -866,6 +891,8 @@ export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const teamMembers = await getJobTeamMembers(jobId!, {
       ...(roleName && { roleName }),
     });
@@ -999,6 +1026,8 @@ export const getJobFinancialSummaryHandler = async (
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const summary = await getJobFinancialSummary(jobId!);
 
@@ -1154,6 +1183,8 @@ export const getJobMaterialsHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const materials = await getJobMaterials(jobId!);
 
     if (materials === null) {
@@ -1188,6 +1219,8 @@ export const getJobMaterialByIdHandler = async (
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const material = await getJobMaterialById(jobId!, materialId!);
 
@@ -1384,6 +1417,8 @@ export const getJobLaborHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const labor = await getJobLabor(jobId!);
 
     if (labor === null) {
@@ -1415,6 +1450,8 @@ export const getJobLaborByIdHandler = async (req: Request, res: Response) => {
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const labor = await getJobLaborById(jobId!, laborId!);
 
@@ -1622,6 +1659,8 @@ export const getJobTravelHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const travel = await getJobTravel(jobId!);
 
     if (travel === null) {
@@ -1653,6 +1692,8 @@ export const getJobTravelByIdHandler = async (req: Request, res: Response) => {
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const travel = await getJobTravelById(jobId!, travelId!);
 
@@ -1905,6 +1946,8 @@ export const getJobTimelineHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const timeline = await getJobTimeline(jobId!);
 
     if (timeline === null) {
@@ -1997,6 +2040,8 @@ export const getJobTimelineEventByIdHandler = async (
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const timelineEvent = await getJobTimelineEventById(jobId!, eventId!);
 
@@ -2141,6 +2186,8 @@ export const getJobNotesHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const notes = await getJobNotes(jobId!);
 
     if (notes === null) {
@@ -2227,6 +2274,8 @@ export const getJobNoteByIdHandler = async (req: Request, res: Response) => {
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const note = await getJobNoteById(jobId!, noteId!);
 
@@ -2393,6 +2442,8 @@ export const getJobTasksHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const tasks = await getJobTasks(jobId!);
 
     if (tasks === null) {
@@ -2475,6 +2526,8 @@ export const getJobTaskByIdHandler = async (req: Request, res: Response) => {
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const task = await getJobTaskById(jobId!, taskId!);
 
@@ -2609,6 +2662,8 @@ export const getTaskCommentsHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const comments = await getTaskComments(jobId!, taskId!);
 
     if (comments === null) {
@@ -2644,6 +2699,8 @@ export const getTaskCommentByIdHandler = async (
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const comment = await getTaskCommentById(jobId!, taskId!, commentId!);
 
@@ -2784,6 +2841,8 @@ export const getJobSurveysHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const surveys = await getJobSurveys(jobId!);
     if (surveys === null) {
       return res.status(404).json({
@@ -2809,6 +2868,8 @@ export const getJobSurveyByIdHandler = async (req: Request, res: Response) => {
     const surveyId = asSingleString(req.params.id);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const survey = await getJobSurveyById(jobId!, surveyId!);
     if (!survey) {
@@ -2949,6 +3010,8 @@ export const getJobExpensesHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     const job = await getJobById(jobId!);
     if (!job) {
       return res.status(404).json({ success: false, message: "Job not found" });
@@ -2979,6 +3042,8 @@ export const getJobExpenseByIdHandler = async (req: Request, res: Response) => {
 
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     const expense = await getJobExpenseById(jobId!, expenseId!);
 
@@ -3205,6 +3270,11 @@ export const getJobDocumentsHandler = async (req: Request, res: Response) => {
     if (!validateParams(req, res, ["jobId"])) return;
     const jobId = asSingleString(req.params.jobId);
 
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
     // Get job to retrieve bidId
     const job = await getJobById(jobId!);
     if (!job) {
@@ -3365,6 +3435,11 @@ export const getJobDocumentByIdHandler = async (
 
     const jobId = asSingleString(req.params.jobId);
     const documentId = asSingleString(req.params.documentId);
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
     // Get job to retrieve bidId
     const job = await getJobById(jobId!);

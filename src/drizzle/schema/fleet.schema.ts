@@ -68,12 +68,12 @@ export const vehicles = org.table(
     status: vehicleStatusEnum("status").notNull().default("active"),
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ), // Current driver assignment
-    currentJobId: uuid("current_job_id").references(() => jobs.id, { onDelete: "cascade" }), // Currently assigned job
+    currentJobId: uuid("current_job_id").references(() => jobs.id, { onDelete: "set null" }), // Currently assigned job
     currentDispatchTaskId: uuid("current_dispatch_task_id").references(
       () => dispatchTasks.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ), // T3 internal: link to dispatch task (no organization; data in employees/positions/departments)
 
     // Current Metrics
@@ -231,7 +231,7 @@ export const maintenanceRecords = org.table(
     // Assignment
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
 
     // Approval Workflow
@@ -304,15 +304,17 @@ export const repairRecords = org.table(
     // Assignment
     assignedToEmployeeId: integer("assigned_to_employee_id").references(
       () => employees.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
 
     // Linking
     linkedMaintenanceId: uuid("linked_maintenance_id").references(
       () => maintenanceRecords.id,
+      { onDelete: "set null" },
     ), // Link to related maintenance
     linkedInspectionId: uuid("linked_inspection_id").references(
       () => safetyInspections.id,
+      { onDelete: "set null" },
     ), // Link to inspection
 
     // Approval Workflow
@@ -374,7 +376,7 @@ export const safetyInspections = org.table(
     // Inspection Data
     checklist: jsonb("checklist"), // JSON checklist data
     isTeamMember: boolean("is_team_member").notNull(),
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
     exteriorPhotos: jsonb("exterior_photos"), // Array of photo URLs
     interiorPhotos: jsonb("interior_photos"), // Array of photo URLs
 
@@ -458,7 +460,7 @@ export const fuelRecords = org.table(
     fuelType: fuelTypeEnum("fuel_type").notNull(), // gasoline, diesel, electric
 
     // Employee Tracking
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Who fueled
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }), // Who fueled
     employeeName: varchar("employee_name", { length: 255 }),
 
     // Notes
@@ -508,7 +510,7 @@ export const checkInOutRecords = org.table(
     fuelLevel: numeric("fuel_level", { precision: 5, scale: 2 }).notNull(), // Percentage
 
     // Job (references jobs.id)
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
 
     // Notes
     notes: text("notes"),
@@ -543,8 +545,8 @@ export const assignmentHistory = org.table(
     vehicleId: uuid("vehicle_id")
       .notNull()
       .references(() => vehicles.id, { onDelete: "cascade" }),
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Driver assigned for this period
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }), // Job the driver was assigned to for this period
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }), // Driver assigned for this period
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }), // Job the driver was assigned to for this period
 
     // Assignment Period
     startDate: date("start_date").notNull(),

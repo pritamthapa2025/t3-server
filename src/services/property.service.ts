@@ -124,7 +124,7 @@ export const getProperties = async (
     whereConditions.push(
       sql`EXISTS (
         SELECT 1 FROM org.jobs j
-        INNER JOIN crm.bids b ON b.id = j.bid_id
+        INNER JOIN org.bids b ON b.id = j.bid_id
         INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
         WHERE b.property_id = ${properties.id}
           AND jtm.employee_id = ${options.ownEmployeeId}
@@ -808,11 +808,22 @@ export const updateProperty = async (id: string, data: any) => {
 
 // Soft delete property
 export const deleteProperty = async (id: string) => {
+  const now = new Date();
+
+  // Cascade soft-delete to child records + nullify bids.propertyId (in parallel)
+  await Promise.all([
+    db.update(propertyContacts).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyContacts.propertyId, id), eq(propertyContacts.isDeleted, false))),
+    db.update(propertyEquipment).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyEquipment.propertyId, id), eq(propertyEquipment.isDeleted, false))),
+    db.update(propertyDocuments).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyDocuments.propertyId, id), eq(propertyDocuments.isDeleted, false))),
+    // Nullify propertyId on bids (preserve bid record, just clear the property link)
+    db.update(bidsTable).set({ propertyId: null, updatedAt: now }).where(eq(bidsTable.propertyId, id)),
+  ]);
+
   const [property] = await db
     .update(properties)
     .set({
       isDeleted: true,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(properties.id, id))
     .returning();

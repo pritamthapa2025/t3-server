@@ -39,7 +39,7 @@ export const invoices: any = org.table(
     invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
 
     // Relationships
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
 
     // Invoice Details
     invoiceType: invoiceTypeEnum("invoice_type").notNull().default("standard"),
@@ -209,8 +209,7 @@ export const payments = org.table(
 
     // Relationship
     invoiceId: uuid("invoice_id")
-      .notNull()
-      .references(() => invoices.id, { onDelete: "cascade" }),
+      .references(() => invoices.id, { onDelete: "set null" }),
 
     // Payment Details
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
@@ -434,8 +433,8 @@ export const creditNotes = org.table(
     clientId: uuid("client_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "cascade" }), // If credit note is for specific invoice
-    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "cascade" }), // If credit note is for specific payment
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }), // If credit note is for specific invoice
+    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "set null" }), // If credit note is for specific payment
 
     // Credit Note Details
     creditNoteDate: date("credit_note_date").notNull(),
@@ -493,8 +492,7 @@ export const creditNoteApplications = org.table(
       .notNull()
       .references(() => creditNotes.id, { onDelete: "cascade" }),
     invoiceId: uuid("invoice_id")
-      .notNull()
-      .references(() => invoices.id, { onDelete: "cascade" }),
+      .references(() => invoices.id, { onDelete: "set null" }),
 
     // Application Details
     appliedAmount: numeric("applied_amount", {

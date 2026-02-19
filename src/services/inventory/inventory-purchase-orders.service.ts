@@ -120,7 +120,7 @@ export const getPurchaseOrderById = async (id: string) => {
     .leftJoin(inventorySuppliers, eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id))
     .leftJoin(inventoryLocations, eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id))
     .leftJoin(users, eq(inventoryPurchaseOrders.createdBy, users.id))
-    .where(eq(inventoryPurchaseOrders.id, id))
+    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
     .limit(1);
 
   if (result.length === 0) return null;
@@ -258,7 +258,7 @@ export const sendPurchaseOrder = async (id: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(eq(inventoryPurchaseOrders.id, id))
+    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
@@ -285,7 +285,7 @@ export const cancelPurchaseOrder = async (id: string, reason?: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(eq(inventoryPurchaseOrders.id, id))
+    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
@@ -313,7 +313,7 @@ export const closePurchaseOrder = async (id: string, _userId: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(eq(inventoryPurchaseOrders.id, id))
+    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");

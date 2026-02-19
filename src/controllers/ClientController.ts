@@ -84,8 +84,60 @@ import {
 } from "../utils/database-error-parser.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { db } from "../config/db.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { employees } from "../drizzle/schema/org.schema.js";
+
+/**
+ * Checks whether the requesting user (if subject to assigned_only filter) is
+ * linked to the given client via a job team membership.
+ * Returns true if access is allowed, false after sending a 403 response.
+ */
+const checkClientAssignedAccess = async (
+  req: Request,
+  res: Response,
+  clientId: string,
+): Promise<boolean> => {
+  const userId = req.user?.id;
+  if (!userId) return true;
+
+  const dataFilter = await getDataFilterConditions(userId, "clients");
+  if (!dataFilter.assignedOnly) return true;
+
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+
+  if (!emp) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view clients linked to your assigned jobs.",
+    });
+    return false;
+  }
+
+  const result = await db.execute<{ exists: number }>(
+    sql`SELECT 1 AS exists
+        FROM org.bids b
+        INNER JOIN org.jobs j ON j.bid_id = b.id
+        INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
+        WHERE b.organization_id = ${clientId}
+          AND jtm.employee_id = ${emp.id}
+          AND jtm.is_active = true
+          AND j.is_deleted = false
+        LIMIT 1`,
+  );
+
+  if (!result.rows[0]) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view clients linked to your assigned jobs.",
+    });
+    return false;
+  }
+  return true;
+};
 
 // Get all clients with pagination
 export const getClientsHandler = async (req: Request, res: Response) => {
@@ -196,6 +248,8 @@ export const getClientByIdHandler = async (req: Request, res: Response) => {
         .status(400)
         .json({ success: false, message: "Client ID is required" });
     }
+
+    if (!(await checkClientAssignedAccess(req, res, id))) return;
 
     const client = await getClientById(id);
 
@@ -594,6 +648,8 @@ export const getClientContactsHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Client ID is required" });
     }
 
+    if (!(await checkClientAssignedAccess(req, res, id))) return;
+
     const contacts = await getClientContacts(id);
 
     logger.info("Client contacts fetched successfully");
@@ -616,12 +672,15 @@ export const getClientContactByIdHandler = async (
 ) => {
   try {
     const contactId = asSingleString(req.params.contactId);
+    const clientId = asSingleString(req.params.id);
 
     if (!contactId) {
       return res
         .status(400)
         .json({ success: false, message: "Contact ID is required" });
     }
+
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
 
     const contact = await getClientContactById(contactId);
 
@@ -895,6 +954,8 @@ export const getClientNotesHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Client ID is required" });
     }
 
+    if (!(await checkClientAssignedAccess(req, res, id))) return;
+
     const notes = await getClientNotes(id, offset, limit);
 
     logger.info("Client notes fetched successfully");
@@ -921,12 +982,15 @@ export const getClientNotesHandler = async (req: Request, res: Response) => {
 export const getClientNoteByIdHandler = async (req: Request, res: Response) => {
   try {
     const noteId = asSingleString(req.params.noteId);
+    const clientId = asSingleString(req.params.id);
 
     if (!noteId) {
       return res
         .status(400)
         .json({ success: false, message: "Note ID is required" });
     }
+
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
 
     const note = await getClientNoteById(noteId);
 
@@ -2041,6 +2105,8 @@ export const getClientDocumentsHandler = async (
       });
     }
 
+    if (!(await checkClientAssignedAccess(req, res, organizationId))) return;
+
     const documents = await getClientDocuments(organizationId, offset, limit);
 
     logger.info("Client documents fetched successfully");
@@ -2070,6 +2136,7 @@ export const getClientDocumentByIdHandler = async (
 ) => {
   try {
     const documentId = asSingleString(req.params.documentId);
+    const clientId = asSingleString(req.params.id);
 
     if (!documentId) {
       return res.status(400).json({
@@ -2077,6 +2144,8 @@ export const getClientDocumentByIdHandler = async (
         message: "Document ID is required",
       });
     }
+
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
 
     const document = await getClientDocumentById(documentId);
 
@@ -2489,6 +2558,8 @@ export const getClientSettingsHandler = async (req: Request, res: Response) => {
         .status(400)
         .json({ success: false, message: "Client ID is required" });
     }
+
+    if (!(await checkClientAssignedAccess(req, res, id))) return;
 
     const settings = await getClientSettings(id);
 

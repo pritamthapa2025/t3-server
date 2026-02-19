@@ -7,7 +7,7 @@ import {
 import { uploadToSpaces } from "../services/storage.service.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { db } from "../config/db.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { employees } from "../drizzle/schema/org.schema.js";
 import {
   getDispatchTasks,
@@ -28,6 +28,55 @@ import {
   bulkDeleteDispatchTasks,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
+
+/**
+ * Checks whether the requesting user (if subject to assigned_only filter) is
+ * assigned to the given dispatch task via dispatch_assignments.
+ * Returns true if access is allowed, false after sending a 403 response.
+ */
+const checkDispatchTaskAssignedAccess = async (
+  req: Request,
+  res: Response,
+  taskId: string,
+): Promise<boolean> => {
+  const userId = req.user?.id;
+  if (!userId) return true;
+
+  const dataFilter = await getDataFilterConditions(userId, "dispatch");
+  if (!dataFilter.assignedOnly) return true;
+
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+
+  if (!emp) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view dispatch tasks assigned to you.",
+    });
+    return false;
+  }
+
+  const result = await db.execute<{ exists: number }>(
+    sql`SELECT 1 AS exists
+        FROM org.dispatch_assignments da
+        WHERE da.task_id = ${taskId}
+          AND da.technician_id = ${emp.id}
+          AND da.is_deleted = false
+        LIMIT 1`,
+  );
+
+  if (!result.rows[0]) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view dispatch tasks assigned to you.",
+    });
+    return false;
+  }
+  return true;
+};
 
 // ============================
 // DISPATCH TASKS HANDLERS
@@ -113,6 +162,8 @@ export const getDispatchTaskByIdHandler = async (
         message: "Dispatch task ID is required",
       });
     }
+
+    if (!(await checkDispatchTaskAssignedAccess(req, res, id))) return;
 
     const task = await getDispatchTaskById(id);
 
@@ -390,6 +441,8 @@ export const getDispatchAssignmentByIdHandler = async (
       });
     }
 
+    if (!(await checkDispatchTaskAssignedAccess(req, res, assignment.taskId))) return;
+
     logger.info(`Dispatch assignment ${id} fetched successfully`);
     return res.status(200).json({
       success: true,
@@ -521,6 +574,8 @@ export const getAssignmentsByTaskIdHandler = async (
         message: "Task ID is required",
       });
     }
+
+    if (!(await checkDispatchTaskAssignedAccess(req, res, taskId!))) return;
 
     const assignments = await getAssignmentsByTaskId(taskId);
 

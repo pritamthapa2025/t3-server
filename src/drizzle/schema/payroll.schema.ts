@@ -111,8 +111,7 @@ export const employeeCompensation = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Pay Structure
     baseSalary: numeric("base_salary", { precision: 15, scale: 2 }),
@@ -259,8 +258,7 @@ export const payrollEntries = org.table(
       .notNull()
       .references(() => payrollRuns.id, { onDelete: "cascade" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Entry Details
     entryNumber: varchar("entry_number", { length: 50 }).notNull(), // PAY-W-2025-50-001

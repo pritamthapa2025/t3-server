@@ -1043,6 +1043,10 @@ export const syncPayrollFromApprovedTimesheet = async (
     return { synced: false, reason: "Timesheet not found or not approved" };
   }
 
+  if (!timesheet.employeeId) {
+    return { synced: false, reason: "Timesheet has no associated employee" };
+  }
+
   const [row] = await db
     .select({
       id: employees.id,

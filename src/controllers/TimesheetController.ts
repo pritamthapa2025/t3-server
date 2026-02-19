@@ -35,12 +35,13 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
     const userId = req.user?.id;
 
-    let timesheetOptions: { ownEmployeeId?: number } | undefined;
+    let timesheetOptions: { ownEmployeeId?: number; departmentId?: number } | undefined;
 
-    // own_only: Technicians can only see their own timesheets
+    // Apply role-based data scoping
     if (userId) {
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.ownOnly) {
+        // Technician: only their own timesheets
         const [emp] = await db
           .select({ id: employees.id })
           .from(employees)
@@ -49,7 +50,11 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
         if (emp) {
           timesheetOptions = { ownEmployeeId: emp.id };
         }
+      } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
+        // Manager: only their department's timesheets (includes their own)
+        timesheetOptions = { departmentId: dataFilter.departmentId };
       }
+      // Executive/admin: no filter applied — sees all records
     }
 
     const timesheets = await getTimesheets(
@@ -197,10 +202,24 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
       }
     }
 
+    // Resolve the effective department filter based on role
+    let effectiveDepartmentId: number | undefined = departmentId
+      ? parseInt(departmentId as string, 10)
+      : undefined;
+
+    const userId = req.user?.id;
+    if (userId) {
+      const dataFilter = await getDataFilterConditions(userId, "timesheet");
+      if (dataFilter.departmentOnly && dataFilter.departmentId) {
+        // Manager: always enforce their own department regardless of query param
+        effectiveDepartmentId = dataFilter.departmentId;
+      }
+    }
+
     const weeklyTimesheets = await getWeeklyTimesheetsByEmployee(
       weekStartDate as string,
       employeeIds,
-      departmentId ? parseInt(departmentId as string, 10) : undefined,
+      effectiveDepartmentId,
       status as string | undefined,
       page ? parseInt(page as string, 10) : 1,
       limit ? parseInt(limit as string, 10) : 10,
@@ -233,11 +252,12 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // own_only: Technicians can only view their own timesheets
+    // Role-based access check for viewing a single timesheet
     const userId = req.user?.id;
     if (userId) {
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.ownOnly) {
+        // Technician: must be their own timesheet
         const [emp] = await db
           .select({ id: employees.id })
           .from(employees)
@@ -249,7 +269,21 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
             message: "Access denied. You can only view your own timesheets.",
           });
         }
+      } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
+        // Manager: timesheet's employee must belong to their department
+        const [timesheetEmp] = await db
+          .select({ departmentId: employees.departmentId })
+          .from(employees)
+          .where(eq(employees.id, timesheet.employeeId!))
+          .limit(1);
+        if (!timesheetEmp || timesheetEmp.departmentId !== dataFilter.departmentId) {
+          return res.status(403).json({
+            success: false,
+            message: "Access denied. You can only view timesheets for your department.",
+          });
+        }
       }
+      // Executive/admin: no restriction
     }
 
     logger.info("Timesheet fetched successfully");

@@ -330,21 +330,30 @@ export const getDataFilterConditions = async (
   userId: string,
   module: string
 ): Promise<{
-  assignedOnly?: boolean;
-  departmentOnly?: boolean;
-  ownOnly?: boolean;
-  hideFinancial?: boolean;
+  assignedOnly: boolean;
+  departmentOnly: boolean;
+  ownOnly: boolean;
+  hideFinancial: boolean;
+  departmentId: number | null;
   conditions: any[];
 }> => {
   const userRole = await getUserRoleWithContext(userId);
   const filters = await getUserDataFilters(userId, module);
 
-  const result = {
+  const result: {
+    assignedOnly: boolean;
+    departmentOnly: boolean;
+    ownOnly: boolean;
+    hideFinancial: boolean;
+    departmentId: number | null;
+    conditions: any[];
+  } = {
     assignedOnly: false,
     departmentOnly: false,
     ownOnly: false,
     hideFinancial: false,
-    conditions: [] as any[],
+    departmentId: null,
+    conditions: [],
   };
 
   for (const filter of filters) {
@@ -355,6 +364,7 @@ export const getDataFilterConditions = async (
         break;
       case "department_only":
         result.departmentOnly = true;
+        result.departmentId = userRole?.departmentId ?? null;
         if (userRole?.departmentId) {
           result.conditions.push({ departmentId: userRole.departmentId });
         }

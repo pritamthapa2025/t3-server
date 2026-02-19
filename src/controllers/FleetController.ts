@@ -1411,6 +1411,8 @@ export const getFuelRecordByIdHandler = async (req: Request, res: Response) => {
       });
     }
 
+    if (!(await checkVehicleAssignedAccess(req, res, record.vehicleId))) return;
+
     logger.info(`Fuel record ${id} fetched successfully`);
     return res.status(200).json({
       success: true,
@@ -1614,6 +1616,8 @@ export const getCheckInOutRecordByIdHandler = async (
         message: "Check-in/out record not found for this vehicle",
       });
     }
+
+    if (!(await checkVehicleAssignedAccess(req, res, record.vehicleId))) return;
 
     logger.info(`Check-in/out record ${id} fetched successfully`);
     return res.status(200).json({
@@ -1896,6 +1900,7 @@ export const getVehicleMediaByIdHandler = async (
         message: "Vehicle media not found for this vehicle",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, media.vehicleId))) return;
     return res.status(200).json({ success: true, data: media });
   } catch (error) {
     logger.logApiError("Error fetching vehicle media", error, req);
@@ -2149,6 +2154,7 @@ export const getVehicleDocumentByIdHandler = async (
         message: "Vehicle document not found for this vehicle",
       });
     }
+    if (!(await checkVehicleAssignedAccess(req, res, doc.vehicleId))) return;
     return res.status(200).json({ success: true, data: doc });
   } catch (error) {
     logger.logApiError("Error fetching vehicle document", error, req);

@@ -7,6 +7,9 @@ import {
   inventoryLocations,
   inventoryUnitsOfMeasure,
   inventoryItemHistory,
+  inventoryAllocations,
+  inventoryTransactions,
+  inventoryItemLocations,
 } from "../../drizzle/schema/inventory.schema.js";
 import { users } from "../../drizzle/schema/auth.schema.js";
 
@@ -160,7 +163,7 @@ export const getInventoryItemById = async (id: string) => {
       inventoryUnitsOfMeasure,
       eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id)
     )
-    .where(eq(inventoryItems.id, id))
+    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.isDeleted, false)))
     .limit(1);
 
   if (result.length === 0) return null;
@@ -228,7 +231,7 @@ export const updateInventoryItem = async (
   const existingItem = await db
     .select()
     .from(inventoryItems)
-    .where(eq(inventoryItems.id, id))
+    .where(and(eq(inventoryItems.id, id), eq(inventoryItems.isDeleted, false)))
     .limit(1);
 
   if (existingItem.length === 0) throw new Error("Item not found");
@@ -306,6 +309,16 @@ export const updateInventoryItem = async (
 
 export const deleteInventoryItem = async (id: string, deletedBy?: string) => {
   const now = new Date();
+
+  // Cascade child records + nullify transaction itemId (preserve audit trail)
+  await Promise.all([
+    db.update(inventoryAllocations).set({ isDeleted: true, updatedAt: now }).where(and(eq(inventoryAllocations.itemId, id), eq(inventoryAllocations.isDeleted, false))),
+    // inventoryItemLocations has no isDeleted — hard-delete them (they're meaningless without the item)
+    db.delete(inventoryItemLocations).where(eq(inventoryItemLocations.itemId, id)),
+    // Nullify itemId on transactions — preserves financial audit trail but clears the FK
+    db.update(inventoryTransactions).set({ itemId: null }).where(eq(inventoryTransactions.itemId, id)),
+  ]);
+
   const [deletedItem] = await db
     .update(inventoryItems)
     .set({
@@ -318,9 +331,6 @@ export const deleteInventoryItem = async (id: string, deletedBy?: string) => {
     .returning();
 
   if (!deletedItem) throw new Error("Item not found");
-
-  // Log deletion
-  // History tracking can be implemented here if needed
 
   return deletedItem;
 };
@@ -352,6 +362,13 @@ export const bulkDeleteInventoryItems = async (
   deletedBy: string,
 ) => {
   const now = new Date();
+
+  await Promise.all([
+    db.update(inventoryAllocations).set({ isDeleted: true, updatedAt: now }).where(and(inArray(inventoryAllocations.itemId, ids), eq(inventoryAllocations.isDeleted, false))),
+    db.delete(inventoryItemLocations).where(inArray(inventoryItemLocations.itemId, ids)),
+    db.update(inventoryTransactions).set({ itemId: null }).where(inArray(inventoryTransactions.itemId, ids)),
+  ]);
+
   const result = await db
     .update(inventoryItems)
     .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })

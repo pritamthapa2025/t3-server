@@ -530,6 +530,19 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
 // Soft Delete Vehicle
 export const deleteVehicle = async (id: string, deletedBy?: string) => {
   const now = new Date();
+
+  // Cascade soft-delete all vehicle child records (in parallel)
+  await Promise.all([
+    db.update(maintenanceRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(maintenanceRecords.vehicleId, id), eq(maintenanceRecords.isDeleted, false))),
+    db.update(repairRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(repairRecords.vehicleId, id), eq(repairRecords.isDeleted, false))),
+    db.update(safetyInspections).set({ isDeleted: true, updatedAt: now }).where(and(eq(safetyInspections.vehicleId, id), eq(safetyInspections.isDeleted, false))),
+    db.update(fuelRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(fuelRecords.vehicleId, id), eq(fuelRecords.isDeleted, false))),
+    db.update(checkInOutRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(checkInOutRecords.vehicleId, id), eq(checkInOutRecords.isDeleted, false))),
+    db.update(vehicleMedia).set({ isDeleted: true, updatedAt: now }).where(and(eq(vehicleMedia.vehicleId, id), eq(vehicleMedia.isDeleted, false))),
+    db.update(vehicleDocuments).set({ isDeleted: true, updatedAt: now }).where(and(eq(vehicleDocuments.vehicleId, id), eq(vehicleDocuments.isDeleted, false))),
+    db.update(assignmentHistory).set({ isDeleted: true, updatedAt: now }).where(and(eq(assignmentHistory.vehicleId, id), eq(assignmentHistory.isDeleted, false))),
+  ]);
+
   const result = await db
     .update(vehicles)
     .set({

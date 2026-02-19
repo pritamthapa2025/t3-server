@@ -20,7 +20,7 @@ import { logger } from "../utils/logger.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { db } from "../config/db.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { employees } from "../drizzle/schema/org.schema.js";
 
 // Helper function to validate required params
@@ -37,6 +37,58 @@ const validateParams = (
       });
       return false;
     }
+  }
+  return true;
+};
+
+/**
+ * Checks whether the requesting user (if subject to assigned_only filter) is
+ * linked to the given property via a job team membership.
+ * Returns true if access is allowed, false after sending a 403 response.
+ */
+const checkPropertyAssignedAccess = async (
+  req: Request,
+  res: Response,
+  propertyId: string,
+): Promise<boolean> => {
+  const userId = req.user?.id;
+  if (!userId) return true;
+
+  const dataFilter = await getDataFilterConditions(userId, "properties");
+  if (!dataFilter.assignedOnly) return true;
+
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+
+  if (!emp) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view properties linked to your assigned jobs.",
+    });
+    return false;
+  }
+
+  const result = await db.execute<{ exists: number }>(
+    sql`SELECT 1 AS exists
+        FROM org.jobs j
+        INNER JOIN org.bids b ON b.id = j.bid_id
+        INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
+        WHERE b.property_id = ${propertyId}
+          AND jtm.employee_id = ${emp.id}
+          AND jtm.is_active = true
+          AND j.is_deleted = false
+        LIMIT 1`,
+  );
+
+  if (!result.rows[0]) {
+    res.status(403).json({
+      success: false,
+      message: "You can only view properties linked to your assigned jobs.",
+    });
+    return false;
   }
   return true;
 };
@@ -115,6 +167,8 @@ export const getPropertyByIdHandler = async (req: Request, res: Response) => {
         .status(400)
         .json({ success: false, message: "Property ID is required" });
     }
+
+    if (!(await checkPropertyAssignedAccess(req, res, id))) return;
 
     const property = await getPropertyById(id);
 
@@ -277,6 +331,8 @@ export const getPropertyEquipmentHandler = async (
         .json({ success: false, message: "Property ID is required" });
     }
 
+    if (!(await checkPropertyAssignedAccess(req, res, propertyId))) return;
+
     const equipment = await getPropertyEquipment(propertyId);
 
     logger.info("Property equipment fetched successfully");
@@ -313,6 +369,12 @@ export const getPropertyEquipmentByIdHandler = async (
         .status(404)
         .json({ success: false, message: "Equipment not found" });
     }
+
+    if (
+      equipment.propertyId &&
+      !(await checkPropertyAssignedAccess(req, res, equipment.propertyId))
+    )
+      return;
 
     logger.info("Property equipment fetched successfully");
     return res.status(200).json({

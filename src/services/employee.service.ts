@@ -24,11 +24,19 @@ import {
   timesheetApprovals,
 } from "../drizzle/schema/timesheet.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
-import { vehicles } from "../drizzle/schema/fleet.schema.js";
+import {
+  vehicles,
+  maintenanceRecords,
+  repairRecords,
+  safetyInspections,
+  fuelRecords,
+  assignmentHistory,
+} from "../drizzle/schema/fleet.schema.js";
 import {
   dispatchAssignments,
   dispatchTasks,
 } from "../drizzle/schema/dispatch.schema.js";
+import { jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
@@ -842,6 +850,27 @@ export const updateEmployee = async (
 
 export const deleteEmployee = async (id: number, deletedBy?: string) => {
   const now = new Date();
+
+  // 1. Nullify FK pointers that reference this employee (preserve financial/historical records)
+  // 2. Deactivate job team memberships and dispatch assignments
+  await Promise.all([
+    // Nullify vehicle assignment (vehicle stays, assignment is cleared)
+    db.update(vehicles).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(vehicles.assignedToEmployeeId, id)),
+    // Nullify fleet maintenance/repair records (preserve the history)
+    db.update(maintenanceRecords).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(maintenanceRecords.assignedToEmployeeId, id)),
+    db.update(repairRecords).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(repairRecords.assignedToEmployeeId, id)),
+    db.update(safetyInspections).set({ employeeId: null, updatedAt: now }).where(eq(safetyInspections.employeeId, id)),
+    db.update(fuelRecords).set({ employeeId: null, updatedAt: now }).where(eq(fuelRecords.employeeId, id)),
+    db.update(assignmentHistory).set({ employeeId: null, updatedAt: now }).where(eq(assignmentHistory.employeeId, id)),
+    // Deactivate job team memberships
+    db.update(jobTeamMembers).set({ isActive: false }).where(and(eq(jobTeamMembers.employeeId, id), eq(jobTeamMembers.isActive, true))),
+    // Soft-delete future dispatch assignments for this technician
+    db.update(dispatchAssignments).set({ isDeleted: true, updatedAt: now }).where(
+      and(eq(dispatchAssignments.technicianId, id), eq(dispatchAssignments.isDeleted, false))
+    ),
+  ]);
+
+  // 3. Soft-delete the employee
   const [employee] = await db
     .update(employees)
     .set({

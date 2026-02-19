@@ -416,9 +416,8 @@ export const inventoryTransactions = org.table(
 
     // Item & Location
     itemId: uuid("item_id")
-      .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
-    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
 
     // Transaction Details
     transactionType: inventoryTransactionTypeEnum("transaction_type").notNull(),
@@ -435,19 +434,19 @@ export const inventoryTransactions = org.table(
     // Related Records
     purchaseOrderId: uuid("purchase_order_id").references(
       () => inventoryPurchaseOrders.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
-    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "set null" }),
 
     // Transfer details (if transaction_type = 'transfer')
     fromLocationId: uuid("from_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
     toLocationId: uuid("to_location_id").references(
       () => inventoryLocations.id,
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
 
     // Tracking
@@ -572,7 +571,7 @@ export const inventoryPurchaseOrderItems = org.table(
       .references(() => inventoryPurchaseOrders.id, { onDelete: "cascade" }),
     itemId: uuid("item_id")
       .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+      .references(() => inventoryItems.id, { onDelete: "set null" }),
 
     // Quantities
     quantityOrdered: numeric("quantity_ordered", { precision: 10, scale: 2 })
@@ -616,8 +615,8 @@ export const inventoryAllocations = org.table(
       .references(() => inventoryItems.id, { onDelete: "cascade" }),
 
     // Allocated To
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
-    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    bidId: uuid("bid_id").references(() => bidsTable.id, { onDelete: "set null" }),
 
     // Quantity
     quantityAllocated: numeric("quantity_allocated", {

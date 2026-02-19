@@ -9,7 +9,6 @@ import {
   fieldPermissions,
 } from "../schema/features.schema.js";
 import type { permissionModuleEnum, accessLevelEnum, uiElementTypeEnum } from "../enums/auth.enums.js";
-import { runSeedOnce } from "../../utils/seed-tracker.js";
 
 // Type helpers for enum values
 type ModuleType = (typeof permissionModuleEnum.enumValues)[number];
@@ -417,9 +416,9 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.TECHNICIAN, module: "bids", featureCode: "view_profit_margin", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "bids", featureCode: "approve_bid", accessLevel: "none" },
 
-  // Clients - Basic info only
-  { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "view_clients", accessLevel: "view" },
-  { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "view_client_details", accessLevel: "view" },
+  // Clients - Assigned jobs only
+  { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "view_clients", accessLevel: "view_assigned" },
+  { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "view_client_details", accessLevel: "view_assigned" },
   { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "create_client", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "edit_client", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "clients", featureCode: "delete_client", accessLevel: "none" },
@@ -1357,7 +1356,7 @@ const ROLE_UI_ELEMENTS_DATA = [
 /**
  * Internal seed function to populate all feature-based permission data
  */
-async function seedFeaturePermissionsInternal(): Promise<number> {
+export async function seedFeaturePermissionsInternal(): Promise<number> {
   try {
     console.log("🌱 Starting feature permissions seed...");
 
@@ -1470,14 +1469,10 @@ async function seedFeaturePermissionsInternal(): Promise<number> {
 }
 
 /**
- * Public seed function with tracking
+ * Public seed function — runs directly, no tracking
  */
 export async function seedFeaturePermissions() {
-  await runSeedOnce(
-    "feature_permissions",
-    seedFeaturePermissionsInternal,
-    "1.0.0"
-  );
+  await seedFeaturePermissionsInternal();
 }
 
 // Export for use in main seed script

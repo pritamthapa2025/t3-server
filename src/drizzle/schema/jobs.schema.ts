@@ -265,7 +265,7 @@ export const jobSurveys = org.table(
     buildingNumber: varchar("building_number", { length: 100 }),
     unitTagLabel: varchar("unit_tag_label", { length: 100 }),
     unitLocation: varchar("unit_location", { length: 255 }),
-    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "cascade" }),
+    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "set null" }),
     make: varchar("make", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
     serialNumber: varchar("serial_number", { length: 255 }),

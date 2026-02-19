@@ -140,7 +140,7 @@ export const bidFinancialBreakdown = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id)
+      .references(() => bidsTable.id, { onDelete: "cascade" })
       .unique(),
 
     materialsEquipment: numeric("materials_equipment", {
@@ -224,7 +224,7 @@ export const bidMaterials = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
     inventoryItemId: uuid("inventory_item_id").references(
       () => inventoryItems.id,
     ),
@@ -265,7 +265,7 @@ export const bidLabor = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
     positionId: integer("position_id")
       .notNull()
       .references(() => positions.id),
@@ -324,7 +324,7 @@ export const bidTravel = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidLaborId: uuid("bid_labor_id")
       .notNull()
-      .references(() => bidLabor.id),
+      .references(() => bidLabor.id, { onDelete: "cascade" }),
 
     // Note: vehicleName removed - can be derived from bidLabor → positionId → employee → assigned vehicle
     roundTripMiles: numeric("round_trip_miles", {
@@ -394,7 +394,7 @@ export const bidOperatingExpenses = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id)
+      .references(() => bidsTable.id, { onDelete: "cascade" })
       .unique(),
 
     enabled: boolean("enabled").default(false),
@@ -471,7 +471,7 @@ export const bidPlanSpecData = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id)
+      .references(() => bidsTable.id, { onDelete: "cascade" })
       .unique(),
 
     // Plans Information
@@ -510,7 +510,7 @@ export const bidSurveyData = org.table("bid_survey_data", {
   id: uuid("id").defaultRandom().primaryKey(),
   bidId: uuid("bid_id")
     .notNull()
-    .references(() => bidsTable.id)
+    .references(() => bidsTable.id, { onDelete: "cascade" })
     .unique(),
 
   buildingNumber: varchar("building_number", { length: 100 }),
@@ -548,7 +548,7 @@ export const bidDesignBuildData = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id)
+      .references(() => bidsTable.id, { onDelete: "cascade" })
       .unique(),
 
     // Design Phase Information
@@ -593,7 +593,7 @@ export const bidTimeline = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     event: varchar("event", { length: 255 }).notNull(),
     eventDate: timestamp("event_date").notNull(),
@@ -625,7 +625,7 @@ export const bidDocuments = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -661,7 +661,7 @@ export const bidDocumentTags = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 100 }).notNull(),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -681,10 +681,10 @@ export const bidDocumentTagLinks = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => bidDocuments.id),
+      .references(() => bidDocuments.id, { onDelete: "cascade" }),
     tagId: uuid("tag_id")
       .notNull()
-      .references(() => bidDocumentTags.id),
+      .references(() => bidDocumentTags.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -704,7 +704,7 @@ export const bidMedia = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -747,7 +747,7 @@ export const bidPlanSpecFiles = org.table(
       .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     fileType: varchar("file_type", { length: 20 }).notNull(), // "plan" | "spec"
     fileName: varchar("file_name", { length: 255 }).notNull(),
@@ -784,7 +784,7 @@ export const bidDesignBuildFiles = org.table(
       .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: varchar("file_path", { length: 500 }).notNull(),
@@ -816,7 +816,7 @@ export const bidNotes = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     note: text("note").notNull(),
     createdBy: uuid("created_by")
@@ -848,7 +848,7 @@ export const bidHistory = org.table(
       .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
-      .references(() => bidsTable.id),
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
 
     action: varchar("action", { length: 100 }).notNull(), // status_changed, amount_updated, assigned, etc.
     oldValue: text("old_value"),

@@ -32,8 +32,7 @@ export const timesheets = org.table(
     id: serial("id").primaryKey(),
 
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     sheetDate: date("sheet_date").notNull(),
 

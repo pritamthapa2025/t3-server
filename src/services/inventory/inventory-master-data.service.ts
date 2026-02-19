@@ -291,7 +291,7 @@ export const getLocationById = async (id: string) => {
   const [location] = await db
     .select()
     .from(inventoryLocations)
-    .where(eq(inventoryLocations.id, id))
+    .where(and(eq(inventoryLocations.id, id), eq(inventoryLocations.isDeleted, false)))
     .limit(1);
 
   return location || null;

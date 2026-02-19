@@ -48,7 +48,7 @@ export const expenses = org.table(
 
     // Category (enum: materials, equipment, fleet, etc.)
     category: expenseCategoryEnum("category").notNull().default("other"),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }), // Optional - only for job-related expenses
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }), // Optional - only for job-related expenses
 
     // Source tracking
     sourceId: uuid("source_id"), // Links to source record (job_expense.id, fleet_repair.id, purchase_order.id, etc.)
@@ -166,11 +166,9 @@ export const expenseReports = org.table(
 
     // Relationships
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Report Details
     status: expenseReportStatusEnum("status").notNull().default("draft"),
@@ -394,7 +392,7 @@ export const expenseAllocations = org.table(
 
     // Allocation Target
     allocationType: varchar("allocation_type", { length: 50 }).notNull(), // "job", "department", "general"
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
     departmentId: integer("department_id"), // Will reference departments
 
     // Allocation Details
@@ -452,7 +450,7 @@ export const mileageLogs = org.table(
     odometerEnd: integer("odometer_end"),
 
     // Job/Project Allocation
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
 
     // GPS/Tracking
     gpsStartCoordinates: varchar("gps_start_coordinates", { length: 50 }),
@@ -494,11 +492,9 @@ export const expenseReimbursements = org.table(
 
     // Relationships
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
     reportId: uuid("report_id").references(() => expenseReports.id, { onDelete: "cascade" }),
 
     // Reimbursement Details
@@ -557,14 +553,12 @@ export const expenseReimbursementItems = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     reimbursementId: uuid("reimbursement_id")
       .notNull()
       .references(() => expenseReimbursements.id, { onDelete: "cascade" }),
     expenseId: uuid("expense_id")
-      .notNull()
-      .references(() => expenses.id, { onDelete: "cascade" }),
+      .references(() => expenses.id, { onDelete: "set null" }),
 
     // Reimbursement Details
     reimbursementAmount: numeric("reimbursement_amount", {
@@ -609,8 +603,8 @@ export const expenseBudgets = org.table(
     // References
     category: expenseCategoryEnum("category"), // When budgetType is "category"
     departmentId: integer("department_id"), // Will reference departments
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
 
     // Period
     budgetPeriod: budgetPeriodEnum("budget_period").notNull(),

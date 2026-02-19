@@ -3,7 +3,6 @@ import path from "path";
 import { db } from "../../config/db.js";
 import { notificationRules } from "../schema/notifications.schema.js";
 import { logger } from "../../utils/logger.js";
-import { runSeedOnce } from "../../utils/seed-tracker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -618,14 +617,10 @@ async function seedNotificationRulesInternal(): Promise<number> {
 }
 
 /**
- * Public seed function with tracking
+ * Public seed function — runs directly, no tracking
  */
 export async function seedNotificationRules() {
-  await runSeedOnce(
-    "notification_rules",
-    seedNotificationRulesInternal,
-    "1.0.0"
-  );
+  await seedNotificationRulesInternal();
 }
 
 // Run seeder when this file is the entry point (works on Windows and Unix)

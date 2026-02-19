@@ -24,13 +24,18 @@ export const getTimesheets = async (
   offset: number,
   limit: number,
   search?: string,
-  options?: { ownEmployeeId?: number },
+  options?: { ownEmployeeId?: number; departmentId?: number },
 ) => {
   let whereConditions: any[] = [];
 
   // own_only: scope to a specific employee (Technician sees only their timesheets)
   if (options?.ownEmployeeId !== undefined) {
     whereConditions.push(eq(timesheets.employeeId, options.ownEmployeeId));
+  }
+
+  // department_only: scope to employees in the manager's department
+  if (options?.departmentId !== undefined) {
+    whereConditions.push(eq(employees.departmentId, options.departmentId));
   }
 
   // Add search filter if provided
@@ -110,7 +115,7 @@ export const getTimesheetById = async (id: number) => {
     .from(timesheets)
     .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
     .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
-    .where(eq(timesheets.id, id));
+    .where(and(eq(timesheets.id, id), eq(timesheets.isDeleted, false)));
 
   if (!row) return null;
 
@@ -254,7 +259,7 @@ export const updateTimesheet = async (
   const [existingTimesheet] = await db
     .select()
     .from(timesheets)
-    .where(eq(timesheets.id, id));
+    .where(and(eq(timesheets.id, id), eq(timesheets.isDeleted, false)));
 
   if (!existingTimesheet) {
     return null;
@@ -395,6 +400,7 @@ export const clockIn = async (data: {
       and(
         eq(timesheets.employeeId, data.employeeId),
         eq(timesheets.sheetDate, sheetDateStr as string),
+        eq(timesheets.isDeleted, false),
       ),
     );
 
@@ -447,6 +453,7 @@ export const clockOut = async (data: {
       and(
         eq(timesheets.employeeId, data.employeeId),
         eq(timesheets.sheetDate, sheetDateStr as string),
+        eq(timesheets.isDeleted, false),
       ),
     );
 
@@ -1287,11 +1294,15 @@ export const canApproveTimesheet = async (
   const [timesheet] = await db
     .select({ employeeId: timesheets.employeeId })
     .from(timesheets)
-    .where(eq(timesheets.id, timesheetId))
+    .where(and(eq(timesheets.id, timesheetId), eq(timesheets.isDeleted, false)))
     .limit(1);
 
   if (!timesheet) {
     return { allowed: false, message: "Timesheet not found" };
+  }
+
+  if (!timesheet.employeeId) {
+    return { allowed: false, message: "Timesheet has no associated employee" };
   }
 
   const [employee] = await db
@@ -1412,7 +1423,7 @@ export const rejectTimesheet = async (
   const [existingTimesheet] = await db
     .select()
     .from(timesheets)
-    .where(eq(timesheets.id, timesheetId));
+    .where(and(eq(timesheets.id, timesheetId), eq(timesheets.isDeleted, false)));
 
   if (!existingTimesheet) {
     return null;
@@ -1494,6 +1505,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
         eq(employees.isDeleted, false),
+        eq(timesheets.isDeleted, false),
       ),
     );
 
@@ -1515,6 +1527,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
         eq(employees.isDeleted, false),
+        eq(timesheets.isDeleted, false),
       ),
     );
 
@@ -1531,6 +1544,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
         eq(employees.isDeleted, false),
+        eq(timesheets.isDeleted, false),
         or(
           eq(timesheets.status, "pending"),
           eq(timesheets.status, "submitted"),
@@ -1549,6 +1563,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       and(
         sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
         eq(employees.isDeleted, false),
+        eq(timesheets.isDeleted, false),
         eq(timesheets.status, "rejected"),
       ),
     );

@@ -33,11 +33,10 @@ export const employeeComplianceCases = org.table(
   "employee_compliance_cases",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }), // Optional - only set if case is related to a specific client
-    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "set null" }), // Optional - only set if case is related to a specific client
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Case Details
     caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-2025-000001 (auto-expands)
@@ -103,11 +102,9 @@ export const employeeCertifications = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
 
     // Certification Details
     certificationName: varchar("certification_name", { length: 255 }).notNull(),
@@ -153,11 +150,9 @@ export const employeeViolationHistory = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
     complianceCaseId: uuid("compliance_case_id").references(
       () => employeeComplianceCases.id,
       { onDelete: "cascade" },
@@ -252,14 +247,11 @@ export const employeeTrainingRecords = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "set null" }),
     employeeId: integer("employee_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
+      .references(() => employees.id, { onDelete: "set null" }),
     trainingProgramId: uuid("training_program_id")
-      .notNull()
-      .references(() => trainingPrograms.id, { onDelete: "cascade" }),
+      .references(() => trainingPrograms.id, { onDelete: "set null" }),
 
     // Progress Tracking
     status: trainingStatusEnum("status").notNull().default("not_started"),

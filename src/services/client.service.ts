@@ -23,9 +23,32 @@ import {
   documentCategories,
   clientDocumentCategories,
 } from "../drizzle/schema/client.schema.js";
-import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { bidsTable } from "../drizzle/schema/bids.schema.js";
-import { invoices } from "../drizzle/schema/invoicing.schema.js";
+import {
+  jobs,
+  jobTeamMembers,
+  jobTasks,
+  jobExpenses,
+  jobSurveys,
+} from "../drizzle/schema/jobs.schema.js";
+import {
+  bidsTable,
+  bidFinancialBreakdown,
+  bidMaterials,
+  bidLabor,
+  bidTravel,
+  bidOperatingExpenses,
+  bidPlanSpecData,
+  bidSurveyData,
+  bidDesignBuildData,
+  bidTimeline,
+  bidNotes,
+  bidDocuments,
+  bidMedia,
+  bidPlanSpecFiles,
+  bidDesignBuildFiles,
+} from "../drizzle/schema/bids.schema.js";
+import { dispatchTasks, dispatchAssignments } from "../drizzle/schema/dispatch.schema.js";
+import { invoices, creditNotes } from "../drizzle/schema/invoicing.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -97,7 +120,7 @@ export const getClients = async (
         and(
           whereCondition,
           sql`EXISTS (
-            SELECT 1 FROM crm.bids b
+            SELECT 1 FROM org.bids b
             INNER JOIN org.jobs j ON j.bid_id = b.id
             INNER JOIN org.job_team_members jtm ON jtm.job_id = j.id
             WHERE b.organization_id = ${organizations.id}
@@ -659,6 +682,108 @@ export const updateOrganization = updateClient;
 
 export const deleteClient = async (id: string, deletedBy?: string) => {
   const now = new Date();
+
+  // 1. Collect bid IDs for this org
+  const bidRows = await db
+    .select({ id: bidsTable.id })
+    .from(bidsTable)
+    .where(and(eq(bidsTable.organizationId, id), eq(bidsTable.isDeleted, false)));
+  const bidIds = bidRows.map((r) => r.id);
+
+  if (bidIds.length > 0) {
+    // 2. Collect job IDs for these bids
+    const jobRows = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(inArray(jobs.bidId, bidIds), eq(jobs.isDeleted, false)));
+    const jobIds = jobRows.map((r) => r.id);
+
+    if (jobIds.length > 0) {
+      // 3. Collect dispatch task IDs for these jobs
+      const taskRows = await db
+        .select({ id: dispatchTasks.id })
+        .from(dispatchTasks)
+        .where(and(inArray(dispatchTasks.jobId, jobIds), eq(dispatchTasks.isDeleted, false)));
+      const taskIds = taskRows.map((r) => r.id);
+
+      // 4. Cascade: soft-delete dispatch assignments
+      if (taskIds.length > 0) {
+        await db
+          .update(dispatchAssignments)
+          .set({ isDeleted: true, updatedAt: now })
+          .where(and(inArray(dispatchAssignments.taskId, taskIds), eq(dispatchAssignments.isDeleted, false)));
+      }
+
+      // 5. Soft-delete dispatch tasks
+      await db
+        .update(dispatchTasks)
+        .set({ isDeleted: true, deletedAt: now, ...(deletedBy ? { deletedBy } : {}), updatedAt: now })
+        .where(and(inArray(dispatchTasks.jobId, jobIds), eq(dispatchTasks.isDeleted, false)));
+
+      // 6. Deactivate job team members
+      await db
+        .update(jobTeamMembers)
+        .set({ isActive: false })
+        .where(inArray(jobTeamMembers.jobId, jobIds));
+
+      // 7. Soft-delete job tasks, surveys, expenses (in parallel)
+      await Promise.all([
+        db.update(jobTasks).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobTasks.jobId, jobIds), eq(jobTasks.isDeleted, false))),
+        db.update(jobSurveys).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobSurveys.jobId, jobIds), eq(jobSurveys.isDeleted, false))),
+        db.update(jobExpenses).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobExpenses.jobId, jobIds), eq(jobExpenses.isDeleted, false))),
+      ]);
+
+      // 8. Soft-delete jobs
+      await db
+        .update(jobs)
+        .set({ isDeleted: true, deletedAt: now, ...(deletedBy ? { deletedBy } : {}), updatedAt: now })
+        .where(and(inArray(jobs.bidId, bidIds), eq(jobs.isDeleted, false)));
+    }
+
+    // 9. Soft-delete bid travel (tied to bidLabor)
+    const laborRows = await db.select({ id: bidLabor.id }).from(bidLabor).where(inArray(bidLabor.bidId, bidIds));
+    if (laborRows.length > 0) {
+      const laborIds = laborRows.map((r) => r.id);
+      await db.update(bidTravel).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidTravel.bidLaborId, laborIds), eq(bidTravel.isDeleted, false)));
+    }
+
+    // 10. Soft-delete bid sub-tables (in parallel)
+    await Promise.all([
+      db.update(bidFinancialBreakdown).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidFinancialBreakdown.bidId, bidIds), eq(bidFinancialBreakdown.isDeleted, false))),
+      db.update(bidMaterials).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidMaterials.bidId, bidIds), eq(bidMaterials.isDeleted, false))),
+      db.update(bidLabor).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidLabor.bidId, bidIds), eq(bidLabor.isDeleted, false))),
+      db.update(bidOperatingExpenses).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidOperatingExpenses.bidId, bidIds), eq(bidOperatingExpenses.isDeleted, false))),
+      db.update(bidPlanSpecData).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidPlanSpecData.bidId, bidIds), eq(bidPlanSpecData.isDeleted, false))),
+      db.update(bidSurveyData).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidSurveyData.bidId, bidIds), eq(bidSurveyData.isDeleted, false))),
+      db.update(bidDesignBuildData).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidDesignBuildData.bidId, bidIds), eq(bidDesignBuildData.isDeleted, false))),
+      db.update(bidTimeline).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidTimeline.bidId, bidIds), eq(bidTimeline.isDeleted, false))),
+      db.update(bidNotes).set({ isDeleted: true, updatedAt: now }).where(and(inArray(bidNotes.bidId, bidIds), eq(bidNotes.isDeleted, false))),
+      db.update(bidDocuments).set({ isDeleted: true, deletedAt: now, updatedAt: now }).where(and(inArray(bidDocuments.bidId, bidIds), eq(bidDocuments.isDeleted, false))),
+      db.update(bidMedia).set({ isDeleted: true, deletedAt: now, updatedAt: now }).where(and(inArray(bidMedia.bidId, bidIds), eq(bidMedia.isDeleted, false))),
+      db.update(bidPlanSpecFiles).set({ isDeleted: true, deletedAt: now }).where(and(inArray(bidPlanSpecFiles.bidId, bidIds), eq(bidPlanSpecFiles.isDeleted, false))),
+      db.update(bidDesignBuildFiles).set({ isDeleted: true, deletedAt: now }).where(and(inArray(bidDesignBuildFiles.bidId, bidIds), eq(bidDesignBuildFiles.isDeleted, false))),
+    ]);
+
+    // 11. Soft-delete bids
+    await db
+      .update(bidsTable)
+      .set({ isDeleted: true, deletedAt: now, ...(deletedBy ? { deletedBy } : {}), updatedAt: now })
+      .where(and(inArray(bidsTable.id, bidIds), eq(bidsTable.isDeleted, false)));
+  }
+
+    // 12. Soft-delete properties, contacts, notes, docs (in parallel)
+  await Promise.all([
+    db.update(properties).set({ isDeleted: true, updatedAt: now }).where(and(eq(properties.organizationId, id), eq(properties.isDeleted, false))),
+    db.update(clientContacts).set({ isDeleted: true, updatedAt: now }).where(and(eq(clientContacts.organizationId, id), eq(clientContacts.isDeleted, false))),
+    db.update(clientNotes).set({ isDeleted: true, updatedAt: now }).where(and(eq(clientNotes.organizationId, id), eq(clientNotes.isDeleted, false))),
+    db.update(clientDocuments).set({ isDeleted: true, updatedAt: now }).where(and(eq(clientDocuments.organizationId, id), eq(clientDocuments.isDeleted, false))),
+    // Soft-delete pending/open credit notes for this client
+    db.update(creditNotes).set({ isDeleted: true, updatedAt: now }).where(
+      and(eq(creditNotes.clientId, id), eq(creditNotes.isDeleted, false), inArray(creditNotes.status, ["pending", "open"]))
+    ),
+  ]);
+
+    // 13. Soft-delete the org itself
   const result = await db
     .update(organizations)
     .set({
@@ -1543,11 +1668,11 @@ export const updateClientSettings = async (
 // ===========================================================================
 
 export const bulkDeleteClients = async (ids: string[], deletedBy: string) => {
-  const now = new Date();
-  const result = await db
-    .update(organizations)
-    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
-    .where(and(inArray(organizations.id, ids), eq(organizations.isDeleted, false)))
-    .returning({ id: organizations.id });
-  return { deleted: result.length, skipped: ids.length - result.length };
+  // Run cascade for each client sequentially to ensure proper cleanup
+  let deleted = 0;
+  for (const id of ids) {
+    const result = await deleteClient(id, deletedBy);
+    if (result) deleted++;
+  }
+  return { deleted, skipped: ids.length - deleted };
 };

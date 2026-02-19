@@ -933,6 +933,13 @@ export const deleteInvoice = async (
   deletedBy: string,
 ) => {
   const now = new Date();
+
+  // Cascade soft-delete line items and documents (in parallel)
+  await Promise.all([
+    db.update(invoiceLineItems).set({ isDeleted: true, updatedAt: now }).where(and(eq(invoiceLineItems.invoiceId, invoiceId), eq(invoiceLineItems.isDeleted, false))),
+    db.update(invoiceDocuments).set({ isDeleted: true }).where(and(eq(invoiceDocuments.invoiceId, invoiceId), eq(invoiceDocuments.isDeleted, false))),
+  ]);
+
   await db
     .update(invoices)
     .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
@@ -1289,7 +1296,7 @@ export const createPaymentForInvoice = async (
     const [invoice] = await tx
       .select()
       .from(invoices)
-      .where(eq(invoices.id, invoiceId));
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.isDeleted, false)));
 
     if (!invoice) {
       throw new Error("Invoice not found");

@@ -98,7 +98,7 @@ export const getAllocationById = async (id: string) => {
     .leftJoin(jobs, eq(inventoryAllocations.jobId, jobs.id))
     .leftJoin(bidsTable, eq(inventoryAllocations.bidId, bidsTable.id))
     .leftJoin(users, eq(inventoryAllocations.allocatedBy, users.id))
-    .where(eq(inventoryAllocations.id, id))
+    .where(and(eq(inventoryAllocations.id, id), eq(inventoryAllocations.isDeleted, false)))
     .limit(1);
 
   if (result.length === 0) return null;

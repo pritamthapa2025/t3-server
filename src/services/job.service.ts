@@ -26,6 +26,7 @@ import {
   dispatchTasks,
   dispatchAssignments,
 } from "../drizzle/schema/dispatch.schema.js";
+import { vehicles, checkInOutRecords, assignmentHistory } from "../drizzle/schema/fleet.schema.js";
 import { payrollTimesheetEntries } from "../drizzle/schema/payroll.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import {
@@ -534,6 +535,36 @@ export const updateJob = async (
 
 export const deleteJob = async (id: string, deletedBy: string) => {
   const now = new Date();
+
+  // 1. Collect dispatch task IDs for this job
+  const taskRows = await db
+    .select({ id: dispatchTasks.id })
+    .from(dispatchTasks)
+    .where(and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false)));
+  const taskIds = taskRows.map((r) => r.id);
+
+  // 2. Soft-delete dispatch assignments
+  if (taskIds.length > 0) {
+    await db
+      .update(dispatchAssignments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(inArray(dispatchAssignments.taskId, taskIds), eq(dispatchAssignments.isDeleted, false)));
+  }
+
+  // 3. Soft-delete dispatch tasks, job tasks, surveys, expenses + deactivate team members (in parallel)
+  await Promise.all([
+    db.update(dispatchTasks).set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now }).where(and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false))),
+    db.update(jobTeamMembers).set({ isActive: false }).where(eq(jobTeamMembers.jobId, id)),
+    db.update(jobTasks).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobTasks.jobId, id), eq(jobTasks.isDeleted, false))),
+    db.update(jobSurveys).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobSurveys.jobId, id), eq(jobSurveys.isDeleted, false))),
+    db.update(jobExpenses).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobExpenses.jobId, id), eq(jobExpenses.isDeleted, false))),
+    // Nullify FK pointers (preserve financial/historical records, just clear job link)
+    db.update(vehicles).set({ currentJobId: null, updatedAt: now }).where(eq(vehicles.currentJobId, id)),
+    db.update(checkInOutRecords).set({ jobId: null, updatedAt: now }).where(eq(checkInOutRecords.jobId, id)),
+    db.update(assignmentHistory).set({ jobId: null, updatedAt: now }).where(eq(assignmentHistory.jobId, id)),
+  ]);
+
+  // 4. Soft-delete the job
   const [job] = await db
     .update(jobs)
     .set({
@@ -3226,6 +3257,31 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
 
 export const bulkDeleteJobs = async (ids: string[], deletedBy: string) => {
   const now = new Date();
+
+  const taskRows = await db
+    .select({ id: dispatchTasks.id })
+    .from(dispatchTasks)
+    .where(and(inArray(dispatchTasks.jobId, ids), eq(dispatchTasks.isDeleted, false)));
+  const taskIds = taskRows.map((r) => r.id);
+
+  if (taskIds.length > 0) {
+    await db
+      .update(dispatchAssignments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(inArray(dispatchAssignments.taskId, taskIds), eq(dispatchAssignments.isDeleted, false)));
+  }
+
+  await Promise.all([
+    db.update(dispatchTasks).set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now }).where(and(inArray(dispatchTasks.jobId, ids), eq(dispatchTasks.isDeleted, false))),
+    db.update(jobTeamMembers).set({ isActive: false }).where(inArray(jobTeamMembers.jobId, ids)),
+    db.update(jobTasks).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobTasks.jobId, ids), eq(jobTasks.isDeleted, false))),
+    db.update(jobSurveys).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobSurveys.jobId, ids), eq(jobSurveys.isDeleted, false))),
+    db.update(jobExpenses).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobExpenses.jobId, ids), eq(jobExpenses.isDeleted, false))),
+    db.update(vehicles).set({ currentJobId: null, updatedAt: now }).where(inArray(vehicles.currentJobId, ids)),
+    db.update(checkInOutRecords).set({ jobId: null, updatedAt: now }).where(inArray(checkInOutRecords.jobId, ids)),
+    db.update(assignmentHistory).set({ jobId: null, updatedAt: now }).where(inArray(assignmentHistory.jobId, ids)),
+  ]);
+
   const result = await db
     .update(jobs)
     .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })

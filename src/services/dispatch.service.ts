@@ -3,6 +3,7 @@ import {
   dispatchTasks,
   dispatchAssignments,
 } from "../drizzle/schema/dispatch.schema.js";
+import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import {
@@ -166,6 +167,7 @@ export const getDispatchTasks = async (
       : [];
   const technicianIdsByTaskId = new Map<string, number[]>();
   for (const a of assignmentsByTask) {
+    if (a.technicianId == null) continue;
     const list = technicianIdsByTaskId.get(a.taskId) ?? [];
     list.push(a.technicianId);
     technicianIdsByTaskId.set(a.taskId, list);
@@ -315,6 +317,18 @@ export const updateDispatchTask = async (
 // Soft Delete Dispatch Task
 export const deleteDispatchTask = async (id: string, deletedBy: string) => {
   const now = new Date();
+
+  // 1. Soft-delete all assignments for this task + nullify vehicle currentDispatchTaskId (in parallel)
+  await Promise.all([
+    db.update(dispatchAssignments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(eq(dispatchAssignments.taskId, id), eq(dispatchAssignments.isDeleted, false))),
+    db.update(vehicles)
+      .set({ currentDispatchTaskId: null, updatedAt: now })
+      .where(eq(vehicles.currentDispatchTaskId, id)),
+  ]);
+
+  // 2. Soft-delete the dispatch task
   const result = await db
     .update(dispatchTasks)
     .set({
@@ -771,6 +785,7 @@ export const getEmployeesWithAssignedTasks = async (
       .orderBy(asc(dispatchTasks.startTime));
 
     for (const a of assignments) {
+      if (a.technicianId == null) continue;
       const list = tasksByEmployeeId.get(a.technicianId) ?? [];
       list.push({
         assignmentId: a.assignmentId,
