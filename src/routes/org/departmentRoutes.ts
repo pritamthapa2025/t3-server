@@ -13,7 +13,6 @@ import { getUsersByRolesHandler } from "../../controllers/UserControler.js";
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getDepartmentsQuerySchema,
@@ -29,8 +28,6 @@ const router: IRouter = Router();
 // Apply authentication middleware to all department routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 router.route("/department/kpis").get(getDepartmentKPIsHandler);
 router.route("/department/list").get(getDepartmentsListHandler);

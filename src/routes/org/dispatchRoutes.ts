@@ -41,7 +41,6 @@ import {
   getEmployeesWithAssignedTasksQuerySchema,
 } from "../../validations/dispatch.validations.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
 
@@ -102,8 +101,6 @@ const parseFormData = (req: any, res: any, next: any) => {
 // Apply authentication to all routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Feature shorthand constants
 // Technicians: view own + confirm; Managers/Executives: create/edit/delete

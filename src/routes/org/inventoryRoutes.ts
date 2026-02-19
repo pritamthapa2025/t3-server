@@ -119,7 +119,6 @@ import {
   deleteSchema,
 } from "../../validations/inventory.validations.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
 
@@ -165,8 +164,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 // Apply authentication to all routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Feature shorthand constants
 // Technicians: view only; Managers: add/edit; Executives: delete + all

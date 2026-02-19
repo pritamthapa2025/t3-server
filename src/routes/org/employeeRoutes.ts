@@ -23,7 +23,6 @@ import {
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
-import { userTransformer } from "../../middleware/response-transformer.js";
 import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getEmployeesQuerySchema,
@@ -85,8 +84,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 // Apply authentication middleware to all employee routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(userTransformer);
 
 // Inspectors: employees whose role is Executive or Manager (full employee + user record)
 router.get("/inspector", getInspectorsHandler);

@@ -9,7 +9,6 @@ import {
 } from "../../controllers/PositionController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 import {
   getPositionsQuerySchema,
   getPositionByIdSchema,
@@ -23,8 +22,6 @@ const router: IRouter = Router();
 // Apply authentication middleware to all position routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 router
   .route("/position")

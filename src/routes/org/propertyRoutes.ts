@@ -18,7 +18,6 @@ import {
 } from "../../controllers/PropertyController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 import {
   getPropertiesQuerySchema,
   getPropertyByIdSchema,
@@ -75,8 +74,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 // Apply authentication middleware to all property routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Property KPIs route
 router.get("/properties/kpis", getPropertyKPIsHandler);

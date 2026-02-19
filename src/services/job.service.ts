@@ -317,11 +317,15 @@ export const createJob = async (data: {
   }>;
   createdBy: string;
 }) => {
-  // Get organizationId and current status from bid
+  // Get organizationId, current status, assignedTo, primaryTechnicianId, and name from bid
   const [bid] = await db
     .select({
       organizationId: bidsTable.organizationId,
       currentStatus: bidsTable.status,
+      assignedTo: bidsTable.assignedTo,
+      primaryTechnicianId: bidsTable.primaryTechnicianId,
+      projectName: bidsTable.projectName,
+      bidNumber: bidsTable.bidNumber,
     })
     .from(bidsTable)
     .where(eq(bidsTable.id, data.bidId))
@@ -391,6 +395,7 @@ export const createJob = async (data: {
   const job = (result as any[])[0];
 
   // Add team members if provided
+  // addJobTeamMember already fires job_assigned for each team member
   if (data.assignedTeamMembers && data.assignedTeamMembers.length > 0) {
     await Promise.all(
       data.assignedTeamMembers.map((member) =>
@@ -404,6 +409,67 @@ export const createJob = async (data: {
       ),
     );
   }
+
+  // Fire job_assigned for all bid-level assignees (fire-and-forget)
+  void (async () => {
+    try {
+      const jobName = bid.projectName || bid.bidNumber || job.jobNumber || "Job";
+      const { NotificationService } = await import("./notification.service.js");
+      const svc = new NotificationService();
+
+      console.log(`[Notification] createJob bid assignees — assignedTo: ${bid.assignedTo ?? "null"}, primaryTechnicianId: ${bid.primaryTechnicianId ?? "null"}`);
+
+      // 1. bid.assignedTo — direct user UUID
+      if (bid.assignedTo) {
+        console.log(`[Notification] Firing job_assigned for assignedTo: ${bid.assignedTo}`);
+        await svc.triggerNotification({
+          type: "job_assigned",
+          category: "job",
+          priority: "high",
+          triggeredBy: data.createdBy,
+          data: {
+            entityType: "Job",
+            entityId: job.id,
+            entityName: jobName,
+            assignedTechnicianId: bid.assignedTo,
+          },
+        });
+      }
+
+      // 2. bid.primaryTechnicianId — employee record, look up userId first
+      if (bid.primaryTechnicianId) {
+        const [techData] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, bid.primaryTechnicianId))
+          .limit(1);
+
+        console.log(`[Notification] primaryTechnicianId ${bid.primaryTechnicianId} → userId: ${techData?.userId ?? "NOT FOUND / NULL"}`);
+
+        if (techData?.userId) {
+          console.log(`[Notification] Firing job_assigned for primaryTechnician userId: ${techData.userId}`);
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            triggeredBy: data.createdBy,
+            data: {
+              entityType: "Job",
+              entityId: job.id,
+              entityName: jobName,
+              assignedTechnicianId: techData.userId,
+            },
+          });
+        } else {
+          console.warn(`[Notification] Skipped job_assigned for primaryTechnicianId ${bid.primaryTechnicianId} — employee has no linked userId`);
+        }
+      } else {
+        console.log(`[Notification] bid.primaryTechnicianId is null — skipping`);
+      }
+    } catch (err) {
+      console.error("[Notification] job_assigned (bid assignees) failed:", err);
+    }
+  })();
 
   // Get updated bid to include priority in response
   const [updatedBid] = await db

@@ -9,7 +9,6 @@ import {
 } from "../../controllers/UserControler.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { userTransformer } from "../../middleware/response-transformer.js";
 import {
   getUsersQuerySchema,
   getUserByIdSchema,
@@ -53,8 +52,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 // Authentication will be applied per route instead of globally to avoid conflicts
 
-// Apply timezone transformation to all GET responses
-router.use(userTransformer);
 
 router
   .route("/users")

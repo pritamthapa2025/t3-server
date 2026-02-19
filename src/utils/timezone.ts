@@ -1,13 +1,13 @@
 import { format, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { parseISO } from 'date-fns';
 
-// US Eastern Time Zone
-export const US_EASTERN_TZ = 'America/New_York';
+// US Pacific Time Zone
+export const US_EASTERN_TZ = 'America/Los_Angeles';
 
 /**
- * Convert UTC timestamp to US Eastern Time
+ * Convert UTC timestamp to US Pacific Time
  * @param utcDate - UTC date (from database)
- * @returns Date object in Eastern Time
+ * @returns Date object in Pacific Time
  * @throws Error if the date is invalid
  */
 export function toEasternTime(utcDate: Date | string): Date {
@@ -26,8 +26,8 @@ export function toEasternTime(utcDate: Date | string): Date {
 }
 
 /**
- * Convert Eastern Time to UTC for database storage
- * @param easternDate - Date in Eastern Time
+ * Convert Pacific Time to UTC for database storage
+ * @param easternDate - Date in Pacific Time
  * @returns Date object in UTC
  */
 export function fromEasternTime(easternDate: Date): Date {
@@ -35,7 +35,7 @@ export function fromEasternTime(easternDate: Date): Date {
 }
 
 /**
- * Format date to MM/DD/YYYY in Eastern Time
+ * Format date to MM/DD/YYYY in Pacific Time
  * @param utcDate - UTC date from database
  * @returns Formatted date string
  * @throws Error if the date is invalid
@@ -45,12 +45,12 @@ export function formatToEasternMMDDYYYY(utcDate: Date | string): string {
     throw new Error('Date value is required for formatting');
   }
   
-  const easternDate = toEasternTime(utcDate);
-  return format(easternDate, 'MM/dd/yyyy', { timeZone: US_EASTERN_TZ });
+  const pacificDate = toEasternTime(utcDate);
+  return format(pacificDate, 'MM/dd/yyyy', { timeZone: US_EASTERN_TZ });
 }
 
 /**
- * Format date to MM/DD/YYYY HH:mm in Eastern Time
+ * Format date to MM/DD/YYYY HH:mm in Pacific Time
  * @param utcDate - UTC date from database
  * @returns Formatted datetime string
  * @throws Error if the date is invalid
@@ -60,12 +60,12 @@ export function formatToEasternDateTime(utcDate: Date | string): string {
     throw new Error('Date value is required for formatting');
   }
   
-  const easternDate = toEasternTime(utcDate);
-  return format(easternDate, 'MM/dd/yyyy HH:mm', { timeZone: US_EASTERN_TZ });
+  const pacificDate = toEasternTime(utcDate);
+  return format(pacificDate, 'MM/dd/yyyy HH:mm', { timeZone: US_EASTERN_TZ });
 }
 
 /**
- * Format date to full Eastern Time display
+ * Format date to full Pacific Time display
  * @param utcDate - UTC date from database
  * @returns Formatted datetime with timezone
  * @throws Error if the date is invalid
@@ -75,27 +75,27 @@ export function formatToEasternFull(utcDate: Date | string): string {
     throw new Error('Date value is required for formatting');
   }
   
-  const easternDate = toEasternTime(utcDate);
-  return format(easternDate, 'MM/dd/yyyy hh:mm:ss a zzz', { timeZone: US_EASTERN_TZ });
+  const pacificDate = toEasternTime(utcDate);
+  return format(pacificDate, 'MM/dd/yyyy hh:mm:ss a zzz', { timeZone: US_EASTERN_TZ });
 }
 
 /**
- * Get current Eastern Time as Date object
- * @returns Current date/time in Eastern timezone
+ * Get current Pacific Time as Date object
+ * @returns Current date/time in Pacific timezone
  */
 export function getCurrentEasternTime(): Date {
   return toZonedTime(new Date(), US_EASTERN_TZ);
 }
 
 /**
- * Create a date from Eastern Time input (for forms)
- * @param easternDateString - Date string assumed to be in Eastern Time
+ * Create a date from Pacific Time input (for forms)
+ * @param easternDateString - Date string assumed to be in Pacific Time
  * @returns UTC Date for database storage
  */
 export function parseEasternTimeForDB(easternDateString: string): Date {
-  // Parse as if it's in Eastern Time, then convert to UTC
-  const easternDate = new Date(easternDateString);
-  return fromEasternTime(easternDate);
+  // Parse as if it's in Pacific Time, then convert to UTC
+  const pacificDate = new Date(easternDateString);
+  return fromEasternTime(pacificDate);
 }
 
 

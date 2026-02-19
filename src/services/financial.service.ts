@@ -750,17 +750,24 @@ async function buildSummary(
   const totalInvoiced = parseFloat(paidRow?.totalInvoiced ?? "0");
   const totalPaid = parseFloat(paidRow?.totalPaid ?? "0");
   
-  // Calculate totalContractValue from jobs
+  // Calculate totalContractValue from bids that have been converted to jobs
   const contractConditions = [
     ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
   ];
   const [contractRow] = await db
     .select({
-      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidFinancialBreakdown.bidId, bidsTable.id),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(and(...contractConditions));
   const totalContractValue = parseFloat(contractRow?.totalContractValue ?? "0");
   
@@ -834,11 +841,18 @@ export const getFinancialJobsSummarySection = async (
     const jobRows = await db
       .select({ 
         jobId: jobs.id, 
-        contractValue: bidsTable.actualTotalPrice, 
+        contractValue: bidFinancialBreakdown.actualTotalPrice, 
         startDate: jobs.createdAt
       })
       .from(jobs)
       .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .leftJoin(
+        bidFinancialBreakdown,
+        and(
+          eq(bidFinancialBreakdown.bidId, bidsTable.id),
+          eq(bidFinancialBreakdown.isDeleted, false),
+        ),
+      )
       .where(and(...jobConditions));
     for (const row of jobRows) {
       contractByJob.set(row.jobId, parseFloat((row.contractValue as string) ?? "0"));

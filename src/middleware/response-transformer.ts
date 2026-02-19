@@ -16,16 +16,42 @@ interface TransformConfig {
 }
 
 /**
- * Default transformation configuration for common timestamp fields
+ * Default transformation configuration — covers all date fields across all modules
  */
 const DEFAULT_CONFIG: TransformConfig = {
-  dateFields: ["sheetDate", "dateOfBirth", "hireDate", "terminationDate"],
+  dateFields: [
+    "sheetDate",
+    "dateOfBirth",
+    "hireDate",
+    "terminationDate",
+    "invoiceDate",
+    "dueDate",
+    "paidDate",
+    "expenseDate",
+    "scheduledStartDate",
+    "scheduledEndDate",
+    "actualStartDate",
+    "actualEndDate",
+    "startDate",
+    "endDate",
+    "plannedStartDate",
+    "estimatedCompletion",
+    "removalDate",
+    "periodStart",
+    "periodEnd",
+    "monthDate",
+    "projectionDate",
+  ],
   dateTimeFields: [
     "createdAt",
     "updatedAt",
+    "deletedAt",
     "clockIn",
     "clockOut",
     "lastLogin",
+    "emailVerifiedAt",
+    "startTime",
+    "endTime",
   ],
   fullDateFields: [],
   preserveOriginal: false,
@@ -219,10 +245,10 @@ export function easternTimeTransformer(customConfig?: TransformConfig) {
           !Array.isArray(transformedData)
         ) {
           transformedData._timezone = {
-            display: "America/New_York (Eastern Time)",
+            display: "America/Los_Angeles (Pacific Time)",
             format: "MM/DD/YYYY HH:mm",
             dst_aware: true,
-            note: "All timestamps converted to Eastern Time",
+            note: "All timestamps converted to Pacific Time",
           };
         }
 
@@ -279,7 +305,7 @@ export function largeDataTransformer(config?: TransformConfig) {
               chunkSize,
             },
             _timezone: {
-              display: "America/New_York (Eastern Time)",
+              display: "America/Los_Angeles (Pacific Time)",
               format: "MM/DD/YYYY HH:mm",
               dst_aware: true,
             },
@@ -295,7 +321,7 @@ export function largeDataTransformer(config?: TransformConfig) {
           !Array.isArray(transformedData)
         ) {
           transformedData._timezone = {
-            display: "America/New_York (Eastern Time)",
+            display: "America/Los_Angeles (Pacific Time)",
             format: "MM/DD/YYYY HH:mm",
             dst_aware: true,
           };

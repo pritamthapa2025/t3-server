@@ -153,7 +153,6 @@ import {
   sendQuoteTestSchema,
 } from "../../validations/bid.validations.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
 
@@ -258,8 +257,6 @@ router.use(authenticate);
 router.use(authorizeModule("bids"));
 router.use(loadModulePermissions("bids"));
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Main Bid Routes
 

@@ -21,7 +21,6 @@ import {
   authorizeAnyFeature,
 } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
-import { timesheetTransformer } from "../../middleware/response-transformer.js";
 import {
   getTimesheetsQuerySchema,
   getTimesheetByIdSchema,
@@ -44,8 +43,6 @@ const router: IRouter = Router();
 // Apply authentication middleware to all timesheet routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(timesheetTransformer);
 
 // All roles can view their own timesheets and create/submit entries
 const viewOwn = authorizeFeature("timesheet", "view_own_timesheets");

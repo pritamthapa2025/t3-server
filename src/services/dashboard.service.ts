@@ -54,16 +54,8 @@ export const getDashboardOverview = async (
   };
 };
 
-/** Invoice statuses that count as revenue (invoiced; excludes cancelled/void) */
-const REVENUE_INVOICE_STATUSES = [
-  "draft",
-  "pending",
-  "sent",
-  "viewed",
-  "partial",
-  "paid",
-  "overdue",
-] as const;
+/** Invoice statuses that count as revenue (paid only) */
+const REVENUE_INVOICE_STATUSES = ["paid"] as const;
 
 /**
  * Get revenue statistics for the last 6 months (or for date range when provided).
@@ -799,11 +791,18 @@ export const getPriorityJobs = async (
       projectName: bidsTable.projectName,
       building: bidsTable.siteAddress,
       dueDate: jobs.scheduledEndDate,
-      price: bidsTable.actualTotalPrice,
+      price: bidFinancialBreakdown.actualTotalPrice,
       status: jobs.status,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidFinancialBreakdown.bidId, bidsTable.id),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(baseWhere)
     .$dynamic();
 

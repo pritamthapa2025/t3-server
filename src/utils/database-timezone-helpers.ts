@@ -72,8 +72,8 @@ export const dbTimezone = {
   // Get current IST time from database  
   getCurrentIst: () => sql`(now() AT TIME ZONE 'Asia/Kolkata')`,
   
-  // Get current Eastern time from database
-  getCurrentEt: () => sql`(now() AT TIME ZONE 'America/New_York')`,
+  // Get current Pacific time from database
+  getCurrentEt: () => sql`(now() AT TIME ZONE 'America/Los_Angeles')`,
   
   // Convert any timestamp to UTC in query
   toUtc: (timestamp: any) => sql`(${timestamp} AT TIME ZONE 'UTC')`,

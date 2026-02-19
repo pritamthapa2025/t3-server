@@ -48,7 +48,6 @@ import {
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
   getClientsQuerySchema,
@@ -191,8 +190,6 @@ const parseFormData = (req: any, res: any, next: any) => {
 // Apply authentication middleware to all client routes
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Feature shorthand constants
 // Technicians can view basic info; Managers/Executives have full access

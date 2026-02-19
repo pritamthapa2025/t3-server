@@ -127,7 +127,7 @@ export function transformPaginatedResponse<T extends Record<string, any>>(
     ...response,
     data: response.data.map(item => transformObject(item, options)),
     _timezone: {
-      display: 'America/New_York (Eastern Time)',
+      display: 'America/Los_Angeles (Pacific Time)',
       format: 'MM/DD/YYYY HH:mm',
       dst_aware: true
     }
@@ -152,10 +152,10 @@ export function createEasternTimeResponse<T>(data: T, options?: TransformOptions
   return {
     ...transformedData,
     _timezone: {
-      display: 'America/New_York (Eastern Time)',
+      display: 'America/Los_Angeles (Pacific Time)',
       format: 'MM/DD/YYYY HH:mm', 
       dst_aware: true,
-      note: 'All timestamps converted to Eastern Time'
+      note: 'All timestamps converted to Pacific Time'
     }
   };
 }

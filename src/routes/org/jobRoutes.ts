@@ -148,7 +148,6 @@ import {
   getJobLaborCostTrackingSchema,
 } from "../../validations/job.validations.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
-import { generalTransformer } from "../../middleware/response-transformer.js";
 
 const router: IRouter = Router();
 
@@ -237,8 +236,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 router.use(authenticate);
 
-// Apply timezone transformation to all GET responses
-router.use(generalTransformer);
 
 // Shorthand: view feature covers Technician (view_assigned) + Manager/Executive (view)
 const viewJobs = authorizeAnyFeature("jobs", ["view_jobs", "view"]);
