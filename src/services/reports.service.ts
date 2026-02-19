@@ -13,6 +13,7 @@ import {
   inventoryItems,
   inventoryCategories,
 } from "../drizzle/schema/inventory.schema.js";
+import { revenueTargets } from "../drizzle/schema/org.schema.js";
 import { payrollEntries } from "../drizzle/schema/payroll.schema.js";
 
 // ============================
@@ -324,6 +325,8 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
     .select({
       month: sql<string>`TO_CHAR(${invoices.invoiceDate}, 'Mon')`,
       monthDate: sql<string>`DATE_TRUNC('month', ${invoices.invoiceDate})`,
+      monthNum: sql<number>`EXTRACT(MONTH FROM DATE_TRUNC('month', ${invoices.invoiceDate}))::int`,
+      yearNum: sql<number>`EXTRACT(YEAR FROM DATE_TRUNC('month', ${invoices.invoiceDate}))::int`,
       revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
     })
     .from(invoices)
@@ -341,8 +344,32 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
     .groupBy(
       sql`DATE_TRUNC('month', ${invoices.invoiceDate})`,
       sql`TO_CHAR(${invoices.invoiceDate}, 'Mon')`,
+      sql`EXTRACT(MONTH FROM DATE_TRUNC('month', ${invoices.invoiceDate}))`,
+      sql`EXTRACT(YEAR FROM DATE_TRUNC('month', ${invoices.invoiceDate}))`,
     )
     .orderBy(sql`DATE_TRUNC('month', ${invoices.invoiceDate})`);
+
+  // Fetch revenue targets for the years present in the data
+  const years = monthlyData.length > 0 ? [...new Set(monthlyData.map((m) => m.yearNum))] : [];
+  const targetRows =
+    years.length > 0
+      ? await db
+          .select({
+            month: revenueTargets.month,
+            year: revenueTargets.year,
+            targetAmount: revenueTargets.targetAmount,
+          })
+          .from(revenueTargets)
+          .where(
+            and(
+              eq(revenueTargets.isDeleted, false),
+              inArray(revenueTargets.year, years),
+            ),
+          )
+      : [];
+  const targetMap = new Map(
+    targetRows.map((t) => [`${t.year}-${t.month}`, Number(t.targetAmount)]),
+  );
 
   // Get monthly costs
   const monthlyCosts = await db
@@ -377,11 +404,13 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
   return monthlyData.map((m) => {
     const revenue = parseFloat(m.revenue);
     const cost = costMap.get(m.month) || 0;
+    const target = targetMap.get(`${m.yearNum}-${m.monthNum}`) ?? 0;
     return {
       month: m.month,
       revenue,
       cost,
       profit: revenue - cost,
+      target: target > 0 ? target : undefined,
     };
   });
 };
