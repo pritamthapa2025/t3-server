@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import * as DashboardController from "../../controllers/DashboardController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { requireRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   dashboardDateRangeQuerySchema,
@@ -72,17 +73,17 @@ router.get(
   DashboardController.getPriorityJobs,
 );
 
-// ─── Revenue Targets / Goals ──────────────────────────────────────────────────
+// ─── Revenue Targets / Goals (create/update/delete: Executive only) ───────────
 
 router
   .route("/goals")
   .get(authenticate, validate(revenueTargetListQuerySchema), DashboardController.listRevenueTargets)
-  .post(authenticate, validate(createRevenueTargetSchema), DashboardController.createRevenueTarget);
+  .post(authenticate, requireRole("Executive"), validate(createRevenueTargetSchema), DashboardController.createRevenueTarget);
 
 router
   .route("/goals/:id")
   .get(authenticate, validate(revenueTargetIdParamSchema), DashboardController.getRevenueTargetById)
-  .put(authenticate, validate(updateRevenueTargetSchema), DashboardController.updateRevenueTarget)
-  .delete(authenticate, validate(revenueTargetIdParamSchema), DashboardController.deleteRevenueTarget);
+  .put(authenticate, requireRole("Executive"), validate(updateRevenueTargetSchema), DashboardController.updateRevenueTarget)
+  .delete(authenticate, requireRole("Executive"), validate(revenueTargetIdParamSchema), DashboardController.deleteRevenueTarget);
 
 export default router;
