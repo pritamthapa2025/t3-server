@@ -348,6 +348,29 @@ export const createTimesheetHandler = async (req: Request, res: Response) => {
 export const updateTimesheetHandler = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as unknown as number;
+    const userId = req.user?.id;
+
+    // Ownership check: edit_own access level means the user can only edit their own timesheet
+    if (req.userAccessLevel === "edit_own") {
+      if (!userId) {
+        return res.status(403).json({ success: false, message: "Authentication required" });
+      }
+      const existing = await getTimesheetById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Timesheet not found" });
+      }
+      const [emp] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.userId, userId))
+        .limit(1);
+      if (!emp || existing.employeeId !== emp.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only edit your own timesheets",
+        });
+      }
+    }
 
     const {
       employeeId,
@@ -409,6 +432,25 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) {
       return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    // Ownership check: delete_own access level means the user can only delete their own timesheet
+    if (req.userAccessLevel === "delete_own") {
+      const existing = await getTimesheetById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Timesheet not found" });
+      }
+      const [emp] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.userId, userId))
+        .limit(1);
+      if (!emp || existing.employeeId !== emp.id) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete your own timesheets",
+        });
+      }
     }
 
     const timesheet = await deleteTimesheet(id, userId);

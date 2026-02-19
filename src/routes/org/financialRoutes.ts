@@ -36,6 +36,7 @@ import {
   deleteFinancialReportHandler,
 } from "../../controllers/FinancialController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { authorizeAnyFeature } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getFinancialDashboardQuerySchema,
@@ -73,6 +74,10 @@ const router: IRouter = Router();
 // Apply authentication middleware to all financial routes
 router.use(authenticate);
 
+// Financial analytics module is Executive-only per CSV section 1.1:
+// Manager sees limited dashboard widgets; full P&L/cash-flow/forecasting = Executive only.
+// Only Executive has financial.view / financial.edit in the seed.
+const viewFinancial = authorizeAnyFeature("financial", ["view", "edit"]);
 
 // ============================
 // Financial module – report-style section APIs (one per tab/area)
@@ -80,42 +85,49 @@ router.use(authenticate);
 // GET /api/v1/org/financial/summary – Top-level KPIs
 router.get(
   "/financial/summary",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialSummarySectionHandler
 );
 // GET /api/v1/org/financial/jobs-summary – Jobs list for Summary tab table (pagination + search)
 router.get(
   "/financial/jobs-summary",
+  viewFinancial,
   validate(getFinancialJobsSummaryQuerySchema),
   getFinancialJobsSummarySectionHandler
 );
 // GET /api/v1/org/financial/cost-categories – Cost breakdown (donut + Budget at Risk)
 router.get(
   "/financial/cost-categories",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialCostCategoriesSectionHandler
 );
 // GET /api/v1/org/financial/profitability – Projected vs actual, job profitability, trend
 router.get(
   "/financial/profitability",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialProfitabilitySectionHandler
 );
 // GET /api/v1/org/financial/profit-trend – Trend data only (chart)
 router.get(
   "/financial/profit-trend",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialProfitTrendSectionHandler
 );
 // GET /api/v1/org/financial/forecasting – Cash flow projection, scenarios, revenue forecast
 router.get(
   "/financial/forecasting",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialForecastingSectionHandler
 );
 // GET /api/v1/org/financial/reports – Report definitions (Reports & Exports tab)
 router.get(
   "/financial/reports",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialReportsSectionHandler
 );
@@ -123,90 +135,91 @@ router.get(
 // GET /api/v1/org/financial/dashboard – Optional: single aggregate call
 router.get(
   "/financial/dashboard",
+  viewFinancial,
   validate(getFinancialDashboardQuerySchema),
   getFinancialDashboardHandler
 );
 
-// Financial Summary Routes (CRUD)
+// Financial Summary CRUD — Executive only
 router
   .route("/financial-summary")
-  .get(validate(getFinancialSummaryQuerySchema), getFinancialSummaryHandler)
-  .post(validate(createFinancialSummarySchema), createFinancialSummaryHandler);
+  .get(viewFinancial, validate(getFinancialSummaryQuerySchema), getFinancialSummaryHandler)
+  .post(viewFinancial, validate(createFinancialSummarySchema), createFinancialSummaryHandler);
 
 router
   .route("/financial-summary/:id")
-  .put(validate(updateFinancialSummarySchema), updateFinancialSummaryHandler);
+  .put(viewFinancial, validate(updateFinancialSummarySchema), updateFinancialSummaryHandler);
 
-// Job Financial Summary Routes
+// Job Financial Summary Routes — Executive only
 router
   .route("/job-financial-summary")
-  .get(validate(getJobFinancialSummariesQuerySchema), getJobFinancialSummariesHandler)
-  .post(validate(createJobFinancialSummarySchema), createJobFinancialSummaryHandler);
+  .get(viewFinancial, validate(getJobFinancialSummariesQuerySchema), getJobFinancialSummariesHandler)
+  .post(viewFinancial, validate(createJobFinancialSummarySchema), createJobFinancialSummaryHandler);
 
 router
   .route("/job-financial-summary/:jobId")
-  .get(validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
-  .put(validate(updateJobFinancialSummarySchema), updateJobFinancialSummaryHandler);
+  .get(viewFinancial, validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
+  .put(viewFinancial, validate(updateJobFinancialSummarySchema), updateJobFinancialSummaryHandler);
 
-// Financial Cost Categories Routes
+// Financial Cost Categories Routes — Executive only
 router
   .route("/financial-cost-categories")
-  .get(validate(getFinancialCostCategoriesQuerySchema), getFinancialCostCategoriesHandler)
-  .post(validate(createFinancialCostCategorySchema), createFinancialCostCategoryHandler);
+  .get(viewFinancial, validate(getFinancialCostCategoriesQuerySchema), getFinancialCostCategoriesHandler)
+  .post(viewFinancial, validate(createFinancialCostCategorySchema), createFinancialCostCategoryHandler);
 
 router
   .route("/financial-cost-categories/:id")
-  .put(validate(updateFinancialCostCategorySchema), updateFinancialCostCategoryHandler)
-  .delete(validate(deleteFinancialCostCategorySchema), deleteFinancialCostCategoryHandler);
+  .put(viewFinancial, validate(updateFinancialCostCategorySchema), updateFinancialCostCategoryHandler)
+  .delete(viewFinancial, validate(deleteFinancialCostCategorySchema), deleteFinancialCostCategoryHandler);
 
-// Profit Trend Routes
+// Profit Trend Routes — Executive only
 router
   .route("/profit-trend")
-  .get(validate(getProfitTrendQuerySchema), getProfitTrendHandler)
-  .post(validate(createProfitTrendSchema), createProfitTrendHandler);
+  .get(viewFinancial, validate(getProfitTrendQuerySchema), getProfitTrendHandler)
+  .post(viewFinancial, validate(createProfitTrendSchema), createProfitTrendHandler);
 
-// Cash Flow Projection Routes
+// Cash Flow Projection Routes — Executive only
 router
   .route("/cash-flow-projection")
-  .get(validate(getCashFlowProjectionsQuerySchema), getCashFlowProjectionsHandler)
-  .post(validate(createCashFlowProjectionSchema), createCashFlowProjectionHandler);
+  .get(viewFinancial, validate(getCashFlowProjectionsQuerySchema), getCashFlowProjectionsHandler)
+  .post(viewFinancial, validate(createCashFlowProjectionSchema), createCashFlowProjectionHandler);
 
 router
   .route("/cash-flow-projection/:id")
-  .put(validate(updateCashFlowProjectionSchema), updateCashFlowProjectionHandler);
+  .put(viewFinancial, validate(updateCashFlowProjectionSchema), updateCashFlowProjectionHandler);
 
-// Cash Flow Scenarios Routes
+// Cash Flow Scenarios Routes — Executive only
 router
   .route("/cash-flow-scenarios/:projectionId")
-  .get(validate(getCashFlowScenariosSchema), getCashFlowScenariosHandler);
+  .get(viewFinancial, validate(getCashFlowScenariosSchema), getCashFlowScenariosHandler);
 
 router
   .route("/cash-flow-scenarios")
-  .post(validate(createCashFlowScenarioSchema), createCashFlowScenarioHandler);
+  .post(viewFinancial, validate(createCashFlowScenarioSchema), createCashFlowScenarioHandler);
 
 router
   .route("/cash-flow-scenarios/:id")
-  .put(validate(updateCashFlowScenarioSchema), updateCashFlowScenarioHandler);
+  .put(viewFinancial, validate(updateCashFlowScenarioSchema), updateCashFlowScenarioHandler);
 
-// Revenue Forecast Routes
+// Revenue Forecast Routes — Executive only
 router
   .route("/revenue-forecast")
-  .get(validate(getRevenueForecastQuerySchema), getRevenueForecastHandler)
-  .post(validate(createRevenueForecastSchema), createRevenueForecastHandler);
+  .get(viewFinancial, validate(getRevenueForecastQuerySchema), getRevenueForecastHandler)
+  .post(viewFinancial, validate(createRevenueForecastSchema), createRevenueForecastHandler);
 
 router
   .route("/revenue-forecast/:id")
-  .put(validate(updateRevenueForecastSchema), updateRevenueForecastHandler);
+  .put(viewFinancial, validate(updateRevenueForecastSchema), updateRevenueForecastHandler);
 
-// Financial Reports Routes
+// Financial Reports Routes — Executive only
 router
   .route("/financial-reports")
-  .get(validate(getFinancialReportsQuerySchema), getFinancialReportsHandler)
-  .post(validate(createFinancialReportSchema), createFinancialReportHandler);
+  .get(viewFinancial, validate(getFinancialReportsQuerySchema), getFinancialReportsHandler)
+  .post(viewFinancial, validate(createFinancialReportSchema), createFinancialReportHandler);
 
 router
   .route("/financial-reports/:id")
-  .put(validate(updateFinancialReportSchema), updateFinancialReportHandler)
-  .delete(validate(deleteFinancialReportSchema), deleteFinancialReportHandler);
+  .put(viewFinancial, validate(updateFinancialReportSchema), updateFinancialReportHandler)
+  .delete(viewFinancial, validate(deleteFinancialReportSchema), deleteFinancialReportHandler);
 
 export default router;

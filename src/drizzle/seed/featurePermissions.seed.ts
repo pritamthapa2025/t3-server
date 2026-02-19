@@ -1172,11 +1172,16 @@ const FIELD_PERMISSIONS_DATA = [
   { roleId: ROLES.MANAGER, module: "team", fieldName: "hourly_rate", accessLevel: "hidden" },
   { roleId: ROLES.MANAGER, module: "team", fieldName: "salary", accessLevel: "hidden" },
   { roleId: ROLES.MANAGER, module: "team", fieldName: "bank_account", accessLevel: "hidden" },
-  
+
   { roleId: ROLES.MANAGER, module: "timesheet", fieldName: "hourly_rate", accessLevel: "readonly" },
   { roleId: ROLES.MANAGER, module: "timesheet", fieldName: "cost_rate", accessLevel: "readonly" },
-  
+
   { roleId: ROLES.MANAGER, module: "jobs", fieldName: "labor_rate", accessLevel: "readonly" },
+
+  // Manager cannot view/edit vehicle financial fields — Executive only per CSV section 5.1
+  { roleId: ROLES.MANAGER, module: "fleet", fieldName: "purchase_cost",   accessLevel: "hidden" },
+  { roleId: ROLES.MANAGER, module: "fleet", fieldName: "monthly_payment", accessLevel: "hidden" },
+  { roleId: ROLES.MANAGER, module: "fleet", fieldName: "loan_balance",    accessLevel: "hidden" },
 
   // Executive has no field restrictions - can see and edit everything
 ];

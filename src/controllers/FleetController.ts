@@ -67,6 +67,29 @@ import { employees } from "../drizzle/schema/org.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 
 // ============================
+// HELPERS
+// ============================
+
+/**
+ * Strip Executive-only vehicle financial fields for non-Executive users.
+ * Per CSV section 5.1: purchase_cost, monthly_payment, loan_balance are Executive only.
+ * Manager sees maintenance cost totals only; Technician sees none of the financial fields.
+ * Executive has accessLevel "admin" — all others get these fields nulled out.
+ */
+const stripVehicleFinancialFields = <T extends Record<string, unknown>>(
+  vehicle: T,
+  accessLevel: string | undefined,
+): T => {
+  if (accessLevel === "admin") return vehicle;
+  return {
+    ...vehicle,
+    purchaseCost: null,
+    monthlyPayment: null,
+    loanBalance: null,
+  };
+};
+
+// ============================
 // DASHBOARD KPIs HANDLERS
 // ============================
 
@@ -130,10 +153,15 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
 
     const result = await getVehicles(offset, limit, filters);
 
+    // Strip Executive-only financial fields for Technician and Manager
+    const filteredData = result.data.map((v) =>
+      stripVehicleFinancialFields(v as Record<string, unknown>, req.userAccessLevel),
+    );
+
     logger.info("Vehicles fetched successfully");
     return res.status(200).json({
       success: true,
-      data: result.data,
+      data: filteredData,
       total: result.total,
       pagination: result.pagination,
     });
@@ -207,10 +235,16 @@ export const getVehicleByIdHandler = async (req: Request, res: Response) => {
 
     if (!(await checkVehicleAssignedAccess(req, res, vehicle))) return;
 
+    // Strip Executive-only financial fields for Technician and Manager
+    const filteredVehicle = stripVehicleFinancialFields(
+      vehicle as Record<string, unknown>,
+      req.userAccessLevel,
+    );
+
     logger.info(`Vehicle ${id} fetched successfully`);
     return res.status(200).json({
       success: true,
-      data: vehicle,
+      data: filteredVehicle,
     });
   } catch (error) {
     logger.logApiError("Error fetching vehicle", error, req);
