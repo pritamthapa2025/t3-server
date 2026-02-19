@@ -3652,10 +3652,19 @@ export const getJobLaborCostTrackingHandler = async (
 /**
  * Get jobs KPIs
  * GET /jobs/kpis
+ * For technicians (assigned-only), returns KPIs scoped to their assigned/team jobs.
  */
 export const getJobsKPIsHandler = async (req: Request, res: Response) => {
   try {
-    const kpis = await getJobsKPIs();
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+    const dataFilter = await getDataFilterConditions(userId, "jobs");
+    const options = dataFilter.assignedOnly
+      ? { userId, applyAssignedOrTeamFilter: true }
+      : undefined;
+    const kpis = await getJobsKPIs(options);
 
     logger.info("Jobs KPIs fetched successfully");
     return res.status(200).json({

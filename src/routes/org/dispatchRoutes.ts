@@ -221,10 +221,10 @@ router.get(
   getAvailableEmployeesHandler,
 );
 
-// Employees with assigned dispatch tasks — Manager/Executive only
+// Employees with assigned dispatch tasks — Technicians see only their own (filtered in handler); Managers/Executives see all
 router.get(
   "/employees-with-tasks",
-  createDispatch,
+  viewDispatch,
   validate(getEmployeesWithAssignedTasksQuerySchema),
   getEmployeesWithAssignedTasksHandler,
 );

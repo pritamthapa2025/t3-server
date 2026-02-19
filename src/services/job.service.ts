@@ -3106,67 +3106,117 @@ export const getJobLaborCostTracking = async (jobId: string) => {
 // Jobs KPIs
 // ============================
 
-export const getJobsKPIs = async () => {
+/** Base condition for job KPIs; when options set, restricts to assigned/team jobs (technician view). */
+async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
+  const base = and(eq(jobs.isDeleted, false));
+  if (!options?.applyAssignedOrTeamFilter || !options?.userId) return base;
+
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, options.userId))
+    .limit(1);
+  const employeeId = emp?.id ?? null;
+
+  const assignedOrTeamCondition =
+    employeeId === null
+      ? eq(bidsTable.assignedTo, options.userId)
+      : or(
+          eq(bidsTable.assignedTo, options.userId),
+          sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+        );
+  return and(base, assignedOrTeamCondition);
+}
+
+export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
+  const baseCondition = await jobsKpiBaseCondition(options);
+  const joinBids = and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false));
+
   // Active jobs (status: in_progress)
-  const [activeJobsRow] = await db
+  const activeJobsQ = db
     .select({ count: count() })
     .from(jobs)
-    .where(and(eq(jobs.isDeleted, false), eq(jobs.status, "in_progress")));
+    .innerJoin(bidsTable, joinBids)
+    .where(and(baseCondition, eq(jobs.status, "in_progress")));
+  const [activeJobsRow] = options ? await activeJobsQ : await db.select({ count: count() }).from(jobs).where(and(eq(jobs.isDeleted, false), eq(jobs.status, "in_progress")));
 
-  // Pending invoices (count invoices where status is pending or sent)
-  const [pendingInvoicesRow] = await db
-    .select({ count: count() })
-    .from(invoices)
-    .where(
-      and(
-        eq(invoices.isDeleted, false),
-        or(eq(invoices.status, "pending"), eq(invoices.status, "sent")),
-      ),
-    );
+  // Pending invoices (count invoices where status is pending or sent), scoped to accessible jobs when options set
+  let pendingInvoicesRow: { count: number } | undefined;
+  if (options) {
+    [pendingInvoicesRow] = await db
+      .select({ count: count() })
+      .from(invoices)
+      .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+      .innerJoin(bidsTable, joinBids)
+      .where(
+        and(
+          eq(invoices.isDeleted, false),
+          or(eq(invoices.status, "pending"), eq(invoices.status, "sent")),
+          baseCondition,
+        ),
+      );
+  } else {
+    [pendingInvoicesRow] = await db
+      .select({ count: count() })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.isDeleted, false),
+          or(eq(invoices.status, "pending"), eq(invoices.status, "sent")),
+        ),
+      );
+  }
 
   // Total completed jobs (status: completed)
-  const [completedJobsRow] = await db
+  const completedJobsQ = db
     .select({ count: count() })
     .from(jobs)
-    .where(and(eq(jobs.isDeleted, false), eq(jobs.status, "completed")));
+    .innerJoin(bidsTable, joinBids)
+    .where(and(baseCondition, eq(jobs.status, "completed")));
+  const [completedJobsRow] = options ? await completedJobsQ : await db.select({ count: count() }).from(jobs).where(and(eq(jobs.isDeleted, false), eq(jobs.status, "completed")));
 
   // Average profit margin - get from bidsTable
-  const [avgProfitMarginRow] = await db
+  const avgMarginQ = db
     .select({
       avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
     })
     .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
+    .innerJoin(bidsTable, joinBids)
+    .where(and(baseCondition, eq(bidsTable.isDeleted, false)));
+  const [avgProfitMarginRow] = options ? await avgMarginQ : await db
+    .select({
+      avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
     .where(and(eq(jobs.isDeleted, false), eq(bidsTable.isDeleted, false)));
 
-  // Overdue jobs (scheduledEndDate < today and status not completed/closed/cancelled)
+  // Overdue jobs
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const [overdueJobsRow] = await db
+  const overdueCondition = and(
+    eq(jobs.isDeleted, false),
+    lte(jobs.scheduledEndDate, today.toISOString().split("T")[0]),
+    or(
+      eq(jobs.status, "planned"),
+      eq(jobs.status, "scheduled"),
+      eq(jobs.status, "in_progress"),
+      eq(jobs.status, "on_hold"),
+    ),
+  );
+  const overdueJobsQ = db
     .select({ count: count() })
     .from(jobs)
-    .where(
-      and(
-        eq(jobs.isDeleted, false),
-        lte(jobs.scheduledEndDate, today.toISOString().split("T")[0]),
-        or(
-          eq(jobs.status, "planned"),
-          eq(jobs.status, "scheduled"),
-          eq(jobs.status, "in_progress"),
-          eq(jobs.status, "on_hold"),
-        ),
-      ),
-    );
+    .innerJoin(bidsTable, joinBids)
+    .where(and(baseCondition, overdueCondition));
+  const [overdueJobsRow] = options ? await overdueJobsQ : await db.select({ count: count() }).from(jobs).where(overdueCondition);
 
   return {
-    activeJobs: activeJobsRow?.count || 0,
-    pendingInvoices: pendingInvoicesRow?.count || 0,
-    totalCompletedJobs: completedJobsRow?.count || 0,
-    avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin || 0),
-    overdueJobs: overdueJobsRow?.count || 0,
+    activeJobs: activeJobsRow?.count ?? 0,
+    pendingInvoices: pendingInvoicesRow?.count ?? 0,
+    totalCompletedJobs: completedJobsRow?.count ?? 0,
+    avgProfitMargin: Number(avgProfitMarginRow?.avgProfitMargin ?? 0),
+    overdueJobs: overdueJobsRow?.count ?? 0,
   };
 };
 

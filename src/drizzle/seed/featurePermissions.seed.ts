@@ -1122,6 +1122,8 @@ const DATA_FILTERS_DATA = [
   // Technician filters - assigned/own only
   { roleId: ROLES.TECHNICIAN, module: "jobs", filterType: "assigned_only", filterRule: "assigned_to = :userId", description: "Technicians can only see jobs assigned to them" },
   { roleId: ROLES.TECHNICIAN, module: "bids", filterType: "assigned_only", filterRule: "job_id IN (SELECT id FROM jobs WHERE assigned_to = :userId)", description: "Technicians can only see bids for assigned jobs" },
+  { roleId: ROLES.TECHNICIAN, module: "clients", filterType: "assigned_only", filterRule: "client has jobs where technician is team member", description: "Technicians can only see clients they have worked or are working for" },
+  { roleId: ROLES.TECHNICIAN, module: "properties", filterType: "assigned_only", filterRule: "property has jobs where technician is team member", description: "Technicians can only see properties they have worked or are working at" },
   { roleId: ROLES.TECHNICIAN, module: "fleet", filterType: "assigned_only", filterRule: "assigned_to = :userId", description: "Technicians can only see their assigned vehicle" },
   { roleId: ROLES.TECHNICIAN, module: "tasks", filterType: "assigned_only", filterRule: "assigned_to = :userId", description: "Technicians can only see their assigned tasks" },
   { roleId: ROLES.TECHNICIAN, module: "dispatch", filterType: "assigned_only", filterRule: "assigned_to = :userId", description: "Technicians can only see their dispatch schedule" },
