@@ -194,7 +194,7 @@ export const getPriorityJobs = async (req: Request, res: Response) => {
       {
         limit: limit ? parseInt(limit as string) : 10,
         search: search as string,
-        assignedToEmployeeId,
+        ...(assignedToEmployeeId !== undefined && { assignedToEmployeeId }),
       },
       dateRange,
     );

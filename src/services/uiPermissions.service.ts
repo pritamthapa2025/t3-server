@@ -261,7 +261,7 @@ export const getDashboardConfig = async (userId: string) => {
     Manager: (id) => !managerHiddenIds.has(id),
     Executive: () => true,
   };
-  const isVisible = roleWidgetVisibility[userRole] ?? roleWidgetVisibility["Technician"];
+  const isVisible = roleWidgetVisibility[userRole] ?? roleWidgetVisibility["Technician"] ?? (() => true);
   const widgets = allWidgetIds.map((id, index) => ({
     id,
     visible: isVisible(id),
