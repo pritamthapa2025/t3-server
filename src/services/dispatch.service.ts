@@ -675,12 +675,18 @@ export const getAvailableEmployeesForDispatch = async (
 // ============================
 // Returns list of employees, each with a tasks array (dispatch tasks assigned to them). Empty tasks if none.
 
+/**
+ * When onlyForEmployeeId is set (e.g. Technician view), only that employee is returned with their tasks.
+ */
 export const getEmployeesWithAssignedTasks = async (
   offset: number,
   limit: number,
-  filters?: { status?: string },
+  filters?: { status?: string; onlyForEmployeeId?: number },
 ) => {
   const employeeConditions = [eq(employees.isDeleted, false)];
+  if (filters?.onlyForEmployeeId != null) {
+    employeeConditions.push(eq(employees.id, filters.onlyForEmployeeId));
+  }
   if (filters?.status) {
     if (filters.status === "active") {
       employeeConditions.push(

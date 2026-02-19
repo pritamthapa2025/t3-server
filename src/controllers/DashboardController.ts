@@ -54,15 +54,30 @@ export const getRevenueStats = async (req: Request, res: Response) => {
  * Get active jobs statistics
  * GET /api/org/dashboard/active-jobs
  * Query: startDate, endDate (optional, YYYY-MM-DD)
+ * Technicians only see counts for jobs assigned to them.
  */
 export const getActiveJobsStats = async (req: Request, res: Response) => {
   try {
+    const userId = req.user?.id;
     const organizationId = req.user?.organizationId ?? undefined;
     const { startDate, endDate } = (req as any).query ?? {};
     const dateRange = startDate && endDate ? { startDate, endDate } : undefined;
+
+    let assignedToEmployeeId: number | undefined;
+    if (userId) {
+      const { getDataFilterConditions } = await import("../services/featurePermission.service.js");
+      const { getEmployeeByUserId } = await import("../services/auth.service.js");
+      const dataFilters = await getDataFilterConditions(userId, "jobs");
+      if (dataFilters.assignedOnly) {
+        const employee = await getEmployeeByUserId(userId);
+        if (employee?.id) assignedToEmployeeId = employee.id;
+      }
+    }
+
     const stats = await DashboardService.getActiveJobsStats(
       organizationId,
       dateRange,
+      assignedToEmployeeId != null ? { assignedToEmployeeId } : undefined,
     );
     return successResponse(res, stats, "Active jobs stats retrieved");
   } catch (error: any) {
@@ -154,17 +169,32 @@ export const getPerformanceOverview = async (req: Request, res: Response) => {
  * Get priority jobs (dashboard table)
  * GET /api/org/dashboard/priority-jobs
  * Query: startDate, endDate (optional, YYYY-MM-DD), limit, search
+ * Technicians only see jobs assigned to them.
  */
 export const getPriorityJobs = async (req: Request, res: Response) => {
   try {
+    const userId = req.user?.id;
     const organizationId = req.user?.organizationId ?? undefined;
     const { limit, search, startDate, endDate } = (req as any).query ?? {};
     const dateRange = startDate && endDate ? { startDate, endDate } : undefined;
+
+    let assignedToEmployeeId: number | undefined;
+    if (userId) {
+      const { getDataFilterConditions } = await import("../services/featurePermission.service.js");
+      const { getEmployeeByUserId } = await import("../services/auth.service.js");
+      const dataFilters = await getDataFilterConditions(userId, "jobs");
+      if (dataFilters.assignedOnly) {
+        const employee = await getEmployeeByUserId(userId);
+        if (employee?.id) assignedToEmployeeId = employee.id;
+      }
+    }
+
     const jobs = await DashboardService.getPriorityJobs(
       organizationId,
       {
         limit: limit ? parseInt(limit as string) : 10,
         search: search as string,
+        assignedToEmployeeId,
       },
       dateRange,
     );

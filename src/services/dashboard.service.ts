@@ -249,11 +249,13 @@ export const getRevenueStats = async (
 };
 
 /**
- * Get active jobs statistics for the last 6 months (or for date range when provided)
+ * Get active jobs statistics for the last 6 months (or for date range when provided).
+ * When assignedToEmployeeId is set (e.g. Technician), only jobs assigned to that employee are counted.
  */
 export const getActiveJobsStats = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
+  options?: { assignedToEmployeeId?: number },
 ) => {
   const today = new Date();
   const rangeStart = dateRange
@@ -274,7 +276,14 @@ export const getActiveJobsStats = async (
     lte(jobs.actualStartDate, rangeEnd),
   );
 
-  const monthlyJobs = await db
+  const assignedToEmployeeId = options?.assignedToEmployeeId;
+
+  const baseJobWhere = and(
+    ...(bidOrgFilter ? [bidOrgFilter] : []),
+    eq(jobs.isDeleted, false),
+  );
+
+  let monthlyJobsQuery = db
     .select({
       month: sql<string>`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
       monthNum: sql<number>`EXTRACT(MONTH FROM ${jobs.actualStartDate})`,
@@ -282,32 +291,44 @@ export const getActiveJobsStats = async (
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        ...(bidOrgFilter ? [bidOrgFilter] : []),
-        dateFilter,
-        eq(jobs.isDeleted, false),
-      ),
-    )
+    .where(and(baseJobWhere, dateFilter))
     .groupBy(
       sql`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
       sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`,
     )
     .orderBy(sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`);
 
-  const activeJobsCount = await db
-    .select({
-      count: count(jobs.id),
-    })
+  if (assignedToEmployeeId != null) {
+    monthlyJobsQuery = monthlyJobsQuery.innerJoin(
+      jobTeamMembers,
+      and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
+        eq(jobTeamMembers.isActive, true),
+      ),
+    ) as typeof monthlyJobsQuery;
+  }
+
+  const monthlyJobs = await monthlyJobsQuery;
+
+  let activeCountQuery = db
+    .select({ count: count(jobs.id) })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
+    .where(and(baseJobWhere, eq(jobs.status, "in_progress")));
+
+  if (assignedToEmployeeId != null) {
+    activeCountQuery = activeCountQuery.innerJoin(
+      jobTeamMembers,
       and(
-        ...(bidOrgFilter ? [bidOrgFilter] : []),
-        eq(jobs.status, "in_progress"),
-        eq(jobs.isDeleted, false),
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
+        eq(jobTeamMembers.isActive, true),
       ),
-    );
+    ) as typeof activeCountQuery;
+  }
+
+  const activeJobsCount = await activeCountQuery;
 
   const firstDayOfPrevMonth = new Date(
     rangeEnd.getFullYear(),
@@ -319,21 +340,32 @@ export const getActiveJobsStats = async (
     rangeEnd.getMonth(),
     0,
   );
-  const lastMonthActiveJobs = await db
-    .select({
-      count: count(jobs.id),
-    })
+
+  let lastMonthQuery = db
+    .select({ count: count(jobs.id) })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(
       and(
-        ...(bidOrgFilter ? [bidOrgFilter] : []),
+        baseJobWhere,
         eq(jobs.status, "in_progress"),
-        eq(jobs.isDeleted, false),
         gte(jobs.createdAt, firstDayOfPrevMonth),
         lte(jobs.createdAt, lastDayOfPrevMonth),
       ),
     );
+
+  if (assignedToEmployeeId != null) {
+    lastMonthQuery = lastMonthQuery.innerJoin(
+      jobTeamMembers,
+      and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
+        eq(jobTeamMembers.isActive, true),
+      ),
+    ) as typeof lastMonthQuery;
+  }
+
+  const lastMonthActiveJobs = await lastMonthQuery;
 
   const currentCount = Number(activeJobsCount[0]?.count || 0);
   const lastMonthCount = Number(lastMonthActiveJobs[0]?.count || 0);
@@ -719,14 +751,15 @@ export const getPerformanceOverview = async (
 };
 
 /**
- * Get priority jobs for dashboard table (optionally filter by due date in range)
+ * Get priority jobs for dashboard table (optionally filter by due date in range).
+ * When assignedToEmployeeId is set (e.g. Technician), only jobs assigned to that employee are returned.
  */
 export const getPriorityJobs = async (
   organizationId?: string,
-  options: { limit?: number; search?: string } = {},
+  options: { limit?: number; search?: string; assignedToEmployeeId?: number } = {},
   dateRange?: DateRangeFilter,
 ) => {
-  const { limit = 10, search } = options;
+  const { limit = 10, search, assignedToEmployeeId } = options;
   const priorityBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
@@ -737,6 +770,13 @@ export const getPriorityJobs = async (
         lte(jobs.scheduledEndDate, dateRange.endDate),
       )
     : undefined;
+
+  const baseWhere = and(
+    ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
+    ...(dueDateFilter ? [dueDateFilter] : []),
+    eq(jobs.isDeleted, false),
+    sql`${jobs.status} IN ('in_progress', 'planned', 'on_hold')`,
+  );
 
   let query = db
     .select({
@@ -750,15 +790,19 @@ export const getPriorityJobs = async (
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
-        ...(dueDateFilter ? [dueDateFilter] : []),
-        eq(jobs.isDeleted, false),
-        sql`${jobs.status} IN ('in_progress', 'planned', 'on_hold')`,
-      ),
-    )
+    .where(baseWhere)
     .$dynamic();
+
+  if (assignedToEmployeeId != null) {
+    query = query.innerJoin(
+      jobTeamMembers,
+      and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
+        eq(jobTeamMembers.isActive, true),
+      ),
+    ) as typeof query;
+  }
 
   if (search) {
     query = query.where(

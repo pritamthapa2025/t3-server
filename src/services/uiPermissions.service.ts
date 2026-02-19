@@ -232,12 +232,49 @@ export const getDashboardConfig = async (userId: string) => {
   const userRole = config.userRole as keyof typeof dashboardLayouts;
   const layout = dashboardLayouts[userRole] || dashboardLayouts["Technician"];
 
+  // Widget IDs that match frontend dashboard components
+  const allWidgetIds = [
+    "revenue_chart",
+    "active_jobs_chart",
+    "team_utilization_chart",
+    "todays_dispatch",
+    "active_bids",
+    "performance_overview",
+    "priority_jobs_table",
+  ] as const;
+
+  const technicianVisibleIds = new Set([
+    "active_jobs_chart",
+    "todays_dispatch",
+    "priority_jobs_table",
+  ]);
+  const managerHiddenIds = new Set([
+    "revenue_chart",
+    "financial_summary",
+    "profit_loss",
+  ]);
+  const roleWidgetVisibility: Record<
+    string,
+    (id: string) => boolean
+  > = {
+    Technician: (id) => technicianVisibleIds.has(id),
+    Manager: (id) => !managerHiddenIds.has(id),
+    Executive: () => true,
+  };
+  const isVisible = roleWidgetVisibility[userRole] ?? roleWidgetVisibility["Technician"];
+  const widgets = allWidgetIds.map((id, index) => ({
+    id,
+    visible: isVisible(id),
+    order: index + 1,
+  }));
+
   return {
     ...config,
     layout,
     visibleCards: layout.cards,
     visibleSections: layout.sections,
     hiddenSections: layout.hiddenSections,
+    widgets,
   };
 };
 

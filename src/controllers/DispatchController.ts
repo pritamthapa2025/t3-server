@@ -633,8 +633,21 @@ export const getEmployeesWithAssignedTasksHandler = async (
     const status = req.query.status as string | undefined;
     const offset = (page - 1) * limit;
 
+    let onlyForEmployeeId: number | undefined;
+    const userId = req.user?.id;
+    if (userId) {
+      const { getDataFilterConditions } = await import("../services/featurePermission.service.js");
+      const { getEmployeeByUserId } = await import("../services/auth.service.js");
+      const dataFilters = await getDataFilterConditions(userId, "dispatch");
+      if (dataFilters.assignedOnly) {
+        const employee = await getEmployeeByUserId(userId);
+        if (employee?.id) onlyForEmployeeId = employee.id;
+      }
+    }
+
     const result = await getEmployeesWithAssignedTasks(offset, limit, {
       ...(status && { status }),
+      ...(onlyForEmployeeId != null && { onlyForEmployeeId }),
     });
 
     logger.info("Employees with assigned tasks fetched successfully");
