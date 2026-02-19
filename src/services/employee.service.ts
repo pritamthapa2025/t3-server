@@ -50,7 +50,10 @@ export const getEmployees = async (
     departmentId?: number;
   },
 ) => {
-  const conditions: ReturnType<typeof eq>[] = [eq(employees.isDeleted, false)];
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(employees.isDeleted, false),
+    eq(users.isActive, true),
+  ];
 
   if (filters?.status) {
     conditions.push(
@@ -855,19 +858,51 @@ export const deleteEmployee = async (id: number, deletedBy?: string) => {
   // 2. Deactivate job team memberships and dispatch assignments
   await Promise.all([
     // Nullify vehicle assignment (vehicle stays, assignment is cleared)
-    db.update(vehicles).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(vehicles.assignedToEmployeeId, id)),
+    db
+      .update(vehicles)
+      .set({ assignedToEmployeeId: null, updatedAt: now })
+      .where(eq(vehicles.assignedToEmployeeId, id)),
     // Nullify fleet maintenance/repair records (preserve the history)
-    db.update(maintenanceRecords).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(maintenanceRecords.assignedToEmployeeId, id)),
-    db.update(repairRecords).set({ assignedToEmployeeId: null, updatedAt: now }).where(eq(repairRecords.assignedToEmployeeId, id)),
-    db.update(safetyInspections).set({ employeeId: null, updatedAt: now }).where(eq(safetyInspections.employeeId, id)),
-    db.update(fuelRecords).set({ employeeId: null, updatedAt: now }).where(eq(fuelRecords.employeeId, id)),
-    db.update(assignmentHistory).set({ employeeId: null, updatedAt: now }).where(eq(assignmentHistory.employeeId, id)),
+    db
+      .update(maintenanceRecords)
+      .set({ assignedToEmployeeId: null, updatedAt: now })
+      .where(eq(maintenanceRecords.assignedToEmployeeId, id)),
+    db
+      .update(repairRecords)
+      .set({ assignedToEmployeeId: null, updatedAt: now })
+      .where(eq(repairRecords.assignedToEmployeeId, id)),
+    db
+      .update(safetyInspections)
+      .set({ employeeId: null, updatedAt: now })
+      .where(eq(safetyInspections.employeeId, id)),
+    db
+      .update(fuelRecords)
+      .set({ employeeId: null, updatedAt: now })
+      .where(eq(fuelRecords.employeeId, id)),
+    db
+      .update(assignmentHistory)
+      .set({ employeeId: null, updatedAt: now })
+      .where(eq(assignmentHistory.employeeId, id)),
     // Deactivate job team memberships
-    db.update(jobTeamMembers).set({ isActive: false }).where(and(eq(jobTeamMembers.employeeId, id), eq(jobTeamMembers.isActive, true))),
+    db
+      .update(jobTeamMembers)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(jobTeamMembers.employeeId, id),
+          eq(jobTeamMembers.isActive, true),
+        ),
+      ),
     // Soft-delete future dispatch assignments for this technician
-    db.update(dispatchAssignments).set({ isDeleted: true, updatedAt: now }).where(
-      and(eq(dispatchAssignments.technicianId, id), eq(dispatchAssignments.isDeleted, false))
-    ),
+    db
+      .update(dispatchAssignments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(dispatchAssignments.technicianId, id),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      ),
   ]);
 
   // 3. Soft-delete the employee
@@ -889,7 +924,10 @@ export const getEmployeesSimple = async (
   positionId?: number,
   roleId?: number,
 ) => {
-  let whereConditions = [eq(employees.isDeleted, false)];
+  let whereConditions = [
+    eq(employees.isDeleted, false),
+    eq(users.isActive, true),
+  ];
 
   // Search filter
   if (search) {
@@ -1278,10 +1316,7 @@ export const getEmployeeJobsAndDispatchForDate = async (
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteEmployees = async (
-  ids: number[],
-  deletedBy: string,
-) => {
+export const bulkDeleteEmployees = async (ids: number[], deletedBy: string) => {
   const now = new Date();
   const result = await db
     .update(employees)

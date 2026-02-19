@@ -103,7 +103,6 @@ export const createJobFinancialSummarySchema = z.object({
   body: z.object({
     jobId: uuidSchema,
     organizationId: uuidSchema,
-    contractValue: decimalSchema,
     totalInvoiced: decimalSchema.optional(),
     totalPaid: decimalSchema.optional(),
     vendorsOwed: decimalSchema.optional(),
@@ -119,7 +118,6 @@ export const updateJobFinancialSummarySchema = z.object({
     jobId: uuidSchema,
   }),
   body: z.object({
-    contractValue: decimalSchema.optional(),
     totalInvoiced: decimalSchema.optional(),
     totalPaid: decimalSchema.optional(),
     vendorsOwed: decimalSchema.optional(),

@@ -69,12 +69,6 @@ export const bidsTable: any = org.table(
     removalDate: date("removal_date"),
 
     // Financial
-    bidAmount: numeric("bid_amount", {
-      precision: 15,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
     estimatedDuration: integer("estimated_duration"), // days
     profitMargin: numeric("profit_margin", { precision: 5, scale: 2 }), // %
 

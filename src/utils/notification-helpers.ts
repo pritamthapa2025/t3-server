@@ -1,5 +1,5 @@
 import { db } from "../config/db.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { eq, inArray, and, isNull } from "drizzle-orm";
 import { logger } from "./logger.js";
@@ -194,12 +194,22 @@ export async function resolveRecipients(
 }
 
 /**
- * Get users by role
+ * Get users by role (filters by actual DB role name)
  */
 async function getUsersByRole(roleName: string): Promise<RecipientInfo[]> {
   try {
-    // This query depends on your role schema structure
-    // Adjust based on your actual schema
+    // Map notification role names to actual DB role names (PascalCase as seeded)
+    const roleNameMap: Record<string, string> = {
+      manager: "Manager",
+      project_manager: "Manager",
+      executive: "Executive",
+      admin: "Executive",
+      supervisor: "Manager",
+      technician: "Field Technician",
+      client: "Client",
+    };
+    const dbRoleName = roleNameMap[roleName.toLowerCase()] ?? roleName;
+
     const usersList = await db
       .select({
         id: users.id,
@@ -208,10 +218,10 @@ async function getUsersByRole(roleName: string): Promise<RecipientInfo[]> {
         fullName: users.fullName,
       })
       .from(users)
-      .where(eq(users.isActive, true));
+      .innerJoin(userRoles, eq(users.id, userRoles.userId))
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(and(eq(users.isActive, true), eq(roles.name, dbRoleName)));
 
-    // Note: You'll need to filter by role based on your schema
-    // This is a placeholder - adjust based on your role structure
     return usersList.map((u) => ({
       id: u.id,
       ...(u.email ? { email: u.email } : {}),

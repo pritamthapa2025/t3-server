@@ -93,7 +93,6 @@ export const createJobSchema = z.object({
     siteContactName: z.string().max(150).optional(),
     siteContactPhone: z.string().max(20).optional(),
     accessInstructions: z.string().optional(),
-    contractValue: numericStringSchema.optional(),
     assignedTeamMembers: z
       .array(
         z.object({
@@ -131,7 +130,6 @@ export const updateJobSchema = z.object({
     siteContactName: z.string().max(150).optional(),
     siteContactPhone: z.string().max(20).optional(),
     accessInstructions: z.string().optional(),
-    contractValue: numericStringSchema.optional(),
     actualCost: numericStringSchema.optional(),
     completionNotes: z.string().optional(),
     completionPercentage: numericStringSchema.optional(),
@@ -213,7 +211,6 @@ export const updateJobSchema = z.object({
             "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
           )
           .optional(),
-        bidAmount: numericStringSchema.optional(),
         estimatedDuration: z
           .number()
           .int("Estimated duration must be a whole number")
@@ -305,6 +302,7 @@ export const updateJobSchema = z.object({
     materials: z
       .array(
         z.object({
+          id: uuidSchema.optional(),
           inventoryItemId: uuidSchema.optional(),
           customName: z.string().optional(),
           description: z.string(),
@@ -321,6 +319,7 @@ export const updateJobSchema = z.object({
       .object({
         labor: z.array(
           z.object({
+            id: uuidSchema.optional(),
             positionId: z.number().int().positive(),
             days: z.number().int().positive(),
             hoursPerDay: z.string(),
@@ -333,6 +332,7 @@ export const updateJobSchema = z.object({
         ),
         travel: z.array(
           z.object({
+            id: uuidSchema.optional(),
             vehicleName: z.string().optional(),
             roundTripMiles: z.string(),
             mileageRate: z.string(),
@@ -547,7 +547,6 @@ export const updateJobFinancialSummarySchema = z.object({
     jobId: uuidSchema,
   }),
   body: z.object({
-    contractValue: numericStringSchema.optional(),
     totalInvoiced: numericStringSchema.optional(),
     totalPaid: numericStringSchema.optional(),
     vendorsOwed: numericStringSchema.optional(),

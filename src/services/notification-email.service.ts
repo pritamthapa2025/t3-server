@@ -5,6 +5,10 @@ import type {
   EmailTemplateData,
 } from "../types/notification.types.js";
 
+const serverBaseUrl = process.env.SERVER_URL || "http://localhost:4000";
+const logoUrl = `${serverBaseUrl}/assets/t3_logo-black.png`;
+const logoHeader = `<img src="${logoUrl}" alt="T3 Mechanical" style="max-height: 64px; width: auto;" />`;
+
 const apiKey = process.env.BREVO_API_KEY;
 const senderEmail =
   process.env.BREVO_SENDER_EMAIL || "notifications@t3mechanical.com";
@@ -106,7 +110,7 @@ export class NotificationEmailService {
       overflow: hidden;
     }
     .header {
-      background-color: #46931f;
+      background-color: #CC1F1F;
       color: #ffffff;
       padding: 30px;
       text-align: center;
@@ -165,7 +169,7 @@ export class NotificationEmailService {
 <body>
   <div class="container">
     <div class="header">
-      <h1>T3 Mechanical</h1>
+      ${logoHeader}
     </div>
     <div class="content">
       <div class="greeting">

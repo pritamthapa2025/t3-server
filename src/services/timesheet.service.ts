@@ -359,6 +359,33 @@ export const updateTimesheet = async (
     .set(updateData)
     .where(eq(timesheets.id, id))
     .returning();
+
+  // Fire timesheet_resubmitted notification when employee resubmits after rejection
+  if (
+    timesheet &&
+    data.status === "submitted" &&
+    existingTimesheet.status === "rejected"
+  ) {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "timesheet_resubmitted",
+          category: "timesheet",
+          priority: "medium",
+          data: {
+            entityType: "Timesheet",
+            entityId: String(id),
+            entityName: `Timesheet #${id}`,
+            employeeId: String(existingTimesheet.employeeId),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] timesheet_resubmitted failed:", err);
+      }
+    })();
+  }
+
   return timesheet || null;
 };
 
@@ -1410,6 +1437,38 @@ export const approveTimesheet = async (
     });
   }
 
+  if (timesheet) {
+    // Fire timesheet_approved notification (fire-and-forget)
+    void (async () => {
+      try {
+        if (existingTimesheet.employeeId === null) return;
+        const [empData] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, existingTimesheet.employeeId))
+          .limit(1);
+
+        if (!empData?.userId) return;
+
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "timesheet_approved",
+          category: "timesheet",
+          priority: "medium",
+          triggeredBy: approvedBy,
+          data: {
+            entityType: "Timesheet",
+            entityId: String(timesheetId),
+            entityName: `Timesheet #${timesheetId}`,
+            employeeId: String(existingTimesheet.employeeId),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] timesheet_approved failed:", err);
+      }
+    })();
+  }
+
   return timesheet ? formatTimesheetResponse(timesheet) : null;
 };
 
@@ -1461,12 +1520,41 @@ export const rejectTimesheet = async (
 
   // Format response to include rejectionReason from approval history
   if (timesheet) {
+    // Fire timesheet_rejected notification (fire-and-forget)
+    void (async () => {
+      try {
+        if (existingTimesheet.employeeId === null) return;
+        const [empData] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, existingTimesheet.employeeId))
+          .limit(1);
+
+        if (!empData?.userId) return;
+
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "timesheet_rejected",
+          category: "timesheet",
+          priority: "high",
+          triggeredBy: rejectedBy,
+          data: {
+            entityType: "Timesheet",
+            entityId: String(timesheetId),
+            entityName: `Timesheet #${timesheetId}`,
+            employeeId: String(existingTimesheet.employeeId),
+            notes: rejectionReason,
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] timesheet_rejected failed:", err);
+      }
+    })();
+
     const formatted = formatTimesheetResponse(timesheet);
-    // Add rejectionReason to the response (from the approval record we just created)
     return {
       ...formatted,
-      rejectionReason: rejectionReason, // Latest rejection reason
-      // notes field contains employee's notes (preserved)
+      rejectionReason: rejectionReason,
     };
   }
 

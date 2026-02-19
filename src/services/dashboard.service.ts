@@ -1,7 +1,7 @@
 import { db } from "../config/db.js";
 import { jobs, jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
 import { dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
-import { bidsTable } from "../drizzle/schema/bids.schema.js";
+import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { employees, revenueTargets } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
@@ -545,11 +545,18 @@ export const getActiveBidsStats = async (
       id: bidsTable.id,
       title: bidsTable.projectName,
       jobType: bidsTable.jobType,
-      estimatedValue: bidsTable.bidAmount,
+      estimatedValue: bidFinancialBreakdown.actualTotalPrice,
       status: bidsTable.status,
       createdAt: bidsTable.createdAt,
     })
     .from(bidsTable)
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(
       and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'submitted')`),
     )
@@ -576,9 +583,16 @@ export const getActiveBidsStats = async (
 
   const pipeline = await db
     .select({
-      total: sum(bidsTable.bidAmount),
+      total: sum(bidFinancialBreakdown.actualTotalPrice),
     })
     .from(bidsTable)
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(
       and(baseWhere, sql`${bidsTable.status} IN ('in_progress', 'submitted')`),
     );
@@ -785,7 +799,7 @@ export const getPriorityJobs = async (
       projectName: bidsTable.projectName,
       building: bidsTable.siteAddress,
       dueDate: jobs.scheduledEndDate,
-      price: jobs.contractValue,
+      price: bidsTable.actualTotalPrice,
       status: jobs.status,
     })
     .from(jobs)

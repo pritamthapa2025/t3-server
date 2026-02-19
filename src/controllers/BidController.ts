@@ -305,6 +305,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
         bid.id,
         organizationId,
         financialBreakdown,
+        true,
       );
     }
 
@@ -314,6 +315,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
         bid.id,
         organizationId,
         operatingExpenses,
+        true,
       );
     }
 
@@ -525,51 +527,87 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       );
     }
 
-    // Update materials if provided (delete existing and create new)
+    // Update materials if provided
+    // Entries with an id → update only actual fields in-place (initial stays frozen)
+    // Entries without an id → new material, create it (initial = actual)
     if (materials && Array.isArray(materials)) {
-      // Get existing materials
-      const existingMaterials = await getBidMaterials(id!, clientOrgId);
-
-      // Delete all existing materials
-      for (const material of existingMaterials) {
-        await deleteBidMaterial(material.id, clientOrgId);
-      }
-
-      // Create new materials
-      if (materials.length > 0) {
-        updatedRecords.materials = [];
-        for (const material of materials) {
-          const createdMaterial = await createBidMaterial({
-            ...material,
+      updatedRecords.materials = [];
+      for (const material of materials) {
+        const { id: materialId, ...materialData } = material;
+        if (materialId) {
+          const updated = await updateBidMaterial(
+            materialId,
+            clientOrgId,
+            materialData,
+          );
+          if (updated) updatedRecords.materials.push(updated);
+        } else {
+          const created = await createBidMaterial({
+            ...materialData,
             bidId: id!,
           });
-          updatedRecords.materials.push(createdMaterial);
+          if (created) updatedRecords.materials.push(created);
         }
-      } else {
-        updatedRecords.materials = [];
       }
     }
 
-    // Update labor and travel if provided (delete existing and create new in bulk)
+    // Update labor and travel if provided
+    // Entries with an id → update only actual fields in-place (initial stays frozen)
+    // Entries without an id → new pair, create it (initial = actual)
+    // Labor and travel arrays must be the same length and are paired by index.
     if (laborAndTravel) {
       const { labor, travel } = laborAndTravel;
-      if (labor && travel && Array.isArray(labor) && Array.isArray(travel)) {
-        // Get existing labor entries
-        const existingLabor = await getBidLabor(id!);
+      if (
+        labor &&
+        travel &&
+        Array.isArray(labor) &&
+        Array.isArray(travel) &&
+        labor.length === travel.length
+      ) {
+        updatedRecords.labor = [];
+        updatedRecords.travel = [];
 
-        // Delete all existing labor (this will cascade delete travel)
-        for (const laborEntry of existingLabor) {
-          await deleteBidLabor(laborEntry.id);
-        }
+        for (let i = 0; i < labor.length; i++) {
+          const laborEntry = labor[i]!;
+          const travelEntry = travel[i]!;
+          const { id: laborId, ...laborData } = laborEntry;
+          const { id: travelId, ...travelData } = travelEntry;
 
-        // Create new labor and travel in bulk
-        if (labor.length === travel.length && labor.length > 0) {
-          const bulkResult = await createBulkLaborAndTravel(id!, labor, travel);
-          updatedRecords.labor = bulkResult.labor;
-          updatedRecords.travel = bulkResult.travel;
-        } else {
-          updatedRecords.labor = [];
-          updatedRecords.travel = [];
+          if (laborId) {
+            // Update existing labor's actual fields only
+            const updatedLabor = await updateBidLabor(laborId, laborData);
+            if (updatedLabor) updatedRecords.labor.push(updatedLabor);
+
+            // Update paired travel's actual fields only
+            if (travelId) {
+              const updatedTravel = await updateBidTravel(travelId, travelData);
+              if (updatedTravel) updatedRecords.travel.push(updatedTravel);
+            } else {
+              // No travel id provided — find the travel entry linked to this labor
+              const linkedTravel = await getBidTravel(laborId);
+              if (linkedTravel && linkedTravel.length > 0) {
+                const updatedTravel = await updateBidTravel(
+                  linkedTravel[0]!.id,
+                  travelData,
+                );
+                if (updatedTravel) updatedRecords.travel.push(updatedTravel);
+              }
+            }
+          } else {
+            // New labor + travel pair — create with initial = actual
+            const createdLabor = await createBidLabor({
+              ...laborData,
+              bidId: id!,
+            });
+            if (createdLabor) {
+              updatedRecords.labor.push(createdLabor);
+              const createdTravel = await createBidTravel({
+                ...travelData,
+                bidLaborId: createdLabor.id,
+              });
+              if (createdTravel) updatedRecords.travel.push(createdTravel);
+            }
+          }
         }
       }
     }
@@ -827,7 +865,11 @@ export const deleteBidHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const deletedBid = await deleteBid(id!, existingBid.organizationId, performedBy);
+    const deletedBid = await deleteBid(
+      id!,
+      existingBid.organizationId,
+      performedBy,
+    );
 
     if (!deletedBid) {
       return res.status(404).json({
@@ -4422,7 +4464,9 @@ export const bulkDeleteBidsHandler = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await bulkDeleteBids(ids, userId);
@@ -4435,6 +4479,8 @@ export const bulkDeleteBidsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Bulk delete bids error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

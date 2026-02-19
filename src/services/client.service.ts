@@ -323,9 +323,17 @@ export const getClientById = async (id: string) => {
     .select({
       job: jobs,
       bid: bidsTable,
+      bidActualTotalPrice: bidFinancialBreakdown.actualTotalPrice,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(and(eq(bidsTable.organizationId, id), eq(jobs.isDeleted, false)))
     .orderBy(desc(jobs.createdAt));
 
@@ -383,8 +391,7 @@ export const getClientById = async (id: string) => {
       status: item.job.status,
       startDate: item.job.startDate,
       endDate: item.job.endDate,
-      contractValue: item.job.contractValue,
-      bidAmount: item.bid.bidAmount,
+      contractValue: item.bidActualTotalPrice ?? null,
       createdAt: item.job.createdAt,
     })),
     invoicing: {
@@ -419,7 +426,7 @@ export const getOrganizationDashboard = async (organizationId: string) => {
     const jobsSummary = await db
       .select({
         totalJobs: count(jobs.id),
-        totalContractValue: sql<string>`COALESCE(SUM(${jobs.contractValue}), 0)`,
+        totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
       })
       .from(jobs)
       .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))

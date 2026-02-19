@@ -60,7 +60,6 @@ export const jobs: any = org.table(
     accessInstructions: text("access_instructions"),
 
     // Financial
-    contractValue: numeric("contract_value", { precision: 15, scale: 2 }),
     actualCost: numeric("actual_cost", { precision: 15, scale: 2 }),
 
     // Completion

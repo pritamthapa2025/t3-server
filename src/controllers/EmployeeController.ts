@@ -54,7 +54,6 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
     const departmentId = req.query.departmentId
       ? parseInt(req.query.departmentId as string, 10)
       : undefined;
-
     const offset = (page - 1) * limit;
 
     const result = await getEmployees(offset, limit, {
@@ -91,7 +90,6 @@ export const getEmployeesSimpleHandler = async (
     const roleId = req.query.roleId
       ? parseInt(req.query.roleId as string, 10)
       : undefined;
-
     // Get simplified employee list with filters (no pagination)
     const employees = await getEmployeesSimple(search, positionId, roleId);
 

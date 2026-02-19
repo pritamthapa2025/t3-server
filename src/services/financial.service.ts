@@ -110,8 +110,8 @@ export const getFinancialOverview = async (organizationId: string) => {
   const contractSummary = await db
     .select({
       totalJobs: count(jobs.id),
-      totalContractValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
-      avgContractValue: sql<string>`COALESCE(AVG(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
+      avgContractValue: sql<string>`COALESCE(AVG(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
@@ -122,14 +122,21 @@ export const getFinancialOverview = async (organizationId: string) => {
       )
     );
 
-  // Get bid amounts for comparison
+  // Get bid amounts for comparison (using actualTotalPrice from bid_financial_breakdown)
   const bidSummary = await db
     .select({
       totalBids: count(bidsTable.id),
-      totalBidAmount: sql<string>`COALESCE(SUM(CAST(${bidsTable.bidAmount} AS NUMERIC)), 0)`,
-      avgBidAmount: sql<string>`COALESCE(AVG(CAST(${bidsTable.bidAmount} AS NUMERIC)), 0)`,
+      totalBidAmount: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
+      avgBidAmount: sql<string>`COALESCE(AVG(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(bidsTable)
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
     .where(
       and(
         eq(bidsTable.organizationId, organizationId),
@@ -142,7 +149,7 @@ export const getFinancialOverview = async (organizationId: string) => {
     .select({
       status: jobs.status,
       count: count(jobs.id),
-      totalValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+      totalValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
@@ -177,7 +184,7 @@ export const getMonthlyFinancialTrends = async (
     .select({
       month: sql<string>`TO_CHAR(${jobs.createdAt}, 'YYYY-MM')`,
       jobsCount: count(jobs.id),
-      totalContractValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
@@ -750,7 +757,7 @@ async function buildSummary(
   ];
   const [contractRow] = await db
     .select({
-      totalContractValue: sql<string>`COALESCE(SUM(CAST(${jobs.contractValue} AS NUMERIC)), 0)`,
+      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
@@ -827,7 +834,7 @@ export const getFinancialJobsSummarySection = async (
     const jobRows = await db
       .select({ 
         jobId: jobs.id, 
-        contractValue: jobs.contractValue, 
+        contractValue: bidsTable.actualTotalPrice, 
         startDate: jobs.createdAt
       })
       .from(jobs)

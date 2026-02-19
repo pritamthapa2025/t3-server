@@ -998,6 +998,12 @@ export const voidInvoice = async (
   data: { reason: string; notes?: string },
   performedBy: string,
 ) => {
+  const [invoiceData] = await db
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1);
+
   await db
     .update(invoices)
     .set({
@@ -1014,6 +1020,27 @@ export const voidInvoice = async (
     data.reason,
     data.notes || `Invoice voided: ${data.reason}`,
   );
+
+  // Fire invoice_cancelled notification (fire-and-forget)
+  void (async () => {
+    try {
+      const { NotificationService } = await import("./notification.service.js");
+      await new NotificationService().triggerNotification({
+        type: "invoice_cancelled",
+        category: "financial",
+        priority: "medium",
+        triggeredBy: performedBy,
+        data: {
+          entityType: "Invoice",
+          entityId: invoiceId,
+          entityName: invoiceData?.invoiceNumber || `Invoice #${invoiceId}`,
+          notes: data.reason,
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] invoice_cancelled failed:", err);
+    }
+  })();
 
   return await getInvoiceById(invoiceId, organizationId);
 };
@@ -1354,6 +1381,37 @@ export const createPaymentForInvoice = async (
 
   // Recalculate invoice totals AFTER transaction commits
   await recalculateInvoiceTotals(invoiceId);
+
+  // Fire payment notification (fire-and-forget)
+  void (async () => {
+    try {
+      const [invoiceData] = await db
+        .select({ status: invoices.status, invoiceNumber: invoices.invoiceNumber })
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .limit(1);
+
+      if (!invoiceData) return;
+
+      const { NotificationService } = await import("./notification.service.js");
+      const svc = new NotificationService();
+      const isPaid = invoiceData.status === "paid";
+      await svc.triggerNotification({
+        type: isPaid ? "payment_received_full" : "payment_received_partial",
+        category: "financial",
+        priority: "medium",
+        triggeredBy: createdBy,
+        data: {
+          entityType: "Invoice",
+          entityId: invoiceId,
+          entityName: invoiceData.invoiceNumber || `Invoice #${invoiceId}`,
+          amount: parseFloat(data.amount),
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] payment_received notification failed:", err);
+    }
+  })();
 
   return payment;
 };

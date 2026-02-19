@@ -451,7 +451,44 @@ export const createDispatchAssignment = async (
     .values(insertData)
     .returning();
 
-  return result[0];
+  const assignment = result[0];
+
+  // Fire technician_assigned_to_dispatch notification (fire-and-forget)
+  void (async () => {
+    try {
+      const [empData] = await db
+        .select({ userId: employees.userId })
+        .from(employees)
+        .where(eq(employees.id, data.technicianId))
+        .limit(1);
+
+      if (!empData?.userId) return;
+
+      // Get task info for entity name
+      const [taskData] = await db
+        .select({ title: dispatchTasks.title, id: dispatchTasks.id })
+        .from(dispatchTasks)
+        .where(eq(dispatchTasks.id, data.taskId))
+        .limit(1);
+
+      const { NotificationService } = await import("./notification.service.js");
+      await new NotificationService().triggerNotification({
+        type: "technician_assigned_to_dispatch",
+        category: "dispatch",
+        priority: "high",
+        data: {
+          entityType: "Dispatch",
+          entityId: data.taskId,
+          entityName: taskData?.title || `Dispatch Task #${data.taskId}`,
+          assignedTechnicianId: empData.userId,
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] technician_assigned_to_dispatch failed:", err);
+    }
+  })();
+
+  return assignment;
 };
 
 // Update Dispatch Assignment
@@ -459,6 +496,13 @@ export const updateDispatchAssignment = async (
   id: string,
   data: UpdateDispatchAssignmentData,
 ) => {
+  // Get current assignment before update to detect technician reassignment
+  const [existing] = await db
+    .select({ technicianId: dispatchAssignments.technicianId, taskId: dispatchAssignments.taskId })
+    .from(dispatchAssignments)
+    .where(and(eq(dispatchAssignments.id, id), eq(dispatchAssignments.isDeleted, false)))
+    .limit(1);
+
   const updateData: any = {
     updatedAt: new Date(),
   };
@@ -481,7 +525,70 @@ export const updateDispatchAssignment = async (
     )
     .returning();
 
-  return result[0] || null;
+  const updated = result[0] || null;
+
+  // Fire dispatch_reassigned notification when technician changes (fire-and-forget)
+  if (updated && existing && data.technicianId !== undefined && existing.technicianId !== data.technicianId) {
+    void (async () => {
+      try {
+        const taskId = existing.taskId;
+        const [taskData] = await db
+          .select({ title: dispatchTasks.title })
+          .from(dispatchTasks)
+          .where(eq(dispatchTasks.id, taskId))
+          .limit(1);
+
+        const [newEmpData] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, data.technicianId!))
+          .limit(1);
+
+        const oldEmpData = existing.technicianId !== null
+          ? (await db
+              .select({ userId: employees.userId })
+              .from(employees)
+              .where(eq(employees.id, existing.technicianId))
+              .limit(1))[0]
+          : undefined;
+
+        const { NotificationService } = await import("./notification.service.js");
+        const svc = new NotificationService();
+        const entityName = taskData?.title || `Dispatch Task #${taskId}`;
+
+        if (newEmpData?.userId) {
+          await svc.triggerNotification({
+            type: "dispatch_reassigned",
+            category: "dispatch",
+            priority: "high",
+            data: {
+              entityType: "Dispatch",
+              entityId: taskId,
+              entityName,
+              assignedTechnicianId: newEmpData.userId,
+            },
+          });
+        }
+        if (oldEmpData?.userId) {
+          await svc.triggerNotification({
+            type: "dispatch_reassigned",
+            category: "dispatch",
+            priority: "high",
+            data: {
+              entityType: "Dispatch",
+              entityId: taskId,
+              entityName,
+              assignedTechnicianId: oldEmpData.userId,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[Notification] dispatch_reassigned failed:", err);
+      }
+    })();
+  }
+
+  return updated;
 };
 
 // Soft Delete Dispatch Assignment

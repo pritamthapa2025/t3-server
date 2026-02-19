@@ -9,11 +9,15 @@ const apiKey = process.env.BREVO_API_KEY;
 const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@example.com";
 const senderName = process.env.BREVO_SENDER_NAME || "T3 Mechanical";
 
+const serverBaseUrl = process.env.SERVER_URL || "http://localhost:4000";
+const logoUrl = `${serverBaseUrl}/assets/t3_logo-black.png`;
+const logoHeader = `<img src="${logoUrl}" alt="T3 Mechanical" style="max-height: 64px; width: auto;" />`;
+
 /** Shared base styles for transactional emails */
 const emailStyles = `
   body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #F7F7F7; margin: 0; padding: 0; }
   .container { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
-  .header { background: #46931f; color: #fff; padding: 24px; text-align: center; }
+  .header { background: #CC1F1F; color: #fff; padding: 24px; text-align: center; }
   .header h1 { margin: 0; font-size: 22px; font-weight: 600; }
   .content { padding: 36px 32px; }
   .code-box { background: #F0F9EB; border: 2px dashed #46931f; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
@@ -50,7 +54,7 @@ export async function send2FACode(email: string, code: string): Promise<void> {
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>T3 Mechanical</h1></div>
+    <div class="header">${logoHeader}</div>
     <div class="content">
       <p style="font-size: 16px;">Hi,</p>
       <p>You requested a verification code to sign in to your T3 Mechanical account. Use the code below:</p>
@@ -94,7 +98,7 @@ export async function sendPasswordResetOTP(
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>T3 Mechanical</h1></div>
+    <div class="header">${logoHeader}</div>
     <div class="content">
       <p style="font-size: 16px;">Hi,</p>
       <p>You requested to reset your password for your T3 Mechanical account. Use this verification code to proceed:</p>
@@ -138,7 +142,7 @@ export async function sendChangePasswordOTP(
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>T3 Mechanical</h1></div>
+    <div class="header">${logoHeader}</div>
     <div class="content">
       <p style="font-size: 16px;">Hi,</p>
       <p>You requested to change your T3 Mechanical password. Enter this verification code to complete the change:</p>
@@ -186,7 +190,7 @@ export async function sendNewUserPasswordSetupEmail(
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>T3 Mechanical</h1></div>
+    <div class="header">${logoHeader}</div>
     <div class="content">
       <p style="font-size: 16px;">Hi ${fullName},</p>
       <p>Your T3 Mechanical account has been created. To get started, set your password by clicking the button below:</p>

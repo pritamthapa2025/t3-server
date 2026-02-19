@@ -155,7 +155,6 @@ export const createBidSchema = z.object({
           "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
         )
         .optional(),
-      bidAmount: numericStringSchema.optional(),
       estimatedDuration: z
         .number()
         .int("Estimated duration must be a whole number")
@@ -437,7 +436,6 @@ export const updateBidSchema = z.object({
         "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
       )
       .optional(),
-    bidAmount: numericStringSchema.optional(),
     estimatedDuration: z
       .number()
       .int("Estimated duration must be a whole number")
@@ -529,6 +527,7 @@ export const updateBidSchema = z.object({
     materials: z
       .array(
         z.object({
+          id: uuidSchema.optional(),
           inventoryItemId: uuidSchema.optional(),
           customName: z.string().optional(),
           description: z.string(),
@@ -545,6 +544,7 @@ export const updateBidSchema = z.object({
       .object({
         labor: z.array(
           z.object({
+            id: uuidSchema.optional(),
             positionId: z.number().int().positive(),
             days: z.number().int().positive(),
             hoursPerDay: z.string(),
@@ -557,6 +557,7 @@ export const updateBidSchema = z.object({
         ),
         travel: z.array(
           z.object({
+            id: uuidSchema.optional(),
             vehicleName: z.string().optional(),
             roundTripMiles: z.string(),
             mileageRate: z.string(),

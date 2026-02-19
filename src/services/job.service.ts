@@ -145,6 +145,7 @@ export const getJobs = async (
       job: jobs,
       bid: bidsTable,
       totalPrice: bidFinancialBreakdown.totalPrice,
+      actualTotalPrice: bidFinancialBreakdown.actualTotalPrice,
       createdByName: users.fullName,
       organizationName: organizations.name,
       organizationStreetAddress: organizations.streetAddress,
@@ -190,6 +191,7 @@ export const getJobs = async (
     name: item.bid.projectName, // Derive name from bid.projectName
     organizationId: item.bid.organizationId, // Include organization info
     totalPrice: item.totalPrice ?? null,
+    jobAmount: item.actualTotalPrice ?? null,
     createdByName: item.createdByName || null, // Include created by name
     organizationName: item.organizationName ?? null,
     organizationLocation:
@@ -267,11 +269,12 @@ export const getJobById = async (
   const jobSummary = getJobFinancialSummaryFields(
     result.jobs,
     financialBreakdown,
+    financialBreakdown?.actualTotalPrice,
   );
 
   const progress = await getJobProgressPercentages(
     result.jobs.id,
-    result.bid.actualTotalPrice ?? null,
+    financialBreakdown?.actualTotalPrice ?? null,
   );
 
   // Return job with bid priority and name, plus primaryContact, property, and summary
@@ -281,6 +284,7 @@ export const getJobById = async (
     name: result.bid.projectName, // Derive name from bid.projectName
     organizationId: result.bid.organizationId,
     createdByName: result.createdByName || null,
+    jobAmount: financialBreakdown?.actualTotalPrice ?? null,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
     totalContractValue: jobSummary.totalContractValue,
@@ -307,7 +311,6 @@ export const createJob = async (data: {
   siteContactName?: string;
   siteContactPhone?: string;
   accessInstructions?: string;
-  contractValue?: string;
   assignedTeamMembers?: Array<{
     employeeId: number;
     positionId?: number;
@@ -382,7 +385,6 @@ export const createJob = async (data: {
       siteContactName: data.siteContactName,
       siteContactPhone: data.siteContactPhone,
       accessInstructions: data.accessInstructions,
-      contractValue: data.contractValue,
     })
     .returning();
 
@@ -446,7 +448,6 @@ export const updateJob = async (
     siteContactName: string;
     siteContactPhone: string;
     accessInstructions: string;
-    contractValue: string;
     actualCost: string;
     completionNotes: string;
     completionPercentage: string;
@@ -521,6 +522,49 @@ export const updateJob = async (
       .where(eq(users.id, job.createdBy))
       .limit(1);
     createdByName = creator?.fullName || null;
+  }
+
+  // Fire status-change notifications (fire-and-forget, does not block response)
+  if (data.status && (jobData.job as any).status !== data.status) {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        const svc = new NotificationService();
+        const jobName = updatedBid?.projectName || updatedBid?.bidNumber || job.jobNumber || "Job";
+
+        if (data.status === "in_progress") {
+          await svc.triggerNotification({
+            type: "job_started",
+            category: "job",
+            priority: "medium",
+            data: { entityType: "Job", entityId: job.id, entityName: jobName },
+          });
+        } else if (data.status === "completed") {
+          await svc.triggerNotification({
+            type: "job_completed",
+            category: "job",
+            priority: "medium",
+            data: { entityType: "Job", entityId: job.id, entityName: jobName },
+          });
+        } else if (data.status === "cancelled") {
+          await svc.triggerNotification({
+            type: "job_cancelled",
+            category: "job",
+            priority: "medium",
+            data: { entityType: "Job", entityId: job.id, entityName: jobName },
+          });
+        } else {
+          await svc.triggerNotification({
+            type: "job_status_changed",
+            category: "job",
+            priority: "medium",
+            data: { entityType: "Job", entityId: job.id, entityName: jobName },
+          });
+        }
+      } catch (err) {
+        console.error("[Notification] job status change notification failed:", err);
+      }
+    })();
   }
 
   // Return job with bid priority and name
@@ -635,6 +679,42 @@ export const addJobTeamMember = async (data: {
       isActive: true,
     })
     .returning();
+
+  // Fire job_assigned notification (fire-and-forget, does not block response)
+  void (async () => {
+    try {
+      const [empData] = await db
+        .select({ userId: employees.userId })
+        .from(employees)
+        .where(eq(employees.id, data.employeeId))
+        .limit(1);
+
+      if (!empData?.userId) return;
+
+      const [jobBid] = await db
+        .select({ name: bidsTable.projectName, bidNumber: bidsTable.bidNumber })
+        .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(eq(jobs.id, data.jobId))
+        .limit(1);
+
+      const { NotificationService } = await import("./notification.service.js");
+      await new NotificationService().triggerNotification({
+        type: "job_assigned",
+        category: "job",
+        priority: "high",
+        data: {
+          entityType: "Job",
+          entityId: data.jobId,
+          entityName: jobBid?.name || jobBid?.bidNumber || "Job",
+          assignedTechnicianId: empData.userId,
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] job_assigned failed:", err);
+    }
+  })();
+
   return member;
 };
 
@@ -678,7 +758,6 @@ function toDecimal2(value: number): string {
 
 export const getJobFinancialSummaryFields = (
   job: {
-    contractValue?: string | null;
     actualCost?: string | null;
     createdAt?: Date | null;
     scheduledEndDate?: string | null;
@@ -688,8 +767,9 @@ export const getJobFinancialSummaryFields = (
     totalCost?: string | null;
     actualTotalCost?: string | null;
   } | null,
+  bidActualTotalPrice?: string | null,
 ): JobFinancialSummary => {
-  const contractVal = Number(job.contractValue) || 0;
+  const contractVal = Number(bidActualTotalPrice) || 0;
   const _plannedCost = Number(financialBreakdown?.totalCost) || 0;
   const actualBidCost =
     Number(
@@ -791,11 +871,12 @@ export const getJobWithAllData = async (jobId: string) => {
   const jobSummary = getJobFinancialSummaryFields(
     jobData.job,
     financialBreakdown,
+    financialBreakdown?.actualTotalPrice,
   );
 
   const progress = await getJobProgressPercentages(
     jobId,
-    bid?.actualTotalPrice ?? null,
+    financialBreakdown?.actualTotalPrice ?? null,
   );
 
   return {
@@ -804,6 +885,7 @@ export const getJobWithAllData = async (jobId: string) => {
       priority: bid?.priority, // Use bid priority instead of job priority
       name: bid?.projectName, // Derive name from bid.projectName
       organizationId: jobData.organizationId,
+      jobAmount: financialBreakdown?.actualTotalPrice ?? null,
       totalContractValue: jobSummary.totalContractValue,
       profitMargin: jobSummary.profitMargin,
       estimatedProfit: jobSummary.estimatedProfit,
@@ -1777,6 +1859,34 @@ export const createJobNote = async (data: {
     ...(data.isInternal !== undefined && { isInternal: data.isInternal }),
     createdBy: data.createdBy,
   });
+
+  // Fire job_site_notes_added notification (fire-and-forget)
+  if (note) {
+    void (async () => {
+      try {
+        const [jobBid] = await db
+          .select({ name: bidsTable.projectName, bidNumber: bidsTable.bidNumber })
+          .from(jobs)
+          .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+          .where(eq(jobs.id, data.jobId))
+          .limit(1);
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "job_site_notes_added",
+          category: "job",
+          priority: "low",
+          triggeredBy: data.createdBy,
+          data: {
+            entityType: "Job",
+            entityId: data.jobId,
+            entityName: jobBid?.name || jobBid?.bidNumber || "Job",
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] job_site_notes_added failed:", err);
+      }
+    })();
+  }
 
   return note;
 };

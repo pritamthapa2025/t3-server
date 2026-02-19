@@ -2,10 +2,15 @@ import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import index from "./routes/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app: Express = express();
 
@@ -17,12 +22,15 @@ app.use(
       process.env.CLIENT_URL_Old,
     ].filter((url): url is string => Boolean(url)),
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Serve static assets (e.g. email logo images)
+app.use("/assets", express.static(path.join(__dirname, "templates", "assets")));
 
 // Health check endpoint (before routes) - must be fast and always return 200
 // Docker/process managers use this to check if server is alive
