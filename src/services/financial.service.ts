@@ -732,9 +732,11 @@ async function buildSummary(
     };
   }
   const profitLoss = await getProfitAndLossStatement(organizationId, dateFilters);
-    const conditions = [
+    const NON_CANCELLED_STATUSES = ["draft", "pending", "sent", "viewed", "partial", "paid", "overdue"] as const;
+  const conditions = [
       ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
       eq(invoices.isDeleted, false),
+      inArray(invoices.status, [...NON_CANCELLED_STATUSES]),
     ];
     if (dateFilters.startDate) conditions.push(gte(invoices.invoiceDate, dateFilters.startDate));
     if (dateFilters.endDate) conditions.push(lte(invoices.invoiceDate, dateFilters.endDate));
