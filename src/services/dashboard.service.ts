@@ -250,23 +250,11 @@ export const getActiveJobsStats = async (
   options?: { assignedToEmployeeId?: number; assignedToUserId?: string },
 ) => {
   const today = new Date();
-  const rangeStart = dateRange
-    ? new Date(dateRange.startDate)
-    : (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - 6);
-        return d;
-      })();
   const rangeEnd = dateRange ? new Date(dateRange.endDate) : today;
 
   const bidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
-
-  const dateFilter = and(
-    gte(jobs.actualStartDate, rangeStart),
-    lte(jobs.actualStartDate, rangeEnd),
-  );
 
   const assignedToEmployeeId = options?.assignedToEmployeeId;
   const assignedToUserId = options?.assignedToUserId;
@@ -290,11 +278,12 @@ export const getActiveJobsStats = async (
       ? or(teamMemberCondition, bidAssignedCondition)
       : teamMemberCondition ?? bidAssignedCondition ?? undefined;
 
-  let monthlyJobsQuery = db
+  /** Breakdown by status so chart bars sum to currentActiveJobs (planned, in_progress, on_hold) */
+  const statusOrder = ["planned", "in_progress", "on_hold"] as const;
+  const statusBreakdownQuery = db
     .select({
-      month: sql<string>`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
-      monthNum: sql<number>`EXTRACT(MONTH FROM ${jobs.actualStartDate})`,
-      jobs: count(jobs.id),
+      status: jobs.status,
+      count: count(jobs.id),
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
@@ -302,17 +291,19 @@ export const getActiveJobsStats = async (
       and(
         baseJobWhere,
         activeStatusCondition,
-        dateFilter,
         ...(technicianCondition ? [technicianCondition] : []),
       ),
     )
-    .groupBy(
-      sql`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
-      sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`,
-    )
-    .orderBy(sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`);
+    .groupBy(jobs.status);
 
-  const monthlyJobs = await monthlyJobsQuery;
+  const statusBreakdownRows = await statusBreakdownQuery;
+  const countByStatus = new Map<string, number>(
+    statusBreakdownRows.map((r) => [r.status as string, Number(r.count || 0)]),
+  );
+  const chartData = statusOrder.map((status) => ({
+    label: status === "in_progress" ? "In progress" : status === "on_hold" ? "On hold" : "Planned",
+    jobs: countByStatus.get(status) ?? 0,
+  }));
 
   let activeCountQuery = db
     .select({ count: count(jobs.id) })
@@ -361,11 +352,6 @@ export const getActiveJobsStats = async (
     lastMonthCount > 0
       ? ((currentCount - lastMonthCount) / lastMonthCount) * 100
       : 0;
-
-  const chartData = monthlyJobs.map((item) => ({
-    month: item.month,
-    jobs: Number(item.jobs || 0),
-  }));
 
   return {
     currentActiveJobs: currentCount,
