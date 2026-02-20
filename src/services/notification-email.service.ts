@@ -46,12 +46,26 @@ export class NotificationEmailService {
         ? `${process.env.CLIENT_URL}${notification.actionUrl}`
         : undefined;
 
+      // Parse additionalNotes as JSON for the info card (set by services when triggering events)
+      let additionalInfo: Record<string, string> | undefined;
+      if (notification.additionalNotes) {
+        try {
+          const parsed = JSON.parse(notification.additionalNotes);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            additionalInfo = parsed as Record<string, string>;
+          }
+        } catch {
+          // additionalNotes is plain text, not JSON — skip the info card
+        }
+      }
+
       const templateData: EmailTemplateData = {
         recipientName: recipientName || "User",
         title: notification.title,
         message: notification.message,
         ...(actionUrl ? { actionUrl } : {}),
         ...(notification.actionUrl ? { actionText: "View Details" } : {}),
+        ...(additionalInfo ? { additionalInfo } : {}),
       };
 
       const htmlContent = this.generateEmailHTML(templateData);
@@ -84,6 +98,31 @@ export class NotificationEmailService {
    * Generate HTML email template
    */
   private generateEmailHTML(data: EmailTemplateData): string {
+    const infoCardRows = data.additionalInfo
+      ? Object.entries(data.additionalInfo)
+          .filter(([, v]) => v && v.toString().trim() !== "")
+          .map(
+            ([label, value]) => `
+        <tr>
+          <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #555555; white-space: nowrap; width: 38%; border-bottom: 1px solid #F0F0F0;">${label}</td>
+          <td style="padding: 10px 14px; font-size: 13px; color: #111111; border-bottom: 1px solid #F0F0F0;">${value}</td>
+        </tr>`,
+          )
+          .join("")
+      : null;
+
+    const infoCardHtml = infoCardRows
+      ? `
+      <div style="margin: 28px 0;">
+        <p style="font-size: 12px; font-weight: 700; color: #999999; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">Details</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: 1px solid #E8E8E8; border-radius: 8px; overflow: hidden;">
+          <tbody>
+            ${infoCardRows}
+          </tbody>
+        </table>
+      </div>`
+      : "";
+
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -96,7 +135,7 @@ export class NotificationEmailService {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #000000;
-      background-color: #F7F7F7;
+      background-color: #F4F4F5;
       margin: 0;
       padding: 0;
     }
@@ -105,93 +144,95 @@ export class NotificationEmailService {
       margin: 40px auto;
       background-color: #ffffff;
       border-radius: 16px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
       overflow: hidden;
     }
     .header {
       background-color: #CC1F1F;
-      color: #ffffff;
-      padding: 30px;
+      padding: 28px 30px;
       text-align: center;
     }
-    .header h1 {
+    .title-bar {
+      background-color: #F9F9F9;
+      padding: 18px 30px;
+      border-bottom: 1px solid #EBEBEB;
+    }
+    .title-bar h2 {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
+      font-size: 18px;
+      font-weight: 700;
+      color: #111111;
     }
     .content {
-      padding: 40px 30px;
+      padding: 32px 30px 24px;
     }
     .greeting {
-      font-size: 16px;
-      margin-bottom: 20px;
-      color: #000000;
+      font-size: 15px;
+      margin-bottom: 16px;
+      color: #111111;
     }
     .message {
       font-size: 15px;
-      color: #333333;
-      margin-bottom: 30px;
+      color: #444444;
+      margin-bottom: 4px;
       line-height: 1.8;
     }
     .button {
       display: inline-block;
-      padding: 14px 32px;
+      padding: 13px 32px;
       background-color: #46931f;
-      color: #ffffff;
+      color: #ffffff !important;
       text-decoration: none;
       border-radius: 8px;
       font-weight: 600;
-      font-size: 15px;
-      margin: 20px 0;
-    }
-    .button:hover {
-      background-color: #3d7d1b;
+      font-size: 14px;
+      margin: 8px 0 4px;
     }
     .footer {
-      background-color: #F7F7F7;
-      padding: 20px 30px;
+      background-color: #F4F4F5;
+      padding: 18px 30px;
       text-align: center;
-      font-size: 13px;
-      color: #666666;
-      border-top: 1px solid #E2E8F0;
+      font-size: 12px;
+      color: #888888;
+      border-top: 1px solid #E8E8E8;
     }
     .footer p {
-      margin: 5px 0;
-    }
-    .divider {
-      height: 1px;
-      background-color: #E2E8F0;
-      margin: 25px 0;
+      margin: 4px 0;
     }
   </style>
 </head>
 <body>
   <div class="container">
+
     <div class="header">
       ${logoHeader}
     </div>
+
+    <div class="title-bar">
+      <h2>${data.title}</h2>
+    </div>
+
     <div class="content">
-      <div class="greeting">
-        <strong>Hi ${data.recipientName},</strong>
-      </div>
-      <div class="message">
-        ${data.message}
-      </div>
+      <p class="greeting">Hi <strong>${data.recipientName}</strong>,</p>
+      <p class="message">${data.message}</p>
+
+      ${infoCardHtml}
+
       ${
         data.actionUrl
-          ? `
-      <div style="text-align: center;">
-        <a href="${data.actionUrl}" class="button">${data.actionText || "View Details"}</a>
-      </div>
-      `
+          ? `<div style="text-align: center; margin-top: 28px;">
+               <a href="${data.actionUrl}" class="button">${data.actionText || "View Details"}</a>
+             </div>`
           : ""
       }
     </div>
+
     <div class="footer">
-      <p>This is an automated notification from T3 Mechanical.</p>
+      <p>This is an automated notification from <strong>T3 Mechanical</strong>.</p>
       <p>For questions, contact your administrator or support team.</p>
-      <p style="font-size: 11px; color: #999; margin-top: 12px;">If you did not expect this notification, please verify your account security.</p>
+      <p style="margin-top: 10px; font-size: 11px; color: #BBBBBB;">If you did not expect this email, please verify your account security.</p>
     </div>
+
   </div>
 </body>
 </html>

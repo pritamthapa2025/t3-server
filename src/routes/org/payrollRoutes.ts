@@ -15,7 +15,7 @@ import {
   bulkDeletePayrollRunsHandler,
 } from "../../controllers/PayrollController.js";
 import { authenticate } from "../../middleware/auth.js";
-import { authorizeFeature } from "../../middleware/featureAuthorize.js";
+import { authorizeFeature, requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 import {
@@ -35,11 +35,14 @@ import {
 
 const router: IRouter = Router();
 
+// All payroll routes are restricted to Manager/Executive — financial/payroll data is sensitive
+const managerOrAbove = requireAnyRole("Executive", "Manager");
+router.use(authenticate, managerOrAbove);
+
 // Payroll KPIs Routes
 router
   .route("/kpis")
   .get(
-    authenticate,
     validate(getPayrollDashboardQuerySchema),
     getPayrollDashboardHandler
   );
@@ -48,12 +51,10 @@ router
 router
   .route("/entries")
   .get(
-    authenticate,
     validate(getPayrollEntriesQuerySchema),
     getPayrollEntriesHandler
   )
   .post(
-    authenticate,
     validate(createPayrollEntrySchema),
     createPayrollEntryHandler
   );
@@ -61,17 +62,14 @@ router
 router
   .route("/entries/:id")
   .get(
-    authenticate,
     validate(getPayrollEntryByIdSchema),
     getPayrollEntryByIdHandler
   )
   .put(
-    authenticate,
     validate(updatePayrollEntrySchema),
     updatePayrollEntryHandler
   )
   .delete(
-    authenticate,
     validate(deletePayrollEntrySchema),
     deletePayrollEntryHandler
   );
@@ -79,7 +77,6 @@ router
 router
   .route("/entries/:id/approve")
   .post(
-    authenticate,
     validate(approvePayrollEntrySchema),
     approvePayrollEntryHandler
   );
@@ -87,7 +84,6 @@ router
 router
   .route("/entries/:id/reject")
   .post(
-    authenticate,
     validate(rejectPayrollEntrySchema),
     rejectPayrollEntryHandler
   );
@@ -95,9 +91,8 @@ router
 // Payroll Run Routes
 router
   .route("/runs")
-  .get(authenticate, validate(getPayrollRunsQuerySchema), getPayrollRunsHandler)
+  .get(validate(getPayrollRunsQuerySchema), getPayrollRunsHandler)
   .post(
-    authenticate,
     validate(createPayrollRunSchema),
     createPayrollRunHandler
   );
@@ -105,7 +100,6 @@ router
 router
   .route("/runs/:id")
   .get(
-    authenticate,
     validate(getPayrollRunByIdSchema),
     getPayrollRunByIdHandler
   );
@@ -113,7 +107,6 @@ router
 router
   .route("/runs/:id/process")
   .post(
-    authenticate,
     validate(processPayrollRunSchema),
     processPayrollRunHandler
   );

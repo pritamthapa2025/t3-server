@@ -126,6 +126,7 @@ export const updateEmployeeSchema = z.object({
   }),
   body: z
     .object({
+      // Employee table fields
       userId: uuidSchema.optional(),
       departmentId: z.preprocess(
         coerceOptionalInt,
@@ -140,6 +141,24 @@ export const updateEmployeeSchema = z.object({
       startDate: z.union([z.string(), z.date()]).optional().nullable(),
       endDate: z.union([z.string(), z.date()]).optional().nullable(),
       note: z.unknown().optional(),
+      // User table fields
+      fullName: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      address: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      zipCode: z.string().optional(),
+      roleId: z.preprocess(
+        coerceOptionalInt,
+        z.number().int().positive().nullable().optional(),
+      ),
+      // Bank account fields
+      accountHolderName: z.string().optional(),
+      bankName: z.string().optional(),
+      accountNumber: z.string().optional(),
+      routingNumber: z.string().optional(),
+      accountType: z.enum(["checking", "savings"]).optional(),
     })
     .refine(
       (data) =>
@@ -150,7 +169,20 @@ export const updateEmployeeSchema = z.object({
         data.status !== undefined ||
         data.startDate !== undefined ||
         data.endDate !== undefined ||
-        data.note !== undefined,
+        data.note !== undefined ||
+        data.fullName !== undefined ||
+        data.email !== undefined ||
+        data.phone !== undefined ||
+        data.address !== undefined ||
+        data.city !== undefined ||
+        data.state !== undefined ||
+        data.zipCode !== undefined ||
+        data.roleId !== undefined ||
+        data.accountHolderName !== undefined ||
+        data.bankName !== undefined ||
+        data.accountNumber !== undefined ||
+        data.routingNumber !== undefined ||
+        data.accountType !== undefined,
       {
         message: "At least one field is required for update",
       },

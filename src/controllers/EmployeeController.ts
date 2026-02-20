@@ -41,6 +41,7 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
+import { getUserRoleWithContext } from "../services/featurePermission.service.js";
 
 // Remove organization validation - all employees work for T3
 // Access control will be based on user roles/permissions instead
@@ -601,6 +602,19 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
         success: false,
         message: "Employee not found",
       });
+    }
+
+    // Authorization: Technicians can only update their own profile
+    const requestingUserRole = await getUserRoleWithContext(req.user!.id);
+    const isTechnician = requestingUserRole?.roleName === "Technician";
+    if (isTechnician) {
+      const isOwnRecord = requestingUserRole?.employeeId === id;
+      if (!isOwnRecord) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update your own profile",
+        });
+      }
     }
 
     // Get the user ID for updating user and bank account data

@@ -225,6 +225,44 @@ export const loadModulePermissions = (module: string) => {
 };
 
 /**
+ * Role-based authorization allowing multiple roles
+ * Usage: requireAnyRole("Executive", "Manager")
+ */
+export const requireAnyRole = (...roleNames: string[]) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const userRole = await getUserRoleWithContext(req.user.id);
+
+      if (!userRole || !roleNames.includes(userRole.roleName)) {
+        logger.warn(
+          `Role access denied: User ${req.user.id} does not have any of roles [${roleNames.join(", ")}]`
+        );
+        return res.status(403).json({
+          success: false,
+          message: `You do not have permission to perform this action`,
+        });
+      }
+
+      req.userRole = userRole;
+      next();
+    } catch (error) {
+      logger.logApiError("Role authorization error", error, req);
+      return res.status(500).json({
+        success: false,
+        message: "Authorization check failed",
+      });
+    }
+  };
+};
+
+/**
  * Advanced: Role-based authorization (for simple cases)
  * Usage: requireRole("Executive")
  */

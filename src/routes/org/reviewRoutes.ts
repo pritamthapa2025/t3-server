@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as reviewController from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getReviewsQuerySchema,
@@ -20,6 +21,8 @@ const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+
+const managerOrAbove = requireAnyRole("Executive", "Manager");
 
 // ==================== GENERAL REVIEW ROUTES ====================
 
@@ -43,9 +46,10 @@ router.get(
   reviewController.getReviewTemplates
 );
 
-// Bulk create reviews (must be before /:id route)
+// Bulk create reviews (Manager/Executive only)
 router.post(
   "/bulk",
+  managerOrAbove,
   validate(bulkCreateReviewsSchema),
   reviewController.bulkCreateReviews
 );
@@ -57,23 +61,26 @@ router.get(
   reviewController.getReviewById
 );
 
-// Create new review
+// Create new review (Manager/Executive only)
 router.post(
   "/",
+  managerOrAbove,
   validate(createReviewSchema),
   reviewController.createReview
 );
 
-// Update review
+// Update review (Manager/Executive only)
 router.put(
   "/:id",
+  managerOrAbove,
   validate(updateReviewSchema),
   reviewController.updateReview
 );
 
-// Delete review
+// Delete review (Manager/Executive only)
 router.delete(
   "/:id",
+  managerOrAbove,
   validate(deleteReviewSchema),
   reviewController.deleteReview
 );
@@ -87,9 +94,10 @@ router.get(
   reviewController.getEmployeeReviews
 );
 
-// Create review for specific employee
+// Create review for specific employee (Manager/Executive only)
 router.post(
   "/employees/:employeeId",
+  managerOrAbove,
   validate(createEmployeeReviewSchema),
   reviewController.createEmployeeReview
 );

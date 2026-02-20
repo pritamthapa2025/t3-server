@@ -103,7 +103,10 @@ export const removeRoleFromUser = async (userId: string) => {
  * Update user role - assigns a single role to a user (one user, one role)
  * If roleId is null/undefined, removes the user's role
  */
-export const updateUserRoles = async (userId: string, roleId: number | null | undefined) => {
+export const updateUserRoles = async (
+  userId: string,
+  roleId: number | null | undefined,
+) => {
   // If no role provided, remove existing role
   if (roleId === null || roleId === undefined) {
     const [deleted] = await db
@@ -118,6 +121,15 @@ export const updateUserRoles = async (userId: string, roleId: number | null | un
 };
 
 /**
+ * Check if a user has the Executive role (case-insensitive).
+ * Used to auto-approve expenses and other records created by executives.
+ */
+export const isUserExecutive = async (userId: string): Promise<boolean> => {
+  const role = await getUserRoles(userId);
+  return role?.roleName?.trim().toLowerCase() === "executive";
+};
+
+/**
  * Get all available roles
  */
 export const getAllRoles = async () => {
@@ -129,4 +141,3 @@ export const getAllRoles = async () => {
 
   return result;
 };
-

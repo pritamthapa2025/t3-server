@@ -19,6 +19,7 @@ import {
   deleteEmployeeBenefitHandler,
 } from "../../controllers/CompensationController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getEmployeeCompensationsQuerySchema,
@@ -42,45 +43,44 @@ import {
 
 const router: IRouter = Router();
 
+const managerOrAbove = requireAnyRole("Executive", "Manager");
+
+// All compensation routes are restricted to Manager/Executive — salary data is sensitive
+router.use(authenticate, managerOrAbove);
+
 // Employee Compensation Routes
 router.get(
   "/compensations",
-  authenticate,
   validate(getEmployeeCompensationsQuerySchema),
   getEmployeeCompensationsHandler
 );
 
 router.get(
   "/compensations/:id",
-  authenticate,
   validate(getEmployeeCompensationByIdSchema),
   getEmployeeCompensationByIdHandler
 );
 
 router.post(
   "/compensations",
-  authenticate,
   validate(createEmployeeCompensationSchema),
   createEmployeeCompensationHandler
 );
 
 router.put(
   "/compensations/:id",
-  authenticate,
   validate(updateEmployeeCompensationSchema),
   updateEmployeeCompensationHandler
 );
 
 router.delete(
   "/compensations/:id",
-  authenticate,
   validate(deleteEmployeeCompensationSchema),
   deleteEmployeeCompensationHandler
 );
 
 router.get(
   "/compensations/history/:employeeId",
-  authenticate,
   validate(getEmployeeCompensationHistorySchema),
   getEmployeeCompensationHistoryHandler
 );
@@ -88,35 +88,30 @@ router.get(
 // Pay Periods Routes
 router.get(
   "/pay-periods",
-  authenticate,
   validate(getPayPeriodsQuerySchema),
   getPayPeriodsHandler
 );
 
 router.get(
   "/pay-periods/:id",
-  authenticate,
   validate(getPayPeriodByIdSchema),
   getPayPeriodByIdHandler
 );
 
 router.post(
   "/pay-periods",
-  authenticate,
   validate(createPayPeriodSchema),
   createPayPeriodHandler
 );
 
 router.put(
   "/pay-periods/:id",
-  authenticate,
   validate(updatePayPeriodSchema),
   updatePayPeriodHandler
 );
 
 router.delete(
   "/pay-periods/:id",
-  authenticate,
   validate(deletePayPeriodSchema),
   deletePayPeriodHandler
 );
@@ -124,14 +119,12 @@ router.delete(
 // Employee Leave Balances Routes
 router.get(
   "/leave-balances/:employeeId",
-  authenticate,
   validate(getEmployeeLeaveBalancesSchema),
   getEmployeeLeaveBalancesHandler
 );
 
 router.put(
   "/leave-balances/:id",
-  authenticate,
   validate(updateEmployeeLeaveBalanceSchema),
   updateEmployeeLeaveBalanceHandler
 );
@@ -139,28 +132,24 @@ router.put(
 // Employee Benefits Routes
 router.get(
   "/benefits",
-  authenticate,
   validate(getEmployeeBenefitsQuerySchema),
   getEmployeeBenefitsHandler
 );
 
 router.post(
   "/benefits",
-  authenticate,
   validate(createEmployeeBenefitSchema),
   createEmployeeBenefitHandler
 );
 
 router.put(
   "/benefits/:id",
-  authenticate,
   validate(updateEmployeeBenefitSchema),
   updateEmployeeBenefitHandler
 );
 
 router.delete(
   "/benefits/:id",
-  authenticate,
   validate(deleteEmployeeBenefitSchema),
   deleteEmployeeBenefitHandler
 );

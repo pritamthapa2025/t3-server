@@ -17,7 +17,7 @@ export const seedRoles = async () => {
             "Manages daily operations and team performance within their department",
         },
         {
-          name: "Field Technician",
+          name: "Technician",
           description:
             "Performs technical tasks in the field and assists clients on-site",
         },

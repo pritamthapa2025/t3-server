@@ -130,7 +130,10 @@ export async function getExpenses(
   }
   if (filters?.category) {
     whereConditions.push(
-      eq(expenses.category, filters.category as typeof expenses.$inferSelect.category),
+      eq(
+        expenses.category,
+        filters.category as typeof expenses.$inferSelect.category,
+      ),
     );
   }
   if (filters?.jobId) {
@@ -249,8 +252,11 @@ export async function createExpense(
   _organizationId: string | null | undefined,
   body: Record<string, unknown>,
   userId: string,
+  /** When true (executive creator), the expense is immediately approved. */
+  autoApprove = false,
 ) {
   const amount = String(body.amount ?? "0");
+  const now = new Date();
   const result = await db
     .insert(expenses)
     .values({
@@ -267,6 +273,13 @@ export async function createExpense(
       expenseDate: body.expenseDate as string,
       vendor: (body.vendor as string) ?? null,
       createdBy: userId,
+      ...(autoApprove && {
+        status: "approved",
+        approvedBy: userId,
+        approvedDate: now,
+        submittedDate: now,
+        requiresApproval: false,
+      }),
     } as typeof expenses.$inferInsert)
     .returning();
   const row = Array.isArray(result) ? result[0] : undefined;
@@ -285,7 +298,10 @@ export function getDefaultExpenseCategory(): string {
  * to org.expenses expense_type_enum (job_material, job_travel, job_service). Labor is not a job expense type.
  */
 function mapJobExpenseTypeToExpenseType(jobExpenseType: string): string {
-  const lower = (jobExpenseType ?? "").toLowerCase().trim().replace(/\s+/g, "_");
+  const lower = (jobExpenseType ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
   const map: Record<string, string> = {
     materials: "job_material",
     equipment: "job_material",
@@ -316,11 +332,15 @@ export async function createExpenseFromSource(data: {
   vendor?: string | null;
   createdBy: string;
   source: "job" | "fleet" | "inventory";
+  /** When set, the expense is immediately approved (executive creation or explicit approval action). */
+  approvedBy?: string | null;
 }): Promise<{ id: string } | null> {
   const expenseTypeMapped =
     data.source === "job"
       ? mapJobExpenseTypeToExpenseType(data.expenseType)
       : data.expenseType;
+  const now = new Date();
+  const isApproved = !!data.approvedBy;
   const [row] = await db
     .insert(expenses)
     .values({
@@ -331,7 +351,7 @@ export async function createExpenseFromSource(data: {
       expenseType:
         expenseTypeMapped as typeof expenses.$inferSelect.expenseType,
       paymentMethod: "other",
-      status: "draft",
+      status: isApproved ? "approved" : "draft",
       title: data.title ?? data.description?.slice(0, 255) ?? "Expense",
       description: data.description ?? null,
       vendor: data.vendor ?? null,
@@ -339,6 +359,12 @@ export async function createExpenseFromSource(data: {
       amountInBaseCurrency: data.amount,
       expenseDate: data.expenseDate,
       createdBy: data.createdBy,
+      ...(isApproved && {
+        approvedBy: data.approvedBy,
+        approvedDate: now,
+        submittedDate: now,
+        requiresApproval: false,
+      }),
     } as typeof expenses.$inferInsert)
     .returning({ id: expenses.id });
   return row ?? null;
@@ -696,9 +722,9 @@ export async function getExpensesKPIs() {
           eq(expenses.expenseType, "materials"),
           eq(expenses.expenseType, "equipment"),
           eq(expenses.expenseType, "tools"),
-          eq(expenses.expenseType, "job_material")
-        )
-      )
+          eq(expenses.expenseType, "job_material"),
+        ),
+      ),
     );
 
   // Labor Costs (expenseType: job_labor, subcontractor, professional_services)
@@ -713,9 +739,9 @@ export async function getExpensesKPIs() {
         or(
           eq(expenses.expenseType, "job_labor"),
           eq(expenses.expenseType, "subcontractor"),
-          eq(expenses.expenseType, "professional_services")
-        )
-      )
+          eq(expenses.expenseType, "professional_services"),
+        ),
+      ),
     );
 
   // Travel & Fleet (expenseType: travel, fuel, vehicle_maintenance, job_travel, fleet_*)
@@ -735,9 +761,9 @@ export async function getExpensesKPIs() {
           eq(expenses.expenseType, "fleet_repair"),
           eq(expenses.expenseType, "fleet_maintenance"),
           eq(expenses.expenseType, "fleet_fuel"),
-          eq(expenses.expenseType, "fleet_purchase")
-        )
-      )
+          eq(expenses.expenseType, "fleet_purchase"),
+        ),
+      ),
     );
 
   // Operating Expenses (all other types: utilities, insurance, permits, licenses, office_supplies, etc.)
@@ -762,9 +788,9 @@ export async function getExpensesKPIs() {
           eq(expenses.expenseType, "software"),
           eq(expenses.expenseType, "subscriptions"),
           eq(expenses.expenseType, "other"),
-          eq(expenses.expenseType, "manual")
-        )
-      )
+          eq(expenses.expenseType, "manual"),
+        ),
+      ),
     );
 
   const totalExpenses = Number(totalExpensesRow?.totalAmount || 0);

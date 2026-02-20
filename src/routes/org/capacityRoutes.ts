@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as capacityController from "../../controllers/CapacityController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getDashboardKPIsQuerySchema,
@@ -26,6 +27,8 @@ const router: IRouter = Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+
+const managerOrAbove = requireAnyRole("Executive", "Manager");
 
 // Dashboard KPIs
 router.get(
@@ -64,6 +67,7 @@ router.get(
 
 router.put(
   "/availability/:employeeId",
+  managerOrAbove,
   validate(z.object({ 
     body: updateEmployeeAvailabilitySchema,
     params: z.object({ employeeId: z.string() })
@@ -80,12 +84,14 @@ router.get(
 
 router.post(
   "/allocations",
+  managerOrAbove,
   validate(z.object({ body: createResourceAllocationSchema })),
   capacityController.createResourceAllocation
 );
 
 router.put(
   "/allocations/:allocationId",
+  managerOrAbove,
   validate(z.object({ 
     body: updateResourceAllocationSchema,
     params: z.object({ allocationId: z.string().uuid() })
@@ -102,12 +108,14 @@ router.get(
 
 router.post(
   "/shifts",
+  managerOrAbove,
   validate(z.object({ body: createEmployeeShiftSchema })),
   capacityController.createEmployeeShift
 );
 
 router.put(
   "/shifts/:shiftId",
+  managerOrAbove,
   validate(z.object({ 
     body: updateEmployeeShiftSchema,
     params: z.object({ shiftId: z.string() })
@@ -117,6 +125,7 @@ router.put(
 
 router.delete(
   "/shifts/:shiftId",
+  managerOrAbove,
   validate(z.object({ 
     params: z.object({ shiftId: z.string() })
   })),
@@ -130,9 +139,10 @@ router.get(
   capacityController.getDepartmentCapacityOverview
 );
 
-// Create Department Capacity Metric
+// Create Department Capacity Metric (Manager/Executive only)
 router.post(
   "/capacity/metrics",
+  managerOrAbove,
   validate(z.object({ body: createDepartmentCapacityMetricSchema })),
   capacityController.createDepartmentCapacityMetric
 );
@@ -146,6 +156,7 @@ router.get(
 
 router.post(
   "/templates",
+  managerOrAbove,
   validate(z.object({ body: createCapacityPlanningTemplateSchema })),
   capacityController.createCapacityPlanningTemplate
 );

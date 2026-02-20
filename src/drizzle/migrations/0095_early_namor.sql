@@ -1,0 +1,1 @@
+ALTER TABLE "org"."dispatch_tasks" ADD COLUMN IF NOT EXISTS "date" date;

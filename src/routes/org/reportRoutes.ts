@@ -34,6 +34,7 @@ import {
   getPaymentCollectionHandler,
 } from "../../controllers/ReportController.js";
 import { authenticate } from "../../middleware/auth.js";
+import { requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import {
   getCompanySummaryKPIsQuerySchema,
@@ -75,114 +76,115 @@ const router: IRouter = Router();
 // All routes require authentication
 router.use(authenticate);
 
+// Reports restricted to Manager/Executive (company-wide financial/operational data)
+const managerOrAbove = requireAnyRole("Executive", "Manager");
+
 // ============================
-// Company Summary Routes
+// Company Summary Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/company-summary/kpis - Get company summary KPIs
 router.get(
   "/reports/company-summary/kpis",
+  managerOrAbove,
   validate(getCompanySummaryKPIsQuerySchema),
   getCompanySummaryKPIsHandler
 );
 
-// GET /org/reports/company-summary/revenue-trend - Get monthly revenue trend
 router.get(
   "/reports/company-summary/revenue-trend",
+  managerOrAbove,
   validate(getMonthlyRevenueTrendQuerySchema),
   getMonthlyRevenueTrendHandler
 );
 
-// GET /org/reports/company-summary/job-performance - Get job performance data
 router.get(
   "/reports/company-summary/job-performance",
+  managerOrAbove,
   validate(getJobPerformanceDataQuerySchema),
   getJobPerformanceDataHandler
 );
 
-// GET /org/reports/company-summary/client-revenue - Get client revenue distribution
 router.get(
   "/reports/company-summary/client-revenue",
+  managerOrAbove,
   validate(getClientRevenueDistributionQuerySchema),
   getClientRevenueDistributionHandler
 );
 
 // ============================
-// Financial Reports Routes
+// Financial Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/financial/kpis - Get all financial KPIs
 router.get(
   "/reports/financial/kpis",
+  managerOrAbove,
   validate(getFinancialKPIsQuerySchema),
   getFinancialKPIsHandler
 );
 
-// GET /org/reports/financial/profit-loss - Get profit & loss statement
 router.get(
   "/reports/financial/profit-loss",
+  managerOrAbove,
   validate(getProfitAndLossQuerySchema),
   getProfitAndLossHandler
 );
 
-// GET /org/reports/financial/cash-flow - Get cash flow forecast
 router.get(
   "/reports/financial/cash-flow",
+  managerOrAbove,
   validate(getCashFlowForecastQuerySchema),
   getCashFlowForecastHandler
 );
 
-// GET /org/reports/financial/revenue-by-client - Get revenue by client with filters
 router.get(
   "/reports/financial/revenue-by-client",
+  managerOrAbove,
   validate(getRevenueByClientQuerySchema),
   getRevenueByClientHandler
 );
 
 // ============================
-// Expense Reports Routes
+// Expense Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/expenses/by-category - Get expenses breakdown by category
 router.get(
   "/reports/expenses/by-category",
+  managerOrAbove,
   validate(getExpenseByCategoryQuerySchema),
   getExpenseByCategoryHandler
 );
 
-// GET /org/reports/expenses/monthly-trend - Get monthly expense trend by category
 router.get(
   "/reports/expenses/monthly-trend",
+  managerOrAbove,
   validate(getMonthlyExpenseTrendQuerySchema),
   getMonthlyExpenseTrendHandler
 );
 
-// GET /org/reports/expenses/vendor-spend - Get vendor spend report
 router.get(
   "/reports/expenses/vendor-spend",
+  managerOrAbove,
   validate(getVendorSpendQuerySchema),
   getVendorSpendHandler
 );
 
 // ============================
 // Timesheet & Labor Reports Routes
+// Technicians see their own data only (controller scopes via getDataFilterConditions)
 // ============================
 
-// GET /org/reports/timesheet-labor/hours - Get technician hours report
 router.get(
   "/reports/timesheet-labor/hours",
   validate(getTechnicianHoursQuerySchema),
   getTechnicianHoursHandler
 );
 
-// GET /org/reports/timesheet-labor/labor-cost - Get labor cost report
 router.get(
   "/reports/timesheet-labor/labor-cost",
   validate(getLaborCostQuerySchema),
   getLaborCostHandler
 );
 
-// GET /org/reports/timesheet-labor/attendance - Get attendance report
 router.get(
   "/reports/timesheet-labor/attendance",
   validate(getAttendanceQuerySchema),
@@ -190,92 +192,90 @@ router.get(
 );
 
 // ============================
-// Fleet Reports Routes
+// Fleet Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/fleet/usage - Get fleet usage report
 router.get(
   "/reports/fleet/usage",
+  managerOrAbove,
   validate(getFleetUsageQuerySchema),
   getFleetUsageHandler
 );
 
-// GET /org/reports/fleet/maintenance - Get fleet maintenance cost report
 router.get(
   "/reports/fleet/maintenance",
+  managerOrAbove,
   validate(getFleetMaintenanceQuerySchema),
   getFleetMaintenanceHandler
 );
 
-// GET /org/reports/fleet/fuel - Get fuel expense report
 router.get(
   "/reports/fleet/fuel",
+  managerOrAbove,
   validate(getFuelExpenseQuerySchema),
   getFuelExpenseHandler
 );
 
 // ============================
-// Inventory Reports Routes
+// Inventory Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/inventory/valuation - Get inventory valuation
 router.get(
   "/reports/inventory/valuation",
+  managerOrAbove,
   validate(getInventoryValuationQuerySchema),
   getInventoryValuationHandler
 );
 
-// GET /org/reports/inventory/stock-movement - Get stock movement report
 router.get(
   "/reports/inventory/stock-movement",
+  managerOrAbove,
   validate(getStockMovementQuerySchema),
   getStockMovementHandler
 );
 
-// GET /org/reports/inventory/low-stock - Get low stock items
 router.get(
   "/reports/inventory/low-stock",
+  managerOrAbove,
   validate(getLowStockItemsQuerySchema),
   getLowStockItemsHandler
 );
 
 // ============================
-// Client Reports Routes
+// Client Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/clients/spend - Get client spend report
 router.get(
   "/reports/clients/spend",
+  managerOrAbove,
   validate(getClientSpendQuerySchema),
   getClientSpendHandler
 );
 
-// GET /org/reports/clients/outstanding - Get client outstanding payments
 router.get(
   "/reports/clients/outstanding",
+  managerOrAbove,
   validate(getClientOutstandingQuerySchema),
   getClientOutstandingHandler
 );
 
 // ============================
 // Technician Performance Routes
+// Technicians see their own data only (controller scopes via resolveOwnTechnicianId)
 // ============================
 
-// GET /org/reports/technician-performance/productivity - Get productivity report
 router.get(
   "/reports/technician-performance/productivity",
   validate(getTechnicianProductivityQuerySchema),
   getTechnicianProductivityHandler
 );
 
-// GET /org/reports/technician-performance/quality - Get quality metrics
 router.get(
   "/reports/technician-performance/quality",
   validate(getTechnicianQualityQuerySchema),
   getTechnicianQualityHandler
 );
 
-// GET /org/reports/technician-performance/profit - Get profit contribution
 router.get(
   "/reports/technician-performance/profit",
   validate(getTechnicianProfitQuerySchema),
@@ -283,58 +283,58 @@ router.get(
 );
 
 // ============================
-// Job Reports Routes
+// Job Reports Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/jobs/status-summary - Get job status summary
 router.get(
   "/reports/jobs/status-summary",
+  managerOrAbove,
   validate(getJobStatusSummaryQuerySchema),
   getJobStatusSummaryHandler
 );
 
-// GET /org/reports/jobs/profitability - Get job profitability analysis
 router.get(
   "/reports/jobs/profitability",
+  managerOrAbove,
   validate(getJobProfitabilityQuerySchema),
   getJobProfitabilityHandler
 );
 
-// GET /org/reports/jobs/cost-breakdown - Get job cost breakdown
 router.get(
   "/reports/jobs/cost-breakdown",
+  managerOrAbove,
   validate(getJobCostBreakdownQuerySchema),
   getJobCostBreakdownHandler
 );
 
-// GET /org/reports/jobs/timeline - Get job timeline data
 router.get(
   "/reports/jobs/timeline",
+  managerOrAbove,
   validate(getJobTimelineQuerySchema),
   getJobTimelineHandler
 );
 
 // ============================
-// Invoicing & Payments Routes
+// Invoicing & Payments Routes (Manager/Executive only)
 // ============================
 
-// GET /org/reports/invoicing/summary - Get invoice summary
 router.get(
   "/reports/invoicing/summary",
+  managerOrAbove,
   validate(getInvoiceSummaryQuerySchema),
   getInvoiceSummaryHandler
 );
 
-// GET /org/reports/invoicing/aging - Get customer aging report
 router.get(
   "/reports/invoicing/aging",
+  managerOrAbove,
   validate(getCustomerAgingQuerySchema),
   getCustomerAgingHandler
 );
 
-// GET /org/reports/invoicing/collection - Get payment collection data
 router.get(
   "/reports/invoicing/collection",
+  managerOrAbove,
   validate(getPaymentCollectionQuerySchema),
   getPaymentCollectionHandler
 );

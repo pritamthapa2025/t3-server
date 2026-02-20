@@ -8,6 +8,7 @@ import {
 } from "../services/expense.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { isUserExecutive } from "../services/role.service.js";
 
 const INVENTORY_FINANCIAL_FIELDS = [
   "unitCost",
@@ -241,6 +242,7 @@ export const createInventoryItemHandler = async (
       if (parseFloat(amount) > 0) {
         try {
           const category = getDefaultExpenseCategory();
+          const executive = await isUserExecutive(userId);
           await createExpenseFromSource({
             sourceId: itemId,
             category,
@@ -252,6 +254,7 @@ export const createInventoryItemHandler = async (
             vendor: null,
             createdBy: userId,
             source: "inventory",
+            approvedBy: executive ? userId : null,
           });
         } catch (expenseErr) {
           logger.logApiError(
@@ -2052,11 +2055,16 @@ export const recordCountItemHandler = async (req: Request, res: Response) => {
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteInventoryItemsHandler = async (req: Request, res: Response) => {
+export const bulkDeleteInventoryItemsHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await inventoryService.bulkDeleteInventoryItems(ids, userId);
@@ -2069,6 +2077,8 @@ export const bulkDeleteInventoryItemsHandler = async (req: Request, res: Respons
     });
   } catch (error) {
     logger.logApiError("Bulk delete inventory items error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

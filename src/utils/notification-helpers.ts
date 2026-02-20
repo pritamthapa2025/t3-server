@@ -439,42 +439,297 @@ export function generateNotificationMessage(
   eventType: string,
   eventData: any
 ): { message: string; shortMessage: string } {
-  // Default messages
-  let message = eventData.message || "You have a new notification";
-  let shortMessage = eventData.shortMessage || message.substring(0, 100);
+  // If caller already provided a custom message, use it as-is
+  let message = eventData.message || "";
+  let shortMessage = eventData.shortMessage || "";
 
-  // Customize based on event type if not provided
   if (!eventData.message) {
-    const entityName = eventData.entityName || "Item";
+    const name = eventData.entityName || "Item";
+
+    // Helpers to format optional fields inline
+    const client = eventData.clientName ? ` for client ${eventData.clientName}` : "";
+    const amount = eventData.amount ? ` $${Number(eventData.amount).toLocaleString()}` : "";
+    const daysOverdue = eventData.daysOverdue
+      ? `${eventData.daysOverdue} day${eventData.daysOverdue > 1 ? "s" : ""}`
+      : null;
+    const dueDate = eventData.dueDate
+      ? new Date(eventData.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+      : null;
+    const plate = eventData.licensePlate ? ` (Plate: ${eventData.licensePlate})` : "";
+    const maintenanceType = eventData.maintenanceType ? ` — ${eventData.maintenanceType}` : "";
 
     switch (eventType) {
+      // ── Auth & Security ────────────────────────────────────────────────
+      case "2fa_code":
+        message = eventData.code
+          ? `Your two-factor authentication code is: ${eventData.code}. This code expires in 10 minutes. Do not share it with anyone.`
+          : "Your two-factor authentication code has been sent. Please check your registered device. The code expires in 10 minutes.";
+        shortMessage = "Your 2FA code is ready";
+        break;
+
+      case "password_reset_request":
+        message = "We received a request to reset your T3 Mechanical account password. Click the button below to create a new password. This link is valid for 1 hour. If you did not request this, you can safely ignore this email — your password will not change.";
+        shortMessage = "Password reset link sent";
+        break;
+
+      case "password_changed":
+        message = "Your T3 Mechanical account password was changed successfully. If you made this change, no action is needed. If you did not change your password, please contact your administrator immediately to secure your account.";
+        shortMessage = "Your password has been changed";
+        break;
+
+      case "new_account_created":
+        message = "Your T3 Mechanical account has been created successfully. You can now access the platform using your registered email. A separate email has been sent with instructions to set up your password. If you have questions, contact your administrator.";
+        shortMessage = "Your T3 Mechanical account is ready";
+        break;
+
+      case "password_setup_link":
+        message = "Your T3 Mechanical account is ready. Please click the button below to set your password and activate your account. This link is valid for 24 hours. If you did not expect this, please contact your administrator.";
+        shortMessage = "Set up your account password";
+        break;
+
+      case "account_locked":
+        message = "Your T3 Mechanical account has been temporarily locked due to multiple failed login attempts. Please contact your administrator to unlock your account and verify your identity before trying again.";
+        shortMessage = "Your account has been locked";
+        break;
+
+      // ── Jobs ─────────────────────────────────────────────────────────
       case "job_assigned":
-        message = `You have been assigned to ${entityName}`;
-        shortMessage = `New job assigned: ${entityName}`;
+        message = `You have been assigned to job "${name}"${client}. Please log in to review the full job details, scheduled dates, and site information before your start date.`;
+        shortMessage = `New job assigned: ${name}`;
         break;
+
+      case "job_status_changed": {
+        const oldStatus = eventData.oldStatus ? ` from "${eventData.oldStatus}"` : "";
+        const newStatus = eventData.newStatus ? ` to "${eventData.newStatus}"` : "";
+        message = `The status of job "${name}"${client} has been updated${oldStatus}${newStatus}. Please log in to review the latest details and any new instructions.`;
+        shortMessage = `Job status updated: ${name}${eventData.newStatus ? ` → ${eventData.newStatus}` : ""}`;
+        break;
+      }
+
+      case "job_started":
+        message = `Job "${name}"${client} has officially started. The assigned team is on-site and work has begun. You will be notified when the job is completed or if any issues arise.`;
+        shortMessage = `Job started: ${name}`;
+        break;
+
+      case "job_completed":
+        message = `Job "${name}"${client} has been completed successfully. Please log in to review the final report, any outstanding items, and follow-up actions required before closing.`;
+        shortMessage = `Job completed: ${name}`;
+        break;
+
       case "job_overdue":
-        message = `${entityName} is now ${eventData.daysOverdue || ""} overdue`;
-        shortMessage = `Job overdue: ${entityName}`;
+        message = `Job "${name}"${client} is now ${daysOverdue ? `${daysOverdue} overdue` : "overdue"}${dueDate ? ` (was due ${dueDate})` : ""}. Immediate attention is required. Please log in to review the job status and take corrective action.`;
+        shortMessage = `Job overdue: ${name}`;
         break;
+
+      case "job_cancelled":
+        message = `Job "${name}"${client} has been cancelled${eventData.reason ? ` — Reason: ${eventData.reason}` : ""}. Please log in to review any outstanding tasks, materials, or commitments tied to this job.`;
+        shortMessage = `Job cancelled: ${name}`;
+        break;
+
+      case "job_site_notes_added":
+        message = `New site notes have been added to job "${name}"${client}${eventData.addedBy ? ` by ${eventData.addedBy}` : ""}. Please review the updated notes before your next visit to ensure you have the latest site information.`;
+        shortMessage = `New site notes: ${name}`;
+        break;
+
+      case "job_cost_exceeds_budget":
+      case "job_budget_exceeded": {
+        const current = eventData.currentCost ? ` Current cost:${amount}` : "";
+        const budget = eventData.budget ? ` / Budget: $${Number(eventData.budget).toLocaleString()}` : "";
+        message = `Job "${name}"${client} has exceeded its approved budget.${current}${budget}. Please log in to review the cost breakdown and determine whether additional approval is required before work continues.`;
+        shortMessage = `Budget exceeded: ${name}`;
+        break;
+      }
+
+      // ── Bids ──────────────────────────────────────────────────────────
+      case "bid_created":
+        message = `A new bid "${name}"${client}${amount ? ` (Amount:${amount})` : ""} has been created and is awaiting review. Please log in to verify the details and take the appropriate next steps.`;
+        shortMessage = `New bid created: ${name}`;
+        break;
+
+      case "bid_sent_to_client":
+        message = `Bid "${name}"${client}${amount ? ` (Amount:${amount})` : ""} has been sent to the client for review. You will be notified when the client responds with an acceptance, revision request, or rejection.`;
+        shortMessage = `Bid sent to client: ${name}`;
+        break;
+
+      case "bid_requires_approval":
+        message = `Bid "${name}"${client}${amount ? ` (Amount:${amount})` : ""} is pending your approval before it can be sent. Please log in to review the bid details and either approve or return it with comments at your earliest convenience.`;
+        shortMessage = `Bid approval required: ${name}`;
+        break;
+
+      case "bid_won":
+        message = `Great news — bid "${name}"${client}${amount ? ` (Amount:${amount})` : ""} has been won! The client has accepted the proposal. Please log in to begin the job creation and project planning process.`;
+        shortMessage = `Bid won: ${name}`;
+        break;
+
+      case "bid_expired":
+        message = `Bid "${name}"${client}${amount ? ` (Amount:${amount})` : ""} has expired without a client response${dueDate ? ` (expired ${dueDate})` : ""}. Please log in to review the bid and decide whether to renew, follow up with the client, or close it.`;
+        shortMessage = `Bid expired: ${name}`;
+        break;
+
+      // ── Invoicing & Payments ──────────────────────────────────────────
+      case "invoice_sent":
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} has been sent${dueDate ? ` and is due on ${dueDate}` : ""}. Please log in to track payment status or download a copy of the invoice.`;
+        shortMessage = `Invoice sent: ${name}`;
+        break;
+
+      case "payment_received_full":
+        message = `Full payment${amount ? ` of${amount}` : ""} has been received for invoice ${name}${client}. The invoice is now fully settled. Please log in to confirm and close the invoice.`;
+        shortMessage = `Full payment received: ${name}`;
+        break;
+
+      case "payment_received_partial": {
+        const remaining = eventData.remainingBalance ? ` Remaining balance: $${Number(eventData.remainingBalance).toLocaleString()}.` : "";
+        message = `A partial payment${amount ? ` of${amount}` : ""} has been received for invoice ${name}${client}.${remaining} Please log in to review the payment history and follow up on the outstanding balance.`;
+        shortMessage = `Partial payment received: ${name}`;
+        break;
+      }
+
+      case "invoice_due_tomorrow":
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} is due tomorrow. Please ensure payment is received on time or contact the client immediately to arrange settlement.`;
+        shortMessage = `Invoice due tomorrow: ${name}`;
+        break;
+
+      case "invoice_overdue_1day":
       case "invoice_overdue":
-        message = `Invoice ${entityName} is ${eventData.daysOverdue || ""} days overdue. Amount: $${eventData.amount || "0"}`;
-        shortMessage = `Invoice overdue: ${entityName}`;
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} is 1 day overdue${dueDate ? ` (was due ${dueDate})` : ""}. Please follow up with the client immediately to arrange payment.`;
+        shortMessage = `Invoice overdue: ${name}`;
         break;
+
+      case "invoice_overdue_7days":
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} is now 7 days overdue${dueDate ? ` (was due ${dueDate})` : ""}. This requires prompt escalation. Please contact the client and consider formal follow-up procedures.`;
+        shortMessage = `Invoice 7 days overdue: ${name}`;
+        break;
+
+      case "invoice_overdue_30days":
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} is 30 days overdue${dueDate ? ` (was due ${dueDate})` : ""}. This is a critical overdue notice. Immediate escalation and formal collections procedures may be required.`;
+        shortMessage = `Invoice 30 days overdue: ${name}`;
+        break;
+
+      case "invoice_cancelled":
+        message = `Invoice ${name}${client}${amount ? ` for${amount}` : ""} has been cancelled${eventData.reason ? ` — Reason: ${eventData.reason}` : ""}. Please log in to review the cancellation details and any related outstanding items.`;
+        shortMessage = `Invoice cancelled: ${name}`;
+        break;
+
+      // ── Dispatch ─────────────────────────────────────────────────────
+      case "technician_assigned_to_dispatch": {
+        const scheduledTime = eventData.scheduledTime || eventData.scheduledDate || null;
+        const location = eventData.location || eventData.siteAddress || null;
+        message = `You have been assigned to a new dispatch — "${name}".${scheduledTime ? ` Scheduled: ${scheduledTime}.` : ""}${location ? ` Location: ${location}.` : ""} Please review the dispatch details and prepare before heading out.`;
+        shortMessage = `New dispatch assignment: ${name}`;
+        break;
+      }
+
+      case "dispatch_reassigned": {
+        const scheduledTime = eventData.scheduledTime || eventData.scheduledDate || null;
+        message = `Dispatch "${name}" has been reassigned to you.${scheduledTime ? ` Scheduled: ${scheduledTime}.` : ""} Please review your updated schedule and the dispatch details before heading out.`;
+        shortMessage = `Dispatch reassigned: ${name}`;
+        break;
+      }
+
+      // ── Timesheets ───────────────────────────────────────────────────
+      case "timesheet_approved": {
+        const hours = eventData.totalHours ? ` (${eventData.totalHours} hrs)` : "";
+        const period = eventData.period ? ` for period ${eventData.period}` : "";
+        message = `Your timesheet "${name}"${period}${hours} has been approved. Your logged hours have been accepted and recorded. No further action is needed.`;
+        shortMessage = `Timesheet approved: ${name}`;
+        break;
+      }
+
+      case "timesheet_rejected": {
+        const reason = eventData.reason ? ` Reason: ${eventData.reason}.` : "";
+        message = `Your timesheet "${name}" has been rejected and requires corrections.${reason} Please log in to review the feedback and resubmit with the necessary changes as soon as possible.`;
+        shortMessage = `Timesheet rejected: ${name}`;
+        break;
+      }
+
+      case "clock_reminder":
+        message = `This is a reminder that you have not yet clocked ${eventData.clockType === "out" ? "out" : "in"} today. Please log in and update your timesheet to ensure accurate records. Contact your supervisor if you are having trouble.`;
+        shortMessage = "Clock in/out reminder";
+        break;
+
+      // ── Fleet ────────────────────────────────────────────────────────
       case "maintenance_due_3days":
-        message = `${entityName} maintenance is due in 3 days`;
-        shortMessage = `Maintenance due: ${entityName}`;
+        message = `Scheduled maintenance for "${name}"${plate}${maintenanceType} is due in 3 days${dueDate ? ` on ${dueDate}` : ""}. Please ensure the vehicle is available and any required parts or service appointments are arranged ahead of time.`;
+        shortMessage = `Maintenance due in 3 days: ${name}`;
         break;
+
+      case "maintenance_due_7days":
+        message = `Scheduled maintenance for "${name}"${plate}${maintenanceType} is coming up in 7 days${dueDate ? ` on ${dueDate}` : ""}. This is an advance notice to help you plan and prepare for the upcoming service.`;
+        shortMessage = `Maintenance due in 7 days: ${name}`;
+        break;
+
+      case "maintenance_overdue":
+        message = `Maintenance for "${name}"${plate}${maintenanceType} is overdue${dueDate ? ` since ${dueDate}` : ""}. This vehicle should not be operated until the required maintenance is completed. Please arrange service immediately.`;
+        shortMessage = `Maintenance overdue: ${name}`;
+        break;
+
+      case "safety_inspection_required":
+        message = `A safety inspection is required for vehicle "${name}"${plate}. Please schedule the inspection immediately to ensure the vehicle remains compliant and safe to operate.`;
+        shortMessage = `Safety inspection required: ${name}`;
+        break;
+
+      case "safety_inspection_expired":
+        message = `The safety inspection for vehicle "${name}"${plate} has expired${dueDate ? ` on ${dueDate}` : ""}. This vehicle cannot be operated until a valid inspection is completed. Please schedule an inspection immediately.`;
+        shortMessage = `Safety inspection expired: ${name}`;
+        break;
+
+      case "safety_inspection_failed":
+        message = `The safety inspection for vehicle "${name}"${plate} has failed${eventData.failureReason ? ` — ${eventData.failureReason}` : ""}. The vehicle is currently out of service and must not be operated until all identified issues are resolved and re-inspected.`;
+        shortMessage = `Safety inspection failed: ${name}`;
+        break;
+
+      case "driver_reassigned":
+        message = `You have been reassigned to vehicle "${name}"${plate}. Please review the vehicle details, report any pre-existing damage, and ensure you are familiar with its condition before operating it.`;
+        shortMessage = `Driver reassigned to: ${name}`;
+        break;
+
+      case "vehicle_registration_expiring":
+        message = `The registration for vehicle "${name}"${plate} is expiring${dueDate ? ` on ${dueDate}` : " soon"}. Please initiate the renewal process immediately to avoid operating the vehicle with an expired registration, which may result in fines or compliance issues.`;
+        shortMessage = `Registration expiring: ${name}`;
+        break;
+
+      case "vehicle_insurance_expiring":
+        message = `The insurance policy for vehicle "${name}"${plate} is expiring${dueDate ? ` on ${dueDate}` : " soon"}. Please renew the policy immediately to ensure continuous coverage. Operating an uninsured vehicle is not permitted.`;
+        shortMessage = `Insurance expiring: ${name}`;
+        break;
+
+      // ── Inventory ────────────────────────────────────────────────────
       case "low_stock_warning":
-        message = `${entityName} is running low. Current stock: ${eventData.stockLevel || 0}`;
-        shortMessage = `Low stock: ${entityName}`;
+        message = `Inventory item "${name}" is running low. Current stock: ${eventData.stockLevel ?? 0} units${eventData.reorderLevel ? ` (reorder level: ${eventData.reorderLevel})` : ""}. Please initiate a reorder to avoid a stockout that could impact ongoing jobs.`;
+        shortMessage = `Low stock: ${name}`;
         break;
+
+      case "out_of_stock":
+        message = `Inventory item "${name}" is now OUT OF STOCK${eventData.unit ? ` (${eventData.unit})` : ""}. This may impact ongoing or upcoming jobs that require this item. Please initiate an emergency reorder immediately.`;
+        shortMessage = `Out of stock: ${name}`;
+        break;
+
+      case "stock_reordered":
+        message = `A reorder for inventory item "${name}" has been placed${eventData.quantity ? ` — Quantity: ${eventData.quantity} units` : ""}${eventData.deliveryDate ? `. Expected delivery: ${eventData.deliveryDate}` : ""}. You will be notified when the stock is received.`;
+        shortMessage = `Stock reordered: ${name}`;
+        break;
+
+      // ── Safety & Compliance ───────────────────────────────────────────
+      case "safety_incident_reported":
+        message = `A safety incident has been reported on job "${name}"${eventData.reportedBy ? ` by ${eventData.reportedBy}` : ""}${eventData.incidentDate ? ` on ${eventData.incidentDate}` : ""}${eventData.severity ? ` — Severity: ${eventData.severity}` : ""}. This requires immediate review and response. Please log in to read the full incident report and initiate the appropriate procedures.`;
+        shortMessage = `Safety incident reported: ${name}`;
+        break;
+
+      case "employee_suspended":
+        message = `Employee "${name}" has been suspended${eventData.effectiveDate ? ` effective ${eventData.effectiveDate}` : ""}${eventData.reason ? ` — Reason: ${eventData.reason}` : ""}. Please log in to review the details, ensure proper handover of responsibilities, and follow the required HR procedures.`;
+        shortMessage = `Employee suspended: ${name}`;
+        break;
+
       default:
-        message = `Update regarding ${entityName}`;
-        shortMessage = message;
+        message = `There is an update regarding "${name}" that requires your attention. Please log in to review the latest information.`;
+        shortMessage = `Update: ${name}`;
     }
   }
 
-  return { message, shortMessage };
+  return {
+    message,
+    shortMessage: shortMessage || message.substring(0, 100),
+  };
 }
 
 /**

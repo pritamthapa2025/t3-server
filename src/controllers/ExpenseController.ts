@@ -28,6 +28,7 @@ import {
   isDatabaseError,
 } from "../utils/database-error-parser.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { isUserExecutive } from "../services/role.service.js";
 import { db } from "../config/db.js";
 import { eq } from "drizzle-orm";
 import { employees } from "../drizzle/schema/org.schema.js";
@@ -236,7 +237,8 @@ export const createExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await createExpense(undefined, req.body, userId);
+    const executive = await isUserExecutive(userId);
+    const result = await createExpense(undefined, req.body, userId, executive);
 
     logger.info("Expense created successfully");
     return res.status(201).json({
@@ -857,11 +859,16 @@ export const getExpensesKPIsHandler = async (req: Request, res: Response) => {
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteExpensesHandler = async (req: Request, res: Response) => {
+export const bulkDeleteExpensesHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await bulkDeleteExpenses(ids, userId);
@@ -874,6 +881,8 @@ export const bulkDeleteExpensesHandler = async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.logApiError("Bulk delete expenses error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

@@ -26,7 +26,11 @@ import {
   dispatchTasks,
   dispatchAssignments,
 } from "../drizzle/schema/dispatch.schema.js";
-import { vehicles, checkInOutRecords, assignmentHistory } from "../drizzle/schema/fleet.schema.js";
+import {
+  vehicles,
+  checkInOutRecords,
+  assignmentHistory,
+} from "../drizzle/schema/fleet.schema.js";
 import { payrollTimesheetEntries } from "../drizzle/schema/payroll.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import {
@@ -317,13 +321,14 @@ export const createJob = async (data: {
   }>;
   createdBy: string;
 }) => {
-  // Get organizationId, current status, assignedTo, primaryTechnicianId, and name from bid
+  // Get organizationId, current status, primaryTechnicianId, supervisorManager, and name from bid
   const [bid] = await db
     .select({
       organizationId: bidsTable.organizationId,
       currentStatus: bidsTable.status,
       assignedTo: bidsTable.assignedTo,
       primaryTechnicianId: bidsTable.primaryTechnicianId,
+      supervisorManager: bidsTable.supervisorManager,
       projectName: bidsTable.projectName,
       bidNumber: bidsTable.bidNumber,
     })
@@ -410,18 +415,105 @@ export const createJob = async (data: {
     );
   }
 
-  // Fire job_assigned for all bid-level assignees (fire-and-forget)
+  // Fire job_assigned for primary technician and supervisors (fire-and-forget)
   void (async () => {
     try {
-      const jobName = bid.projectName || bid.bidNumber || job.jobNumber || "Job";
+      const jobName =
+        bid.projectName || bid.bidNumber || job.jobNumber || "Job";
       const { NotificationService } = await import("./notification.service.js");
       const svc = new NotificationService();
 
-      console.log(`[Notification] createJob bid assignees — assignedTo: ${bid.assignedTo ?? "null"}, primaryTechnicianId: ${bid.primaryTechnicianId ?? "null"}`);
+      // Fetch client / organization name
+      const [orgData] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, bid.organizationId))
+        .limit(1);
+      const clientName = orgData?.name || null;
 
-      // 1. bid.assignedTo — direct user UUID
-      if (bid.assignedTo) {
-        console.log(`[Notification] Firing job_assigned for assignedTo: ${bid.assignedTo}`);
+      // Build structured job details for the email info card
+      const formatDate = (d: string | null | undefined) =>
+        d
+          ? new Date(d).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : null;
+
+      const startDateFormatted =
+        formatDate(data.scheduledStartDate) || data.scheduledStartDate;
+      const endDateFormatted =
+        formatDate(data.scheduledEndDate) || data.scheduledEndDate;
+      const jobStatus =
+        (data.status || "planned").charAt(0).toUpperCase() +
+        (data.status || "planned").slice(1);
+
+      const jobDetails: Record<string, string> = {};
+      if (clientName) jobDetails["Client"] = clientName;
+      jobDetails["Job Number"] = job.jobNumber || "";
+      jobDetails["Status"] = jobStatus;
+      jobDetails["Start Date"] = startDateFormatted;
+      jobDetails["End Date"] = endDateFormatted;
+      if (data.siteAddress) jobDetails["Site Address"] = data.siteAddress;
+      if (data.jobType) jobDetails["Job Type"] = data.jobType;
+      if (data.serviceType) jobDetails["Service Type"] = data.serviceType;
+
+      const notesJson = JSON.stringify(jobDetails);
+
+      // Inline message for the technician — client + dates visible without clicking
+      const clientLine = clientName ? ` for client ${clientName}` : "";
+      const technicianMessage = `You have been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and prepare accordingly.`;
+
+      // Track notified users to avoid duplicate notifications
+      const notifiedUsers = new Set<string>();
+
+      // --- Resolve technician & supervisors upfront ---
+      let techUserId: string | null = null;
+      let techReportsTo: string | null = null;
+      let technicianName = "A team member";
+
+      if (bid.primaryTechnicianId) {
+        const [techEmployee] = await db
+          .select({ userId: employees.userId, reportsTo: employees.reportsTo })
+          .from(employees)
+          .where(eq(employees.id, bid.primaryTechnicianId))
+          .limit(1);
+        techUserId = techEmployee?.userId ?? null;
+        techReportsTo = techEmployee?.reportsTo ?? null;
+
+        if (techUserId) {
+          const [techUser] = await db
+            .select({ fullName: users.fullName })
+            .from(users)
+            .where(eq(users.id, techUserId))
+            .limit(1);
+          technicianName = techUser?.fullName || "A team member";
+        } else {
+          console.warn(
+            `[Notification] Skipped job_assigned for primaryTechnicianId ${bid.primaryTechnicianId} — employee has no linked userId`,
+          );
+        }
+      }
+
+      let supervisorManagerUserId: string | null = null;
+      if (bid.supervisorManager) {
+        const [supervisorEmployee] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, bid.supervisorManager))
+          .limit(1);
+        supervisorManagerUserId = supervisorEmployee?.userId ?? null;
+        if (!supervisorManagerUserId) {
+          console.warn(
+            `[Notification] Skipped job_assigned for supervisorManager ${bid.supervisorManager} — employee has no linked userId`,
+          );
+        }
+      }
+
+      // 1. Notify the technician — they are directly assigned to the job
+      if (techUserId) {
+        notifiedUsers.add(techUserId);
         await svc.triggerNotification({
           type: "job_assigned",
           category: "job",
@@ -431,40 +523,53 @@ export const createJob = async (data: {
             entityType: "Job",
             entityId: job.id,
             entityName: jobName,
-            assignedTechnicianId: bid.assignedTo,
+            assignedTechnicianId: techUserId,
+            message: technicianMessage,
+            shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+            notes: notesJson,
           },
         });
       }
 
-      // 2. bid.primaryTechnicianId — employee record, look up userId first
-      if (bid.primaryTechnicianId) {
-        const [techData] = await db
-          .select({ userId: employees.userId })
-          .from(employees)
-          .where(eq(employees.id, bid.primaryTechnicianId))
-          .limit(1);
+      // 2. Notify the supervisorManager — they are directly assigned to supervise this job
+      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
+        notifiedUsers.add(supervisorManagerUserId);
+        await svc.triggerNotification({
+          type: "job_assigned",
+          category: "job",
+          priority: "high",
+          triggeredBy: data.createdBy,
+          data: {
+            entityType: "Job",
+            entityId: job.id,
+            entityName: jobName,
+            assignedTechnicianId: supervisorManagerUserId,
+            message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
+            shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+            notes: notesJson,
+          },
+        });
+      }
 
-        console.log(`[Notification] primaryTechnicianId ${bid.primaryTechnicianId} → userId: ${techData?.userId ?? "NOT FOUND / NULL"}`);
-
-        if (techData?.userId) {
-          console.log(`[Notification] Firing job_assigned for primaryTechnician userId: ${techData.userId}`);
-          await svc.triggerNotification({
-            type: "job_assigned",
-            category: "job",
-            priority: "high",
-            triggeredBy: data.createdBy,
-            data: {
-              entityType: "Job",
-              entityId: job.id,
-              entityName: jobName,
-              assignedTechnicianId: techData.userId,
-            },
-          });
-        } else {
-          console.warn(`[Notification] Skipped job_assigned for primaryTechnicianId ${bid.primaryTechnicianId} — employee has no linked userId`);
-        }
-      } else {
-        console.log(`[Notification] bid.primaryTechnicianId is null — skipping`);
+      // 3. Notify the technician's reportsTo manager — ONLY if different from supervisorManager
+      //    This person needs to know their department member was assigned
+      if (techReportsTo && !notifiedUsers.has(techReportsTo)) {
+        notifiedUsers.add(techReportsTo);
+        await svc.triggerNotification({
+          type: "job_assigned",
+          category: "job",
+          priority: "high",
+          triggeredBy: data.createdBy,
+          data: {
+            entityType: "Job",
+            entityId: job.id,
+            entityName: jobName,
+            assignedTechnicianId: techReportsTo,
+            message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
+            shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
+            notes: notesJson,
+          },
+        });
       }
     } catch (err) {
       console.error("[Notification] job_assigned (bid assignees) failed:", err);
@@ -594,9 +699,14 @@ export const updateJob = async (
   if (data.status && (jobData.job as any).status !== data.status) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         const svc = new NotificationService();
-        const jobName = updatedBid?.projectName || updatedBid?.bidNumber || job.jobNumber || "Job";
+        const jobName =
+          updatedBid?.projectName ||
+          updatedBid?.bidNumber ||
+          job.jobNumber ||
+          "Job";
 
         if (data.status === "in_progress") {
           await svc.triggerNotification({
@@ -628,7 +738,10 @@ export const updateJob = async (
           });
         }
       } catch (err) {
-        console.error("[Notification] job status change notification failed:", err);
+        console.error(
+          "[Notification] job status change notification failed:",
+          err,
+        );
       }
     })();
   }
@@ -650,7 +763,9 @@ export const deleteJob = async (id: string, deletedBy: string) => {
   const taskRows = await db
     .select({ id: dispatchTasks.id })
     .from(dispatchTasks)
-    .where(and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false)));
+    .where(
+      and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false)),
+    );
   const taskIds = taskRows.map((r) => r.id);
 
   // 2. Soft-delete dispatch assignments
@@ -658,20 +773,51 @@ export const deleteJob = async (id: string, deletedBy: string) => {
     await db
       .update(dispatchAssignments)
       .set({ isDeleted: true, updatedAt: now })
-      .where(and(inArray(dispatchAssignments.taskId, taskIds), eq(dispatchAssignments.isDeleted, false)));
+      .where(
+        and(
+          inArray(dispatchAssignments.taskId, taskIds),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      );
   }
 
   // 3. Soft-delete dispatch tasks, job tasks, surveys, expenses + deactivate team members (in parallel)
   await Promise.all([
-    db.update(dispatchTasks).set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now }).where(and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false))),
-    db.update(jobTeamMembers).set({ isActive: false }).where(eq(jobTeamMembers.jobId, id)),
-    db.update(jobTasks).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobTasks.jobId, id), eq(jobTasks.isDeleted, false))),
-    db.update(jobSurveys).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobSurveys.jobId, id), eq(jobSurveys.isDeleted, false))),
-    db.update(jobExpenses).set({ isDeleted: true, updatedAt: now }).where(and(eq(jobExpenses.jobId, id), eq(jobExpenses.isDeleted, false))),
+    db
+      .update(dispatchTasks)
+      .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+      .where(
+        and(eq(dispatchTasks.jobId, id), eq(dispatchTasks.isDeleted, false)),
+      ),
+    db
+      .update(jobTeamMembers)
+      .set({ isActive: false })
+      .where(eq(jobTeamMembers.jobId, id)),
+    db
+      .update(jobTasks)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(eq(jobTasks.jobId, id), eq(jobTasks.isDeleted, false))),
+    db
+      .update(jobSurveys)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(eq(jobSurveys.jobId, id), eq(jobSurveys.isDeleted, false))),
+    db
+      .update(jobExpenses)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(eq(jobExpenses.jobId, id), eq(jobExpenses.isDeleted, false))),
     // Nullify FK pointers (preserve financial/historical records, just clear job link)
-    db.update(vehicles).set({ currentJobId: null, updatedAt: now }).where(eq(vehicles.currentJobId, id)),
-    db.update(checkInOutRecords).set({ jobId: null, updatedAt: now }).where(eq(checkInOutRecords.jobId, id)),
-    db.update(assignmentHistory).set({ jobId: null, updatedAt: now }).where(eq(assignmentHistory.jobId, id)),
+    db
+      .update(vehicles)
+      .set({ currentJobId: null, updatedAt: now })
+      .where(eq(vehicles.currentJobId, id)),
+    db
+      .update(checkInOutRecords)
+      .set({ jobId: null, updatedAt: now })
+      .where(eq(checkInOutRecords.jobId, id)),
+    db
+      .update(assignmentHistory)
+      .set({ jobId: null, updatedAt: now })
+      .where(eq(assignmentHistory.jobId, id)),
   ]);
 
   // 4. Soft-delete the job
@@ -749,33 +895,155 @@ export const addJobTeamMember = async (data: {
   // Fire job_assigned notification (fire-and-forget, does not block response)
   void (async () => {
     try {
-      const [empData] = await db
-        .select({ userId: employees.userId })
+      const [techEmployee] = await db
+        .select({ userId: employees.userId, reportsTo: employees.reportsTo })
         .from(employees)
         .where(eq(employees.id, data.employeeId))
         .limit(1);
 
-      if (!empData?.userId) return;
+      if (!techEmployee?.userId) return;
 
       const [jobBid] = await db
-        .select({ name: bidsTable.projectName, bidNumber: bidsTable.bidNumber })
+        .select({
+          name: bidsTable.projectName,
+          bidNumber: bidsTable.bidNumber,
+          organizationId: bidsTable.organizationId,
+          supervisorManager: bidsTable.supervisorManager,
+          jobNumber: jobs.jobNumber,
+          jobStatus: jobs.status,
+          scheduledStartDate: jobs.scheduledStartDate,
+          scheduledEndDate: jobs.scheduledEndDate,
+          siteAddress: jobs.siteAddress,
+          jobType: jobs.jobType,
+          serviceType: jobs.serviceType,
+        })
         .from(jobs)
         .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
         .where(eq(jobs.id, data.jobId))
         .limit(1);
 
+      // Fetch client / organization name
+      let clientName: string | null = null;
+      if (jobBid?.organizationId) {
+        const [orgData] = await db
+          .select({ name: organizations.name })
+          .from(organizations)
+          .where(eq(organizations.id, jobBid.organizationId))
+          .limit(1);
+        clientName = orgData?.name || null;
+      }
+
+      const formatDate = (d: string | null | undefined) =>
+        d
+          ? new Date(d).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : null;
+
+      const startDateFormatted =
+        formatDate(jobBid?.scheduledStartDate) ||
+        jobBid?.scheduledStartDate ||
+        "";
+      const endDateFormatted =
+        formatDate(jobBid?.scheduledEndDate) || jobBid?.scheduledEndDate || "";
+      const jobStatus = jobBid?.jobStatus
+        ? jobBid.jobStatus.charAt(0).toUpperCase() + jobBid.jobStatus.slice(1)
+        : "Planned";
+
+      const jobDetails: Record<string, string> = {};
+      if (clientName) jobDetails["Client"] = clientName;
+      jobDetails["Job Number"] = jobBid?.jobNumber || "";
+      jobDetails["Status"] = jobStatus;
+      jobDetails["Start Date"] = startDateFormatted;
+      jobDetails["End Date"] = endDateFormatted;
+      if (jobBid?.siteAddress) jobDetails["Site Address"] = jobBid.siteAddress;
+      if (jobBid?.jobType) jobDetails["Job Type"] = jobBid.jobType;
+      if (jobBid?.serviceType) jobDetails["Service Type"] = jobBid.serviceType;
+
+      const jobName = jobBid?.name || jobBid?.bidNumber || "Job";
+      const notesJson = JSON.stringify(jobDetails);
+      const clientLine = clientName ? ` for client ${clientName}` : "";
+
+      // Fetch team member's name for the supervisor email
+      const [techUser] = await db
+        .select({ fullName: users.fullName })
+        .from(users)
+        .where(eq(users.id, techEmployee.userId))
+        .limit(1);
+      const technicianName = techUser?.fullName || "A team member";
+
+      // Resolve supervisorManager userId
+      let supervisorManagerUserId: string | null = null;
+      if (jobBid?.supervisorManager) {
+        const [se] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, jobBid.supervisorManager))
+          .limit(1);
+        supervisorManagerUserId = se?.userId ?? null;
+      }
+
       const { NotificationService } = await import("./notification.service.js");
-      await new NotificationService().triggerNotification({
+      const svc = new NotificationService();
+      const notifiedUsers = new Set<string>();
+
+      // 1. Notify the team member — they are directly assigned
+      notifiedUsers.add(techEmployee.userId);
+      await svc.triggerNotification({
         type: "job_assigned",
         category: "job",
         priority: "high",
         data: {
           entityType: "Job",
           entityId: data.jobId,
-          entityName: jobBid?.name || jobBid?.bidNumber || "Job",
-          assignedTechnicianId: empData.userId,
+          entityName: jobName,
+          assignedTechnicianId: techEmployee.userId,
+          message: `You have been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and prepare accordingly.`,
+          shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+          notes: notesJson,
         },
       });
+
+      // 2. Notify the supervisorManager — they are directly assigned to supervise this job
+      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
+        notifiedUsers.add(supervisorManagerUserId);
+        await svc.triggerNotification({
+          type: "job_assigned",
+          category: "job",
+          priority: "high",
+          data: {
+            entityType: "Job",
+            entityId: data.jobId,
+            entityName: jobName,
+            assignedTechnicianId: supervisorManagerUserId,
+            message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
+            shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+            notes: notesJson,
+          },
+        });
+      }
+
+      // 3. Notify the technician's reportsTo manager — ONLY if different from supervisorManager
+      //    This person needs to know their department member was assigned
+      if (techEmployee.reportsTo && !notifiedUsers.has(techEmployee.reportsTo)) {
+        notifiedUsers.add(techEmployee.reportsTo);
+        await svc.triggerNotification({
+          type: "job_assigned",
+          category: "job",
+          priority: "high",
+          data: {
+            entityType: "Job",
+            entityId: data.jobId,
+            entityName: jobName,
+            assignedTechnicianId: techEmployee.reportsTo,
+            message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
+            shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
+            notes: notesJson,
+          },
+        });
+      }
     } catch (err) {
       console.error("[Notification] job_assigned failed:", err);
     }
@@ -1931,12 +2199,16 @@ export const createJobNote = async (data: {
     void (async () => {
       try {
         const [jobBid] = await db
-          .select({ name: bidsTable.projectName, bidNumber: bidsTable.bidNumber })
+          .select({
+            name: bidsTable.projectName,
+            bidNumber: bidsTable.bidNumber,
+          })
           .from(jobs)
           .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
           .where(eq(jobs.id, data.jobId))
           .limit(1);
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "job_site_notes_added",
           category: "job",
@@ -2832,6 +3104,7 @@ export const createJobExpense = async (data: {
       vendor: data.vendorName ?? null,
       createdBy: data.createdBy,
       source: "job",
+      approvedBy: data.approvedBy ?? null,
     });
   }
 
@@ -3337,7 +3610,10 @@ async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
 
 export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
   const baseCondition = await jobsKpiBaseCondition(options);
-  const joinBids = and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false));
+  const joinBids = and(
+    eq(jobs.bidId, bidsTable.id),
+    eq(bidsTable.isDeleted, false),
+  );
 
   // Active jobs (status: in_progress)
   const activeJobsQ = db
@@ -3345,7 +3621,12 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     .from(jobs)
     .innerJoin(bidsTable, joinBids)
     .where(and(baseCondition, eq(jobs.status, "in_progress")));
-  const [activeJobsRow] = options ? await activeJobsQ : await db.select({ count: count() }).from(jobs).where(and(eq(jobs.isDeleted, false), eq(jobs.status, "in_progress")));
+  const [activeJobsRow] = options
+    ? await activeJobsQ
+    : await db
+        .select({ count: count() })
+        .from(jobs)
+        .where(and(eq(jobs.isDeleted, false), eq(jobs.status, "in_progress")));
 
   // Pending invoices (count invoices where status is pending or sent), scoped to accessible jobs when options set
   let pendingInvoicesRow: { count: number } | undefined;
@@ -3380,7 +3661,12 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     .from(jobs)
     .innerJoin(bidsTable, joinBids)
     .where(and(baseCondition, eq(jobs.status, "completed")));
-  const [completedJobsRow] = options ? await completedJobsQ : await db.select({ count: count() }).from(jobs).where(and(eq(jobs.isDeleted, false), eq(jobs.status, "completed")));
+  const [completedJobsRow] = options
+    ? await completedJobsQ
+    : await db
+        .select({ count: count() })
+        .from(jobs)
+        .where(and(eq(jobs.isDeleted, false), eq(jobs.status, "completed")));
 
   // Average profit margin - get from bidsTable
   const avgMarginQ = db
@@ -3390,13 +3676,18 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     .from(jobs)
     .innerJoin(bidsTable, joinBids)
     .where(and(baseCondition, eq(bidsTable.isDeleted, false)));
-  const [avgProfitMarginRow] = options ? await avgMarginQ : await db
-    .select({
-      avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
-    })
-    .from(jobs)
-    .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
-    .where(and(eq(jobs.isDeleted, false), eq(bidsTable.isDeleted, false)));
+  const [avgProfitMarginRow] = options
+    ? await avgMarginQ
+    : await db
+        .select({
+          avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
+        })
+        .from(jobs)
+        .innerJoin(
+          bidsTable,
+          and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+        )
+        .where(and(eq(jobs.isDeleted, false), eq(bidsTable.isDeleted, false)));
 
   // Overdue jobs
   const today = new Date();
@@ -3416,7 +3707,9 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     .from(jobs)
     .innerJoin(bidsTable, joinBids)
     .where(and(baseCondition, overdueCondition));
-  const [overdueJobsRow] = options ? await overdueJobsQ : await db.select({ count: count() }).from(jobs).where(overdueCondition);
+  const [overdueJobsRow] = options
+    ? await overdueJobsQ
+    : await db.select({ count: count() }).from(jobs).where(overdueCondition);
 
   return {
     activeJobs: activeJobsRow?.count ?? 0,
@@ -3437,25 +3730,68 @@ export const bulkDeleteJobs = async (ids: string[], deletedBy: string) => {
   const taskRows = await db
     .select({ id: dispatchTasks.id })
     .from(dispatchTasks)
-    .where(and(inArray(dispatchTasks.jobId, ids), eq(dispatchTasks.isDeleted, false)));
+    .where(
+      and(
+        inArray(dispatchTasks.jobId, ids),
+        eq(dispatchTasks.isDeleted, false),
+      ),
+    );
   const taskIds = taskRows.map((r) => r.id);
 
   if (taskIds.length > 0) {
     await db
       .update(dispatchAssignments)
       .set({ isDeleted: true, updatedAt: now })
-      .where(and(inArray(dispatchAssignments.taskId, taskIds), eq(dispatchAssignments.isDeleted, false)));
+      .where(
+        and(
+          inArray(dispatchAssignments.taskId, taskIds),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      );
   }
 
   await Promise.all([
-    db.update(dispatchTasks).set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now }).where(and(inArray(dispatchTasks.jobId, ids), eq(dispatchTasks.isDeleted, false))),
-    db.update(jobTeamMembers).set({ isActive: false }).where(inArray(jobTeamMembers.jobId, ids)),
-    db.update(jobTasks).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobTasks.jobId, ids), eq(jobTasks.isDeleted, false))),
-    db.update(jobSurveys).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobSurveys.jobId, ids), eq(jobSurveys.isDeleted, false))),
-    db.update(jobExpenses).set({ isDeleted: true, updatedAt: now }).where(and(inArray(jobExpenses.jobId, ids), eq(jobExpenses.isDeleted, false))),
-    db.update(vehicles).set({ currentJobId: null, updatedAt: now }).where(inArray(vehicles.currentJobId, ids)),
-    db.update(checkInOutRecords).set({ jobId: null, updatedAt: now }).where(inArray(checkInOutRecords.jobId, ids)),
-    db.update(assignmentHistory).set({ jobId: null, updatedAt: now }).where(inArray(assignmentHistory.jobId, ids)),
+    db
+      .update(dispatchTasks)
+      .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
+      .where(
+        and(
+          inArray(dispatchTasks.jobId, ids),
+          eq(dispatchTasks.isDeleted, false),
+        ),
+      ),
+    db
+      .update(jobTeamMembers)
+      .set({ isActive: false })
+      .where(inArray(jobTeamMembers.jobId, ids)),
+    db
+      .update(jobTasks)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(inArray(jobTasks.jobId, ids), eq(jobTasks.isDeleted, false))),
+    db
+      .update(jobSurveys)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(inArray(jobSurveys.jobId, ids), eq(jobSurveys.isDeleted, false)),
+      ),
+    db
+      .update(jobExpenses)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(inArray(jobExpenses.jobId, ids), eq(jobExpenses.isDeleted, false)),
+      ),
+    db
+      .update(vehicles)
+      .set({ currentJobId: null, updatedAt: now })
+      .where(inArray(vehicles.currentJobId, ids)),
+    db
+      .update(checkInOutRecords)
+      .set({ jobId: null, updatedAt: now })
+      .where(inArray(checkInOutRecords.jobId, ids)),
+    db
+      .update(assignmentHistory)
+      .set({ jobId: null, updatedAt: now })
+      .where(inArray(assignmentHistory.jobId, ids)),
   ]);
 
   const result = await db

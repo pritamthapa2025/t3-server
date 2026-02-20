@@ -50,7 +50,7 @@ export const getPurchaseOrders = async (
     supplierId?: string;
     startDate?: string;
     endDate?: string;
-  }
+  },
 ) => {
   const conditions = [eq(inventoryPurchaseOrders.isDeleted, false)];
 
@@ -67,7 +67,8 @@ export const getPurchaseOrders = async (
     conditions.push(lte(inventoryPurchaseOrders.orderDate, filters.endDate));
   }
 
-  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
+  const whereCondition =
+    conditions.length > 1 ? and(...conditions) : conditions[0];
 
   const result = await db
     .select({
@@ -77,8 +78,14 @@ export const getPurchaseOrders = async (
       createdByUser: users,
     })
     .from(inventoryPurchaseOrders)
-    .leftJoin(inventorySuppliers, eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id))
-    .leftJoin(inventoryLocations, eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id))
+    .leftJoin(
+      inventorySuppliers,
+      eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id),
+    )
+    .leftJoin(
+      inventoryLocations,
+      eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id),
+    )
     .leftJoin(users, eq(inventoryPurchaseOrders.createdBy, users.id))
     .where(whereCondition)
     .limit(limit)
@@ -117,10 +124,21 @@ export const getPurchaseOrderById = async (id: string) => {
       createdByUser: users,
     })
     .from(inventoryPurchaseOrders)
-    .leftJoin(inventorySuppliers, eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id))
-    .leftJoin(inventoryLocations, eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id))
+    .leftJoin(
+      inventorySuppliers,
+      eq(inventoryPurchaseOrders.supplierId, inventorySuppliers.id),
+    )
+    .leftJoin(
+      inventoryLocations,
+      eq(inventoryPurchaseOrders.shipToLocationId, inventoryLocations.id),
+    )
     .leftJoin(users, eq(inventoryPurchaseOrders.createdBy, users.id))
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
+    .where(
+      and(
+        eq(inventoryPurchaseOrders.id, id),
+        eq(inventoryPurchaseOrders.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   if (result.length === 0) return null;
@@ -145,7 +163,7 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
       poNumber,
       title: data.title || null,
       supplierId: data.supplierId,
-      orderDate: data.orderDate || new Date().toISOString().split('T')[0], // Required field
+      orderDate: data.orderDate || new Date().toISOString().split("T")[0], // Required field
       expectedDeliveryDate: data.expectedDeliveryDate || null,
       shipToLocationId: data.shipToLocationId,
       status: "draft",
@@ -167,7 +185,9 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
       quantityOrdered: item.quantityOrdered,
       quantityReceived: "0",
       unitCost: item.unitCost,
-      lineTotal: (parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)).toString(),
+      lineTotal: (
+        parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)
+      ).toString(),
       notes: item.notes,
     }));
 
@@ -177,22 +197,24 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
   return newPO!;
 };
 
-export const updatePurchaseOrder = async (
-  id: string,
-  data: any
-) => {
+export const updatePurchaseOrder = async (id: string, data: any) => {
   const updateData: any = {};
 
   if (data.title !== undefined) updateData.title = data.title;
   if (data.supplierId !== undefined) updateData.supplierId = data.supplierId;
-  if (data.expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = data.expectedDeliveryDate;
-  if (data.shipToLocationId !== undefined) updateData.shipToLocationId = data.shipToLocationId;
+  if (data.expectedDeliveryDate !== undefined)
+    updateData.expectedDeliveryDate = data.expectedDeliveryDate;
+  if (data.shipToLocationId !== undefined)
+    updateData.shipToLocationId = data.shipToLocationId;
   if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
   if (data.taxAmount !== undefined) updateData.taxAmount = data.taxAmount;
-  if (data.shippingCost !== undefined) updateData.shippingCost = data.shippingCost;
+  if (data.shippingCost !== undefined)
+    updateData.shippingCost = data.shippingCost;
   if (data.totalAmount !== undefined) updateData.totalAmount = data.totalAmount;
-  if (data.paymentTerms !== undefined) updateData.paymentTerms = data.paymentTerms;
-  if (data.shippingMethod !== undefined) updateData.shippingMethod = data.shippingMethod;
+  if (data.paymentTerms !== undefined)
+    updateData.paymentTerms = data.paymentTerms;
+  if (data.shippingMethod !== undefined)
+    updateData.shippingMethod = data.shippingMethod;
   if (data.notes !== undefined) updateData.notes = data.notes;
 
   const [updatedPO] = await db
@@ -209,7 +231,7 @@ export const updatePurchaseOrder = async (
 export const approvePurchaseOrder = async (
   id: string,
   userId: string,
-  isExpense?: boolean
+  isExpense?: boolean,
 ) => {
   const [approvedPO] = await db
     .update(inventoryPurchaseOrders)
@@ -223,16 +245,21 @@ export const approvePurchaseOrder = async (
 
   if (!approvedPO) throw new Error("Purchase order not found");
 
-  if (isExpense && approvedPO.totalAmount && parseFloat(approvedPO.totalAmount) > 0) {
+  if (
+    isExpense &&
+    approvedPO.totalAmount &&
+    parseFloat(approvedPO.totalAmount) > 0
+  ) {
     try {
       const category = getDefaultExpenseCategory();
       const orderDate = approvedPO.orderDate;
-      const expenseDate =
-        (typeof orderDate === "string"
+      const expenseDate = (
+        typeof orderDate === "string"
           ? orderDate.slice(0, 10)
           : orderDate
             ? new Date(orderDate as string | Date).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0]) as string;
+            : new Date().toISOString().split("T")[0]
+      ) as string;
       await createExpenseFromSource({
         sourceId: approvedPO.id,
         category,
@@ -244,6 +271,7 @@ export const approvePurchaseOrder = async (
         vendor: null,
         createdBy: userId,
         source: "inventory",
+        approvedBy: userId,
       });
     } catch {
       // Log but don't fail the approval
@@ -258,11 +286,16 @@ export const sendPurchaseOrder = async (id: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
+    .where(
+      and(
+        eq(inventoryPurchaseOrders.id, id),
+        eq(inventoryPurchaseOrders.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
-  
+
   if (po[0]!.status !== "approved") {
     throw new Error("Purchase order must be approved before sending");
   }
@@ -285,11 +318,16 @@ export const cancelPurchaseOrder = async (id: string, reason?: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
+    .where(
+      and(
+        eq(inventoryPurchaseOrders.id, id),
+        eq(inventoryPurchaseOrders.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
-  
+
   if (po[0]!.status === "received" || po[0]!.status === "closed") {
     throw new Error("Cannot cancel received or closed purchase orders");
   }
@@ -298,7 +336,9 @@ export const cancelPurchaseOrder = async (id: string, reason?: string) => {
     .update(inventoryPurchaseOrders)
     .set({
       status: "cancelled",
-      notes: reason ? `${po[0]!.notes || ''}\n\nCancellation reason: ${reason}`.trim() : po[0]!.notes,
+      notes: reason
+        ? `${po[0]!.notes || ""}\n\nCancellation reason: ${reason}`.trim()
+        : po[0]!.notes,
     })
     .where(eq(inventoryPurchaseOrders.id, id))
     .returning();
@@ -313,11 +353,16 @@ export const closePurchaseOrder = async (id: string, _userId: string) => {
   const po = await db
     .select()
     .from(inventoryPurchaseOrders)
-    .where(and(eq(inventoryPurchaseOrders.id, id), eq(inventoryPurchaseOrders.isDeleted, false)))
+    .where(
+      and(
+        eq(inventoryPurchaseOrders.id, id),
+        eq(inventoryPurchaseOrders.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
-  
+
   if (po[0]!.status !== "received") {
     throw new Error("Purchase order must be fully received before closing");
   }
@@ -337,8 +382,11 @@ export const closePurchaseOrder = async (id: string, _userId: string) => {
 
 export const receivePurchaseOrder = async (
   id: string,
-  data: { items: Array<{ itemId: string; quantityReceived: string; notes?: string }>; locationId?: string },
-  userId: string
+  data: {
+    items: Array<{ itemId: string; quantityReceived: string; notes?: string }>;
+    locationId?: string;
+  },
+  userId: string,
 ) => {
   // 🔐 WRAP IN TRANSACTION
   return await db.transaction(async (tx) => {
@@ -346,7 +394,9 @@ export const receivePurchaseOrder = async (
     if (!po) throw new Error("Purchase order not found");
 
     for (const receivedItem of data.items) {
-      const poItem = po.items?.find((i: any) => i.itemId === receivedItem.itemId);
+      const poItem = po.items?.find(
+        (i: any) => i.itemId === receivedItem.itemId,
+      );
       if (!poItem) continue;
 
       const qtyReceived = parseFloat(receivedItem.quantityReceived);
@@ -375,7 +425,7 @@ export const receivePurchaseOrder = async (
           referenceNumber: po.poNumber,
           notes: `Received from PO ${po.poNumber}`,
         },
-        userId
+        userId,
       );
 
       // 🔒 LOCK and update item quantityOnOrder
@@ -383,11 +433,14 @@ export const receivePurchaseOrder = async (
         .select()
         .from(inventoryItems)
         .where(eq(inventoryItems.id, receivedItem.itemId))
-        .for('update')
+        .for("update")
         .limit(1);
 
       if (item.length > 0) {
-        const newQtyOnOrder = Math.max(0, parseFloat(item[0]!.quantityOnOrder) - qtyReceived);
+        const newQtyOnOrder = Math.max(
+          0,
+          parseFloat(item[0]!.quantityOnOrder) - qtyReceived,
+        );
         await tx
           .update(inventoryItems)
           .set({ quantityOnOrder: newQtyOnOrder.toString() })
@@ -398,10 +451,13 @@ export const receivePurchaseOrder = async (
     // Check if all items received
     const updatedItems = await getPurchaseOrderItems(id);
     const allReceived = updatedItems.data.every(
-      (item: any) => parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered)
+      (item: any) =>
+        parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered),
     );
 
-    const someReceived = updatedItems.data.some((item: any) => parseFloat(item.quantityReceived) > 0);
+    const someReceived = updatedItems.data.some(
+      (item: any) => parseFloat(item.quantityReceived) > 0,
+    );
 
     let newStatus: any = po.status;
     if (allReceived) {
@@ -430,7 +486,10 @@ export const getPurchaseOrderItems = async (purchaseOrderId: string) => {
       item: inventoryItems,
     })
     .from(inventoryPurchaseOrderItems)
-    .leftJoin(inventoryItems, eq(inventoryPurchaseOrderItems.itemId, inventoryItems.id))
+    .leftJoin(
+      inventoryItems,
+      eq(inventoryPurchaseOrderItems.itemId, inventoryItems.id),
+    )
     .where(eq(inventoryPurchaseOrderItems.purchaseOrderId, purchaseOrderId))
     .orderBy(inventoryPurchaseOrderItems.createdAt);
 
@@ -454,7 +513,7 @@ export const addPurchaseOrderItem = async (
     unitCost: string;
     expectedDeliveryDate?: string;
     notes?: string;
-  }
+  },
 ) => {
   // Validate PO exists and is editable
   const po = await db
@@ -464,12 +523,14 @@ export const addPurchaseOrderItem = async (
     .limit(1);
 
   if (po.length === 0) throw new Error("Purchase order not found");
-  
+
   if (po[0]!.status !== "draft" && po[0]!.status !== "pending_approval") {
     throw new Error("Cannot modify purchase order items after approval");
   }
 
-  const lineTotal = (parseFloat(data.quantityOrdered) * parseFloat(data.unitCost)).toString();
+  const lineTotal = (
+    parseFloat(data.quantityOrdered) * parseFloat(data.unitCost)
+  ).toString();
 
   const [newItem] = await db
     .insert(inventoryPurchaseOrderItems)
@@ -495,7 +556,7 @@ export const updatePurchaseOrderItem = async (
     unitCost?: string;
     expectedDeliveryDate?: string;
     notes?: string;
-  }
+  },
 ) => {
   // Get the PO item to check if PO is editable
   const poItem = await db
@@ -504,21 +565,32 @@ export const updatePurchaseOrderItem = async (
       po: inventoryPurchaseOrders,
     })
     .from(inventoryPurchaseOrderItems)
-    .leftJoin(inventoryPurchaseOrders, eq(inventoryPurchaseOrderItems.purchaseOrderId, inventoryPurchaseOrders.id))
+    .leftJoin(
+      inventoryPurchaseOrders,
+      eq(
+        inventoryPurchaseOrderItems.purchaseOrderId,
+        inventoryPurchaseOrders.id,
+      ),
+    )
     .where(eq(inventoryPurchaseOrderItems.id, id))
     .limit(1);
 
   if (poItem.length === 0) throw new Error("Purchase order item not found");
-  
-  if (poItem[0]!.po!.status !== "draft" && poItem[0]!.po!.status !== "pending_approval") {
+
+  if (
+    poItem[0]!.po!.status !== "draft" &&
+    poItem[0]!.po!.status !== "pending_approval"
+  ) {
     throw new Error("Cannot modify purchase order items after approval");
   }
 
   const updateData: any = {};
 
-  if (data.quantityOrdered !== undefined) updateData.quantityOrdered = data.quantityOrdered;
+  if (data.quantityOrdered !== undefined)
+    updateData.quantityOrdered = data.quantityOrdered;
   if (data.unitCost !== undefined) updateData.unitCost = data.unitCost;
-  if (data.expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = data.expectedDeliveryDate;
+  if (data.expectedDeliveryDate !== undefined)
+    updateData.expectedDeliveryDate = data.expectedDeliveryDate;
   if (data.notes !== undefined) updateData.notes = data.notes;
 
   // Recalculate line total if quantity or unit cost changed
@@ -547,13 +619,22 @@ export const deletePurchaseOrderItem = async (id: string) => {
       po: inventoryPurchaseOrders,
     })
     .from(inventoryPurchaseOrderItems)
-    .leftJoin(inventoryPurchaseOrders, eq(inventoryPurchaseOrderItems.purchaseOrderId, inventoryPurchaseOrders.id))
+    .leftJoin(
+      inventoryPurchaseOrders,
+      eq(
+        inventoryPurchaseOrderItems.purchaseOrderId,
+        inventoryPurchaseOrders.id,
+      ),
+    )
     .where(eq(inventoryPurchaseOrderItems.id, id))
     .limit(1);
 
   if (poItem.length === 0) throw new Error("Purchase order item not found");
-  
-  if (poItem[0]!.po!.status !== "draft" && poItem[0]!.po!.status !== "pending_approval") {
+
+  if (
+    poItem[0]!.po!.status !== "draft" &&
+    poItem[0]!.po!.status !== "pending_approval"
+  ) {
     throw new Error("Cannot modify purchase order items after approval");
   }
 
@@ -573,18 +654,18 @@ export const deletePurchaseOrderItem = async (id: string) => {
 
 export const receivePartialPurchaseOrder = async (
   id: string,
-  data: { 
-    items: Array<{ 
-      itemId: string; 
-      quantityReceived: string; 
+  data: {
+    items: Array<{
+      itemId: string;
+      quantityReceived: string;
       actualDeliveryDate?: string;
-      notes?: string 
-    }>; 
+      notes?: string;
+    }>;
     locationId?: string;
     trackingNumber?: string;
     supplierInvoiceNumber?: string;
   },
-  userId: string
+  userId: string,
 ) => {
   // 🔐 WRAP IN TRANSACTION for atomic partial receiving
   return await db.transaction(async (tx) => {
@@ -598,7 +679,9 @@ export const receivePartialPurchaseOrder = async (
     let hasNewReceipts = false;
 
     for (const receivedItem of data.items) {
-      const poItem = po.items?.find((i: any) => i.itemId === receivedItem.itemId);
+      const poItem = po.items?.find(
+        (i: any) => i.itemId === receivedItem.itemId,
+      );
       if (!poItem) continue;
 
       const qtyReceived = parseFloat(receivedItem.quantityReceived);
@@ -610,7 +693,9 @@ export const receivePartialPurchaseOrder = async (
 
       // Validate not over-receiving
       if (newTotalReceived > qtyOrdered) {
-        throw new Error(`Cannot receive more than ordered quantity for item ${poItem.item?.name}. Ordered: ${qtyOrdered}, Already received: ${previouslyReceived}, Attempting: ${qtyReceived}`);
+        throw new Error(
+          `Cannot receive more than ordered quantity for item ${poItem.item?.name}. Ordered: ${qtyOrdered}, Already received: ${previouslyReceived}, Attempting: ${qtyReceived}`,
+        );
       }
 
       // Update PO line item with individual delivery date
@@ -618,7 +703,9 @@ export const receivePartialPurchaseOrder = async (
         .update(inventoryPurchaseOrderItems)
         .set({
           quantityReceived: newTotalReceived.toString(),
-          actualDeliveryDate: receivedItem.actualDeliveryDate || new Date().toISOString().split('T')[0],
+          actualDeliveryDate:
+            receivedItem.actualDeliveryDate ||
+            new Date().toISOString().split("T")[0],
           notes: receivedItem.notes || poItem.notes,
         })
         .where(eq(inventoryPurchaseOrderItems.id, poItem.id));
@@ -633,9 +720,9 @@ export const receivePartialPurchaseOrder = async (
           unitCost: poItem.unitCost,
           purchaseOrderId: id,
           referenceNumber: po.poNumber,
-          notes: `Partial receipt from PO ${po.poNumber}${receivedItem.notes ? ` - ${receivedItem.notes}` : ''}`,
+          notes: `Partial receipt from PO ${po.poNumber}${receivedItem.notes ? ` - ${receivedItem.notes}` : ""}`,
         },
-        userId
+        userId,
       );
 
       // 🔒 LOCK and update item quantityOnOrder
@@ -643,11 +730,14 @@ export const receivePartialPurchaseOrder = async (
         .select()
         .from(inventoryItems)
         .where(eq(inventoryItems.id, receivedItem.itemId))
-        .for('update')
+        .for("update")
         .limit(1);
 
       if (item.length > 0) {
-        const newQtyOnOrder = Math.max(0, parseFloat(item[0]!.quantityOnOrder) - qtyReceived);
+        const newQtyOnOrder = Math.max(
+          0,
+          parseFloat(item[0]!.quantityOnOrder) - qtyReceived,
+        );
         await tx
           .update(inventoryItems)
           .set({ quantityOnOrder: newQtyOnOrder.toString() })
@@ -664,17 +754,20 @@ export const receivePartialPurchaseOrder = async (
     // Check completion status
     const updatedItems = await getPurchaseOrderItems(id);
     const allReceived = updatedItems.data.every(
-      (item: any) => parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered)
+      (item: any) =>
+        parseFloat(item.quantityReceived) >= parseFloat(item.quantityOrdered),
     );
 
-    const someReceived = updatedItems.data.some((item: any) => parseFloat(item.quantityReceived) > 0);
+    const someReceived = updatedItems.data.some(
+      (item: any) => parseFloat(item.quantityReceived) > 0,
+    );
 
     let newStatus: any = po.status;
     let actualDeliveryDate = null;
 
     if (allReceived) {
       newStatus = "received";
-      actualDeliveryDate = new Date().toISOString().split('T')[0];
+      actualDeliveryDate = new Date().toISOString().split("T")[0];
     } else if (someReceived) {
       newStatus = "partially_received";
     }
@@ -683,19 +776,19 @@ export const receivePartialPurchaseOrder = async (
     const updateData: any = { status: newStatus };
     if (actualDeliveryDate) updateData.actualDeliveryDate = actualDeliveryDate;
     if (data.trackingNumber) updateData.trackingNumber = data.trackingNumber;
-    if (data.supplierInvoiceNumber) updateData.supplierInvoiceNumber = data.supplierInvoiceNumber;
+    if (data.supplierInvoiceNumber)
+      updateData.supplierInvoiceNumber = data.supplierInvoiceNumber;
 
     await tx
       .update(inventoryPurchaseOrders)
       .set(updateData)
       .where(eq(inventoryPurchaseOrders.id, id));
 
-    return { 
-      success: true, 
-      status: newStatus, 
+    return {
+      success: true,
+      status: newStatus,
       fullyReceived: allReceived,
-      itemsProcessed: data.items.length
+      itemsProcessed: data.items.length,
     };
   });
 };
-

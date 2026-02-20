@@ -21,7 +21,7 @@ import {
   getEmployeeReviewSummary,
 } from "../../controllers/ReviewController.js";
 import { authenticate } from "../../middleware/auth.js";
-import { authorizeFeature } from "../../middleware/featureAuthorize.js";
+import { authorizeFeature, requireAnyRole } from "../../middleware/featureAuthorize.js";
 import { validate } from "../../middleware/validate.js";
 import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 import {
@@ -101,10 +101,13 @@ router.get(
   getEmployeesSimpleHandler,
 );
 
+const managerOrAbove = requireAnyRole("Executive", "Manager");
+
 router
   .route("/employees")
   .get(validate(getEmployeesQuerySchema), getEmployeesHandler)
   .post(
+    managerOrAbove,
     (req, res, next) => {
       // Apply multer only if Content-Type is multipart/form-data
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
@@ -133,7 +136,7 @@ router
   .route("/employees/:id")
   .get(validate(getEmployeeByIdSchema), getEmployeeByIdHandler)
   .put(validate(updateEmployeeSchema), updateEmployeeHandler)
-  .delete(validate(deleteEmployeeSchema), deleteEmployeeHandler);
+  .delete(managerOrAbove, validate(deleteEmployeeSchema), deleteEmployeeHandler);
 
 // ==================== EMPLOYEE REVIEW ROUTES ====================
 
@@ -144,16 +147,18 @@ router.get(
   getEmployeeReviews,
 );
 
-// Create review for specific employee
+// Create review for specific employee (Manager/Executive only)
 router.post(
   "/employees/:employeeId/reviews",
+  managerOrAbove,
   validate(createEmployeeReviewSchema),
   createEmployeeReview,
 );
 
-// Update review for specific employee
+// Update review for specific employee (Manager/Executive only)
 router.put(
   "/employees/:employeeId/reviews/:reviewId",
+  managerOrAbove,
   validate(updateEmployeeReviewSchema),
   updateEmployeeReview,
 );

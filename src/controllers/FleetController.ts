@@ -61,6 +61,7 @@ import {
 } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { isUserExecutive } from "../services/role.service.js";
 import { db } from "../config/db.js";
 import { eq, and } from "drizzle-orm";
 import { employees } from "../drizzle/schema/org.schema.js";
@@ -155,7 +156,10 @@ export const getVehiclesHandler = async (req: Request, res: Response) => {
 
     // Strip Executive-only financial fields for Technician and Manager
     const filteredData = result.data.map((v) =>
-      stripVehicleFinancialFields(v as Record<string, unknown>, req.userAccessLevel),
+      stripVehicleFinancialFields(
+        v as Record<string, unknown>,
+        req.userAccessLevel,
+      ),
     );
 
     logger.info("Vehicles fetched successfully");
@@ -297,12 +301,16 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
       try {
         const category = getDefaultExpenseCategory();
         const purchaseDate = newVehicle.purchaseDate;
-        const expenseDate =
-          (typeof purchaseDate === "string"
+        const expenseDate = (
+          typeof purchaseDate === "string"
             ? purchaseDate.slice(0, 10)
             : purchaseDate
-              ? new Date(purchaseDate as string | Date).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0]) as string;
+              ? new Date(purchaseDate as string | Date)
+                  .toISOString()
+                  .split("T")[0]
+              : new Date().toISOString().split("T")[0]
+        ) as string;
+        const executive = await isUserExecutive(req.user.id);
         await createExpenseFromSource({
           sourceId: newVehicle.id,
           category,
@@ -314,9 +322,14 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
           vendor: newVehicle.dealer ?? null,
           createdBy: req.user.id,
           source: "fleet",
+          approvedBy: executive ? req.user.id : null,
         });
       } catch (expenseErr) {
-        logger.logApiError("Error creating expense from vehicle creation", expenseErr, req);
+        logger.logApiError(
+          "Error creating expense from vehicle creation",
+          expenseErr,
+          req,
+        );
       }
     }
 
@@ -518,8 +531,14 @@ export const getMaintenanceRecordsHandler = async (
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
     const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
-    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
-    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as
+      | string
+      | undefined;
+    if (
+      vehicleIdToCheck &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))
+    )
+      return;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -573,7 +592,11 @@ export const getMaintenanceRecordByIdHandler = async (
         message: "Maintenance record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
 
     const record = await getMaintenanceRecordById(id);
 
@@ -611,7 +634,11 @@ export const createMaintenanceRecordHandler = async (
 ) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
-    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
+    if (
+      vehicleIdFromPath &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))
+    )
+      return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -655,7 +682,11 @@ export const updateMaintenanceRecordHandler = async (
         message: "Maintenance record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
     const isExpense = Boolean(req.body?.isExpense);
     const updateData = { ...req.body };
     delete (updateData as Record<string, unknown>).isExpense;
@@ -685,12 +716,13 @@ export const updateMaintenanceRecordHandler = async (
       try {
         const category = getDefaultExpenseCategory();
         const rawDate = updatedRecord.date;
-        const expenseDate =
-          (typeof rawDate === "string"
+        const expenseDate = (
+          typeof rawDate === "string"
             ? rawDate.slice(0, 10)
             : rawDate
               ? new Date(rawDate as string | Date).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0]) as string;
+              : new Date().toISOString().split("T")[0]
+        ) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,
           category,
@@ -702,9 +734,14 @@ export const updateMaintenanceRecordHandler = async (
           vendor: updatedRecord.vendor ?? null,
           createdBy: req.user.id,
           source: "fleet",
+          approvedBy: req.user.id,
         });
       } catch (expenseErr) {
-        logger.logApiError("Error creating expense from maintenance approval", expenseErr, req);
+        logger.logApiError(
+          "Error creating expense from maintenance approval",
+          expenseErr,
+          req,
+        );
       }
     }
 
@@ -736,7 +773,11 @@ export const deleteMaintenanceRecordHandler = async (
         message: "Maintenance record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
 
     const deletedRecord = await deleteMaintenanceRecord(id);
 
@@ -775,8 +816,14 @@ export const getRepairRecordsHandler = async (req: Request, res: Response) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
     const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
-    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
-    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as
+      | string
+      | undefined;
+    if (
+      vehicleIdToCheck &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))
+    )
+      return;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -830,7 +877,11 @@ export const getRepairRecordByIdHandler = async (
         message: "Repair record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
 
     const record = await getRepairRecordById(id);
 
@@ -867,7 +918,11 @@ export const createRepairRecordHandler = async (
 ) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
-    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
+    if (
+      vehicleIdFromPath &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))
+    )
+      return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -911,7 +966,11 @@ export const updateRepairRecordHandler = async (
         message: "Repair record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
     const isExpense = Boolean(req.body?.isExpense);
     const updateData = { ...req.body };
     delete (updateData as Record<string, unknown>).isExpense;
@@ -941,12 +1000,13 @@ export const updateRepairRecordHandler = async (
       try {
         const category = getDefaultExpenseCategory();
         const rawDate = updatedRecord.date;
-        const expenseDate =
-          (typeof rawDate === "string"
+        const expenseDate = (
+          typeof rawDate === "string"
             ? rawDate.slice(0, 10)
             : rawDate
               ? new Date(rawDate as string | Date).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0]) as string;
+              : new Date().toISOString().split("T")[0]
+        ) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,
           category,
@@ -958,9 +1018,14 @@ export const updateRepairRecordHandler = async (
           vendor: updatedRecord.vendor ?? null,
           createdBy: req.user.id,
           source: "fleet",
+          approvedBy: req.user.id,
         });
       } catch (expenseErr) {
-        logger.logApiError("Error creating expense from repair approval", expenseErr, req);
+        logger.logApiError(
+          "Error creating expense from repair approval",
+          expenseErr,
+          req,
+        );
       }
     }
 
@@ -992,7 +1057,11 @@ export const deleteRepairRecordHandler = async (
         message: "Repair record ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
 
     const deletedRecord = await deleteRepairRecord(id);
 
@@ -1034,8 +1103,14 @@ export const getSafetyInspectionsHandler = async (
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
     const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
-    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
-    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as
+      | string
+      | undefined;
+    if (
+      vehicleIdToCheck &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))
+    )
+      return;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -1081,7 +1156,11 @@ export const getSafetyInspectionByIdHandler = async (
         message: "Safety inspection ID is required",
       });
     }
-    if (vehicleIdParam && !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))) return;
+    if (
+      vehicleIdParam &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdParam))
+    )
+      return;
 
     const inspection = await getSafetyInspectionById(id);
 
@@ -1118,7 +1197,11 @@ export const createSafetyInspectionHandler = async (
 ) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
-    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
+    if (
+      vehicleIdFromPath &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))
+    )
+      return;
     const inspectionData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -1385,8 +1468,14 @@ export const getFuelRecordsHandler = async (req: Request, res: Response) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
     const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
-    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
-    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as
+      | string
+      | undefined;
+    if (
+      vehicleIdToCheck &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))
+    )
+      return;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -1464,7 +1553,11 @@ export const getFuelRecordByIdHandler = async (req: Request, res: Response) => {
 export const createFuelRecordHandler = async (req: Request, res: Response) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
-    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
+    if (
+      vehicleIdFromPath &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))
+    )
+      return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -1588,8 +1681,14 @@ export const getCheckInOutRecordsHandler = async (
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
     const vehicleIdFromQuery = req.query.vehicleId as string | undefined;
-    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as string | undefined;
-    if (vehicleIdToCheck && !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))) return;
+    const vehicleIdToCheck = (vehicleIdFromPath || vehicleIdFromQuery) as
+      | string
+      | undefined;
+    if (
+      vehicleIdToCheck &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdToCheck))
+    )
+      return;
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -1673,7 +1772,11 @@ export const createCheckInOutRecordHandler = async (
 ) => {
   try {
     const vehicleIdFromPath = req.params.vehicleId as string | undefined;
-    if (vehicleIdFromPath && !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))) return;
+    if (
+      vehicleIdFromPath &&
+      !(await checkVehicleAssignedAccess(req, res, vehicleIdFromPath))
+    )
+      return;
     const recordData = vehicleIdFromPath
       ? { ...req.body, vehicleId: vehicleIdFromPath }
       : req.body;
@@ -2231,7 +2334,11 @@ export const getVehicleDocumentPresignedUrlHandler = async (
       },
     });
   } catch (error: any) {
-    logger.logApiError("Error getting vehicle document presigned URL", error, req);
+    logger.logApiError(
+      "Error getting vehicle document presigned URL",
+      error,
+      req,
+    );
     return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
@@ -2426,11 +2533,16 @@ export const deleteVehicleDocumentHandler = async (
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteVehiclesHandler = async (req: Request, res: Response) => {
+export const bulkDeleteVehiclesHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await bulkDeleteVehicles(ids, userId);
@@ -2443,6 +2555,8 @@ export const bulkDeleteVehiclesHandler = async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.logApiError("Bulk delete vehicles error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

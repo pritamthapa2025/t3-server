@@ -109,6 +109,7 @@ import {
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { isUserExecutive } from "../services/role.service.js";
 
 /**
  * Checks whether the requesting user (if subject to assigned_only filter) is
@@ -3129,10 +3130,13 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
       }
     }
 
+    const executive = await isUserExecutive(performedBy);
+
     const expenseData = {
       ...req.body,
       jobId: jobId!,
       createdBy: performedBy,
+      ...(executive && { approvedBy: performedBy }),
     };
 
     const result = await createJobExpense(expenseData);

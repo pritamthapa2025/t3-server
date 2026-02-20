@@ -81,7 +81,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Job Assigned to Technician",
       enabled: true,
       priority: "high",
-      recipientRoles: ["assigned_technician", "supervisor"],
+      recipientRoles: ["assigned_technician"],
       channels: ["email", "sms", "push"],
     },
     {
@@ -600,12 +600,22 @@ async function seedNotificationRulesInternal(): Promise<number> {
   ];
 
   try {
-    // Insert rules (will fail on duplicate event_type due to unique constraint)
+    // Upsert rules — updates recipientRoles, channels, priority, and description on conflict
     for (const rule of rules) {
       await db
         .insert(notificationRules)
         .values(rule as any)
-        .onConflictDoNothing({ target: notificationRules.eventType });
+        .onConflictDoUpdate({
+          target: notificationRules.eventType,
+          set: {
+            recipientRoles: (rule as any).recipientRoles,
+            channels: (rule as any).channels,
+            priority: (rule as any).priority,
+            description: rule.description,
+            category: rule.category,
+            enabled: rule.enabled,
+          },
+        });
     }
 
     logger.info(`✅ Successfully seeded ${rules.length} notification rules`);
