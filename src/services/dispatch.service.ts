@@ -217,18 +217,23 @@ export const getDispatchTaskById = async (id: string) => {
 
 // Create Dispatch Task
 export const createDispatchTask = async (data: CreateDispatchTaskData) => {
+  const start =
+    data.startTime instanceof Date
+      ? data.startTime
+      : new Date(data.startTime);
+  const end =
+    data.endTime instanceof Date ? data.endTime : new Date(data.endTime);
+
   const insertData: any = {
     jobId: data.jobId,
     title: data.title,
     taskType: data.taskType,
     priority: data.priority || "medium",
     status: data.status || "pending",
-    startTime:
-      data.startTime instanceof Date
-        ? data.startTime
-        : new Date(data.startTime),
-    endTime:
-      data.endTime instanceof Date ? data.endTime : new Date(data.endTime),
+    startTime: start,
+    endTime: end,
+    // Set date (date-only) for DBs that have this column; derived from startTime
+    date: start.toISOString().slice(0, 10),
   };
 
   if (data.description) insertData.description = data.description;

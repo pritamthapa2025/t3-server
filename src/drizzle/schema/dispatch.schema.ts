@@ -5,6 +5,7 @@ import {
   varchar,
   boolean,
   timestamp,
+  date,
   integer,
   index,
   jsonb,
@@ -49,7 +50,7 @@ export const dispatchTasks = org.table(
     status: dispatchTaskStatusEnum("status").notNull().default("pending"), // pending, assigned, in_progress, completed, cancelled
 
     // Scheduling
-
+    date: date("date"), // Date-only (for DBs that have this column); derived from startTime when creating
     startTime: timestamp("start_time").notNull(), // ISO datetime
     endTime: timestamp("end_time").notNull(), // ISO datetime
     estimatedDuration: integer("estimated_duration"), // Duration in minutes
