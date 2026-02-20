@@ -6,7 +6,7 @@ import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { employees, revenueTargets } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
-import { eq, and, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
+import { eq, and, or, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
 
 /** Optional date range filter (YYYY-MM-DD), same pattern as reports API */
 export type DateRangeFilter = { startDate: string; endDate: string };
@@ -242,12 +242,12 @@ export const getRevenueStats = async (
 
 /**
  * Get active jobs statistics for the last 6 months (or for date range when provided).
- * When assignedToEmployeeId is set (e.g. Technician), only jobs assigned to that employee are counted.
+ * When technician filter is set: count jobs where user is in job_team_members OR bid.assignedTo = userId (matches job list behavior).
  */
 export const getActiveJobsStats = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
-  options?: { assignedToEmployeeId?: number },
+  options?: { assignedToEmployeeId?: number; assignedToUserId?: string },
 ) => {
   const today = new Date();
   const rangeStart = dateRange
@@ -269,11 +269,26 @@ export const getActiveJobsStats = async (
   );
 
   const assignedToEmployeeId = options?.assignedToEmployeeId;
+  const assignedToUserId = options?.assignedToUserId;
 
   const baseJobWhere = and(
     ...(bidOrgFilter ? [bidOrgFilter] : []),
     eq(jobs.isDeleted, false),
   );
+
+  /** Same as My Priority Jobs: in_progress, planned, on_hold (not completed/cancelled) */
+  const activeStatusCondition = inArray(jobs.status, ["in_progress", "planned", "on_hold"]);
+
+  const teamMemberCondition =
+    assignedToEmployeeId != null
+      ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${assignedToEmployeeId} AND jtm.is_active = true)`
+      : null;
+  const bidAssignedCondition =
+    assignedToUserId != null ? eq(bidsTable.assignedTo, assignedToUserId) : null;
+  const technicianCondition =
+    teamMemberCondition && bidAssignedCondition
+      ? or(teamMemberCondition, bidAssignedCondition)
+      : teamMemberCondition ?? bidAssignedCondition ?? undefined;
 
   let monthlyJobsQuery = db
     .select({
@@ -283,23 +298,19 @@ export const getActiveJobsStats = async (
     })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(and(baseJobWhere, dateFilter))
+    .where(
+      and(
+        baseJobWhere,
+        activeStatusCondition,
+        dateFilter,
+        ...(technicianCondition ? [technicianCondition] : []),
+      ),
+    )
     .groupBy(
       sql`TO_CHAR(${jobs.actualStartDate}, 'Mon')`,
       sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`,
     )
     .orderBy(sql`EXTRACT(MONTH FROM ${jobs.actualStartDate})`);
-
-  if (assignedToEmployeeId != null) {
-    monthlyJobsQuery = monthlyJobsQuery.innerJoin(
-      jobTeamMembers,
-      and(
-        eq(jobTeamMembers.jobId, jobs.id),
-        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
-        eq(jobTeamMembers.isActive, true),
-      ),
-    ) as typeof monthlyJobsQuery;
-  }
 
   const monthlyJobs = await monthlyJobsQuery;
 
@@ -307,18 +318,13 @@ export const getActiveJobsStats = async (
     .select({ count: count(jobs.id) })
     .from(jobs)
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(and(baseJobWhere, eq(jobs.status, "in_progress")));
-
-  if (assignedToEmployeeId != null) {
-    activeCountQuery = activeCountQuery.innerJoin(
-      jobTeamMembers,
+    .where(
       and(
-        eq(jobTeamMembers.jobId, jobs.id),
-        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
-        eq(jobTeamMembers.isActive, true),
+        baseJobWhere,
+        activeStatusCondition,
+        ...(technicianCondition ? [technicianCondition] : []),
       ),
-    ) as typeof activeCountQuery;
-  }
+    );
 
   const activeJobsCount = await activeCountQuery;
 
@@ -340,22 +346,12 @@ export const getActiveJobsStats = async (
     .where(
       and(
         baseJobWhere,
-        eq(jobs.status, "in_progress"),
+        activeStatusCondition,
         gte(jobs.createdAt, firstDayOfPrevMonth),
         lte(jobs.createdAt, lastDayOfPrevMonth),
+        ...(technicianCondition ? [technicianCondition] : []),
       ),
     );
-
-  if (assignedToEmployeeId != null) {
-    lastMonthQuery = lastMonthQuery.innerJoin(
-      jobTeamMembers,
-      and(
-        eq(jobTeamMembers.jobId, jobs.id),
-        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
-        eq(jobTeamMembers.isActive, true),
-      ),
-    ) as typeof lastMonthQuery;
-  }
 
   const lastMonthActiveJobs = await lastMonthQuery;
 

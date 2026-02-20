@@ -54,7 +54,7 @@ export const getRevenueStats = async (req: Request, res: Response) => {
  * Get active jobs statistics
  * GET /api/org/dashboard/active-jobs
  * Query: startDate, endDate (optional, YYYY-MM-DD)
- * Technicians only see counts for jobs assigned to them.
+ * Technicians see counts for jobs assigned to them (bid.assignedTo or job_team_members).
  */
 export const getActiveJobsStats = async (req: Request, res: Response) => {
   try {
@@ -63,21 +63,31 @@ export const getActiveJobsStats = async (req: Request, res: Response) => {
     const { startDate, endDate } = (req as any).query ?? {};
     const dateRange = startDate && endDate ? { startDate, endDate } : undefined;
 
-    let assignedToEmployeeId: number | undefined;
+    let options: { assignedToEmployeeId?: number; assignedToUserId?: string } | undefined;
     if (userId) {
-      const { getDataFilterConditions } = await import("../services/featurePermission.service.js");
+      const { getDataFilterConditions, getUserRoleWithContext } = await import("../services/featurePermission.service.js");
       const { getEmployeeByUserId } = await import("../services/auth.service.js");
-      const dataFilters = await getDataFilterConditions(userId, "jobs");
-      if (dataFilters.assignedOnly) {
-        const employee = await getEmployeeByUserId(userId);
-        if (employee?.id) assignedToEmployeeId = employee.id;
+      const [dataFilters, userRole, employee] = await Promise.all([
+        getDataFilterConditions(userId, "jobs"),
+        getUserRoleWithContext(userId),
+        getEmployeeByUserId(userId),
+      ]);
+      const isTechnician = userRole?.roleName === "Technician";
+      const employeeId = userRole?.employeeId ?? employee?.id ?? undefined;
+      if (isTechnician) {
+        options = {
+          assignedToUserId: userId,
+          ...(employeeId != null ? { assignedToEmployeeId: employeeId } : {}),
+        };
+      } else if (dataFilters.assignedOnly && employeeId != null) {
+        options = { assignedToEmployeeId: employeeId };
       }
     }
 
     const stats = await DashboardService.getActiveJobsStats(
       organizationId,
       dateRange,
-      assignedToEmployeeId != null ? { assignedToEmployeeId } : undefined,
+      options,
     );
     return successResponse(res, stats, "Active jobs stats retrieved");
   } catch (error: any) {
