@@ -9,8 +9,7 @@ const apiKey = process.env.BREVO_API_KEY;
 const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@example.com";
 const senderName = process.env.BREVO_SENDER_NAME || "T3 Mechanical";
 
-const serverBaseUrl = process.env.SERVER_URL || "http://localhost:4000";
-const logoUrl = `${serverBaseUrl}/assets/t3_logo-black.png`;
+const logoUrl = `https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-white.png`;
 const logoHeader = `<img src="${logoUrl}" alt="T3 Mechanical" style="max-height: 64px; width: auto;" />`;
 
 /** Shared base styles for transactional emails */

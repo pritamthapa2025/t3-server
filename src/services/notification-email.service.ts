@@ -5,8 +5,7 @@ import type {
   EmailTemplateData,
 } from "../types/notification.types.js";
 
-const serverBaseUrl = process.env.SERVER_URL || "http://localhost:4000";
-const logoUrl = `${serverBaseUrl}/assets/t3_logo-black.png`;
+const logoUrl = `https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-white.png`;
 const logoHeader = `<img src="${logoUrl}" alt="T3 Mechanical" style="max-height: 64px; width: auto;" />`;
 
 const apiKey = process.env.BREVO_API_KEY;

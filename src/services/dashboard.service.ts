@@ -379,12 +379,11 @@ export const getActiveJobsStats = async (
  */
 export const getTeamUtilization = async (
   organizationId?: string,
-  dateRange?: DateRangeFilter,
+  _dateRange?: DateRangeFilter,
 ) => {
-  const totalEmployees = await db
-    .select({
-      count: count(employees.id),
-    })
+  // Total active employees (not scoped per month — this is the denominator)
+  const totalEmployeesResult = await db
+    .select({ count: count(employees.id) })
     .from(employees)
     .where(
       and(
@@ -393,20 +392,30 @@ export const getTeamUtilization = async (
       ),
     );
 
+  const total = Number(totalEmployeesResult[0]?.count || 1);
+
+  // Build the 6-month window: always last 6 calendar months
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return {
+      label: d.toLocaleString("en", { month: "short" }),
+      // First and last moment of the month
+      start: new Date(d.getFullYear(), d.getMonth(), 1),
+      end: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
+  });
+
   const assignedOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
 
-  const jobDateFilter = dateRange
-    ? and(
-        sql`${jobs.scheduledStartDate} <= ${dateRange.endDate}`,
-        sql`${jobs.scheduledEndDate} >= ${dateRange.startDate}`,
-      )
-    : undefined;
-
-  const assignedEmployees = await db
+  // Query distinct assigned employees per month in one go using CASE-based counting
+  const monthRows = await db
     .select({
-      count: sql<number>`COUNT(DISTINCT ${jobTeamMembers.employeeId})`,
+      employeeId: jobTeamMembers.employeeId,
+      scheduledStartDate: jobs.scheduledStartDate,
+      scheduledEndDate: jobs.scheduledEndDate,
     })
     .from(jobTeamMembers)
     .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
@@ -414,25 +423,42 @@ export const getTeamUtilization = async (
     .where(
       and(
         ...(assignedOrgFilter ? [assignedOrgFilter] : []),
-        ...(jobDateFilter ? [jobDateFilter] : []),
         eq(jobTeamMembers.isActive, true),
-        eq(jobs.status, "in_progress"),
         eq(jobs.isDeleted, false),
+        // Job overlaps at least one month in our 6-month window
+        sql`${jobs.scheduledStartDate} <= ${months[5]!.end.toISOString()}`,
+        sql`${jobs.scheduledEndDate} >= ${months[0]!.start.toISOString()}`,
       ),
     );
 
-  const total = Number(totalEmployees[0]?.count || 1);
-  const assigned = Number(assignedEmployees[0]?.count || 0);
-  const utilizationPercentage = Math.round((assigned / total) * 100);
-
-  const chartData = Array.from({ length: 6 }, (_, i) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (5 - i));
+  // For each month count distinct employees whose job overlapped that month
+  const chartData = months.map(({ label, start, end }) => {
+    const assignedSet = new Set<number>();
+    for (const row of monthRows) {
+      const jobStart = new Date(row.scheduledStartDate);
+      const jobEnd = new Date(row.scheduledEndDate);
+      if (jobStart <= end && jobEnd >= start) {
+        assignedSet.add(row.employeeId);
+      }
+    }
     return {
-      month: date.toLocaleString("en", { month: "short" }),
-      utilization: utilizationPercentage,
+      month: label,
+      utilization: Math.round((assignedSet.size / total) * 100),
     };
   });
+
+  // Current utilization = most recent month in the chart
+  const currentMonth = months[5]!;
+  const currentAssignedSet = new Set<number>();
+  for (const row of monthRows) {
+    const jobStart = new Date(row.scheduledStartDate);
+    const jobEnd = new Date(row.scheduledEndDate);
+    if (jobStart <= currentMonth.end && jobEnd >= currentMonth.start) {
+      currentAssignedSet.add(row.employeeId);
+    }
+  }
+  const assigned = currentAssignedSet.size;
+  const utilizationPercentage = Math.round((assigned / total) * 100);
 
   return {
     currentUtilization: utilizationPercentage,
