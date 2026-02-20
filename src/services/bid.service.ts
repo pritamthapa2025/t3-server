@@ -653,6 +653,17 @@ export const createBid = async (data: {
 
   if (!bid) return null;
 
+  // Resolve supervisorManager's userId for the notification
+  let supervisorManagerUserId: string | undefined;
+  if (data.supervisorManager) {
+    const [empRow] = await db
+      .select({ userId: employees.userId })
+      .from(employees)
+      .where(eq(employees.id, data.supervisorManager))
+      .limit(1);
+    supervisorManagerUserId = empRow?.userId ?? undefined;
+  }
+
   // Fire bid_created notification (fire-and-forget)
   void (async () => {
     try {
@@ -666,6 +677,10 @@ export const createBid = async (data: {
           entityType: "Bid",
           entityId: bid.id,
           entityName: bid.projectName || bid.bidNumber || "New Bid",
+          creatorId: data.createdBy,
+          ...(supervisorManagerUserId && {
+            supervisorManagerId: supervisorManagerUserId,
+          }),
         },
       });
     } catch (err) {

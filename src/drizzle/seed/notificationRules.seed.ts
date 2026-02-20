@@ -157,7 +157,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Bid Created",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["manager", "executive"],
+      recipientRoles: ["creator", "supervisor_manager", "executive"],
       channels: ["email", "push"],
     },
     {

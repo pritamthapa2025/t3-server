@@ -4219,23 +4219,43 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       });
     }
 
-    // Use bid's primary contact if available, else fall back to organization's primary contact
-    const primaryContact =
-      bid.primaryContact ??
-      (client.organization.primaryContact && client.organization.email
-        ? {
-            fullName: client.organization.primaryContact,
-            email: client.organization.email,
-          }
-        : null);
+    // Collect all email recipients: bid's primary contact + org email
+    const allRecipients: { fullName?: string | null; email: string }[] = [];
 
-    if (!primaryContact?.email) {
+    if (bid.primaryContact?.email) {
+      allRecipients.push({
+        fullName: bid.primaryContact.fullName,
+        email: bid.primaryContact.email,
+      });
+    }
+
+    if (client.organization.email) {
+      const orgEmail = client.organization.email;
+      const alreadyAdded = allRecipients.some(
+        (r) => r.email.toLowerCase() === orgEmail.toLowerCase(),
+      );
+      if (!alreadyAdded) {
+        allRecipients.push({
+          fullName:
+            client.organization.primaryContact ??
+            client.organization.name ??
+            orgEmail,
+          email: orgEmail,
+        });
+      }
+    }
+
+    if (allRecipients.length === 0) {
       return res.status(400).json({
         success: false,
         message:
-          "No primary contact with email found for this bid. Please set a primary contact with an email address before sending the quote.",
+          "No email recipients found for this bid. Please set a primary contact or ensure the organization has an email address.",
       });
     }
+
+    // Use the first recipient for PDF personalization (length guard above ensures it exists)
+    const primaryContact = allRecipients[0]!;
+    const ccEmails = allRecipients.slice(1).map((r) => r.email);
 
     const financialBreakdown = await getBidFinancialBreakdown(
       id,
@@ -4246,7 +4266,7 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       bid,
       client.organization,
       financialBreakdown,
-      primaryContact,
+      primaryContact ?? null,
       bid.property ?? null,
     );
 
@@ -4265,16 +4285,22 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
         content: Buffer.from(pdfBuffer),
         filename: `quote-${bid.bidNumber}.pdf`,
       },
+      ccEmails.length > 0 ? ccEmails : undefined,
     );
 
-    logger.info(`Quote ${id} sent successfully to ${primaryContact.email}`);
+    const sentTo = allRecipients.map((r) => r.email).join(", ");
+    logger.info(`Quote ${id} sent successfully to ${sentTo}`);
     res.json({
       success: true,
       data: {
         sentAt: new Date().toISOString(),
         sentTo: primaryContact.email,
+        ccTo: ccEmails.length > 0 ? ccEmails : undefined,
         contactName: primaryContact.fullName ?? primaryContact.email,
-        note: "Quote email sent to primary contact",
+        note:
+          ccEmails.length > 0
+            ? `Quote email sent to primary contact and CC'd to ${ccEmails.join(", ")}`
+            : "Quote email sent to primary contact",
       },
       message: "Quote sent successfully",
     });

@@ -155,6 +155,23 @@ export async function resolveRecipients(
         break;
       }
 
+        case "creator":
+          // Send to the user who created/triggered the entity
+          if (event.data.creatorId) {
+            userIds.add(event.data.creatorId);
+          } else if (event.triggeredBy) {
+            userIds.add(event.triggeredBy);
+          }
+          break;
+
+        case "supervisor_manager": {
+          // Send to the specific supervisor manager assigned on the bid/job
+          if (event.data.supervisorManagerId) {
+            userIds.add(event.data.supervisorManagerId);
+          }
+          break;
+        }
+
         default:
           logger.warn(`Unknown recipient role: ${role}`);
       }
@@ -205,7 +222,7 @@ async function getUsersByRole(roleName: string): Promise<RecipientInfo[]> {
       executive: "Executive",
       admin: "Executive",
       supervisor: "Manager",
-      technician: "Field Technician",
+      technician: "Technician",
       client: "Client",
     };
     const dbRoleName = roleNameMap[roleName.toLowerCase()] ?? roleName;
