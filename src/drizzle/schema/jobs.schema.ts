@@ -19,7 +19,7 @@ import { employees, positions } from "./org.schema.js";
 import { bidsTable } from "./bids.schema.js";
 
 // Import enums from centralized location
-import { jobStatusEnum } from "../enums/org.enums.js";
+import { jobStatusEnum, jobTaskStatusEnum } from "../enums/org.enums.js";
 import { expenseCategoryEnum } from "../enums/expenses.enums.js";
 
 const org = pgSchema("org");
@@ -152,7 +152,7 @@ export const jobTasks = org.table(
 
     taskName: varchar("task_name", { length: 255 }).notNull(),
     description: text("description"),
-    status: varchar("status", { length: 50 }).notNull().default("pending"), // pending, in_progress, completed, cancelled
+    status: jobTaskStatusEnum("status").notNull().default("backlog"), // backlog, in_progress, in_review, done
     priority: varchar("priority", { length: 50 }).default("medium"), // low, medium, high, urgent
 
     assignedTo: uuid("assigned_to").references(() => users.id),

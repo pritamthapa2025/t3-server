@@ -919,6 +919,8 @@ export const getJobTasksSchema = z.object({
   }),
 });
 
+const jobTaskStatusEnum = z.enum(["backlog", "in_progress", "in_review", "done"]);
+
 export const createJobTaskSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -926,7 +928,7 @@ export const createJobTaskSchema = z.object({
   body: z.object({
     taskName: z.string().min(1, "Task name is required").max(255),
     description: z.string().optional(),
-    status: z.string().max(50).optional().default("pending"),
+    status: jobTaskStatusEnum.optional().default("backlog"),
     priority: z.string().max(50).optional().default("medium"),
     assignedTo: uuidSchema.optional(),
     dueDate: z.string().date().optional(),
@@ -950,7 +952,7 @@ export const updateJobTaskSchema = z.object({
   body: z.object({
     taskName: z.string().max(255).optional(),
     description: z.string().optional(),
-    status: z.string().max(50).optional(),
+    status: jobTaskStatusEnum.optional(),
     priority: z.string().max(50).optional(),
     assignedTo: uuidSchema.optional(),
     dueDate: z.string().date().optional(),

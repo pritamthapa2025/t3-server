@@ -673,6 +673,13 @@
       "when": 1771576031001,
       "tag": "0095_early_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1771590559233,
+      "tag": "0096_romantic_metal_master",
+      "breakpoints": true
     }
   ]
 }

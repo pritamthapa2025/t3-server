@@ -187,3 +187,14 @@ export const timelineStatusEnum = pgEnum("timeline_status_enum", [
   "in_progress",
   "cancelled",
 ]);
+
+/**
+ * Job Task Status Enum
+ * Status of tasks within a job (UI: Backlog, In Progress, In Review, Done)
+ */
+export const jobTaskStatusEnum = pgEnum("job_task_status_enum", [
+  "backlog",
+  "in_progress",
+  "in_review",
+  "done",
+]);

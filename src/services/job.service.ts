@@ -2499,7 +2499,7 @@ export const createJobTask = async (data: {
       taskNumber,
       taskName: data.taskName,
       description: data.description,
-      status: (data.status as any) || "pending",
+      status: (data.status as any) || "backlog",
       priority: data.priority || "medium",
       assignedTo: data.assignedTo || null,
       dueDate: data.dueDate || null,
@@ -2513,6 +2513,8 @@ export const createJobTask = async (data: {
   return { task, organizationId: jobData.organizationId };
 };
 
+type JobTaskStatus = "backlog" | "in_progress" | "in_review" | "done";
+
 export const updateJobTask = async (
   id: string,
   jobId: string,
@@ -2520,7 +2522,7 @@ export const updateJobTask = async (
   data: Partial<{
     taskName: string;
     description: string;
-    status: string;
+    status: JobTaskStatus;
     priority: string;
     assignedTo: string;
     dueDate: string;
@@ -3327,7 +3329,7 @@ export const getJobProgressPercentages = async (
     db
       .select({
         total: count(),
-        completed: sql<number>`COUNT(*) FILTER (WHERE ${jobTasks.status} = 'completed')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${jobTasks.status} = 'done')`,
       })
       .from(jobTasks)
       .where(and(eq(jobTasks.jobId, jobId), eq(jobTasks.isDeleted, false))),
