@@ -264,8 +264,13 @@ export const getActiveJobsStats = async (
     eq(jobs.isDeleted, false),
   );
 
-  /** Same as My Priority Jobs: in_progress, planned, on_hold (not completed/cancelled) */
-  const activeStatusCondition = inArray(jobs.status, ["in_progress", "planned", "on_hold"]);
+  /** Active = not completed/cancelled: planned, scheduled, in_progress, on_hold (matches priority jobs + scheduled) */
+  const activeStatusCondition = inArray(jobs.status, [
+    "planned",
+    "scheduled",
+    "in_progress",
+    "on_hold",
+  ]);
 
   const teamMemberCondition =
     assignedToEmployeeId != null
@@ -278,8 +283,8 @@ export const getActiveJobsStats = async (
       ? or(teamMemberCondition, bidAssignedCondition)
       : teamMemberCondition ?? bidAssignedCondition ?? undefined;
 
-  /** Breakdown by status so chart bars sum to currentActiveJobs (planned, in_progress, on_hold) */
-  const statusOrder = ["planned", "in_progress", "on_hold"] as const;
+  /** Breakdown by status so chart bars sum to currentActiveJobs */
+  const statusOrder = ["planned", "scheduled", "in_progress", "on_hold"] as const;
   const statusBreakdownQuery = db
     .select({
       status: jobs.status,
@@ -298,10 +303,19 @@ export const getActiveJobsStats = async (
 
   const statusBreakdownRows = await statusBreakdownQuery;
   const countByStatus = new Map<string, number>(
-    statusBreakdownRows.map((r) => [r.status as string, Number(r.count || 0)]),
+    statusBreakdownRows.map((r) => [
+      String(r.status ?? "").toLowerCase().replace(/\s+/g, "_"),
+      Number(r.count || 0),
+    ]),
   );
+  const statusLabels: Record<(typeof statusOrder)[number], string> = {
+    planned: "Planned",
+    scheduled: "Scheduled",
+    in_progress: "In progress",
+    on_hold: "On hold",
+  };
   const chartData = statusOrder.map((status) => ({
-    label: status === "in_progress" ? "In progress" : status === "on_hold" ? "On hold" : "Planned",
+    label: statusLabels[status],
     jobs: countByStatus.get(status) ?? 0,
   }));
 
@@ -789,7 +803,7 @@ export const getPriorityJobs = async (
     ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
     ...(dueDateFilter ? [dueDateFilter] : []),
     eq(jobs.isDeleted, false),
-    sql`${jobs.status} IN ('in_progress', 'planned', 'on_hold')`,
+    sql`${jobs.status} IN ('planned', 'scheduled', 'in_progress', 'on_hold')`,
   );
 
   let query = db
