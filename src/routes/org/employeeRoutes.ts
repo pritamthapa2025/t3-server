@@ -81,27 +81,31 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
   next();
 };
 
-// Apply authentication middleware to all employee routes
 router.use(authenticate);
 
-
-// Inspectors: employees whose role is Executive or Manager (full employee + user record)
-router.get("/inspector", getInspectorsHandler);
-
-// Technicians: all employees whose role is Technician
-router.get("/employees/technicians", getTechniciansHandler);
-
-// Unassigned drivers (Technicians not assigned to any vehicle)
-router.get("/unassigned-drivers", getUnassignedDriversHandler);
-
-router.get("/employees/kpis", getEmployeeKPIsHandler);
-router.get(
-  "/employees/simple",
-  validate(getEmployeesSimpleQuerySchema),
-  getEmployeesSimpleHandler,
-);
-
 const managerOrAbove = requireAnyRole("Executive", "Manager");
+
+// ─── Utility / Lookup ────────────────────────────────────────────────────────
+
+router.route("/inspector").get(getInspectorsHandler);
+
+router.route("/unassigned-drivers").get(getUnassignedDriversHandler);
+
+// ─── Employees ───────────────────────────────────────────────────────────────
+
+router.route("/employees/technicians").get(getTechniciansHandler);
+
+router.route("/employees/kpis").get(getEmployeeKPIsHandler);
+
+router
+  .route("/employees/simple")
+  .get(validate(getEmployeesSimpleQuerySchema), getEmployeesSimpleHandler);
+
+router.route("/employees/bulk-delete").post(
+  authorizeFeature("team", "bulk_delete"),
+  validate(bulkDeleteIntSchema),
+  bulkDeleteEmployeesHandler,
+);
 
 router
   .route("/employees")
@@ -109,16 +113,12 @@ router
   .post(
     managerOrAbove,
     (req, res, next) => {
-      // Apply multer only if Content-Type is multipart/form-data
       if (req.headers["content-type"]?.includes("multipart/form-data")) {
         upload(req, res, (err) => {
-          if (err) {
-            return handleMulterError(err, req, res, next);
-          }
+          if (err) return handleMulterError(err, req, res, next);
           next();
         });
       } else {
-        // Skip multer for JSON requests
         next();
       }
     },
@@ -126,11 +126,9 @@ router
     createEmployeeHandler,
   );
 
-router.get(
-  "/employees/:id/jobs-and-dispatch",
-  validate(getEmployeeJobsAndDispatchSchema),
-  getEmployeeJobsAndDispatchHandler,
-);
+router
+  .route("/employees/:id/jobs-and-dispatch")
+  .get(validate(getEmployeeJobsAndDispatchSchema), getEmployeeJobsAndDispatchHandler);
 
 router
   .route("/employees/:id")
@@ -138,44 +136,19 @@ router
   .put(validate(updateEmployeeSchema), updateEmployeeHandler)
   .delete(managerOrAbove, validate(deleteEmployeeSchema), deleteEmployeeHandler);
 
-// ==================== EMPLOYEE REVIEW ROUTES ====================
+// ─── Employee Reviews ─────────────────────────────────────────────────────────
 
-// Get reviews for specific employee
-router.get(
-  "/employees/:employeeId/reviews",
-  validate(getReviewsByEmployeeIdSchema),
-  getEmployeeReviews,
-);
+router
+  .route("/employees/:employeeId/reviews/summary")
+  .get(validate(getEmployeeReviewSummarySchema), getEmployeeReviewSummary);
 
-// Create review for specific employee (Manager/Executive only)
-router.post(
-  "/employees/:employeeId/reviews",
-  managerOrAbove,
-  validate(createEmployeeReviewSchema),
-  createEmployeeReview,
-);
+router
+  .route("/employees/:employeeId/reviews")
+  .get(validate(getReviewsByEmployeeIdSchema), getEmployeeReviews)
+  .post(managerOrAbove, validate(createEmployeeReviewSchema), createEmployeeReview);
 
-// Update review for specific employee (Manager/Executive only)
-router.put(
-  "/employees/:employeeId/reviews/:reviewId",
-  managerOrAbove,
-  validate(updateEmployeeReviewSchema),
-  updateEmployeeReview,
-);
-
-// Get employee review summary
-router.get(
-  "/employees/:employeeId/reviews/summary",
-  validate(getEmployeeReviewSummarySchema),
-  getEmployeeReviewSummary,
-);
-
-// Bulk delete employees (Executive only)
-router.post(
-  "/employees/bulk-delete",
-  authorizeFeature("team", "bulk_delete"),
-  validate(bulkDeleteIntSchema),
-  bulkDeleteEmployeesHandler,
-);
+router
+  .route("/employees/:employeeId/reviews/:reviewId")
+  .put(managerOrAbove, validate(updateEmployeeReviewSchema), updateEmployeeReview);
 
 export default router;

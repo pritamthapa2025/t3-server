@@ -479,7 +479,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
           category: "safety",
           priority: "high",
           data: {
-            entityType: "Employee",
+            entityType: "Compliance",
             entityId: inserted.id,
             entityName: caseName,
             reportedBy: data.reportedBy || undefined,
@@ -494,7 +494,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
         category: "safety",
         priority: "high",
         data: {
-          entityType: "Employee",
+          entityType: "Compliance",
           entityId: inserted.id,
           entityName: caseName,
         },
@@ -622,7 +622,7 @@ export const updateCaseStatus = async (
           category: "safety",
           priority: "medium",
           data: {
-            entityType: "Employee",
+            entityType: "Compliance",
             entityId: id,
             entityName: updated.caseNumber || updated.title || id,
           },

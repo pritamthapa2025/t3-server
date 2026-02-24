@@ -36,7 +36,7 @@ export const bidsTable: any = org.table(
   "bids",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    bidNumber: varchar("bid_number", { length: 100 }).notNull(), // BID-2025-0001 (name-year-4digit, auto-expands)
+    bidNumber: varchar("bid_number", { length: 100 }).notNull(),
 
     // Basic Information
     jobType: bidJobTypeEnum("job_type").notNull(),

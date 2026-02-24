@@ -203,11 +203,11 @@ async function seedNotificationRulesInternal(): Promise<number> {
     {
       category: "financial",
       eventType: "invoice_sent",
-      description: "Invoice Sent to Client",
+      description: "Invoice Sent",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client"],
-      channels: ["email"],
+      recipientRoles: ["client", "manager", "executive"],
+      channels: ["email", "push"],
     },
     {
       category: "financial",
@@ -215,8 +215,8 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Payment Received (Full)",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client"],
-      channels: ["email"],
+      recipientRoles: ["client", "manager", "executive"],
+      channels: ["email", "push"],
     },
     {
       category: "financial",
@@ -224,8 +224,8 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Payment Received (Partial)",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client"],
-      channels: ["email"],
+      recipientRoles: ["client", "manager", "executive"],
+      channels: ["email", "push"],
     },
     {
       category: "financial",
@@ -269,8 +269,8 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Invoice Cancelled",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client"],
-      channels: ["email"],
+      recipientRoles: ["client", "manager", "executive"],
+      channels: ["email", "push"],
     },
 
     // ============================================

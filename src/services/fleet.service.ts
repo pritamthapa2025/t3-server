@@ -1461,6 +1461,15 @@ export const createSafetyInspection = async (
   if (data.overallStatus === "failed") {
     void (async () => {
       try {
+        // Look up the vehicle to get its human-readable vehicleId and license plate
+        const [vehicleRow] = await db
+          .select({ vehicleId: vehicles.vehicleId, make: vehicles.make, model: vehicles.model, licensePlate: vehicles.licensePlate })
+          .from(vehicles)
+          .where(and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)))
+          .limit(1);
+        const entityName = vehicleRow
+          ? `${vehicleRow.make} ${vehicleRow.model} (${vehicleRow.vehicleId})`
+          : data.vehicleId;
         const { NotificationService } = await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "safety_inspection_failed",
@@ -1469,7 +1478,8 @@ export const createSafetyInspection = async (
           data: {
             entityType: "Vehicle",
             entityId: data.vehicleId,
-            entityName: (inspection as any)?.vehicleId || data.vehicleId,
+            entityName,
+            licensePlate: vehicleRow?.licensePlate ?? undefined,
           },
         });
       } catch (err) {
@@ -2008,6 +2018,15 @@ export const createCheckInOutRecord = async (
   // Fire vehicle_checked_out or vehicle_checked_in Push notification (fire-and-forget)
   void (async () => {
     try {
+      // Look up the vehicle to get its human-readable vehicleId and license plate
+      const [vehicleRow] = await db
+        .select({ vehicleId: vehicles.vehicleId, make: vehicles.make, model: vehicles.model, licensePlate: vehicles.licensePlate })
+        .from(vehicles)
+        .where(and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)))
+        .limit(1);
+      const entityName = vehicleRow
+        ? `${vehicleRow.make} ${vehicleRow.model} (${vehicleRow.vehicleId})`
+        : data.vehicleId;
       const { NotificationService } = await import("./notification.service.js");
       const eventType = data.type === "check_out" ? "vehicle_checked_out" : "vehicle_checked_in";
       await new NotificationService().triggerNotification({
@@ -2017,7 +2036,8 @@ export const createCheckInOutRecord = async (
         data: {
           entityType: "Vehicle",
           entityId: data.vehicleId,
-          entityName: (record as any)?.vehicleId || data.vehicleId,
+          entityName,
+          licensePlate: vehicleRow?.licensePlate ?? undefined,
         },
       });
     } catch (err) {

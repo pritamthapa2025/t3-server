@@ -4,6 +4,11 @@
  * All time-based notification checks that are triggered by cron endpoints.
  * Each exported function returns a summary { processed, errors } that the
  * cron route handler forwards to the caller.
+ *
+ * Rules:
+ * - Max BATCH_SIZE records processed per cron run (oldest/most-urgent first).
+ *   Remaining records are picked up on the next scheduled run.
+ * - Failures are logged and counted — never retried.
  */
 
 import { db } from "../config/db.js";
@@ -17,6 +22,7 @@ import {
   isNull,
   sql,
   lt,
+  asc,
 } from "drizzle-orm";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -25,10 +31,14 @@ import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
+import { inventoryPurchaseOrders } from "../drizzle/schema/inventory.schema.js";
 import { NotificationService } from "./notification.service.js";
 import { logger } from "../utils/logger.js";
 
 const svc = new NotificationService();
+
+/** Maximum records to process per cron run. Remaining are left for the next run. */
+const BATCH_SIZE = 5;
 
 type CronResult = { processed: number; errors: number };
 
@@ -59,6 +69,7 @@ function daysAgo(n: number): string {
 /**
  * Notify manager, technician, executive when a job's scheduled end date has
  * passed and it is still not completed or cancelled.
+ * Processes at most BATCH_SIZE jobs per run (most overdue first).
  * Recommended schedule: daily at 08:00.
  */
 export async function notifyJobOverdue(): Promise<CronResult> {
@@ -85,7 +96,9 @@ export async function notifyJobOverdue(): Promise<CronResult> {
           not(inArray(jobs.status, ["completed", "cancelled"])),
           lt(jobs.scheduledEndDate, today),
         ),
-      );
+      )
+      .orderBy(asc(jobs.scheduledEndDate))
+      .limit(BATCH_SIZE);
 
     for (const job of overdueJobs) {
       try {
@@ -127,7 +140,9 @@ export async function notifyJobOverdue(): Promise<CronResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * Notify client, project manager, and executive when an invoice is due tomorrow.
+ * Notify client (primary contact), project manager, and executive when an
+ * invoice is due tomorrow.
+ * Processes at most BATCH_SIZE invoices per run.
  * Recommended schedule: daily at 09:00.
  */
 export async function notifyInvoiceDueTomorrow(): Promise<CronResult> {
@@ -152,7 +167,9 @@ export async function notifyInvoiceDueTomorrow(): Promise<CronResult> {
           not(inArray(invoices.status, ["paid", "cancelled", "void", "draft"])),
           eq(invoices.dueDate, tomorrow),
         ),
-      );
+      )
+      .orderBy(asc(invoices.dueDate))
+      .limit(BATCH_SIZE);
 
     for (const inv of dueInvoices) {
       try {
@@ -217,7 +234,9 @@ async function notifyInvoiceOverdueDays(
           not(inArray(invoices.status, ["paid", "cancelled", "void", "draft"])),
           eq(invoices.dueDate, exactDate),
         ),
-      );
+      )
+      .orderBy(asc(invoices.dueDate))
+      .limit(BATCH_SIZE);
 
     for (const inv of overdueInvoices) {
       try {
@@ -262,6 +281,7 @@ export const notifyInvoiceOverdue30Days = () => notifyInvoiceOverdueDays(30);
  * (clockOut is null) after a configurable cutoff hour (default: 18:00).
  * Also runs a morning check for employees with NO timesheet for today at all
  * (clockType = "in").
+ * Processes at most BATCH_SIZE employees per run.
  * Recommended schedule: twice daily — morning (09:30) for missing clock-in,
  * evening (18:30) for missing clock-out.
  */
@@ -286,7 +306,8 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
             eq(timesheets.sheetDate, today),
             isNull(timesheets.clockOut),
           ),
-        );
+        )
+        .limit(BATCH_SIZE);
 
       for (const ts of openShifts) {
         if (!ts.employeeId) continue;
@@ -310,7 +331,7 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
         }
       }
     } else {
-      // Find all active employees with NO timesheet at all for today
+      // Find active employees with NO timesheet for today — limit to BATCH_SIZE
       const allActiveEmployees = await db
         .select({ id: employees.id })
         .from(employees)
@@ -328,8 +349,11 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
 
       const clockedInIds = new Set(todaySheets.map((r) => r.employeeId).filter(Boolean));
 
-      for (const emp of allActiveEmployees) {
-        if (clockedInIds.has(emp.id)) continue;
+      const unclockedIn = allActiveEmployees
+        .filter((emp) => !clockedInIds.has(emp.id))
+        .slice(0, BATCH_SIZE);
+
+      for (const emp of unclockedIn) {
         try {
           await svc.triggerNotification({
             type: "clock_reminder",
@@ -386,7 +410,6 @@ async function _notifyMaintenanceDue(
   try {
     const targetDate = daysFromNow(days);
 
-    // Use vehicles.nextServiceDue as the primary maintenance due field
     const dueVehicles = await db
       .select({
         id: vehicles.id,
@@ -403,7 +426,9 @@ async function _notifyMaintenanceDue(
           eq(vehicles.isDeleted, false),
           eq(vehicles.nextServiceDue, targetDate),
         ),
-      );
+      )
+      .orderBy(asc(vehicles.nextServiceDue))
+      .limit(BATCH_SIZE);
 
     for (const v of dueVehicles) {
       try {
@@ -436,6 +461,7 @@ async function _notifyMaintenanceDue(
 
 /**
  * Notify driver, manager, executive when vehicle maintenance is overdue.
+ * Processes at most BATCH_SIZE vehicles per run (most overdue first).
  * Recommended schedule: daily.
  */
 export async function notifyMaintenanceOverdue(): Promise<CronResult> {
@@ -461,7 +487,9 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
           eq(vehicles.isDeleted, false),
           lt(vehicles.nextServiceDue, today),
         ),
-      );
+      )
+      .orderBy(asc(vehicles.nextServiceDue))
+      .limit(BATCH_SIZE);
 
     for (const v of overdueVehicles) {
       try {
@@ -498,6 +526,7 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
 
 /**
  * Notify manager + executive when a vehicle's nextInspectionDue date has passed.
+ * Processes at most BATCH_SIZE vehicles per run (most overdue first).
  * Recommended schedule: daily.
  */
 export async function notifySafetyInspectionExpired(): Promise<CronResult> {
@@ -523,7 +552,9 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
           eq(vehicles.isDeleted, false),
           lt(vehicles.nextInspectionDue, today),
         ),
-      );
+      )
+      .orderBy(asc(vehicles.nextInspectionDue))
+      .limit(BATCH_SIZE);
 
     for (const v of expiredVehicles) {
       try {
@@ -560,6 +591,7 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
 
 /**
  * Notify manager + executive when vehicle registration expires within 30 days.
+ * Processes at most BATCH_SIZE vehicles per run (soonest expiry first).
  * Recommended schedule: daily.
  */
 export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
@@ -587,7 +619,9 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
           gte(vehicles.registrationExpiration, today),
           lte(vehicles.registrationExpiration, in30),
         ),
-      );
+      )
+      .orderBy(asc(vehicles.registrationExpiration))
+      .limit(BATCH_SIZE);
 
     for (const v of expiringVehicles) {
       try {
@@ -624,6 +658,7 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
 
 /**
  * Notify manager + executive when vehicle insurance expires within 30 days.
+ * Processes at most BATCH_SIZE vehicles per run (soonest expiry first).
  * Recommended schedule: daily.
  */
 export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
@@ -651,7 +686,9 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
           gte(vehicles.insuranceExpiration, today),
           lte(vehicles.insuranceExpiration, in30),
         ),
-      );
+      )
+      .orderBy(asc(vehicles.insuranceExpiration))
+      .limit(BATCH_SIZE);
 
     for (const v of expiringVehicles) {
       try {
@@ -687,8 +724,8 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * Notify manager when an employee's performance review is due.
- * Uses employees.nextReviewDate (if column exists) — falls back gracefully.
+ * Notify manager when an employee's performance review is due within 7 days.
+ * Processes at most BATCH_SIZE employees per run.
  * Recommended schedule: daily.
  */
 export async function notifyPerformanceReviewDue(): Promise<CronResult> {
@@ -699,8 +736,6 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
     const today = todayStr();
     const in7 = daysFromNow(7);
 
-    // Check if nextReviewDate column exists on employees table
-    // If not available, this query will be a no-op
     const dueEmployees = await db
       .select({
         id: employees.id,
@@ -711,11 +746,11 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
       .where(
         and(
           isNull(employees.terminationDate),
-          // Cast to access nextReviewDate column if it exists in the schema
           gte(sql`COALESCE((employees.next_review_date)::text, '9999-01-01')`, today),
           lte(sql`COALESCE((employees.next_review_date)::text, '9999-01-01')`, in7),
         ),
-      );
+      )
+      .limit(BATCH_SIZE);
 
     for (const emp of dueEmployees) {
       try {
@@ -739,6 +774,147 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
   } catch (err) {
     // Silently handle if column doesn't exist
     logger.warn("[CronNotif] notifyPerformanceReviewDue skipped (column may not exist):", (err as any)?.message);
+  }
+
+  return { processed, errors };
+}
+
+// ---------------------------------------------------------------------------
+// 14. SAFETY INSPECTION UPCOMING (within 30 days)
+// ---------------------------------------------------------------------------
+
+/**
+ * Notify manager + executive when a vehicle's safety inspection is due within
+ * the next 30 days (soonest due first).
+ * Processes at most BATCH_SIZE vehicles per run.
+ * Recommended schedule: daily (e.g. 07:06).
+ */
+export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
+
+  try {
+    const today = todayStr();
+    const in30 = daysFromNow(30);
+
+    const upcomingVehicles = await db
+      .select({
+        id: vehicles.id,
+        vehicleId: vehicles.vehicleId,
+        make: vehicles.make,
+        model: vehicles.model,
+        licensePlate: vehicles.licensePlate,
+        nextInspectionDue: vehicles.nextInspectionDue,
+        assignedToEmployeeId: vehicles.assignedToEmployeeId,
+      })
+      .from(vehicles)
+      .where(
+        and(
+          eq(vehicles.isDeleted, false),
+          gte(vehicles.nextInspectionDue, today),
+          lte(vehicles.nextInspectionDue, in30),
+        ),
+      )
+      .orderBy(asc(vehicles.nextInspectionDue))
+      .limit(BATCH_SIZE);
+
+    for (const v of upcomingVehicles) {
+      try {
+        await svc.triggerNotification({
+          type: "safety_inspection_required",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName: `${v.make} ${v.model} (${v.vehicleId})`,
+            licensePlate: v.licensePlate,
+            ...(v.nextInspectionDue ? { dueDate: v.nextInspectionDue } : {}),
+            ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
+          },
+        });
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] safety_inspection_required failed for vehicle ${v.id}:`, err);
+        errors++;
+      }
+    }
+  } catch (err) {
+    logger.error("[CronNotif] notifySafetyInspectionUpcoming query failed:", err);
+    errors++;
+  }
+
+  return { processed, errors };
+}
+
+// ---------------------------------------------------------------------------
+// 15. PURCHASE ORDER DELAYED
+// ---------------------------------------------------------------------------
+
+/**
+ * Notify manager + executive when a purchase order's expected delivery date
+ * has passed and it has not yet been fully received or cancelled.
+ * Processes at most BATCH_SIZE orders per run (most delayed first).
+ * Recommended schedule: daily (e.g. 07:30).
+ */
+export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
+
+  try {
+    const today = todayStr();
+
+    const delayedOrders = await db
+      .select({
+        id: inventoryPurchaseOrders.id,
+        poNumber: inventoryPurchaseOrders.poNumber,
+        title: inventoryPurchaseOrders.title,
+        expectedDeliveryDate: inventoryPurchaseOrders.expectedDeliveryDate,
+        supplierId: inventoryPurchaseOrders.supplierId,
+        totalAmount: inventoryPurchaseOrders.totalAmount,
+      })
+      .from(inventoryPurchaseOrders)
+      .where(
+        and(
+          eq(inventoryPurchaseOrders.isDeleted, false),
+          inArray(inventoryPurchaseOrders.status, ["sent", "partially_received"]),
+          isNull(inventoryPurchaseOrders.actualDeliveryDate),
+          lt(inventoryPurchaseOrders.expectedDeliveryDate, today),
+        ),
+      )
+      .orderBy(asc(inventoryPurchaseOrders.expectedDeliveryDate))
+      .limit(BATCH_SIZE);
+
+    for (const po of delayedOrders) {
+      try {
+        const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : null;
+        const now = new Date();
+        const daysDelayed = expectedDate
+          ? Math.floor((now.getTime() - expectedDate.getTime()) / 86400000)
+          : undefined;
+
+        await svc.triggerNotification({
+          type: "purchase_order_delayed",
+          category: "inventory",
+          priority: "medium",
+          data: {
+            entityType: "Purchase Order",
+            entityId: po.id,
+            entityName: po.title || po.poNumber,
+            ...(po.expectedDeliveryDate ? { dueDate: po.expectedDeliveryDate } : {}),
+            ...(daysDelayed !== undefined ? { daysOverdue: daysDelayed } : {}),
+            ...(po.totalAmount ? { amount: Number(po.totalAmount) } : {}),
+          },
+        });
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] purchase_order_delayed failed for PO ${po.id}:`, err);
+        errors++;
+      }
+    }
+  } catch (err) {
+    logger.error("[CronNotif] notifyPurchaseOrderDelayed query failed:", err);
+    errors++;
   }
 
   return { processed, errors };

@@ -927,7 +927,7 @@ export const createPurchaseOrderHandler = async (
           category: "inventory",
           priority: "medium",
           triggeredBy: userId,
-          data: { entityType: "Inventory", entityId: newPO.id, entityName: newPO.poNumber || newPO.id },
+          data: { entityType: "PurchaseOrder", entityId: newPO.id, entityName: newPO.poNumber || newPO.id },
         });
       } catch (err) {
         console.error("[Notification] purchase_order_created failed:", err);
@@ -1002,7 +1002,7 @@ export const approvePurchaseOrderHandler = async (
           category: "inventory",
           priority: "medium",
           triggeredBy: userId,
-          data: { entityType: "Inventory", entityId: approvedPO.id, entityName: approvedPO.poNumber || approvedPO.id },
+          data: { entityType: "PurchaseOrder", entityId: approvedPO.id, entityName: approvedPO.poNumber || approvedPO.id },
         });
       } catch (err) {
         console.error("[Notification] purchase_order_approved failed:", err);
@@ -1127,7 +1127,7 @@ export const receivePartialPurchaseOrderHandler = async (
           category: "inventory",
           priority: "medium",
           triggeredBy: userId,
-          data: { entityType: "Inventory", entityId: id!, entityName: (result as any)?.poNumber || id! },
+          data: { entityType: "PurchaseOrder", entityId: id!, entityName: (result as any)?.poNumber || id! },
         });
       } catch (err) {
         console.error("[Notification] purchase_order_received_partial failed:", err);
@@ -1176,7 +1176,7 @@ export const receivePurchaseOrderHandler = async (
           category: "inventory",
           priority: "medium",
           triggeredBy: userId,
-          data: { entityType: "Inventory", entityId: id!, entityName: (result as any)?.poNumber || id! },
+          data: { entityType: "PurchaseOrder", entityId: id!, entityName: (result as any)?.poNumber || id! },
         });
       } catch (err) {
         console.error("[Notification] purchase_order_received_full failed:", err);

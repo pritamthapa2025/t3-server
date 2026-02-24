@@ -760,6 +760,30 @@ export const updateInvoice = async (
     await recalculateInvoiceTotals(invoiceId);
   }
 
+  // Fire invoice_sent notification when status changes to "sent"
+  if (data.status === "sent") {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "invoice_sent",
+          category: "financial",
+          priority: "medium",
+          triggeredBy: _updatedBy,
+          data: {
+            entityType: "Invoice",
+            entityId: invoiceId,
+            entityName: invoice?.invoiceNumber || `Invoice #${invoiceId}`,
+            clientId: organizationId,
+            ...(invoice?.totalAmount ? { amount: parseFloat(String(invoice.totalAmount)) } : {}),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] invoice_sent failed:", err);
+      }
+    })();
+  }
+
   // Return invoice with line items included
   return await getInvoiceById(invoiceId, organizationId, {
     includeLineItems: true,
@@ -1034,6 +1058,7 @@ export const voidInvoice = async (
           entityType: "Invoice",
           entityId: invoiceId,
           entityName: invoiceData?.invoiceNumber || `Invoice #${invoiceId}`,
+          clientId: organizationId,
           notes: data.reason,
         },
       });
@@ -1318,6 +1343,8 @@ export const createPaymentForInvoice = async (
   },
   createdBy: string,
 ) => {
+  let resolvedOrgId: string | undefined;
+
   const payment = await db.transaction(async (tx) => {
     // Get invoice to validate and get client/organization
     const [invoice] = await tx
@@ -1358,6 +1385,8 @@ export const createPaymentForInvoice = async (
     if (organizationId && bid.organizationId !== organizationId) {
       throw new Error("Organization mismatch");
     }
+
+    resolvedOrgId = bid.organizationId;
 
     const paymentNumber = await generatePaymentNumber(bid.organizationId);
 
@@ -1406,6 +1435,7 @@ export const createPaymentForInvoice = async (
           entityId: invoiceId,
           entityName: invoiceData.invoiceNumber || `Invoice #${invoiceId}`,
           amount: parseFloat(data.amount),
+          ...(resolvedOrgId ? { clientId: resolvedOrgId } : {}),
         },
       });
     } catch (err) {

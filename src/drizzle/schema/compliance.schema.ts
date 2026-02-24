@@ -39,7 +39,7 @@ export const employeeComplianceCases = org.table(
       .references(() => employees.id, { onDelete: "set null" }),
 
     // Case Details
-    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(), // CASE-2025-000001 (auto-expands)
+    caseNumber: varchar("case_number", { length: 50 }).notNull().unique(),
     type: complianceCaseTypeEnum("type").notNull(),
     severity: complianceSeverityEnum("severity").notNull(),
     status: complianceStatusEnum("status").notNull().default("open"),

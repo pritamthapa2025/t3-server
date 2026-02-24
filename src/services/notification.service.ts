@@ -21,7 +21,10 @@ import type {
   UserPreferencesData,
   DeliveryChannel,
 } from "../types/notification.types.js";
-import type { Notification, NewNotification } from "../drizzle/schema/notifications.schema.js";
+import type {
+  Notification,
+  NewNotification,
+} from "../drizzle/schema/notifications.schema.js";
 
 export class NotificationService {
   private repository: NotificationRepository;
@@ -36,8 +39,11 @@ export class NotificationService {
    * @returns createdCount and optional reason when 0
    */
   async triggerNotification(
-    event: NotificationEvent
-  ): Promise<{ createdCount: number; reason?: "no_rule" | "conditions_not_met" | "no_recipients" }> {
+    event: NotificationEvent,
+  ): Promise<{
+    createdCount: number;
+    reason?: "no_rule" | "conditions_not_met" | "no_recipients";
+  }> {
     try {
       logger.info(`📢 Triggering notification event: ${event.type}`);
 
@@ -46,7 +52,7 @@ export class NotificationService {
 
       if (!rule || !rule.enabled) {
         logger.warn(
-          `No active notification rule found for event type: ${event.type}`
+          `No active notification rule found for event type: ${event.type}`,
         );
         return { createdCount: 0, reason: "no_rule" };
       }
@@ -54,27 +60,28 @@ export class NotificationService {
       // 2. Evaluate conditions (if any)
       const conditions = rule.conditions as any;
       if (conditions && !evaluateConditions(event.data, conditions)) {
-        logger.info(
-          `Conditions not met for notification event: ${event.type}`
-        );
+        logger.info(`Conditions not met for notification event: ${event.type}`);
         return { createdCount: 0, reason: "conditions_not_met" };
       }
 
       // 3. Resolve recipients based on rule
       const recipients = await resolveRecipients(event, rule);
 
-      if (recipients.length === 0) {
+      // Separate internal (auth users) from external (client contacts, email-only)
+      const internalRecipients = recipients.filter((r) => !r.isExternal);
+      const externalRecipients = recipients.filter((r) => r.isExternal && r.email);
+
+      if (internalRecipients.length === 0 && externalRecipients.length === 0) {
         logger.warn(`No recipients resolved for event type: ${event.type}`);
         return { createdCount: 0, reason: "no_recipients" };
       }
 
       logger.info(
-        `Resolved ${recipients.length} recipient(s) for event: ${event.type}`
+        `Resolved ${internalRecipients.length} internal + ${externalRecipients.length} external recipient(s) for event: ${event.type}`,
       );
 
       // 4. Generate notification content
-      const title =
-        event.data.title || generateNotificationTitle(event.type);
+      const title = event.data.title || generateNotificationTitle(event.type);
       const { message, shortMessage } = event.data.message
         ? {
             message: event.data.message,
@@ -86,8 +93,8 @@ export class NotificationService {
         event.data.actionUrl ||
         generateActionUrl(event.data.entityType, event.data.entityId);
 
-      // 5. Create notifications for each recipient
-      const notificationsToCreate: NewNotification[] = recipients.map(
+      // 5. Create in-app notifications only for internal (auth) recipients
+      const notificationsToCreate: NewNotification[] = internalRecipients.map(
         (recipient) => ({
           userId: recipient.id,
           category: event.category,
@@ -103,15 +110,15 @@ export class NotificationService {
           createdBy: event.triggeredBy || "System",
           actionUrl,
           additionalNotes: event.data.notes,
-        })
+        }),
       );
 
-      const createdNotifications = await this.repository.createNotifications(
-        notificationsToCreate
-      );
+      const createdNotifications = notificationsToCreate.length > 0
+        ? await this.repository.createNotifications(notificationsToCreate)
+        : [];
 
       logger.info(
-        `Created ${createdNotifications.length} notification(s) in database`
+        `Created ${createdNotifications.length} notification(s) in database`,
       );
 
       // 6. Deliver notifications — push instantly, email/SMS in parallel (no external queue)
@@ -119,39 +126,97 @@ export class NotificationService {
       const emailSmsChannels = channels.filter((c) => c !== "push");
 
       // Build a map from userId → notification so order never matters
-      const notificationByUserId = new Map<string, typeof createdNotifications[number]>();
+      const notificationByUserId = new Map<
+        string,
+        (typeof createdNotifications)[number]
+      >();
       for (const n of createdNotifications) {
         notificationByUserId.set(n.userId, n);
       }
 
-      // Push — fire instantly via Socket.IO for every recipient
+      // Push — fire instantly via Socket.IO for internal recipients only
       if (channels.includes("push")) {
-        for (const recipient of recipients) {
+        for (const recipient of internalRecipients) {
           const notification = notificationByUserId.get(recipient.id);
           if (notification) sendNotificationToUser(recipient.id, notification);
         }
       }
 
-      // Email / SMS — fire all in parallel, each recipient independent
+      // Email / SMS — fire all in parallel for internal recipients
       if (emailSmsChannels.length > 0) {
         await Promise.allSettled(
-          recipients.map(async (recipient) => {
+          internalRecipients.map(async (recipient) => {
             const notification = notificationByUserId.get(recipient.id);
             if (!notification) {
-              logger.warn(`No notification record for recipient ${recipient.id} — skipping`);
+              logger.warn(
+                `No notification record for recipient ${recipient.id} — skipping`,
+              );
               return;
             }
-            await this.deliverToRecipient(recipient.id, notification, emailSmsChannels);
-          })
+            await this.deliverToRecipient(
+              recipient.id,
+              notification,
+              emailSmsChannels,
+            );
+          }),
+        );
+      }
+
+      // Email-only for external client contacts (no push, no SMS, no DB record)
+      if (channels.includes("email") && externalRecipients.length > 0) {
+        const syntheticNotification = {
+          id: "external",
+          title,
+          message,
+          shortMessage,
+          actionUrl: actionUrl ?? null,
+          additionalNotes: event.data.notes ?? null,
+          category: event.category,
+          type: event.type,
+          priority: event.priority,
+          read: false,
+          userId: "external",
+          createdBy: event.triggeredBy || "System",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          isDeleted: false,
+          relatedEntityType: event.data.entityType ?? null,
+          relatedEntityId: event.data.entityId ?? null,
+          relatedEntityName: event.data.entityName ?? null,
+          deletedAt: null,
+        } as unknown as Notification;
+
+        await Promise.allSettled(
+          externalRecipients.map(async (recipient) => {
+            try {
+              const emailSvc = new NotificationEmailService();
+              await emailSvc.sendNotificationEmail(
+                recipient.email!,
+                recipient.fullName ?? "",
+                syntheticNotification,
+              );
+              logger.info(
+                `[Deliver] ✅ External email sent to ${recipient.email} (${event.type})`,
+              );
+            } catch (err) {
+              logger.error(
+                `[Deliver] ❌ External email failed for ${recipient.email}:`,
+                err,
+              );
+            }
+          }),
         );
       }
 
       logger.info(
-        `✅ Successfully processed notification event: ${event.type}`
+        `✅ Successfully processed notification event: ${event.type}`,
       );
-      return { createdCount: createdNotifications.length };
+      return { createdCount: createdNotifications.length + externalRecipients.length };
     } catch (error) {
-      logger.error(`❌ Error triggering notification event: ${event.type}`, error);
+      logger.error(
+        `❌ Error triggering notification event: ${event.type}`,
+        error,
+      );
       throw error;
     }
   }
@@ -163,13 +228,13 @@ export class NotificationService {
     userId: string,
     page: number = 1,
     limit: number = 20,
-    filters?: NotificationFilters
+    filters?: NotificationFilters,
   ): Promise<PaginatedNotifications> {
     return await this.repository.getUserNotifications(
       userId,
       page,
       limit,
-      filters
+      filters,
     );
   }
 
@@ -178,7 +243,7 @@ export class NotificationService {
    */
   async getNotificationById(
     notificationId: string,
-    userId: string
+    userId: string,
   ): Promise<Notification | null> {
     return await this.repository.getNotificationById(notificationId, userId);
   }
@@ -218,12 +283,13 @@ export class NotificationService {
    */
   async deleteNotification(
     notificationId: string,
-    userId: string
+    userId: string,
   ): Promise<void> {
     await this.repository.deleteNotification(notificationId, userId);
 
     // Broadcast deletion via Socket.IO
-    const { broadcastNotificationDeleted } = await import("../config/socket.js");
+    const { broadcastNotificationDeleted } =
+      await import("../config/socket.js");
     broadcastNotificationDeleted(userId, notificationId);
 
     // Update unread count
@@ -244,7 +310,7 @@ export class NotificationService {
    */
   async updatePreferences(
     userId: string,
-    preferences: Partial<UserPreferencesData>
+    preferences: Partial<UserPreferencesData>,
   ): Promise<void> {
     await this.repository.updatePreferences(userId, preferences);
   }
@@ -294,16 +360,21 @@ export class NotificationService {
   }
 
   /**
-   * Deliver email/SMS to a single recipient directly (no queue).
-   * Logs the result to notification_delivery_log.
+   * Deliver email/SMS to a single internal recipient (no queue, no retry).
+   * If a channel fails it is logged as "failed" in notification_delivery_log
+   * and the failure is discarded. The system will NOT attempt to resend.
    */
   private async deliverToRecipient(
     userId: string,
     notification: Notification,
-    channels: DeliveryChannel[]
+    channels: DeliveryChannel[],
   ) {
     const [userRow] = await db
-      .select({ email: users.email, phone: users.phone, fullName: users.fullName })
+      .select({
+        email: users.email,
+        phone: users.phone,
+        fullName: users.fullName,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -322,7 +393,7 @@ export class NotificationService {
     const smsEnabled = categoryPrefs?.sms !== false;
 
     logger.info(
-      `[Deliver] user=${userId} (${userRow.email}) category=${notification.category} emailEnabled=${emailEnabled} smsEnabled=${smsEnabled}`
+      `[Deliver] user=${userId} (${userRow.email}) category=${notification.category} emailEnabled=${emailEnabled} smsEnabled=${smsEnabled}`,
     );
 
     await Promise.allSettled([
@@ -330,8 +401,14 @@ export class NotificationService {
         ? (async () => {
             try {
               const emailSvc = new NotificationEmailService();
-              await emailSvc.sendNotificationEmail(userRow.email!, userRow.fullName ?? "", notification);
-              logger.info(`[Deliver] ✅ Email sent to ${userRow.email} (notification ${notification.id})`);
+              await emailSvc.sendNotificationEmail(
+                userRow.email!,
+                userRow.fullName ?? "",
+                notification,
+              );
+              logger.info(
+                `[Deliver] ✅ Email sent to ${userRow.email} (notification ${notification.id})`,
+              );
               await db.insert(notificationDeliveryLog).values({
                 notificationId: notification.id,
                 userId,
@@ -340,7 +417,10 @@ export class NotificationService {
                 sentAt: new Date(),
               });
             } catch (err) {
-              logger.error(`[Deliver] ❌ Email failed for ${userRow.email}:`, err);
+              logger.error(
+                `[Deliver] ❌ Email failed for ${userRow.email}:`,
+                err,
+              );
               await db.insert(notificationDeliveryLog).values({
                 notificationId: notification.id,
                 userId,
@@ -357,8 +437,14 @@ export class NotificationService {
         ? (async () => {
             try {
               const smsSvc = new NotificationSMSService();
-              await smsSvc.sendNotificationSMS(userRow.phone!, userRow.fullName ?? "", notification);
-              logger.info(`[Deliver] ✅ SMS sent to ${userRow.phone} (notification ${notification.id})`);
+              await smsSvc.sendNotificationSMS(
+                userRow.phone!,
+                userRow.fullName ?? "",
+                notification,
+              );
+              logger.info(
+                `[Deliver] ✅ SMS sent to ${userRow.phone} (notification ${notification.id})`,
+              );
               await db.insert(notificationDeliveryLog).values({
                 notificationId: notification.id,
                 userId,
@@ -367,7 +453,10 @@ export class NotificationService {
                 sentAt: new Date(),
               });
             } catch (err) {
-              logger.error(`[Deliver] ❌ SMS failed for ${userRow.phone}:`, err);
+              logger.error(
+                `[Deliver] ❌ SMS failed for ${userRow.phone}:`,
+                err,
+              );
               await db.insert(notificationDeliveryLog).values({
                 notificationId: notification.id,
                 userId,

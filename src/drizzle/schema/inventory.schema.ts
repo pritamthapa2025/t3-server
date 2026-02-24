@@ -122,7 +122,7 @@ export const inventorySuppliers = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
 
     // Basic Info
-    supplierCode: varchar("supplier_code", { length: 50 }), // SUP-2025-000001 (auto-expands)
+    supplierCode: varchar("supplier_code", { length: 50 }),
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
 
@@ -178,7 +178,7 @@ export const inventoryLocations: any = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    locationCode: varchar("location_code", { length: 50 }), // LOC-2025-000001 (auto-expands)
+    locationCode: varchar("location_code", { length: 50 }),
     name: varchar("name", { length: 255 }).notNull(),
     locationType: varchar("location_type", { length: 50 }), // warehouse, storage_room, vehicle, job_site
 
@@ -412,7 +412,7 @@ export const inventoryTransactions = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    transactionNumber: varchar("transaction_number", { length: 100 }).notNull(), // TXN-2025-0001
+    transactionNumber: varchar("transaction_number", { length: 100 }).notNull(),
 
     // Item & Location
     itemId: uuid("item_id")
@@ -491,7 +491,7 @@ export const inventoryPurchaseOrders = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    poNumber: varchar("po_number", { length: 100 }).notNull(), // PO-2025-0001
+    poNumber: varchar("po_number", { length: 100 }).notNull(),
     title: varchar("title", { length: 255 }),
     // Supplier
     supplierId: uuid("supplier_id")
@@ -811,7 +811,7 @@ export const inventoryCounts = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    countNumber: varchar("count_number", { length: 100 }).notNull(), // CNT-2025-0001
+    countNumber: varchar("count_number", { length: 100 }).notNull(),
     countType: varchar("count_type", { length: 50 }).notNull(), // full, cycle, spot
 
     locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "cascade" }),

@@ -13,9 +13,11 @@ import {
   notifyMaintenanceDue3Days,
   notifyMaintenanceOverdue,
   notifySafetyInspectionExpired,
+  notifySafetyInspectionUpcoming,
   notifyVehicleRegistrationExpiring,
   notifyVehicleInsuranceExpiring,
   notifyPerformanceReviewDue,
+  notifyPurchaseOrderDelayed,
 } from "../../services/notifications-cron.service.js";
 import { logger } from "../../utils/logger.js";
 
@@ -283,6 +285,39 @@ router.get("/notify-performance-reviews", async (_req: Request, res: Response) =
   } catch (error) {
     logger.error("notify-performance-reviews cron failed", { error });
     res.status(500).json({ success: false, message: "Failed to run notify-performance-reviews", error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * GET /api/v1/cron/notify-inspection-upcoming
+ * Notify manager and executive for vehicles whose safety inspection is due within 30 days.
+ * Schedule: daily (e.g. 07:06, right after notify-inspection-expired).
+ */
+router.get("/notify-inspection-upcoming", async (_req: Request, res: Response) => {
+  try {
+    const result = await notifySafetyInspectionUpcoming();
+    logger.info("notify-inspection-upcoming cron run", result);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error("notify-inspection-upcoming cron failed", { error });
+    res.status(500).json({ success: false, message: "Failed to run notify-inspection-upcoming", error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * GET /api/v1/cron/notify-po-delayed
+ * Notify manager and executive for purchase orders past their expected delivery date
+ * that have not yet been fully received or cancelled.
+ * Schedule: daily (e.g. 07:30).
+ */
+router.get("/notify-po-delayed", async (_req: Request, res: Response) => {
+  try {
+    const result = await notifyPurchaseOrderDelayed();
+    logger.info("notify-po-delayed cron run", result);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error("notify-po-delayed cron failed", { error });
+    res.status(500).json({ success: false, message: "Failed to run notify-po-delayed", error: error instanceof Error ? error.message : String(error) });
   }
 });
 

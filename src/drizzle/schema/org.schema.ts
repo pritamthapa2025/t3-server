@@ -104,7 +104,7 @@ export const employees = org.table(
   {
     id: serial("id").primaryKey(),
     userId: uuid("user_id").references(() => users.id),
-    employeeId: varchar("employee_id", { length: 50 }).unique(), // T3-2025-000001 (auto-expands)
+    employeeId: varchar("employee_id", { length: 50 }).unique(),
 
     departmentId: integer("department_id").references(() => departments.id, {}),
     positionId: integer("position_id").references(() => positions.id, {}),
@@ -134,6 +134,8 @@ export const employees = org.table(
     violations: integer("violations").default(0), // number of violations
     note: jsonb("note"),
     status: employeeStatusEnum("status").notNull().default("available"),
+    isOnline: boolean("is_online").default(false),
+    lastSeen: timestamp("last_seen"),
     isDeleted: boolean("is_deleted").default(false),
     deletedAt: timestamp("deleted_at"),
     deletedBy: uuid("deleted_by").references(() => users.id, {}),
@@ -205,7 +207,10 @@ export const revenueTargets = org.table(
     year: integer("year").notNull(), // e.g. 2025
 
     // Goal value
-    targetAmount: numeric("target_amount", { precision: 15, scale: 2 }).notNull(),
+    targetAmount: numeric("target_amount", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
 
     // Optional label/description
     label: varchar("label", { length: 150 }),

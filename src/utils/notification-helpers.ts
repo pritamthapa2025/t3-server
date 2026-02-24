@@ -1,6 +1,7 @@
 import { db } from "../config/db.js";
 import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
+import { clientContacts } from "../drizzle/schema/client.schema.js";
 import { eq, inArray, and, isNull, or } from "drizzle-orm";
 import { logger } from "./logger.js";
 import type {
@@ -102,19 +103,20 @@ export async function resolveRecipients(
         break;
       }
 
+        // "client" recipients are external contacts (not auth users).
+        // Handled separately via externalRecipients below — skip here.
         case "client":
-          // Send to client
-          if (event.data.clientId) {
-            // Get client user - assuming clients have user accounts
-            // You may need to adjust this based on your client schema
-            userIds.add(event.data.clientId);
-          }
           break;
 
         case "driver":
-          // Send to driver
+          // driverId is the employee integer ID (as string) — resolve to user UUID
           if (event.data.driverId) {
-            userIds.add(event.data.driverId);
+            const driverEmp = await getEmployeeById(event.data.driverId);
+            if (driverEmp?.userId) {
+              userIds.add(driverEmp.userId);
+            } else {
+              logger.warn(`[resolveRecipients][${event.type}] driver role → no userId found for driverId=${event.data.driverId}`);
+            }
           }
           break;
 
@@ -208,7 +210,40 @@ export async function resolveRecipients(
       );
     }
 
-    console.log(`[resolveRecipients][${event.type}] total resolved recipients: ${recipients.length} →`, recipients.map((r) => ({ id: r.id, email: r.email, name: r.fullName })));
+    // Resolve external client contacts (email-only, not auth users).
+    // The primary contact of the client organization is an external recipient.
+    const hasClientRole = (rule.recipientRoles as unknown as string[]).includes("client");
+    if (hasClientRole && event.data.clientId) {
+      const [primaryContact] = await db
+        .select({
+          id: clientContacts.id,
+          fullName: clientContacts.fullName,
+          email: clientContacts.email,
+        })
+        .from(clientContacts)
+        .where(
+          and(
+            eq(clientContacts.organizationId, event.data.clientId),
+            eq(clientContacts.isPrimary, true),
+            eq(clientContacts.isDeleted, false),
+          )
+        )
+        .limit(1);
+
+      if (primaryContact?.email) {
+        recipients.push({
+          id: primaryContact.id,
+          email: primaryContact.email,
+          ...(primaryContact.fullName ? { fullName: primaryContact.fullName } : {}),
+          isExternal: true,
+        });
+        console.log(`[resolveRecipients][${event.type}] client contact → ${primaryContact.email} (${primaryContact.fullName})`);
+      } else {
+        logger.warn(`[resolveRecipients][${event.type}] "client" role specified but no primary contact with email found for org ${event.data.clientId}`);
+      }
+    }
+
+    console.log(`[resolveRecipients][${event.type}] total resolved recipients: ${recipients.length} →`, recipients.map((r) => ({ id: r.id, email: r.email, name: r.fullName, isExternal: r.isExternal })));
     logger.debug(
       `Resolved ${recipients.length} recipients for event type: ${event.type}`
     );
@@ -818,6 +853,14 @@ export function generateNotificationMessage(
         message = `Employee "${name}" has been suspended${eventData.effectiveDate ? ` effective ${eventData.effectiveDate}` : ""}${eventData.reason ? ` — Reason: ${eventData.reason}` : ""}. Please log in to review the details, ensure proper handover of responsibilities, and follow the required HR procedures.`;
         shortMessage = `Employee suspended: ${name}`;
         break;
+
+      case "timesheet_resubmitted": {
+        const period = eventData.period ? ` for period ${eventData.period}` : "";
+        const hours = eventData.totalHours ? ` (${eventData.totalHours} hrs)` : "";
+        message = `Timesheet "${name}"${period}${hours} has been corrected and resubmitted by the employee following a previous rejection. Please log in to review the updated timesheet and approve or reject it.`;
+        shortMessage = `Timesheet resubmitted for review: ${name}`;
+        break;
+      }
 
       default:
         message = `There is an update regarding "${name}" that requires your attention. Please log in to review the latest information.`;

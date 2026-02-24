@@ -489,7 +489,8 @@ export const getTodaysDispatch = async (
       name: users.fullName,
       avatar: users.profilePicture,
       location: bidsTable.siteAddress,
-      status: sql<string>`CASE WHEN ${jobs.status} = 'in_progress' THEN 'active' ELSE 'inactive' END`,
+      status: sql<string>`CASE WHEN ${employees.isOnline} = true THEN 'active' ELSE 'inactive' END`,
+      isOnline: employees.isOnline,
       jobId: jobs.id,
       jobNumber: jobs.jobNumber,
       dispatchDate: sql<string>`(${dispatchTasks.startTime})::date`,
@@ -516,7 +517,7 @@ export const getTodaysDispatch = async (
       ),
     )
     .limit(20)
-    .orderBy(sql`CASE WHEN ${jobs.status} = 'in_progress' THEN 0 ELSE 1 END`);
+    .orderBy(sql`CASE WHEN ${employees.isOnline} = true THEN 0 ELSE 1 END`);
 
   const activeCount = dispatch.filter((d) => d.status === "active").length;
   const inactiveCount = dispatch.filter((d) => d.status === "inactive").length;

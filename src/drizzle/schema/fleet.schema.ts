@@ -52,7 +52,7 @@ export const vehicles = org.table(
     id: uuid("id").defaultRandom().primaryKey(),
 
     // Vehicle Identification
-    vehicleId: varchar("vehicle_id", { length: 50 }).notNull().unique(), // VEH-2025-000001 (auto-expands)
+    vehicleId: varchar("vehicle_id", { length: 50 }).notNull().unique(),
 
     // Basic Vehicle Info
     make: varchar("make", { length: 100 }).notNull(), // Ford, Mercedes, etc.

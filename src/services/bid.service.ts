@@ -831,7 +831,18 @@ export const updateBid = async (
           entityName,
         };
 
-        if (data.status === "won") {
+        if (data.status === "sent") {
+          // Notify client's primary contact that a bid has been sent to them
+          await svc.triggerNotification({
+            type: "bid_sent_to_client",
+            category: "job",
+            priority: "medium",
+            data: {
+              ...baseData,
+              clientId: organizationId, // routes to primary contact in clientContacts
+            },
+          });
+        } else if (data.status === "won") {
           await svc.triggerNotification({
             type: "bid_won",
             category: "job",

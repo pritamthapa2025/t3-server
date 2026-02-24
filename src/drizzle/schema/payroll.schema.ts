@@ -183,7 +183,7 @@ export const payrollRuns = org.table(
       .references(() => payPeriods.id, ),
 
     // Run Details
-    runNumber: varchar("run_number", { length: 50 }).notNull(), // PAY-2025-W-50-001
+    runNumber: varchar("run_number", { length: 50 }).notNull(),
     runType: varchar("run_type", { length: 20 }).default("regular"), // regular, bonus, correction
     status: payrollStatusEnum("status").notNull().default("draft"),
 
@@ -261,7 +261,7 @@ export const payrollEntries = org.table(
       .references(() => employees.id, { onDelete: "set null" }),
 
     // Entry Details
-    entryNumber: varchar("entry_number", { length: 50 }).notNull(), // PAY-W-2025-50-001
+    entryNumber: varchar("entry_number", { length: 50 }).notNull(),
     status: payrollStatusEnum("status").notNull().default("draft"),
 
     // Automation and approval tracking

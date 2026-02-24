@@ -21,7 +21,6 @@ import {
   clientPriorityEnum,
   contactTypeEnum,
   propertyStatusEnum,
-  userOrganizationTypeEnum,
 } from "../enums/org.enums.js";
 
 // Import tables from other schema files for references
@@ -72,7 +71,7 @@ export const organizations: any = org.table(
   "organizations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    clientId: varchar("client_id", { length: 50 }).notNull().unique(), // CL-2025-000001 (auto-expands)
+    clientId: varchar("client_id", { length: 50 }).notNull().unique(),
     // Basic Info
     name: varchar("name", { length: 255 }).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
@@ -137,43 +136,6 @@ export const organizations: any = org.table(
   ],
 );
 
-// CRITICAL: User-Organization Relationship (Many-to-Many)
-export const userOrganizations = org.table(
-  "user_organizations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-
-    userType: userOrganizationTypeEnum("user_type")
-      .notNull()
-      .default("client_user"),
-
-    // Role within this organization (different from system role)
-    title: varchar("title", { length: 100 }), // "Account Admin", "Site Manager", etc.
-
-    isActive: boolean("is_active").default(true),
-    isPrimary: boolean("is_primary").default(false), // User's primary organization
-
-    joinedAt: timestamp("joined_at").defaultNow(),
-    leftAt: timestamp("left_at"),
-
-    isDeleted: boolean("is_deleted").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => [
-    unique("unique_user_org").on(table.userId, table.organizationId),
-    index("idx_user_orgs_user").on(table.userId),
-    index("idx_user_orgs_org").on(table.organizationId),
-    index("idx_user_orgs_type").on(table.userType),
-    index("idx_user_orgs_is_active").on(table.isActive),
-  ],
-);
 
 // Client Contacts (Multiple contacts per organization)
 export const clientContacts = org.table(

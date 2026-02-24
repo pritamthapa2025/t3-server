@@ -32,7 +32,7 @@ export const jobs: any = org.table(
   "jobs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    jobNumber: varchar("job_number", { length: 100 }).notNull(), // JOB-2025-0001 (name-year-4digit, auto-expands)
+    jobNumber: varchar("job_number", { length: 100 }).notNull(),
 
     // Relationships
     bidId: uuid("bid_id")
@@ -145,7 +145,7 @@ export const jobTasks = org.table(
   "job_tasks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    taskNumber: varchar("task_number", { length: 100 }).notNull(), // TASK-2025-0001 (auto-generated, name-year-4digit)
+    taskNumber: varchar("task_number", { length: 100 }).notNull(),
     jobId: uuid("job_id")
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),

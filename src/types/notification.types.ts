@@ -25,7 +25,7 @@ export interface NotificationEventData {
   message?: string;
   shortMessage?: string;
   notes?: string;
-  
+
   // Context-specific data for recipient resolution
   assignedTechnicianId?: string;
   assignedTechnicianIds?: string[];
@@ -35,14 +35,14 @@ export interface NotificationEventData {
   executiveIds?: string[];
   driverId?: string;
   employeeId?: string;
-  
+
   // Condition evaluation data
   amount?: number;
   daysUntilDue?: number;
   daysOverdue?: number;
   stockLevel?: number;
   reorderLevel?: number;
-  
+
   // Additional context
   [key: string]: any;
 }
@@ -63,6 +63,9 @@ export interface RecipientInfo {
   phone?: string;
   fullName?: string;
   role?: string;
+  /** External recipients (e.g. client contacts) do not have auth user accounts.
+   *  They receive email only — no push, no in-app notification DB record. */
+  isExternal?: boolean;
 }
 
 // Category Preferences
@@ -161,7 +164,7 @@ export const SOCKET_EVENTS = {
   MARK_READ: "mark_notification_read",
   MARK_ALL_READ: "mark_all_notifications_read",
   DELETE_NOTIFICATION: "delete_notification",
-  
+
   // Server -> Client
   NEW_NOTIFICATION: "notification",
   NOTIFICATION_READ: "notification_read",
@@ -178,7 +181,7 @@ export const NOTIFICATION_EVENT_TYPES = {
   NEW_ACCOUNT_CREATED: "new_account_created",
   PASSWORD_SETUP_LINK: "password_setup_link",
   ACCOUNT_LOCKED: "account_locked",
-  
+
   // Jobs & Projects
   JOB_ASSIGNED: "job_assigned",
   JOB_STATUS_CHANGED: "job_status_changed",
@@ -188,14 +191,14 @@ export const NOTIFICATION_EVENT_TYPES = {
   JOB_CANCELLED: "job_cancelled",
   JOB_SITE_NOTES_ADDED: "job_site_notes_added",
   JOB_COST_EXCEEDS_BUDGET: "job_cost_exceeds_budget",
-  
+
   // Bids & Proposals
   BID_CREATED: "bid_created",
   BID_SENT_TO_CLIENT: "bid_sent_to_client",
   BID_EXPIRED: "bid_expired",
   BID_WON: "bid_won",
   BID_REQUIRES_APPROVAL: "bid_requires_approval",
-  
+
   // Invoicing & Payments
   INVOICE_SENT: "invoice_sent",
   PAYMENT_RECEIVED_FULL: "payment_received_full",
@@ -205,20 +208,20 @@ export const NOTIFICATION_EVENT_TYPES = {
   INVOICE_OVERDUE_7DAYS: "invoice_overdue_7days",
   INVOICE_OVERDUE_30DAYS: "invoice_overdue_30days",
   INVOICE_CANCELLED: "invoice_cancelled",
-  
+
   // Dispatch & Scheduling
   TECHNICIAN_ASSIGNED_TO_DISPATCH: "technician_assigned_to_dispatch",
   DISPATCH_REASSIGNED: "dispatch_reassigned",
-  
+
   // Timesheets & Labor
   TIMESHEET_APPROVED: "timesheet_approved",
   TIMESHEET_REJECTED: "timesheet_rejected",
   CLOCK_REMINDER: "clock_reminder",
   TIMESHEET_RESUBMITTED: "timesheet_resubmitted",
-  
+
   // Expenses
   JOB_BUDGET_EXCEEDED: "job_budget_exceeded",
-  
+
   // Fleet Management
   VEHICLE_CHECKED_OUT: "vehicle_checked_out",
   VEHICLE_CHECKED_IN: "vehicle_checked_in",
@@ -231,7 +234,7 @@ export const NOTIFICATION_EVENT_TYPES = {
   DRIVER_REASSIGNED: "driver_reassigned",
   VEHICLE_REGISTRATION_EXPIRING: "vehicle_registration_expiring",
   VEHICLE_INSURANCE_EXPIRING: "vehicle_insurance_expiring",
-  
+
   // Inventory
   LOW_STOCK_WARNING: "low_stock_warning",
   OUT_OF_STOCK: "out_of_stock",
@@ -242,11 +245,11 @@ export const NOTIFICATION_EVENT_TYPES = {
   PURCHASE_ORDER_RECEIVED_PARTIAL: "purchase_order_received_partial",
   PURCHASE_ORDER_DELAYED: "purchase_order_delayed",
   ITEM_ALLOCATED_TO_JOB: "item_allocated_to_job",
-  
+
   // Team & HR
   NEW_EMPLOYEE_ONBOARDED: "new_employee_onboarded",
   PERFORMANCE_REVIEW_DUE: "performance_review_due",
-  
+
   // Safety & Compliance
   SAFETY_INCIDENT_REPORTED: "safety_incident_reported",
   COMPLIANCE_CASE_OPENED: "compliance_case_opened",
@@ -254,7 +257,8 @@ export const NOTIFICATION_EVENT_TYPES = {
   EMPLOYEE_SUSPENDED: "employee_suspended",
 } as const;
 
-export type NotificationEventType = typeof NOTIFICATION_EVENT_TYPES[keyof typeof NOTIFICATION_EVENT_TYPES];
+export type NotificationEventType =
+  (typeof NOTIFICATION_EVENT_TYPES)[keyof typeof NOTIFICATION_EVENT_TYPES];
 
 // Re-export schema types
 export type {
