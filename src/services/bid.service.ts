@@ -45,7 +45,7 @@ import {
   dispatchAssignments,
 } from "../drizzle/schema/dispatch.schema.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import {
   organizations,
   clientContacts,
@@ -653,36 +653,49 @@ export const createBid = async (data: {
 
   if (!bid) return null;
 
-  // Resolve supervisorManager's userId for the notification
-  let supervisorManagerUserId: string | undefined;
-  if (data.supervisorManager) {
-    const [empRow] = await db
-      .select({ userId: employees.userId })
-      .from(employees)
-      .where(eq(employees.id, data.supervisorManager))
-      .limit(1);
-    supervisorManagerUserId = empRow?.userId ?? undefined;
-  }
-
   // Fire bid_created notification (fire-and-forget)
+  // Recipients: creator + all executives + all managers (manager role covers any supervisor assigned to this bid)
   void (async () => {
     try {
       const { NotificationService } = await import("./notification.service.js");
-      await new NotificationService().triggerNotification({
+      const svc = new NotificationService();
+      const bidName = bid.projectName || bid.bidNumber || "New Bid";
+      const baseNotifData = {
+        entityType: "Bid",
+        entityId: bid.id,
+        entityName: bidName,
+        creatorId: data.createdBy,
+      };
+
+      await svc.triggerNotification({
         type: "bid_created",
         category: "job",
         priority: "medium",
         triggeredBy: data.createdBy,
-        data: {
-          entityType: "Bid",
-          entityId: bid.id,
-          entityName: bid.projectName || bid.bidNumber || "New Bid",
-          creatorId: data.createdBy,
-          ...(supervisorManagerUserId && {
-            supervisorManagerId: supervisorManagerUserId,
-          }),
-        },
+        data: baseNotifData,
       });
+
+      // If bid was created by a manager (not an executive), notify executives for approval
+      if (data.createdBy) {
+        const creatorRoles = await db
+          .select({ roleName: roles.name })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(eq(userRoles.userId, data.createdBy));
+
+        const roleNames = creatorRoles.map((r) => r.roleName);
+        const isExecutive = roleNames.includes("executive");
+
+        if (!isExecutive) {
+          await svc.triggerNotification({
+            type: "bid_requires_approval",
+            category: "job",
+            priority: "high",
+            triggeredBy: data.createdBy,
+            data: baseNotifData,
+          });
+        }
+      }
     } catch (err) {
       console.error("[Notification] bid_created failed:", err);
     }
@@ -810,26 +823,34 @@ export const updateBid = async (
         const svc = new NotificationService();
         const entityName = bid.projectName || bid.bidNumber || "Bid";
 
+        // Recipients for bid status events: all executives + all managers
+        // Manager role covers any supervisor assigned to this bid
+        const baseData = {
+          entityType: "Bid",
+          entityId: id,
+          entityName,
+        };
+
         if (data.status === "won") {
           await svc.triggerNotification({
             type: "bid_won",
             category: "job",
             priority: "high",
-            data: { entityType: "Bid", entityId: id, entityName },
+            data: baseData,
           });
         } else if (data.status === "expired") {
           await svc.triggerNotification({
             type: "bid_expired",
             category: "job",
             priority: "medium",
-            data: { entityType: "Bid", entityId: id, entityName },
+            data: baseData,
           });
         } else if (data.status === "pending") {
           await svc.triggerNotification({
             type: "bid_requires_approval",
             category: "job",
             priority: "high",
-            data: { entityType: "Bid", entityId: id, entityName },
+            data: baseData,
           });
         }
       } catch (err) {

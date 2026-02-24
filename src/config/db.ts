@@ -1,7 +1,14 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import pg, { Pool } from "pg";
 import dotenv from "dotenv";
 import net from "net";
+
+// Return TIMESTAMP WITHOUT TIME ZONE and DATE columns as raw strings.
+// Without this, node-postgres parses them into JS Date objects using the
+// server's local timezone, which shifts the stored value.
+pg.types.setTypeParser(1114, (val) => val); // TIMESTAMP
+pg.types.setTypeParser(1082, (val) => val); // DATE
+pg.types.setTypeParser(1184, (val) => val); // TIMESTAMPTZ (return as-is string)
 
 dotenv.config();
 

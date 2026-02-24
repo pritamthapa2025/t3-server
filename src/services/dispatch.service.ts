@@ -215,14 +215,18 @@ export const getDispatchTaskById = async (id: string) => {
   };
 };
 
+// Parse a datetime string treating it as UTC (append Z if no offset present).
+// This ensures "2026-02-23T09:00:00" is stored as 09:00, not shifted by server TZ.
+const parseAsUTC = (val: string | Date): Date => {
+  if (val instanceof Date) return val;
+  if (val.endsWith("Z") || val.includes("+") || val.includes("-", 10)) return new Date(val);
+  return new Date(val + "Z");
+};
+
 // Create Dispatch Task
 export const createDispatchTask = async (data: CreateDispatchTaskData) => {
-  const start =
-    data.startTime instanceof Date
-      ? data.startTime
-      : new Date(data.startTime);
-  const end =
-    data.endTime instanceof Date ? data.endTime : new Date(data.endTime);
+  const start = parseAsUTC(data.startTime);
+  const end = parseAsUTC(data.endTime);
 
   const insertData: any = {
     jobId: data.jobId,
@@ -232,7 +236,7 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
     status: data.status || "pending",
     startTime: start,
     endTime: end,
-    // Set date (date-only) for DBs that have this column; derived from startTime
+    // Set date (date-only) derived from startTime
     date: start.toISOString().slice(0, 10),
   };
 
@@ -277,13 +281,9 @@ export const updateDispatchTask = async (
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.status !== undefined) updateData.status = data.status;
   if (data.startTime !== undefined)
-    updateData.startTime =
-      data.startTime instanceof Date
-        ? data.startTime
-        : new Date(data.startTime);
+    updateData.startTime = parseAsUTC(data.startTime);
   if (data.endTime !== undefined)
-    updateData.endTime =
-      data.endTime instanceof Date ? data.endTime : new Date(data.endTime);
+    updateData.endTime = parseAsUTC(data.endTime);
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.linkedJobTaskIds !== undefined)

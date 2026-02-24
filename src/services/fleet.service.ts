@@ -524,7 +524,32 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
     .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)))
     .returning();
 
-  return result[0] || null;
+  const updatedVehicle = result[0] || null;
+
+  // Fire driver_reassigned notification (Email + SMS + Push) when driver changes
+  if (data.assignedToEmployeeId !== undefined && updatedVehicle) {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "driver_reassigned",
+          category: "fleet",
+          priority: "medium",
+          data: {
+            entityType: "Vehicle",
+            entityId: id,
+            entityName: updatedVehicle.licensePlate || updatedVehicle.vehicleId || id,
+            licensePlate: updatedVehicle.licensePlate,
+            ...(data.assignedToEmployeeId != null ? { driverId: String(data.assignedToEmployeeId) } : {}),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] driver_reassigned notification failed:", err);
+      }
+    })();
+  }
+
+  return updatedVehicle;
 };
 
 // Soft Delete Vehicle
@@ -1430,7 +1455,30 @@ export const createSafetyInspection = async (
   // Return enriched data with names (following cursor rule)
   const inserted = result[0];
   if (!inserted) throw new Error("Failed to create safety inspection");
-  return await getSafetyInspectionById(inserted.id);
+  const inspection = await getSafetyInspectionById(inserted.id);
+
+  // Fire safety_inspection_failed notification (Email + SMS + Push) when inspection fails
+  if (data.overallStatus === "failed") {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "safety_inspection_failed",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: data.vehicleId,
+            entityName: (inspection as any)?.vehicleId || data.vehicleId,
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] safety_inspection_failed notification failed:", err);
+      }
+    })();
+  }
+
+  return inspection;
 };
 
 // Update Safety Inspection
@@ -1955,7 +2003,29 @@ export const createCheckInOutRecord = async (
   // Return enriched data with names (following cursor rule)
   const inserted = result[0];
   if (!inserted) throw new Error("Failed to create check-in/out record");
-  return await getCheckInOutRecordById(inserted.id);
+  const record = await getCheckInOutRecordById(inserted.id);
+
+  // Fire vehicle_checked_out or vehicle_checked_in Push notification (fire-and-forget)
+  void (async () => {
+    try {
+      const { NotificationService } = await import("./notification.service.js");
+      const eventType = data.type === "check_out" ? "vehicle_checked_out" : "vehicle_checked_in";
+      await new NotificationService().triggerNotification({
+        type: eventType,
+        category: "fleet",
+        priority: "low",
+        data: {
+          entityType: "Vehicle",
+          entityId: data.vehicleId,
+          entityName: (record as any)?.vehicleId || data.vehicleId,
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] vehicle check-in/out notification failed:", err);
+    }
+  })();
+
+  return record;
 };
 
 // Update Check-In/Out Record

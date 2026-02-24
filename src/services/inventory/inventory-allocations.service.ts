@@ -162,6 +162,25 @@ export const createAllocation = async (data: any, userId: string) => {
       })
       .where(eq(inventoryItems.id, data.itemId));
 
+    // Fire item_allocated_to_job Push notification (fire-and-forget, outside transaction)
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "item_allocated_to_job",
+          category: "inventory",
+          priority: "low",
+          data: {
+            entityType: "Inventory",
+            entityId: data.itemId,
+            entityName: item[0]?.name || data.itemId,
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] item_allocated_to_job failed:", err);
+      }
+    })();
+
     return newAllocation!;
   });
 };

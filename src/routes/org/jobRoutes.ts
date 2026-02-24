@@ -236,14 +236,16 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 router.use(authenticate);
 
-
 // Shorthand: view feature covers Technician (view_assigned) + Manager/Executive (view)
 const viewJobs = authorizeAnyFeature("jobs", ["view_jobs", "view"]);
 const createJob = authorizeFeature("jobs", "create_job");
 const editJob = authorizeAnyFeature("jobs", ["edit_job", "edit"]);
 const deleteJob = authorizeFeature("jobs", "delete_job");
 const viewBudget = authorizeFeature("jobs", "view_budget");
-const viewExpenses = authorizeAnyFeature("jobs", ["view_expenses", "add_expense"]);
+const viewExpenses = authorizeAnyFeature("jobs", [
+  "view_expenses",
+  "add_expense",
+]);
 const addExpense = authorizeFeature("jobs", "add_expense");
 const approveExpenses = authorizeFeature("jobs", "approve_expenses");
 const uploadPhotos = authorizeFeature("jobs", "upload_photos");
@@ -285,7 +287,11 @@ router
 // Get job labor cost tracking (Manager/Executive only — financial data)
 router
   .route("/jobs/:jobId/labor/cost-tracking")
-  .get(viewBudget, validate(getJobLaborCostTrackingSchema), getJobLaborCostTrackingHandler);
+  .get(
+    viewBudget,
+    validate(getJobLaborCostTrackingSchema),
+    getJobLaborCostTrackingHandler,
+  );
 
 // Team Members Routes (Manager/Executive only — job management)
 
@@ -296,13 +302,21 @@ router
 
 router
   .route("/jobs/:jobId/team-members/:employeeId")
-  .delete(editJob, validate(removeJobTeamMemberSchema), removeJobTeamMemberHandler);
+  .delete(
+    editJob,
+    validate(removeJobTeamMemberSchema),
+    removeJobTeamMemberHandler,
+  );
 
 // Financial Summary Routes (Manager/Executive only)
 
 router
   .route("/jobs/:jobId/financial-summary")
-  .get(viewBudget, validate(getJobFinancialSummarySchema), getJobFinancialSummaryHandler)
+  .get(
+    viewBudget,
+    validate(getJobFinancialSummarySchema),
+    getJobFinancialSummaryHandler,
+  )
   .put(
     editJob,
     validate(updateJobFinancialSummarySchema),
@@ -363,7 +377,11 @@ router
 
 router
   .route("/jobs/:jobId/operating-expenses")
-  .get(editJob, validate(getJobOperatingExpensesSchema), getJobOperatingExpensesHandler)
+  .get(
+    editJob,
+    validate(getJobOperatingExpensesSchema),
+    getJobOperatingExpensesHandler,
+  )
   .put(
     editJob,
     validate(updateJobOperatingExpensesSchema),
@@ -375,12 +393,24 @@ router
 router
   .route("/jobs/:jobId/timeline")
   .get(viewJobs, validate(getJobTimelineSchema), getJobTimelineHandler)
-  .post(editJob, validate(createJobTimelineEventSchema), createJobTimelineEventHandler);
+  .post(
+    editJob,
+    validate(createJobTimelineEventSchema),
+    createJobTimelineEventHandler,
+  );
 
 router
   .route("/jobs/:jobId/timeline/:eventId")
-  .get(viewJobs, validate(getJobTimelineEventByIdSchema), getJobTimelineEventByIdHandler)
-  .put(editJob, validate(updateJobTimelineEventSchema), updateJobTimelineEventHandler)
+  .get(
+    viewJobs,
+    validate(getJobTimelineEventByIdSchema),
+    getJobTimelineEventByIdHandler,
+  )
+  .put(
+    editJob,
+    validate(updateJobTimelineEventSchema),
+    updateJobTimelineEventHandler,
+  )
   .delete(
     editJob,
     validate(deleteJobTimelineEventSchema),
@@ -466,7 +496,11 @@ router
 
 router
   .route("/jobs/:jobId/expenses/:expenseId")
-  .get(viewExpenses, validate(getJobExpenseByIdSchema), getJobExpenseByIdHandler)
+  .get(
+    viewExpenses,
+    validate(getJobExpenseByIdSchema),
+    getJobExpenseByIdHandler,
+  )
   .put(
     addExpense,
     (req, res, next) => {
@@ -483,7 +517,11 @@ router
     validate(updateJobExpenseSchema),
     updateJobExpenseHandler,
   )
-  .delete(approveExpenses, validate(deleteJobExpenseSchema), deleteJobExpenseHandler);
+  .delete(
+    approveExpenses,
+    validate(deleteJobExpenseSchema),
+    deleteJobExpenseHandler,
+  );
 
 // Documents Routes — all assigned users can upload; Manager/Executive manage
 

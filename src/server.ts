@@ -3,7 +3,6 @@ import app from "./app.js";
 import { initDB, pool } from "./config/db.js";
 import redis from "./config/redis.js";
 import { setupSocketIO } from "./config/socket.js";
-import { closeQueue } from "./queues/notification.queue.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -16,9 +15,7 @@ if (!process.env.DATABASE_URL) {
 
 if (!process.env.REDIS_URL) {
   console.error("❌ REDIS_URL environment variable is not set!");
-  console.error(
-    "Redis is required for 2FA, password reset, email change features, and Socket.IO notifications.",
-  );
+  console.error("Redis is required for 2FA, password reset, and email change features.");
   process.exit(1);
 }
 
@@ -30,20 +27,10 @@ const server = http.createServer(app);
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
 
-  // Stop accepting new connections
   server.close(async () => {
     console.log("HTTP server closed");
 
     try {
-      // Close notification queue
-      await closeQueue();
-      console.log("Notification queue closed");
-    } catch (error) {
-      console.error("Error closing notification queue:", error);
-    }
-
-    try {
-      // Close database connection pool
       await pool.end();
       console.log("Database connection pool closed");
     } catch (error) {
@@ -51,7 +38,6 @@ const gracefulShutdown = async (signal: string) => {
     }
 
     try {
-      // Close Redis connection (only if connected)
       if (redis.status !== "end") {
         await redis.quit();
         console.log("Redis connection closed");
@@ -94,7 +80,6 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Initialize database connection before starting server
 initDB()
   .then(async () => {
-    // Initialize Socket.IO for real-time notifications
     await setupSocketIO(server);
     console.log("✅ Socket.IO initialized successfully");
 
@@ -104,7 +89,6 @@ initDB()
       console.log(`✅ Socket.IO: ws://localhost:${PORT}`);
     });
 
-    // Handle server errors
     server.on("error", (error: NodeJS.ErrnoException) => {
       if (error.syscall !== "listen") {
         throw error;

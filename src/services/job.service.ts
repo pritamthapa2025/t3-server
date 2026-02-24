@@ -11,6 +11,7 @@ import {
   lte,
   inArray,
 } from "drizzle-orm";
+import { logger } from "../utils/logger.js";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -37,7 +38,7 @@ import {
   bidsTable,
   bidFinancialBreakdown,
 } from "../drizzle/schema/bids.schema.js";
-import { properties } from "../drizzle/schema/client.schema.js";
+import { properties, clientContacts } from "../drizzle/schema/client.schema.js";
 import { getDefaultExpenseCategory } from "./expense.service.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { employees, positions } from "../drizzle/schema/org.schema.js";
@@ -514,62 +515,74 @@ export const createJob = async (data: {
       // 1. Notify the technician — they are directly assigned to the job
       if (techUserId) {
         notifiedUsers.add(techUserId);
-        await svc.triggerNotification({
-          type: "job_assigned",
-          category: "job",
-          priority: "high",
-          triggeredBy: data.createdBy,
-          data: {
-            entityType: "Job",
-            entityId: job.id,
-            entityName: jobName,
-            assignedTechnicianId: techUserId,
-            message: technicianMessage,
-            shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
-            notes: notesJson,
-          },
-        });
+        try {
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            triggeredBy: data.createdBy,
+            data: {
+              entityType: "Job",
+              entityId: job.id,
+              entityName: jobName,
+              assignedTechnicianId: techUserId,
+              message: technicianMessage,
+              shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+              notes: notesJson,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] job_assigned (technician) failed:", err);
+        }
       }
 
       // 2. Notify the supervisorManager — they are directly assigned to supervise this job
       if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
         notifiedUsers.add(supervisorManagerUserId);
-        await svc.triggerNotification({
-          type: "job_assigned",
-          category: "job",
-          priority: "high",
-          triggeredBy: data.createdBy,
-          data: {
-            entityType: "Job",
-            entityId: job.id,
-            entityName: jobName,
-            assignedTechnicianId: supervisorManagerUserId,
-            message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
-            shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
-            notes: notesJson,
-          },
-        });
+        try {
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            triggeredBy: data.createdBy,
+            data: {
+              entityType: "Job",
+              entityId: job.id,
+              entityName: jobName,
+              assignedTechnicianId: supervisorManagerUserId,
+              message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
+              shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+              notes: notesJson,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] job_assigned (supervisorManager) failed:", err);
+        }
       }
 
       // 3. Notify the technician's reportsTo manager — ONLY if different from supervisorManager
       //    This person needs to know their department member was assigned
       if (techReportsTo && !notifiedUsers.has(techReportsTo)) {
         notifiedUsers.add(techReportsTo);
-        await svc.triggerNotification({
-          type: "job_assigned",
-          category: "job",
-          priority: "high",
-          triggeredBy: data.createdBy,
-          data: {
-            entityType: "Job",
-            entityId: job.id,
-            entityName: jobName,
-            assignedTechnicianId: techReportsTo,
-            message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
-            shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
-            notes: notesJson,
-          },
-        });
+        try {
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            triggeredBy: data.createdBy,
+            data: {
+              entityType: "Job",
+              entityId: job.id,
+              entityName: jobName,
+              assignedTechnicianId: techReportsTo,
+              message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
+              shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
+              notes: notesJson,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] job_assigned (reportsTo manager) failed:", err);
+        }
       }
     } catch (err) {
       console.error("[Notification] job_assigned (bid assignees) failed:", err);
@@ -736,6 +749,78 @@ export const updateJob = async (
             priority: "medium",
             data: { entityType: "Job", entityId: job.id, entityName: jobName },
           });
+        }
+
+        // Email client contacts (org email + primary contact) — external, no user account needed
+        if (
+          updatedBid?.organizationId &&
+          data.status &&
+          ["in_progress", "completed", "cancelled"].includes(data.status)
+        ) {
+          try {
+            const { NotificationEmailService } = await import("./notification-email.service.js");
+            const emailSvc = new NotificationEmailService();
+
+            // Fetch: bid's explicit primaryContact + all isPrimary contacts on the org
+            const contactRows = await db
+              .select({ email: clientContacts.email, fullName: clientContacts.fullName })
+              .from(clientContacts)
+              .where(
+                and(
+                  eq(clientContacts.organizationId, updatedBid.organizationId),
+                  eq(clientContacts.isDeleted, false),
+                  or(
+                    eq(clientContacts.isPrimary, true),
+                    updatedBid.primaryContactId
+                      ? eq(clientContacts.id, updatedBid.primaryContactId)
+                      : sql`false`,
+                  ),
+                ),
+              );
+
+            // Deduplicate by email
+            const seen = new Set<string>();
+            const uniqueContacts = contactRows.filter((c) => {
+              if (!c.email || seen.has(c.email)) return false;
+              seen.add(c.email);
+              return true;
+            });
+
+            if (uniqueContacts.length === 0) {
+              logger.info(`[ClientEmail] No client contacts found for org ${updatedBid.organizationId} — skipping`);
+            } else {
+              const statusMessages: Record<string, { title: string; message: string }> = {
+                in_progress: {
+                  title: "Job Started",
+                  message: `We're pleased to inform you that work has officially started on "${jobName}". Our team is on-site and work has begun. You will be notified when the job is completed or if any updates arise.`,
+                },
+                completed: {
+                  title: "Job Completed",
+                  message: `We're happy to let you know that job "${jobName}" has been completed successfully. Thank you for choosing T3 Mechanical. Please don't hesitate to reach out if you have any questions or require follow-up.`,
+                },
+                cancelled: {
+                  title: "Job Cancelled",
+                  message: `We're writing to inform you that job "${jobName}" has been cancelled. Please contact us if you have any questions or would like to reschedule.`,
+                },
+              };
+
+              const { title, message } = statusMessages[data.status!]!;
+
+              await Promise.allSettled(
+                uniqueContacts.map((contact) => {
+                  logger.info(`[ClientEmail] Sending "${title}" email to client contact ${contact.email}`);
+                  return emailSvc.sendDirectEmail(
+                    contact.email!,
+                    contact.fullName,
+                    title,
+                    message,
+                  );
+                }),
+              );
+            }
+          } catch (clientEmailErr) {
+            logger.error("[ClientEmail] Failed to send client contact emails:", clientEmailErr);
+          }
         }
       } catch (err) {
         console.error(
@@ -991,24 +1076,7 @@ export const addJobTeamMember = async (data: {
 
       // 1. Notify the team member — they are directly assigned
       notifiedUsers.add(techEmployee.userId);
-      await svc.triggerNotification({
-        type: "job_assigned",
-        category: "job",
-        priority: "high",
-        data: {
-          entityType: "Job",
-          entityId: data.jobId,
-          entityName: jobName,
-          assignedTechnicianId: techEmployee.userId,
-          message: `You have been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and prepare accordingly.`,
-          shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
-          notes: notesJson,
-        },
-      });
-
-      // 2. Notify the supervisorManager — they are directly assigned to supervise this job
-      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
-        notifiedUsers.add(supervisorManagerUserId);
+      try {
         await svc.triggerNotification({
           type: "job_assigned",
           category: "job",
@@ -1017,32 +1085,61 @@ export const addJobTeamMember = async (data: {
             entityType: "Job",
             entityId: data.jobId,
             entityName: jobName,
-            assignedTechnicianId: supervisorManagerUserId,
-            message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
-            shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+            assignedTechnicianId: techEmployee.userId,
+            message: `You have been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and prepare accordingly.`,
+            shortMessage: `New job assigned: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
             notes: notesJson,
           },
         });
+      } catch (err) {
+        console.error("[Notification] job_assigned (team member) failed:", err);
+      }
+
+      // 2. Notify the supervisorManager — they are directly assigned to supervise this job
+      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
+        notifiedUsers.add(supervisorManagerUserId);
+        try {
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            data: {
+              entityType: "Job",
+              entityId: data.jobId,
+              entityName: jobName,
+              assignedTechnicianId: supervisorManagerUserId,
+              message: `You have been assigned as the supervisor for job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below and coordinate with the assigned technician to ensure a smooth start.`,
+              shortMessage: `Supervisor assignment: ${jobName}${clientName ? ` — ${clientName}` : ""}`,
+              notes: notesJson,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] job_assigned (supervisorManager) failed:", err);
+        }
       }
 
       // 3. Notify the technician's reportsTo manager — ONLY if different from supervisorManager
       //    This person needs to know their department member was assigned
       if (techEmployee.reportsTo && !notifiedUsers.has(techEmployee.reportsTo)) {
         notifiedUsers.add(techEmployee.reportsTo);
-        await svc.triggerNotification({
-          type: "job_assigned",
-          category: "job",
-          priority: "high",
-          data: {
-            entityType: "Job",
-            entityId: data.jobId,
-            entityName: jobName,
-            assignedTechnicianId: techEmployee.reportsTo,
-            message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
-            shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
-            notes: notesJson,
-          },
-        });
+        try {
+          await svc.triggerNotification({
+            type: "job_assigned",
+            category: "job",
+            priority: "high",
+            data: {
+              entityType: "Job",
+              entityId: data.jobId,
+              entityName: jobName,
+              assignedTechnicianId: techEmployee.reportsTo,
+              message: `${technicianName}, who reports to you, has been assigned to job "${jobName}"${clientLine}. The work is scheduled from ${startDateFormatted} to ${endDateFormatted}. Please review the details below for more information.`,
+              shortMessage: `Your team member ${technicianName} was assigned to ${jobName}`,
+              notes: notesJson,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] job_assigned (reportsTo manager) failed:", err);
+        }
       }
     } catch (err) {
       console.error("[Notification] job_assigned failed:", err);
@@ -2490,6 +2587,20 @@ export const createJobTask = async (data: {
     return null;
   }
 
+  if (data.assignedTo != null && data.assignedTo !== "") {
+    const [userRow] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, data.assignedTo));
+    if (!userRow) {
+      const err = new Error(
+        "The user you selected does not exist. Please choose a valid user.",
+      ) as Error & { code?: string };
+      err.code = "INVALID_REFERENCE";
+      throw err;
+    }
+  }
+
   const taskNumber = await generateTaskNumber();
 
   const [task] = await db
@@ -2539,6 +2650,20 @@ export const updateJobTask = async (
 
   if (!jobRow) {
     return null;
+  }
+
+  if (data.assignedTo !== undefined && data.assignedTo != null && data.assignedTo !== "") {
+    const [userRow] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, data.assignedTo));
+    if (!userRow) {
+      const err = new Error(
+        "The user you selected does not exist. Please choose a valid user.",
+      ) as Error & { code?: string };
+      err.code = "INVALID_REFERENCE";
+      throw err;
+    }
   }
 
   const [task] = await db
@@ -3108,6 +3233,50 @@ export const createJobExpense = async (data: {
       source: "job",
       approvedBy: data.approvedBy ?? null,
     });
+  }
+
+  // Check if total job expenses now exceed bid budget (fire-and-forget)
+  if (expense) {
+    void (async () => {
+      try {
+        const [budgetRow] = await db
+          .select({ totalCost: bidFinancialBreakdown.totalCost, jobNumber: jobs.jobNumber, projectName: bidsTable.projectName })
+          .from(jobs)
+          .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
+          .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
+          .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)))
+          .limit(1);
+
+        if (budgetRow?.totalCost && Number(budgetRow.totalCost) > 0) {
+          const expenseRows = await db
+            .select({ amount: jobExpenses.amount })
+            .from(jobExpenses)
+            .where(and(eq(jobExpenses.jobId, data.jobId)));
+
+          const totalActual = expenseRows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+          const budget = Number(budgetRow.totalCost);
+
+          if (totalActual > budget) {
+            const { NotificationService } = await import("./notification.service.js");
+            await new NotificationService().triggerNotification({
+              type: "job_cost_exceeds_budget",
+              category: "financial",
+              priority: "high",
+              data: {
+                entityType: "Job",
+                entityId: data.jobId,
+                entityName: budgetRow.projectName || budgetRow.jobNumber || data.jobId,
+                currentCost: totalActual,
+                budget,
+                amount: totalActual,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("[Notification] job_cost_exceeds_budget failed:", err);
+      }
+    })();
   }
 
   return expense ? { expense, organizationId: jobData.organizationId } : null;

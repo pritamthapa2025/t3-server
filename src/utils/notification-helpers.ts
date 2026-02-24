@@ -1,7 +1,7 @@
 import { db } from "../config/db.js";
 import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
-import { eq, inArray, and, isNull } from "drizzle-orm";
+import { eq, inArray, and, isNull, or } from "drizzle-orm";
 import { logger } from "./logger.js";
 import type {
   NotificationEvent,
@@ -51,6 +51,7 @@ export async function resolveRecipients(
       case "manager": {
         // Get all managers
         const managers = await getUsersByRole("manager");
+        console.log(`[resolveRecipients][${event.type}] manager role → found ${managers.length} user(s):`, managers.map((u) => ({ id: u.id, email: u.email, name: u.fullName })));
         managers.forEach((u) => userIds.add(u.id));
 
         // Also include specific manager if specified
@@ -66,6 +67,7 @@ export async function resolveRecipients(
       case "executive": {
         // Get all executives
         const executives = await getUsersByRole("executive");
+        console.log(`[resolveRecipients][${event.type}] executive role → found ${executives.length} user(s):`, executives.map((u) => ({ id: u.id, email: u.email, name: u.fullName })));
         executives.forEach((u) => userIds.add(u.id));
 
         // Also include specific executives if specified
@@ -155,19 +157,25 @@ export async function resolveRecipients(
         break;
       }
 
-        case "creator":
+        case "creator": {
           // Send to the user who created/triggered the entity
-          if (event.data.creatorId) {
-            userIds.add(event.data.creatorId);
-          } else if (event.triggeredBy) {
-            userIds.add(event.triggeredBy);
+          const creatorId = event.data.creatorId || event.triggeredBy;
+          if (creatorId) {
+            userIds.add(creatorId);
+            console.log(`[resolveRecipients][${event.type}] creator role → userId=${creatorId}`);
+          } else {
+            console.log(`[resolveRecipients][${event.type}] creator role → no creatorId or triggeredBy provided`);
           }
           break;
+        }
 
         case "supervisor_manager": {
           // Send to the specific supervisor manager assigned on the bid/job
           if (event.data.supervisorManagerId) {
             userIds.add(event.data.supervisorManagerId);
+            console.log(`[resolveRecipients][${event.type}] supervisor_manager role → userId=${event.data.supervisorManagerId}`);
+          } else {
+            console.log(`[resolveRecipients][${event.type}] supervisor_manager role → no supervisorManagerId provided`);
           }
           break;
         }
@@ -200,6 +208,7 @@ export async function resolveRecipients(
       );
     }
 
+    console.log(`[resolveRecipients][${event.type}] total resolved recipients: ${recipients.length} →`, recipients.map((r) => ({ id: r.id, email: r.email, name: r.fullName })));
     logger.debug(
       `Resolved ${recipients.length} recipients for event type: ${event.type}`
     );
@@ -237,7 +246,15 @@ async function getUsersByRole(roleName: string): Promise<RecipientInfo[]> {
       .from(users)
       .innerJoin(userRoles, eq(users.id, userRoles.userId))
       .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .where(and(eq(users.isActive, true), eq(roles.name, dbRoleName)));
+      .where(
+        and(
+          // Include users where isActive is true OR null (only exclude explicitly false/deactivated)
+          or(eq(users.isActive, true), isNull(users.isActive)),
+          // Exclude soft-deleted users
+          or(eq(users.isDeleted, false), isNull(users.isDeleted)),
+          eq(roles.name, dbRoleName),
+        ),
+      );
 
     return usersList.map((u) => ({
       id: u.id,
@@ -434,6 +451,10 @@ export function generateNotificationTitle(eventType: string): string {
     stock_reordered: "Stock Reordered",
     purchase_order_created: "Purchase Order Created",
     purchase_order_approved: "Purchase Order Approved",
+    purchase_order_received_full: "Purchase Order Received",
+    purchase_order_received_partial: "Purchase Order Partially Received",
+    purchase_order_delayed: "Purchase Order Delayed",
+    item_allocated_to_job: "Item Allocated to Job",
 
     // Team & HR
     new_employee_onboarded: "New Employee Onboarded",
@@ -444,6 +465,7 @@ export function generateNotificationTitle(eventType: string): string {
     compliance_case_opened: "Compliance Case Opened",
     compliance_case_resolved: "Compliance Case Resolved",
     employee_suspended: "Employee Suspended",
+
   };
 
   return titleMap[eventType] || "Notification";
@@ -726,6 +748,66 @@ export function generateNotificationMessage(
         shortMessage = `Stock reordered: ${name}`;
         break;
 
+      case "purchase_order_created":
+        message = `A new purchase order "${name}" has been created and is pending review. Please log in to verify the order details and approve or process it.`;
+        shortMessage = `Purchase order created: ${name}`;
+        break;
+
+      case "purchase_order_approved":
+        message = `Purchase order "${name}" has been approved and is ready to be sent to the supplier. Please log in to proceed with the next steps.`;
+        shortMessage = `Purchase order approved: ${name}`;
+        break;
+
+      case "purchase_order_received_full":
+        message = `All items for purchase order "${name}" have been received and recorded in inventory. Please verify the received quantities in the system.`;
+        shortMessage = `Purchase order fully received: ${name}`;
+        break;
+
+      case "purchase_order_received_partial":
+        message = `A partial receipt has been recorded for purchase order "${name}". Please log in to review which items were received and what remains outstanding.`;
+        shortMessage = `Partial receipt recorded: ${name}`;
+        break;
+
+      case "purchase_order_delayed":
+        message = `Purchase order "${name}" has been flagged as delayed. Please follow up with the supplier and update the expected delivery date in the system.`;
+        shortMessage = `Purchase order delayed: ${name}`;
+        break;
+
+      case "item_allocated_to_job":
+        message = `Inventory item "${name}" has been allocated to a job. Please log in to review the allocation details and ensure availability for the scheduled work.`;
+        shortMessage = `Item allocated: ${name}`;
+        break;
+
+      case "vehicle_checked_out":
+        message = `Vehicle "${name}"${eventData.licensePlate ? ` (${eventData.licensePlate})` : ""} has been checked out. Please monitor its usage and ensure it is returned on time.`;
+        shortMessage = `Vehicle checked out: ${name}`;
+        break;
+
+      case "vehicle_checked_in":
+        message = `Vehicle "${name}"${eventData.licensePlate ? ` (${eventData.licensePlate})` : ""} has been checked back in. Please verify its condition and update the fleet records if needed.`;
+        shortMessage = `Vehicle checked in: ${name}`;
+        break;
+
+      case "compliance_case_opened":
+        message = `A new compliance case "${name}" has been opened and requires attention. Please log in to review the details and take appropriate action.`;
+        shortMessage = `Compliance case opened: ${name}`;
+        break;
+
+      case "compliance_case_resolved":
+        message = `Compliance case "${name}" has been resolved and closed. Please log in to review the resolution notes and confirm all required actions have been completed.`;
+        shortMessage = `Compliance case resolved: ${name}`;
+        break;
+
+      case "new_employee_onboarded":
+        message = `A new employee (${name}) has been onboarded to the system. Please log in to review their profile, assign required training, and complete the onboarding checklist.`;
+        shortMessage = `New employee onboarded: ${name}`;
+        break;
+
+      case "performance_review_due":
+        message = `A performance review is due for employee "${name}". Please log in to schedule and complete the review within the required timeframe.`;
+        shortMessage = `Performance review due: ${name}`;
+        break;
+
       // ── Safety & Compliance ───────────────────────────────────────────
       case "safety_incident_reported":
         message = `A safety incident has been reported on job "${name}"${eventData.reportedBy ? ` by ${eventData.reportedBy}` : ""}${eventData.incidentDate ? ` on ${eventData.incidentDate}` : ""}${eventData.severity ? ` — Severity: ${eventData.severity}` : ""}. This requires immediate review and response. Please log in to read the full incident report and initiate the appropriate procedures.`;
@@ -771,6 +853,8 @@ export function generateActionUrl(
     Employee: `/dashboard/team/employees/${entityId}`,
     Client: `/dashboard/clients/${entityId}`,
     Inventory: `/dashboard/inventory/${entityId}`,
+    Compliance: `/dashboard/compliance/${entityId}`,
+    PurchaseOrder: `/dashboard/inventory/purchase-orders/${entityId}`,
   };
 
   return urlMap[entityType] || `/dashboard`;

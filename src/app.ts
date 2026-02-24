@@ -6,7 +6,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import index from "./routes/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { generalTransformer } from "./middleware/response-transformer.js";
 
 dotenv.config();
 
@@ -45,8 +44,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Apply Pacific Time timezone transformer globally to all API responses
-app.use(generalTransformer);
 
 app.use("/api/v1", index);
 

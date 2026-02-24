@@ -2542,6 +2542,13 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
       message: "Task added successfully",
     });
   } catch (error) {
+    const err = error as Error & { code?: string };
+    if (err.code === "INVALID_REFERENCE") {
+      return res.status(400).json({
+        success: false,
+        message: err.message,
+      });
+    }
     logger.logApiError("Job error", error, req);
     return res.status(500).json({
       success: false,
@@ -2625,6 +2632,13 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
       message: "Task updated successfully",
     });
   } catch (error) {
+    const err = error as Error & { code?: string };
+    if (err.code === "INVALID_REFERENCE") {
+      return res.status(400).json({
+        success: false,
+        message: err.message,
+      });
+    }
     logger.logApiError("Job error", error, req);
     return res.status(500).json({
       success: false,

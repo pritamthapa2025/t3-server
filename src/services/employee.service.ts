@@ -780,6 +780,22 @@ export const createEmployee = async (data: {
       hourlyRate: hourlyRate ?? undefined,
     })
     .returning();
+
+  // Fire new_employee_onboarded Push notification (fire-and-forget)
+  void (async () => {
+    try {
+      const { NotificationService } = await import("./notification.service.js");
+      await new NotificationService().triggerNotification({
+        type: "new_employee_onboarded",
+        category: "system",
+        priority: "medium",
+        data: { entityType: "Employee", entityId: String(employee?.id), entityName: employeeId },
+      });
+    } catch (err) {
+      console.error("[Notification] new_employee_onboarded failed:", err);
+    }
+  })();
+
   return employee;
 };
 
@@ -848,6 +864,29 @@ export const updateEmployee = async (
     .set(updateData)
     .where(eq(employees.id, id))
     .returning();
+
+  // Fire employee_suspended notification (Email + SMS + Push) when suspended
+  if (data.status === "suspended" && employee) {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "employee_suspended",
+          category: "safety",
+          priority: "high",
+          data: {
+            employeeId: String(id),
+            entityType: "Employee",
+            entityId: String(id),
+            entityName: employee.employeeId || String(id),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] employee_suspended failed:", err);
+      }
+    })();
+  }
+
   return employee || null;
 };
 

@@ -917,6 +917,23 @@ export const createPurchaseOrderHandler = async (
     const newPO = await inventoryService.createPurchaseOrder(req.body, userId);
 
     logger.info(`Purchase order ${newPO.id} created successfully`);
+
+    // Fire purchase_order_created Push notification (fire-and-forget)
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "purchase_order_created",
+          category: "inventory",
+          priority: "medium",
+          triggeredBy: userId,
+          data: { entityType: "Inventory", entityId: newPO.id, entityName: newPO.poNumber || newPO.id },
+        });
+      } catch (err) {
+        console.error("[Notification] purchase_order_created failed:", err);
+      }
+    })();
+
     res.status(201).json({
       success: true,
       message: "Purchase order created successfully",
@@ -975,6 +992,23 @@ export const approvePurchaseOrderHandler = async (
     );
 
     logger.info(`Purchase order ${id} approved successfully`);
+
+    // Fire purchase_order_approved Push notification (fire-and-forget)
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "purchase_order_approved",
+          category: "inventory",
+          priority: "medium",
+          triggeredBy: userId,
+          data: { entityType: "Inventory", entityId: approvedPO.id, entityName: approvedPO.poNumber || approvedPO.id },
+        });
+      } catch (err) {
+        console.error("[Notification] purchase_order_approved failed:", err);
+      }
+    })();
+
     res.status(200).json({
       success: true,
       message: "Purchase order approved successfully",
@@ -1083,6 +1117,23 @@ export const receivePartialPurchaseOrderHandler = async (
     );
 
     logger.info(`Purchase order ${id} partially received successfully`);
+
+    // Fire purchase_order_received_partial Push notification (fire-and-forget)
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "purchase_order_received_partial",
+          category: "inventory",
+          priority: "medium",
+          triggeredBy: userId,
+          data: { entityType: "Inventory", entityId: id!, entityName: (result as any)?.poNumber || id! },
+        });
+      } catch (err) {
+        console.error("[Notification] purchase_order_received_partial failed:", err);
+      }
+    })();
+
     res.status(200).json({
       success: true,
       message: "Items received successfully",
@@ -1115,6 +1166,23 @@ export const receivePurchaseOrderHandler = async (
     );
 
     logger.info(`Purchase order ${id} received successfully`);
+
+    // Fire purchase_order_received_full Push notification (fire-and-forget)
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "purchase_order_received_full",
+          category: "inventory",
+          priority: "medium",
+          triggeredBy: userId,
+          data: { entityType: "Inventory", entityId: id!, entityName: (result as any)?.poNumber || id! },
+        });
+      } catch (err) {
+        console.error("[Notification] purchase_order_received_full failed:", err);
+      }
+    })();
+
     res.status(200).json({
       success: true,
       message: "Items received successfully",

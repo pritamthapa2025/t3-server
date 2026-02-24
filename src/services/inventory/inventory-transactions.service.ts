@@ -159,6 +159,28 @@ export const checkAndCreateAlert = async (itemId: string) => {
         isAcknowledged: false,
         isResolved: false,
       });
+
+      // Fire low_stock_warning or out_of_stock notification (fire-and-forget)
+      void (async () => {
+        try {
+          const { NotificationService } = await import("../notification.service.js");
+          const eventType = qtyOnHand === 0 ? "out_of_stock" : "low_stock_warning";
+          await new NotificationService().triggerNotification({
+            type: eventType,
+            category: "inventory",
+            priority: qtyOnHand === 0 ? "high" : "medium",
+            data: {
+              entityType: "Inventory",
+              entityId: itemId,
+              entityName: currentItem.name,
+              stockLevel: qtyOnHand,
+              reorderLevel,
+            },
+          });
+        } catch (err) {
+          console.error("[Notification] stock alert notification failed:", err);
+        }
+      })();
     }
   }
 };

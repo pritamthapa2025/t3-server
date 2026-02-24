@@ -1,6 +1,11 @@
 import { NotificationRepository } from "../repositories/notification.repository.js";
-import { queueNotification } from "../queues/notification.queue.js";
 import { sendNotificationToUser } from "../config/socket.js";
+import { NotificationEmailService } from "./notification-email.service.js";
+import { NotificationSMSService } from "./notification-sms.service.js";
+import { db } from "../config/db.js";
+import { users } from "../drizzle/schema/auth.schema.js";
+import { notificationDeliveryLog } from "../drizzle/schema/notifications.schema.js";
+import { eq } from "drizzle-orm";
 import {
   resolveRecipients,
   evaluateConditions,
@@ -109,32 +114,36 @@ export class NotificationService {
         `Created ${createdNotifications.length} notification(s) in database`
       );
 
-      // 6. Queue for delivery and send real-time updates
+      // 6. Deliver notifications — push instantly, email/SMS in parallel (no external queue)
       const channels = (rule.channels as unknown as DeliveryChannel[]) || [];
+      const emailSmsChannels = channels.filter((c) => c !== "push");
 
-      for (let i = 0; i < createdNotifications.length; i++) {
-        const notification = createdNotifications[i];
-        const recipient = recipients[i];
+      // Build a map from userId → notification so order never matters
+      const notificationByUserId = new Map<string, typeof createdNotifications[number]>();
+      for (const n of createdNotifications) {
+        notificationByUserId.set(n.userId, n);
+      }
 
-        if (!notification || !recipient) {
-          logger.warn(`Skipping notification delivery for index ${i}: missing data`);
-          continue;
+      // Push — fire instantly via Socket.IO for every recipient
+      if (channels.includes("push")) {
+        for (const recipient of recipients) {
+          const notification = notificationByUserId.get(recipient.id);
+          if (notification) sendNotificationToUser(recipient.id, notification);
         }
+      }
 
-        // Send real-time push notification via Socket.IO (if push is enabled)
-        if (channels.includes("push")) {
-          sendNotificationToUser(recipient.id, notification);
-        }
-
-        // Queue for email/SMS delivery
-        if (channels.includes("email") || channels.includes("sms")) {
-          await queueNotification({
-            userId: recipient.id,
-            notificationId: notification.id,
-            channels: channels.filter((c) => c !== "push"), // Email and SMS only
-            data: notification,
-          });
-        }
+      // Email / SMS — fire all in parallel, each recipient independent
+      if (emailSmsChannels.length > 0) {
+        await Promise.allSettled(
+          recipients.map(async (recipient) => {
+            const notification = notificationByUserId.get(recipient.id);
+            if (!notification) {
+              logger.warn(`No notification record for recipient ${recipient.id} — skipping`);
+              return;
+            }
+            await this.deliverToRecipient(recipient.id, notification, emailSmsChannels);
+          })
+        );
       }
 
       logger.info(
@@ -282,6 +291,95 @@ export class NotificationService {
    */
   async cleanOldNotifications(daysToKeep: number = 90): Promise<number> {
     return await this.repository.cleanOldNotifications(daysToKeep);
+  }
+
+  /**
+   * Deliver email/SMS to a single recipient directly (no queue).
+   * Logs the result to notification_delivery_log.
+   */
+  private async deliverToRecipient(
+    userId: string,
+    notification: Notification,
+    channels: DeliveryChannel[]
+  ) {
+    const [userRow] = await db
+      .select({ email: users.email, phone: users.phone, fullName: users.fullName })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!userRow) {
+      logger.warn(`[Deliver] No user found for userId=${userId}`);
+      return;
+    }
+
+    // Respect per-user channel preferences
+    const prefs = await this.repository.getPreferences(userId);
+    const categoryPrefs = prefs[notification.category as keyof typeof prefs] as
+      | { email?: boolean; sms?: boolean; inApp?: boolean }
+      | undefined;
+    const emailEnabled = categoryPrefs?.email !== false;
+    const smsEnabled = categoryPrefs?.sms !== false;
+
+    logger.info(
+      `[Deliver] user=${userId} (${userRow.email}) category=${notification.category} emailEnabled=${emailEnabled} smsEnabled=${smsEnabled}`
+    );
+
+    await Promise.allSettled([
+      channels.includes("email") && userRow.email && emailEnabled
+        ? (async () => {
+            try {
+              const emailSvc = new NotificationEmailService();
+              await emailSvc.sendNotificationEmail(userRow.email!, userRow.fullName ?? "", notification);
+              logger.info(`[Deliver] ✅ Email sent to ${userRow.email} (notification ${notification.id})`);
+              await db.insert(notificationDeliveryLog).values({
+                notificationId: notification.id,
+                userId,
+                channel: "email",
+                status: "sent",
+                sentAt: new Date(),
+              });
+            } catch (err) {
+              logger.error(`[Deliver] ❌ Email failed for ${userRow.email}:`, err);
+              await db.insert(notificationDeliveryLog).values({
+                notificationId: notification.id,
+                userId,
+                channel: "email",
+                status: "failed",
+                failedAt: new Date(),
+                errorMessage: err instanceof Error ? err.message : String(err),
+              });
+            }
+          })()
+        : Promise.resolve(),
+
+      channels.includes("sms") && userRow.phone && smsEnabled
+        ? (async () => {
+            try {
+              const smsSvc = new NotificationSMSService();
+              await smsSvc.sendNotificationSMS(userRow.phone!, userRow.fullName ?? "", notification);
+              logger.info(`[Deliver] ✅ SMS sent to ${userRow.phone} (notification ${notification.id})`);
+              await db.insert(notificationDeliveryLog).values({
+                notificationId: notification.id,
+                userId,
+                channel: "sms",
+                status: "sent",
+                sentAt: new Date(),
+              });
+            } catch (err) {
+              logger.error(`[Deliver] ❌ SMS failed for ${userRow.phone}:`, err);
+              await db.insert(notificationDeliveryLog).values({
+                notificationId: notification.id,
+                userId,
+                channel: "sms",
+                status: "failed",
+                failedAt: new Date(),
+                errorMessage: err instanceof Error ? err.message : String(err),
+              });
+            }
+          })()
+        : Promise.resolve(),
+    ]);
   }
 
   /**

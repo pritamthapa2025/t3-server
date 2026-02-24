@@ -90,7 +90,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Job Status Changed",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["project_manager"],
+      recipientRoles: ["manager", "executive"],
       channels: ["email", "push"],
     },
     {
@@ -99,7 +99,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Job Started",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client", "project_manager", "executive"],
+      recipientRoles: ["manager", "executive"],
       channels: ["email", "push"],
     },
     {
@@ -108,7 +108,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Job Completed",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["client", "project_manager", "executive"],
+      recipientRoles: ["manager", "executive"],
       channels: ["email", "sms", "push"],
     },
     {
@@ -157,7 +157,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Bid Created",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["creator", "supervisor_manager", "executive"],
+      recipientRoles: ["creator", "executive", "manager"],
       channels: ["email", "push"],
     },
     {
@@ -175,7 +175,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Bid Expired",
       enabled: true,
       priority: "medium",
-      recipientRoles: ["manager", "executive"],
+      recipientRoles: ["executive", "manager"],
       channels: ["email", "push"],
     },
     {
@@ -184,7 +184,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Bid Won",
       enabled: true,
       priority: "high",
-      recipientRoles: ["manager", "executive"],
+      recipientRoles: ["executive", "manager"],
       channels: ["email", "push"],
     },
     {
@@ -193,7 +193,7 @@ async function seedNotificationRulesInternal(): Promise<number> {
       description: "Bid Requires Approval",
       enabled: true,
       priority: "high",
-      recipientRoles: ["manager", "executive"],
+      recipientRoles: ["executive"],
       channels: ["email", "sms", "push"],
     },
 

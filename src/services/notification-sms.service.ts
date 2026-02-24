@@ -201,6 +201,27 @@ export class NotificationSMSService {
   }
 
   /**
+   * Send a raw SMS body directly (for auth OTP flows that don't use the notification system)
+   */
+  async sendRaw(phone: string, body: string): Promise<{ success: boolean; error?: string }> {
+    if (!twilioClient || !twilioPhoneNumber) {
+      logger.warn("Twilio not initialized. Skipping direct SMS.");
+      return { success: false, error: "SMS service not configured" };
+    }
+    try {
+      const cleanPhone = this.formatPhoneNumber(phone);
+      if (!cleanPhone) {
+        return { success: false, error: "Invalid phone number" };
+      }
+      await twilioClient.messages.create({ body, from: twilioPhoneNumber, to: cleanPhone });
+      return { success: true };
+    } catch (error: any) {
+      logger.error(`Failed to send direct SMS to ${phone}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Check Twilio account balance (optional utility)
    */
   async getAccountBalance(): Promise<{ balance: string; currency: string } | null> {

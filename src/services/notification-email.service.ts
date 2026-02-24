@@ -242,6 +242,56 @@ export class NotificationEmailService {
   /**
    * Send bulk notification emails
    */
+  /**
+   * Send a direct email to an external recipient (e.g. client contacts who have no system user account).
+   * Does NOT require a Notification DB record — builds the email from raw fields.
+   */
+  async sendDirectEmail(
+    recipientEmail: string,
+    recipientName: string,
+    title: string,
+    message: string,
+    options?: {
+      actionUrl?: string;
+      additionalInfo?: Record<string, string>;
+    },
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!apiInstance) {
+      logger.warn("Brevo API not initialized. Skipping direct email.");
+      return { success: false, error: "Email service not configured" };
+    }
+
+    try {
+      const actionUrl = options?.actionUrl
+        ? `${process.env.CLIENT_URL}${options.actionUrl}`
+        : undefined;
+
+      const templateData: EmailTemplateData = {
+        recipientName: recipientName || "Valued Client",
+        title,
+        message,
+        ...(actionUrl ? { actionUrl, actionText: "View Details" } : {}),
+        ...(options?.additionalInfo ? { additionalInfo: options.additionalInfo } : {}),
+      };
+
+      const htmlContent = this.generateEmailHTML(templateData);
+      const sendSmtpEmail = new brevo.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: senderName, email: senderEmail };
+      sendSmtpEmail.to = [{ email: recipientEmail, name: recipientName }];
+      sendSmtpEmail.subject = `[T3 Mechanical] ${title}`;
+      sendSmtpEmail.htmlContent = htmlContent;
+
+      const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      const messageId = response.body?.messageId || response.body?.["messageId"];
+
+      logger.info(`✅ Direct email sent to ${recipientEmail} (MessageId: ${messageId})`);
+      return { success: true, messageId: messageId as string };
+    } catch (error: any) {
+      logger.error(`❌ Failed to send direct email to ${recipientEmail}:`, error);
+      return { success: false, error: error.message || "Failed to send email" };
+    }
+  }
+
   async sendBulkEmails(
     notifications: Array<{
       email: string;

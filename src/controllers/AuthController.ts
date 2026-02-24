@@ -404,6 +404,23 @@ export const requestPasswordResetHandler = async (
     // Send the password reset OTP via email
     await sendPasswordResetOTP(user.email, resetOTP);
 
+    // Also send OTP via SMS if user has a phone number (fire-and-forget)
+    void (async () => {
+      try {
+        const { db: dbConn } = await import("../config/db.js");
+        const { users: usersTable } = await import("../drizzle/schema/auth.schema.js");
+        const { eq: eqFn } = await import("drizzle-orm");
+        const [fullUser] = await dbConn.select({ phone: usersTable.phone }).from(usersTable).where(eqFn(usersTable.id, user.id)).limit(1);
+        if (fullUser?.phone) {
+          const { NotificationSMSService } = await import("../services/notification-sms.service.js");
+          const smsSvc = new NotificationSMSService();
+          await smsSvc.sendRaw(fullUser.phone, `[T3 Mechanical] Your password reset code is: ${resetOTP}\nExpires in 10 minutes. Do not share this code.`);
+        }
+      } catch (err: any) {
+        logger.warn("Failed to send password reset SMS: " + (err?.message || String(err)));
+      }
+    })();
+
     logger.info("Password reset OTP sent to email");
     return res.status(200).json({
       success: true,
@@ -525,6 +542,22 @@ export const confirmPasswordResetHandler = async (
 
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
+
+    // Fire password_changed notification (Email + Push) fire-and-forget
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "password_changed",
+          category: "system",
+          priority: "medium",
+          triggeredBy: user.id,
+          data: { userId: user.id, entityType: "Employee", entityId: user.id, entityName: user.fullName || user.email },
+        });
+      } catch (err: any) {
+        logger.warn("Failed to send password_changed notification: " + (err?.message || String(err)));
+      }
+    })();
 
     logger.info("Password reset successfully");
     return res
@@ -730,6 +763,22 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
 
     // Update the password in the database
     await updatePassword(userId, hashedPassword);
+
+    // Fire password_changed notification (Email + Push) fire-and-forget
+    void (async () => {
+      try {
+        const { NotificationService } = await import("../services/notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "password_changed",
+          category: "system",
+          priority: "medium",
+          triggeredBy: userId,
+          data: { userId, entityType: "Employee", entityId: userId, entityName: user.fullName || user.email },
+        });
+      } catch (err: any) {
+        logger.warn("Failed to send password_changed notification: " + (err?.message || String(err)));
+      }
+    })();
 
     logger.info("Password changed successfully");
     return res

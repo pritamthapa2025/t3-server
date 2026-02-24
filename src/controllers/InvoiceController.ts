@@ -35,7 +35,7 @@ export const getInvoices = async (req: Request, res: Response) => {
       dueDateEnd?: string;
       jobId?: string;
     } = {};
-    
+
     if (req.query.page) {
       options.page = parseInt(req.query.page as string, 10);
     }
@@ -1986,7 +1986,7 @@ export const downloadInvoicePDF = async (req: Request, res: Response) => {
         .from(jobs)
         .where(and(eq(jobs.id, invoice.jobId), eq(jobs.isDeleted, false)))
         .limit(1);
-      
+
       job = jobRecord;
       if (job?.bidId) {
         financialBreakdown = await getBidFinancialBreakdown(
@@ -2120,7 +2120,7 @@ export const previewInvoicePDF = async (req: Request, res: Response) => {
         .from(jobs)
         .where(and(eq(jobs.id, invoice.jobId), eq(jobs.isDeleted, false)))
         .limit(1);
-      
+
       job = jobRecord;
       if (job?.bidId) {
         financialBreakdown = await getBidFinancialBreakdown(
@@ -2406,11 +2406,16 @@ export const deleteInvoicePayment = async (
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteInvoicesHandler = async (req: Request, res: Response) => {
+export const bulkDeleteInvoicesHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await invoicingService.bulkDeleteInvoices(ids, userId);
@@ -2423,6 +2428,8 @@ export const bulkDeleteInvoicesHandler = async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.logApiError("Bulk delete invoices error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

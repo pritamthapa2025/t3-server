@@ -463,7 +463,48 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   // Return enriched data with names (following cursor rule)
   const inserted = result[0];
   if (!inserted) throw new Error("Failed to create compliance case");
-  return await getComplianceCaseById(inserted.id);
+  const complianceCase = await getComplianceCaseById(inserted.id);
+
+  // Fire notifications (fire-and-forget)
+  void (async () => {
+    try {
+      const { NotificationService } = await import("./notification.service.js");
+      const svc = new NotificationService();
+      const caseName = inserted.caseNumber || inserted.title || inserted.id;
+
+      // safety_incident_reported for safety type cases
+      if (data.type === "safety") {
+        await svc.triggerNotification({
+          type: "safety_incident_reported",
+          category: "safety",
+          priority: "high",
+          data: {
+            entityType: "Employee",
+            entityId: inserted.id,
+            entityName: caseName,
+            reportedBy: data.reportedBy || undefined,
+            severity: data.severity || undefined,
+          },
+        });
+      }
+
+      // compliance_case_opened for all cases
+      await svc.triggerNotification({
+        type: "compliance_case_opened",
+        category: "safety",
+        priority: "high",
+        data: {
+          entityType: "Employee",
+          entityId: inserted.id,
+          entityName: caseName,
+        },
+      });
+    } catch (err) {
+      console.error("[Notification] compliance case notification failed:", err);
+    }
+  })();
+
+  return complianceCase;
 };
 
 // Update Compliance Case
@@ -569,7 +610,30 @@ export const updateCaseStatus = async (
     )
     .returning();
 
-  return result[0] || null;
+  const updated = result[0] || null;
+
+  // Fire compliance_case_resolved Push notification when case is resolved
+  if (status === "resolved" && updated) {
+    void (async () => {
+      try {
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "compliance_case_resolved",
+          category: "safety",
+          priority: "medium",
+          data: {
+            entityType: "Employee",
+            entityId: id,
+            entityName: updated.caseNumber || updated.title || id,
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] compliance_case_resolved notification failed:", err);
+      }
+    })();
+  }
+
+  return updated;
 };
 
 // Get Violation Watchlist - Now uses Compliance Cases instead of Violation History
