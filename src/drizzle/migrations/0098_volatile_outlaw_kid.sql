@@ -1,0 +1,1 @@
+DROP TABLE "org"."user_organizations" CASCADE;
