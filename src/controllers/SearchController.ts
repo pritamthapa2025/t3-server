@@ -4,10 +4,11 @@ import {
   globalSearch,
   searchByType,
   VALID_TYPES,
+  BROWSE_PAGE_SIZE,
 } from "../services/search.service.js";
 import { getUserRoleWithContext } from "../services/featurePermission.service.js";
 
-const VALID_TYPE_VALUES = VALID_TYPES as unknown as [string, ...string[]];
+const VALID_TYPE_VALUES = [...VALID_TYPES] as [string, ...string[]];
 
 const searchQuerySchema = z.object({
   q: z
@@ -16,12 +17,21 @@ const searchQuerySchema = z.object({
     .transform((v) => v.trim())
     .optional(),
   type: z.enum(VALID_TYPE_VALUES).optional(),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(BROWSE_PAGE_SIZE),
 });
 
-export async function globalSearchHandler(
-  req: Request,
-  res: Response,
-): Promise<void> {
+export async function globalSearchHandler(req: Request, res: Response): Promise<void> {
   const parsed = searchQuerySchema.safeParse(req.query);
 
   if (!parsed.success) {
@@ -32,7 +42,7 @@ export async function globalSearchHandler(
     return;
   }
 
-  const { q, type } = parsed.data;
+  const { q, type, page, limit } = parsed.data;
 
   if (!type && (!q || q.length < 2)) {
     res.status(400).json({
@@ -54,18 +64,18 @@ export async function globalSearchHandler(
 
     if (type) {
       const term = q && q.length >= 2 ? q : undefined;
-      const results = await searchByType(type, ctx, term);
+      const { result, hasMore } = await searchByType(type, ctx, term, page, limit);
 
       res.status(200).json({
         success: true,
-        data: results,
+        data: result,
         meta: {
           query: q ?? "",
           type,
-          totalResults: Object.values(results).reduce(
-            (s, a) => s + a.length,
-            0,
-          ),
+          page,
+          limit,
+          hasMore,
+          totalResults: Object.values(result).reduce((s, a) => s + a.length, 0),
         },
       });
     } else {
@@ -76,10 +86,7 @@ export async function globalSearchHandler(
         data: results,
         meta: {
           query: q,
-          totalResults: Object.values(results).reduce(
-            (s, a) => s + a.length,
-            0,
-          ),
+          totalResults: Object.values(results).reduce((s, a) => s + a.length, 0),
         },
       });
     }

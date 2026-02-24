@@ -8,10 +8,7 @@ import { employees } from "../drizzle/schema/org.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { inventoryItems } from "../drizzle/schema/inventory.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
-import {
-  dispatchTasks,
-  dispatchAssignments,
-} from "../drizzle/schema/dispatch.schema.js";
+import { dispatchTasks, dispatchAssignments } from "../drizzle/schema/dispatch.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { expenses } from "../drizzle/schema/expenses.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
@@ -29,7 +26,10 @@ const isExecutive = (ctx: SearchContext) =>
   ctx.roleName.toLowerCase() === "executive";
 
 const CACHE_TTL_SECONDS = 30;
+/** Items returned per entity type in the global preview (no pagination). */
 const RESULTS_PER_TYPE = 5;
+/** Default page size for category browse (paginated). */
+export const BROWSE_PAGE_SIZE = 15;
 
 export const VALID_TYPES = [
   "bid",
@@ -87,6 +87,8 @@ export interface SearchItem {
 async function searchBids(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(bidsTable.bidNumber, term),
@@ -97,7 +99,6 @@ async function searchBids(
   let rows;
 
   if (isTechnician(ctx) && ctx.employeeId !== null) {
-    // Technician: only bids linked to jobs they are assigned to
     rows = await db
       .selectDistinct({
         id: bidsTable.id,
@@ -108,16 +109,14 @@ async function searchBids(
       })
       .from(bidsTable)
       .innerJoin(jobs, eq(jobs.bidId, bidsTable.id))
-      .innerJoin(
-        jobTeamMembers,
-        and(
-          eq(jobTeamMembers.jobId, jobs.id),
-          eq(jobTeamMembers.employeeId, ctx.employeeId!),
-          eq(jobTeamMembers.isActive, true),
-        ),
-      )
+      .innerJoin(jobTeamMembers, and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, ctx.employeeId!),
+        eq(jobTeamMembers.isActive, true),
+      ))
       .where(and(eq(bidsTable.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   } else {
     rows = await db
       .select({
@@ -129,7 +128,8 @@ async function searchBids(
       })
       .from(bidsTable)
       .where(and(eq(bidsTable.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   }
 
   return rows.map((row) => ({
@@ -148,6 +148,8 @@ async function searchBids(
 async function searchJobs(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(jobs.jobNumber, term),
@@ -157,7 +159,6 @@ async function searchJobs(
   let rows;
 
   if (isTechnician(ctx) && ctx.employeeId !== null) {
-    // Technician: only jobs they are assigned to
     rows = await db
       .selectDistinct({
         id: jobs.id,
@@ -167,16 +168,14 @@ async function searchJobs(
         jobType: jobs.jobType,
       })
       .from(jobs)
-      .innerJoin(
-        jobTeamMembers,
-        and(
-          eq(jobTeamMembers.jobId, jobs.id),
-          eq(jobTeamMembers.employeeId, ctx.employeeId!),
-          eq(jobTeamMembers.isActive, true),
-        ),
-      )
+      .innerJoin(jobTeamMembers, and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, ctx.employeeId!),
+        eq(jobTeamMembers.isActive, true),
+      ))
       .where(and(eq(jobs.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   } else {
     rows = await db
       .select({
@@ -188,7 +187,8 @@ async function searchJobs(
       })
       .from(jobs)
       .where(and(eq(jobs.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   }
 
   return rows.map((row) => ({
@@ -207,6 +207,8 @@ async function searchJobs(
 async function searchClients(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(organizations.name, term),
@@ -217,7 +219,6 @@ async function searchClients(
   let rows;
 
   if (isTechnician(ctx) && ctx.employeeId !== null) {
-    // Technician: only clients of jobs they are assigned to (via bids)
     rows = await db
       .selectDistinct({
         id: organizations.id,
@@ -229,16 +230,14 @@ async function searchClients(
       .from(organizations)
       .innerJoin(bidsTable, eq(bidsTable.organizationId, organizations.id))
       .innerJoin(jobs, eq(jobs.bidId, bidsTable.id))
-      .innerJoin(
-        jobTeamMembers,
-        and(
-          eq(jobTeamMembers.jobId, jobs.id),
-          eq(jobTeamMembers.employeeId, ctx.employeeId!),
-          eq(jobTeamMembers.isActive, true),
-        ),
-      )
+      .innerJoin(jobTeamMembers, and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, ctx.employeeId!),
+        eq(jobTeamMembers.isActive, true),
+      ))
       .where(and(eq(organizations.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   } else {
     rows = await db
       .select({
@@ -250,7 +249,8 @@ async function searchClients(
       })
       .from(organizations)
       .where(and(eq(organizations.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   }
 
   return rows.map((row) => ({
@@ -269,6 +269,8 @@ async function searchClients(
 async function searchProperties(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(properties.propertyName, term),
@@ -280,7 +282,6 @@ async function searchProperties(
   let rows;
 
   if (isTechnician(ctx) && ctx.employeeId !== null) {
-    // Technician: only properties of jobs they are assigned to (via bids)
     rows = await db
       .selectDistinct({
         id: properties.id,
@@ -293,16 +294,14 @@ async function searchProperties(
       .from(properties)
       .innerJoin(bidsTable, eq(bidsTable.propertyId, properties.id))
       .innerJoin(jobs, eq(jobs.bidId, bidsTable.id))
-      .innerJoin(
-        jobTeamMembers,
-        and(
-          eq(jobTeamMembers.jobId, jobs.id),
-          eq(jobTeamMembers.employeeId, ctx.employeeId!),
-          eq(jobTeamMembers.isActive, true),
-        ),
-      )
+      .innerJoin(jobTeamMembers, and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, ctx.employeeId!),
+        eq(jobTeamMembers.isActive, true),
+      ))
       .where(textFilter)
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   } else {
     rows = await db
       .select({
@@ -315,18 +314,15 @@ async function searchProperties(
       })
       .from(properties)
       .where(textFilter)
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   }
 
   return rows.map((row) => ({
     id: row.id,
     type: "property" as const,
     title: row.propertyName,
-    subtitle:
-      `${row.propertyCode || ""}${row.addressLine1 ? ` • ${row.addressLine1}, ${row.city}` : ""}`.replace(
-        /^• /,
-        "",
-      ),
+    subtitle: `${row.propertyCode || ""}${row.addressLine1 ? ` • ${row.addressLine1}, ${row.city}` : ""}`.replace(/^• /, ""),
     metadata: row.status,
     url: `/dashboard/properties/${row.id}`,
     icon: "/icons/Home Icon.svg",
@@ -338,8 +334,9 @@ async function searchProperties(
 async function searchEmployees(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
-  // Technicians cannot search other employees
   if (isTechnician(ctx)) return [];
 
   const rows = await db
@@ -362,17 +359,14 @@ async function searchEmployees(
         ),
       ),
     )
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: String(row.id),
     type: "employee" as const,
     title: row.fullName,
-    subtitle:
-      `${row.employeeId || ""}${row.email ? ` • ${row.email}` : ""}`.replace(
-        /^• /,
-        "",
-      ),
+    subtitle: `${row.employeeId || ""}${row.email ? ` • ${row.email}` : ""}`.replace(/^• /, ""),
     metadata: row.status,
     url: `/dashboard/team?employee=${row.id}`,
     icon: "/icons/Users Icon.svg",
@@ -384,6 +378,8 @@ async function searchEmployees(
 async function searchVehicles(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(vehicles.vehicleId, term),
@@ -412,7 +408,8 @@ async function searchVehicles(
     })
     .from(vehicles)
     .where(filter)
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: row.id,
@@ -430,6 +427,8 @@ async function searchVehicles(
 async function searchInventory(
   term: string,
   _ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const rows = await db
     .select({
@@ -450,7 +449,8 @@ async function searchInventory(
         ),
       ),
     )
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: row.id,
@@ -468,6 +468,8 @@ async function searchInventory(
 async function searchDispatch(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(dispatchTasks.title, term),
@@ -477,7 +479,6 @@ async function searchDispatch(
   let rows;
 
   if (isTechnician(ctx) && ctx.employeeId !== null) {
-    // Technician: only dispatch tasks they are assigned to
     rows = await db
       .selectDistinct({
         id: dispatchTasks.id,
@@ -487,16 +488,14 @@ async function searchDispatch(
         status: dispatchTasks.status,
       })
       .from(dispatchTasks)
-      .innerJoin(
-        dispatchAssignments,
-        and(
-          eq(dispatchAssignments.taskId, dispatchTasks.id),
-          eq(dispatchAssignments.technicianId, ctx.employeeId!),
-          eq(dispatchAssignments.isDeleted, false),
-        ),
-      )
+      .innerJoin(dispatchAssignments, and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchAssignments.technicianId, ctx.employeeId!),
+        eq(dispatchAssignments.isDeleted, false),
+      ))
       .where(and(eq(dispatchTasks.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   } else {
     rows = await db
       .select({
@@ -508,7 +507,8 @@ async function searchDispatch(
       })
       .from(dispatchTasks)
       .where(and(eq(dispatchTasks.isDeleted, false), textFilter))
-      .limit(RESULTS_PER_TYPE);
+      .limit(limit)
+      .offset(offset);
   }
 
   return rows.map((row) => ({
@@ -527,6 +527,8 @@ async function searchDispatch(
 async function searchTimesheets(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(users.fullName, term),
@@ -534,10 +536,9 @@ async function searchTimesheets(
     ilike(timesheets.notes, term),
   )!;
 
-  const ownFilter =
-    isTechnician(ctx) && ctx.employeeId !== null
-      ? eq(timesheets.employeeId, ctx.employeeId!)
-      : undefined;
+  const ownFilter = isTechnician(ctx) && ctx.employeeId !== null
+    ? eq(timesheets.employeeId, ctx.employeeId!)
+    : undefined;
 
   const rows = await db
     .select({
@@ -552,7 +553,8 @@ async function searchTimesheets(
     .innerJoin(employees, eq(timesheets.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .where(and(eq(timesheets.isDeleted, false), ownFilter, textFilter))
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: String(row.id),
@@ -570,6 +572,8 @@ async function searchTimesheets(
 async function searchExpenses(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
   const textFilter = or(
     ilike(expenses.expenseNumber, term),
@@ -578,7 +582,6 @@ async function searchExpenses(
     ilike(expenses.vendor, term),
   )!;
 
-  // Technician: only expenses they created
   const ownFilter = isTechnician(ctx)
     ? eq(expenses.createdBy, ctx.userId)
     : undefined;
@@ -594,7 +597,8 @@ async function searchExpenses(
     })
     .from(expenses)
     .where(and(eq(expenses.isDeleted, false), ownFilter, textFilter))
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: row.id,
@@ -612,8 +616,9 @@ async function searchExpenses(
 async function searchInvoices(
   term: string,
   ctx: SearchContext,
+  limit = RESULTS_PER_TYPE,
+  offset = 0,
 ): Promise<SearchItem[]> {
-  // Only Executive has access to invoices
   if (!isExecutive(ctx)) return [];
 
   const rows = await db
@@ -635,31 +640,35 @@ async function searchInvoices(
         ),
       ),
     )
-    .limit(RESULTS_PER_TYPE);
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row) => ({
     id: row.id,
     type: "invoice" as const,
     title: row.invoiceNumber,
-    subtitle: [row.billingAddressLine1, row.billingCity]
-      .filter(Boolean)
-      .join(", "),
+    subtitle: [row.billingAddressLine1, row.billingCity].filter(Boolean).join(", "),
     metadata: row.status,
     url: `/dashboard/invoicing`,
     icon: "/icons/Bill Icon.svg",
   }));
 }
 
-// ─── Browse by type ───────────────────────────────────────────────────────────
-// Returns results for a single entity type. Uses provided query or "%%" to
-// match all records (browse/category mode with no search term).
+// ─── Browse by type (paginated) ───────────────────────────────────────────────
+// Called when the user selects a category. Fetches one page of results for that
+// type only. Uses the fetch-(limit+1) trick to detect whether more pages exist.
 
 export async function searchByType(
   type: string,
   ctx: SearchContext,
   query?: string,
-): Promise<GlobalSearchResult> {
+  page = 1,
+  limit = BROWSE_PAGE_SIZE,
+): Promise<{ result: GlobalSearchResult; hasMore: boolean }> {
   const term = query ? `%${query}%` : "%%";
+  const offset = (page - 1) * limit;
+  // Fetch one extra to detect hasMore without a COUNT query
+  const fetchLimit = limit + 1;
 
   const empty: GlobalSearchResult = {
     bids: [],
@@ -675,24 +684,26 @@ export async function searchByType(
     invoices: [],
   };
 
-  const dispatchMap: Record<string, () => Promise<SearchItem[]>> = {
-    bid: () => searchBids(term, ctx),
-    job: () => searchJobs(term, ctx),
-    client: () => searchClients(term, ctx),
-    property: () => searchProperties(term, ctx),
-    employee: () => searchEmployees(term, ctx),
-    vehicle: () => searchVehicles(term, ctx),
-    inventory: () => searchInventory(term, ctx),
-    dispatch: () => searchDispatch(term, ctx),
-    timesheet: () => searchTimesheets(term, ctx),
-    expense: () => searchExpenses(term, ctx),
-    invoice: () => searchInvoices(term, ctx),
+  const fnMap: Record<string, () => Promise<SearchItem[]>> = {
+    bid: () => searchBids(term, ctx, fetchLimit, offset),
+    job: () => searchJobs(term, ctx, fetchLimit, offset),
+    client: () => searchClients(term, ctx, fetchLimit, offset),
+    property: () => searchProperties(term, ctx, fetchLimit, offset),
+    employee: () => searchEmployees(term, ctx, fetchLimit, offset),
+    vehicle: () => searchVehicles(term, ctx, fetchLimit, offset),
+    inventory: () => searchInventory(term, ctx, fetchLimit, offset),
+    dispatch: () => searchDispatch(term, ctx, fetchLimit, offset),
+    timesheet: () => searchTimesheets(term, ctx, fetchLimit, offset),
+    expense: () => searchExpenses(term, ctx, fetchLimit, offset),
+    invoice: () => searchInvoices(term, ctx, fetchLimit, offset),
   };
 
-  const fn = dispatchMap[type];
-  if (!fn) return empty;
+  const fn = fnMap[type];
+  if (!fn) return { result: empty, hasMore: false };
 
-  const items = await fn();
+  const raw = await fn();
+  const hasMore = raw.length > limit;
+  const items = hasMore ? raw.slice(0, limit) : raw;
 
   const keyMap: Record<string, keyof GlobalSearchResult> = {
     bid: "bids",
@@ -708,18 +719,15 @@ export async function searchByType(
     invoice: "invoices",
   };
 
-  const key = keyMap[type] as string;
-  return { ...empty, [key]: items };
+  return { result: { ...empty, [keyMap[type] as string]: items }, hasMore };
 }
 
-// ─── Main search ─────────────────────────────────────────────────────────────
+// ─── Main global search (preview — no pagination) ─────────────────────────────
+// Returns up to RESULTS_PER_TYPE items per entity. Used when no category is
+// selected. Results are cached per user in Redis.
 
-export async function globalSearch(
-  query: string,
-  ctx: SearchContext,
-): Promise<GlobalSearchResult> {
+export async function globalSearch(query: string, ctx: SearchContext): Promise<GlobalSearchResult> {
   const normalized = query.trim().toLowerCase();
-  // Cache key is scoped per user so role/employee filtering is respected
   const cacheKey = `search:global:${ctx.userId}:${normalized}`;
 
   try {
