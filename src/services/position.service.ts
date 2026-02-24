@@ -145,12 +145,15 @@ export const deletePosition = async (id: number) => {
 };
 
 export const getPositionsByDepartment = async (departmentId: number) => {
-  // Get positions list filtered by department ID, returning only id and name
+  // Get positions list filtered by department ID, returning id, name, and pay info
   try {
     const result = await db
       .select({
         id: positions.id,
         name: positions.name,
+        payRate: positions.payRate,
+        payType: positions.payType,
+        currency: positions.currency,
       })
       .from(positions)
       .where(
