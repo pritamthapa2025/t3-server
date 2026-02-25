@@ -701,6 +701,13 @@
       "when": 1771994394541,
       "tag": "0099_flowery_electro",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1772001132127,
+      "tag": "0100_parched_speed_demon",
+      "breakpoints": true
     }
   ]
 }

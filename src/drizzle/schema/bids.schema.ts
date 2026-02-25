@@ -263,6 +263,7 @@ export const bidLabor = org.table(
     positionId: integer("position_id")
       .notNull()
       .references(() => positions.id),
+    quantity: integer("quantity").notNull().default(1), // Number of workers for this position
     days: integer("days").notNull(),
     hoursPerDay: numeric("hours_per_day", { precision: 5, scale: 2 }).notNull(),
     totalHours: numeric("total_hours", { precision: 8, scale: 2 }).notNull(),
