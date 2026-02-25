@@ -489,8 +489,7 @@ export const getTodaysDispatch = async (
       name: users.fullName,
       avatar: users.profilePicture,
       location: bidsTable.siteAddress,
-      status: sql<string>`CASE WHEN ${employees.isOnline} = true THEN 'active' ELSE 'inactive' END`,
-      isOnline: employees.isOnline,
+      status: sql<string>`CASE WHEN ${employees.status} = 'available' THEN 'active' ELSE 'inactive' END`,
       jobId: jobs.id,
       jobNumber: jobs.jobNumber,
       dispatchDate: sql<string>`(${dispatchTasks.startTime})::date`,
@@ -517,7 +516,7 @@ export const getTodaysDispatch = async (
       ),
     )
     .limit(20)
-    .orderBy(sql`CASE WHEN ${employees.isOnline} = true THEN 0 ELSE 1 END`);
+    .orderBy(sql`CASE WHEN ${employees.status} = 'available' THEN 0 ELSE 1 END`);
 
   const activeCount = dispatch.filter((d) => d.status === "active").length;
   const inactiveCount = dispatch.filter((d) => d.status === "inactive").length;
@@ -807,6 +806,16 @@ export const getPriorityJobs = async (
     sql`${jobs.status} IN ('planned', 'scheduled', 'in_progress', 'on_hold')`,
   );
 
+  const searchWhere = search
+    ? sql`(
+        ${bidsTable.projectName} ILIKE ${"%" + search + "%"} OR
+        ${jobs.jobNumber} ILIKE ${"%" + search + "%"} OR
+        ${bidsTable.siteAddress} ILIKE ${"%" + search + "%"}
+      )`
+    : undefined;
+
+  const fullWhere = searchWhere ? and(baseWhere, searchWhere) : baseWhere;
+
   let query = db
     .select({
       id: jobs.id,
@@ -826,7 +835,7 @@ export const getPriorityJobs = async (
         eq(bidFinancialBreakdown.isDeleted, false),
       ),
     )
-    .where(baseWhere)
+    .where(fullWhere)
     .$dynamic();
 
   if (assignedToEmployeeId != null) {
@@ -838,16 +847,6 @@ export const getPriorityJobs = async (
         eq(jobTeamMembers.isActive, true),
       ),
     ) as typeof query;
-  }
-
-  if (search) {
-    query = query.where(
-      sql`(
-        ${bidsTable.projectName} ILIKE ${"%" + search + "%"} OR
-        ${jobs.jobNumber} ILIKE ${"%" + search + "%"} OR
-        ${bidsTable.siteAddress} ILIKE ${"%" + search + "%"}
-      )`,
-    );
   }
 
   const priorityJobs = await query.orderBy(jobs.scheduledEndDate).limit(limit);

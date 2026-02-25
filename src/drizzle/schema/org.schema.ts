@@ -134,8 +134,6 @@ export const employees = org.table(
     violations: integer("violations").default(0), // number of violations
     note: jsonb("note"),
     status: employeeStatusEnum("status").notNull().default("available"),
-    isOnline: boolean("is_online").default(false),
-    lastSeen: timestamp("last_seen"),
     isDeleted: boolean("is_deleted").default(false),
     deletedAt: timestamp("deleted_at"),
     deletedBy: uuid("deleted_by").references(() => users.id, {}),
