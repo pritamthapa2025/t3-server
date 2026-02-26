@@ -118,7 +118,7 @@ const uploadVehicle = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for vehicle image"));
@@ -134,7 +134,7 @@ const uploadInspectionImages = multer({
     files: 20, // Maximum 20 files total
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for inspection photos"));
@@ -199,7 +199,7 @@ const uploadVehicleMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for vehicle media"));
@@ -213,7 +213,7 @@ const uploadVehicleDocument = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
   fileFilter: (req, file, cb) => {
     const allowed =
-      file.mimetype.startsWith("image/") || file.mimetype === "application/pdf";
+      (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") || file.mimetype === "application/pdf";
     if (allowed) cb(null, true);
     else
       cb(

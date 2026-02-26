@@ -16,10 +16,17 @@ import {
   revokeTrustedDeviceHandler,
   revokeAllTrustedDevicesHandler,
   logoutHandler,
-  debugCookiesHandler,
 } from "../../controllers/AuthController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
+import {
+  loginLimiter,
+  verify2FALimiter,
+  resend2FALimiter,
+  passwordResetLimiter,
+  resendOTPLimiter,
+  confirmResetLimiter,
+} from "../../middleware/rateLimiter.js";
 import {
   loginSchema,
   verify2FASchema,
@@ -37,13 +44,13 @@ import {
 const router: IRouter = Router();
 
 // Public routes (no authentication required)
-router.route("/login").post(validate(loginSchema), loginUserHandler);
-router.route("/verify-2fa").post(validate(verify2FASchema), verify2FAHandler);
-router.route("/resend-2fa").post(validate(resend2FASchema), resend2FAHandler);
+router.route("/login").post(loginLimiter, validate(loginSchema), loginUserHandler);
+router.route("/verify-2fa").post(verify2FALimiter, validate(verify2FASchema), verify2FAHandler);
+router.route("/resend-2fa").post(resend2FALimiter, validate(resend2FASchema), resend2FAHandler);
 
 router
   .route("/request-password-reset")
-  .post(validate(requestPasswordResetSchema), requestPasswordResetHandler);
+  .post(passwordResetLimiter, validate(requestPasswordResetSchema), requestPasswordResetHandler);
 
 router
   .route("/verify-reset-token")
@@ -51,7 +58,7 @@ router
 
 router
   .route("/confirm-password-reset")
-  .post(validate(confirmPasswordResetSchema), confirmPasswordResetHandler);
+  .post(confirmResetLimiter, validate(confirmPasswordResetSchema), confirmPasswordResetHandler);
 
 // Keep original endpoint for backward compatibility
 // router
@@ -60,7 +67,7 @@ router
 
 router
   .route("/resend-password-reset-otp")
-  .post(validate(resendPasswordResetOTPSchema), resendPasswordResetOTPHandler);
+  .post(resendOTPLimiter, validate(resendPasswordResetOTPSchema), resendPasswordResetOTPHandler);
 
 router
   .route("/setup-new-password")
@@ -83,6 +90,7 @@ router
   .route("/resend-change-password-otp")
   .post(
     authenticate,
+    resendOTPLimiter,
     validate(resendChangePasswordOTPSchema),
     resendChangePasswordOTPHandler
   );
@@ -100,8 +108,5 @@ router
 
 // Logout route
 router.route("/logout").post(logoutHandler);
-
-// Debug route for cookies (development only)
-router.route("/debug-cookies").get(debugCookiesHandler);
 
 export default router;

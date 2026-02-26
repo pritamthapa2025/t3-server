@@ -22,8 +22,6 @@ router.get("/client", (req: Request, res: Response) => {
     success: true,
     config: {
       socketUrl: configuredSocketUrl,
-      nodeEnv: process.env.NODE_ENV || "development",
-      // Add other client-side config here if needed
     },
   });
 });

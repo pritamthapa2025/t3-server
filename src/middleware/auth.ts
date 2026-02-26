@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../utils/jwt.js";
+import { isTokenBlacklisted } from "../utils/tokenBlacklist.js";
 import { getUserByIdForAuth } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -299,7 +300,7 @@ export const authenticate = async (
 
     // Verify the token
     const decoded = verifyToken(token);
-    if (!decoded || typeof decoded === "string") {
+    if (!decoded) {
       return res.status(401).json({
         success: false,
         message: "Authorization denied. Invalid or expired token.",
@@ -313,6 +314,20 @@ export const authenticate = async (
         success: false,
         message: "Authorization denied. Invalid token.",
       });
+    }
+
+    // Check token blacklist (revoked on logout).
+    // Only tokens that carry a jti are checked; old tokens without jti are
+    // allowed through for a graceful rollover period.
+    const jti = decoded.jti;
+    if (jti) {
+      const revoked = await isTokenBlacklisted(jti);
+      if (revoked) {
+        return res.status(401).json({
+          success: false,
+          message: "Authorization denied. Token has been revoked.",
+        });
+      }
     }
 
     // Basic UUID format validation to prevent unnecessary database queries
@@ -341,11 +356,13 @@ export const authenticate = async (
       if (cached) {
         // Use cached user (already validated for expiration in get())
         user = cached.user;
-        console.log(
-          `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
-            req.originalUrl || req.url
-          }]`,
-        );
+        if (process.env.NODE_ENV === "development") {
+          console.log(
+            `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
+              req.originalUrl || req.url
+            }]`,
+          );
+        }
       } else {
         // Fetch user from database with timeout
         const dbStart = Date.now();
@@ -365,11 +382,13 @@ export const authenticate = async (
               lastAccessed: Date.now(),
             });
           }
-          console.log(
-            `✅ Auth: from db (${dbTime}ms) [${req.method} ${
-              req.originalUrl || req.url
-            }]`,
-          );
+          if (process.env.NODE_ENV === "development") {
+            console.log(
+              `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+                req.originalUrl || req.url
+              }]`,
+            );
+          }
         } catch (dbError: any) {
           dbTime = Date.now() - dbStart;
           logger.error(
@@ -407,11 +426,13 @@ export const authenticate = async (
           `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`,
         );
         dbTime = Date.now() - dbStart;
-        console.log(
-          `✅ Auth: from db (${dbTime}ms) [${req.method} ${
-            req.originalUrl || req.url
-          }]`,
-        );
+        if (process.env.NODE_ENV === "development") {
+          console.log(
+            `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+              req.originalUrl || req.url
+            }]`,
+          );
+        }
       } catch (dbError: any) {
         dbTime = Date.now() - dbStart;
         logger.error(`Database query failed or timed out after ${dbTime}ms:`, {

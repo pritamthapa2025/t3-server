@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   unique,
+  integer,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth.schema.js";
 
@@ -193,6 +194,40 @@ export const notificationDeliveryLog = notificationSchema.table(
   })
 );
 
+// Notification Cooldowns Table
+// Tracks the last time a cron notification was sent per (eventType, entityType, entityId).
+// Prevents spamming the same recipients daily for records that stay in an overdue/expired state.
+export const notificationCooldowns = notificationSchema.table(
+  "notification_cooldowns",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    // What event and which entity
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    entityType: varchar("entity_type", { length: 50 }).notNull(),
+    entityId: varchar("entity_id", { length: 100 }).notNull(),
+
+    // Cooldown window
+    lastSentAt: timestamp("last_sent_at").notNull(),
+    nextAllowedAt: timestamp("next_allowed_at").notNull(),
+    cooldownDays: integer("cooldown_days").notNull(),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueEntity: unique("notif_cooldowns_unique").on(
+      table.eventType,
+      table.entityType,
+      table.entityId,
+    ),
+    nextAllowedIdx: index("notif_cooldowns_next_allowed_idx").on(
+      table.nextAllowedAt,
+    ),
+    eventTypeIdx: index("notif_cooldowns_event_type_idx").on(table.eventType),
+  }),
+);
+
 // Type Exports for TypeScript
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
@@ -205,3 +240,6 @@ export type NewNotificationRule = typeof notificationRules.$inferInsert;
 
 export type NotificationDelivery = typeof notificationDeliveryLog.$inferSelect;
 export type NewNotificationDelivery = typeof notificationDeliveryLog.$inferInsert;
+
+export type NotificationCooldown = typeof notificationCooldowns.$inferSelect;
+export type NewNotificationCooldown = typeof notificationCooldowns.$inferInsert;

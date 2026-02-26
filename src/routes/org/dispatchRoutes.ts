@@ -49,6 +49,7 @@ const uploadDispatchAttachments = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
+    files: 10,
   },
   fileFilter: (_req, _file, cb) => cb(null, true),
 }).any();

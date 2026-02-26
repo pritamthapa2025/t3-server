@@ -92,11 +92,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
+    files: 20,
   },
   fileFilter: (req, file, cb) => {
     // Accept image files and common document types
     if (
-      file.mimetype.startsWith("image/") ||
+      (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") ||
       file.mimetype === "application/pdf" ||
       file.mimetype === "application/msword" ||
       file.mimetype ===
@@ -126,7 +127,7 @@ const uploadContactPicture = multer({
   },
   fileFilter: (req, file, cb) => {
     // Accept only image files
-    if (file.mimetype.startsWith("image/")) {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed (PNG, JPG, SVG)"));

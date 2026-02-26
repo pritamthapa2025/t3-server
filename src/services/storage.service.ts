@@ -132,7 +132,7 @@ const getContentType = (extension: string): string => {
     ".png": "image/png",
     ".gif": "image/gif",
     ".webp": "image/webp",
-    ".svg": "image/svg+xml",
+    // SVG intentionally excluded — SVG files can contain embedded scripts (stored XSS)
     ".pdf": "application/pdf",
     ".doc": "application/msword",
     ".docx":

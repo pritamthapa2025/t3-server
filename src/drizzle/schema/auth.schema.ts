@@ -54,6 +54,10 @@ export const users = auth.table(
     // Password change tracking
     passwordChangedAt: timestamp("password_changed_at"),
 
+    // Tracks when a new-user setup token was consumed.
+    // If set, the one-time setup link has already been used and must be rejected.
+    setupTokenUsedAt: timestamp("setup_token_used_at"),
+
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

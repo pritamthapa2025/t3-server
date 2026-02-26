@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto, { timingSafeEqual } from "crypto";
 import redisClient from "../config/redis.js";
 import dotenv from "dotenv";
 
@@ -77,48 +77,83 @@ export const generate2FACode = (): string => {
   return ((code % range) + min).toString();
 };
 
-// Store the generated 2FA code in Redis with encryption and 5-minute expiry
-export const store2FACode = async (email: string, code: string) => {
-  // Encrypt the code before storing
+const OTP_TTL = 300; // 5 minutes in seconds
+const MAX_OTP_ATTEMPTS = 5;
+
+const attemptsKey = (key: string) => `otp_attempts:${key}`;
+
+// Store the generated 2FA code in Redis with encryption and 5-minute expiry.
+// Clears any existing attempt counter so the user gets a fresh start.
+export const store2FACode = async (key: string, code: string) => {
   const encryptedCode = encryptCode(code);
-  await redisClient.setex(email, 300, encryptedCode); // Expiry in 5 minutes (300 seconds)
+  await Promise.all([
+    redisClient.setex(key, OTP_TTL, encryptedCode),
+    redisClient.del(attemptsKey(key)),
+  ]);
 };
 
-// Delete the 2FA code from Redis (used when resending)
-export const delete2FACode = async (email: string): Promise<void> => {
-  await redisClient.del(email);
+// Delete the 2FA code and its attempt counter from Redis (used when resending).
+export const delete2FACode = async (key: string): Promise<void> => {
+  await Promise.all([
+    redisClient.del(key),
+    redisClient.del(attemptsKey(key)),
+  ]);
 };
 
-// Verify the provided 2FA code against the encrypted one stored in Redis
+export type OTPVerifyResult = "valid" | "invalid" | "locked";
+
+/**
+ * Verify the provided OTP against the encrypted value stored in Redis.
+ *
+ * Returns:
+ *   "valid"   — code matched; OTP and attempt counter deleted (one-time use).
+ *   "invalid" — code did not match; attempt counter incremented.
+ *   "locked"  — MAX_OTP_ATTEMPTS exceeded; OTP deleted, user must request a new one.
+ */
 export const verify2FACode = async (
-  email: string,
+  key: string,
   code: string
-): Promise<boolean> => {
-  // Normalize the input code (trim whitespace and ensure it's a string)
+): Promise<OTPVerifyResult> => {
   const normalizedCode = String(code).trim();
 
-  // Retrieve the encrypted code from Redis
-  const encryptedCode = await redisClient.get(email);
-
+  const encryptedCode = await redisClient.get(key);
   if (!encryptedCode) {
-    // Code not found (expired or invalid email)
-    return false;
+    return "invalid"; // expired or never existed
   }
 
-  // Decrypt the stored code
   const storedCode = decryptCode(encryptedCode);
-
   if (!storedCode) {
-    // Decryption failed (corrupted data)
-    return false;
+    return "invalid"; // corrupted data
   }
 
-  // Compare codes (both should be strings at this point)
-  if (storedCode === normalizedCode) {
-    // Remove the code from Redis once it's verified (one-time use)
-    await redisClient.del(email);
-    return true;
+  const storedBuf = Buffer.from(storedCode);
+  const inputBuf = Buffer.from(normalizedCode);
+  const match =
+    storedBuf.length === inputBuf.length &&
+    timingSafeEqual(storedBuf, inputBuf);
+
+  if (match) {
+    // Correct — delete OTP and attempt counter
+    await Promise.all([
+      redisClient.del(key),
+      redisClient.del(attemptsKey(key)),
+    ]);
+    return "valid";
   }
 
-  return false;
+  // Wrong code — increment attempt counter
+  const attempts = await redisClient.incr(attemptsKey(key));
+  // Keep the counter alive for the same window as the OTP
+  await redisClient.expire(attemptsKey(key), OTP_TTL);
+
+  if (attempts >= MAX_OTP_ATTEMPTS) {
+    // Burn the OTP so the attacker can't keep trying with a fresh counter
+    await Promise.all([
+      redisClient.del(key),
+      redisClient.del(attemptsKey(key)),
+    ]);
+    return "locked";
+  }
+
+  return "invalid";
 };

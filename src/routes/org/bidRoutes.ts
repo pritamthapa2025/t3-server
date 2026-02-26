@@ -161,6 +161,7 @@ const uploadBidDocuments = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
+    files: 20,
   },
   fileFilter: (req, file, cb) => {
     // Accept all file types for documents
@@ -173,6 +174,7 @@ const uploadBidMedia = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit per file for media
+    files: 10,
   },
   fileFilter: (req, file, cb) => {
     // Accept images, videos, and audio files
@@ -181,7 +183,7 @@ const uploadBidMedia = multer({
       "image/png",
       "image/gif",
       "image/webp",
-      "image/svg+xml",
+      // image/svg+xml intentionally excluded — SVG files can contain embedded scripts (stored XSS)
       "video/mp4",
       "video/webm",
       "video/quicktime",

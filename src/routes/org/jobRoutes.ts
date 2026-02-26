@@ -157,6 +157,7 @@ const uploadJobDocuments = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
+    files: 20,
   },
   fileFilter: (req, file, cb) => {
     // Accept all file types for documents
@@ -172,7 +173,7 @@ const uploadReceipt = multer({
   },
   fileFilter: (req, file, cb) => {
     if (
-      file.mimetype.startsWith("image/") ||
+      (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") ||
       file.mimetype === "application/pdf"
     ) {
       cb(null, true);

@@ -15,6 +15,7 @@ export const getUserByEmail = async (email: string) => {
       isActive: users.isActive,
       isVerified: users.isVerified,
       isDeleted: users.isDeleted,
+      setupTokenUsedAt: users.setupTokenUsedAt,
     })
     .from(users)
     .where(eq(users.email, email));
@@ -100,6 +101,15 @@ export const updatePassword = async (userId: string, passwordHash: string) => {
   await db
     .update(users)
     .set({ passwordHash, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+};
+
+// Mark the one-time new-user setup token as consumed.
+// Call this immediately after a successful password setup so the link cannot be reused.
+export const markSetupTokenUsed = async (userId: string) => {
+  await db
+    .update(users)
+    .set({ setupTokenUsedAt: new Date(), updatedAt: new Date() })
     .where(eq(users.id, userId));
 };
 

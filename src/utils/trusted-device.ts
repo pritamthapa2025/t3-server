@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'crypto';
 import { eq, and, gt, lt } from 'drizzle-orm';
 import { db } from '../config/db.js';
 import { trustedDevices } from '../drizzle/schema/auth.schema.js';
+import { logger } from '../utils/logger.js';
 import type { Request } from 'express';
 
 /**
@@ -24,10 +25,9 @@ export function hashDeviceToken(token: string): string {
  */
 export function getDeviceInfo(req: Request) {
   const userAgent = req.headers['user-agent'] || 'Unknown';
-  const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || 
-                   (req.headers['x-real-ip'] as string) || 
-                   req.socket.remoteAddress || 
-                   'Unknown';
+  // req.ip is set by Express using the X-Forwarded-For header only when
+  // trust proxy is configured in app.ts — prevents clients from spoofing their IP.
+  const ipAddress = req.ip ?? req.socket.remoteAddress ?? 'Unknown';
 
   // Extract browser name from user agent for friendly display
   let deviceName = 'Unknown Browser';
@@ -59,15 +59,6 @@ export async function storeTrustedDevice(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiryDays);
 
-  console.log('Storing trusted device:', {
-    userId,
-    originalTokenLength: deviceToken.length,
-    hashedTokenLength: hashedToken.length,
-    deviceInfo,
-    expiresAt: expiresAt.toISOString(),
-    expiryDays
-  });
-
   const [trustedDevice] = await db.insert(trustedDevices).values({
     userId,
     deviceToken: hashedToken,
@@ -78,13 +69,6 @@ export async function storeTrustedDevice(
     lastUsedAt: new Date(),
   }).returning();
 
-  console.log('Trusted device stored:', {
-    deviceId: trustedDevice?.id,
-    userId: trustedDevice?.userId,
-    deviceToken: trustedDevice?.deviceToken,
-    expiresAt: trustedDevice?.expiresAt?.toISOString()
-  });
-
   return trustedDevice;
 }
 
@@ -92,30 +76,18 @@ export async function storeTrustedDevice(
  * Validate a device token and return user ID if valid
  */
 export async function validateDeviceToken(deviceToken: string): Promise<string | null> {
-  if (!deviceToken) {
-    console.log('Device token validation: No token provided');
-    return null;
-  }
+  if (!deviceToken) return null;
 
   try {
     const hashedToken = hashDeviceToken(deviceToken);
     const now = new Date();
-    
-    console.log('Device token validation:', {
-      originalTokenLength: deviceToken.length,
-      hashedTokenLength: hashedToken.length,
-      currentTime: now.toISOString()
-    });
 
-    // Find active, non-expired device
     const [device] = await db
       .select({
         userId: trustedDevices.userId,
         id: trustedDevices.id,
-        deviceToken: trustedDevices.deviceToken,
         isActive: trustedDevices.isActive,
         expiresAt: trustedDevices.expiresAt,
-        lastUsedAt: trustedDevices.lastUsedAt,
       })
       .from(trustedDevices)
       .where(
@@ -127,44 +99,17 @@ export async function validateDeviceToken(deviceToken: string): Promise<string |
       )
       .limit(1);
 
-    console.log('Device token query result:', {
-      deviceFound: !!device,
-      deviceId: device?.id,
-      userId: device?.userId,
-      isActive: device?.isActive,
-      expiresAt: device?.expiresAt?.toISOString(),
-      lastUsedAt: device?.lastUsedAt?.toISOString()
-    });
-
-    if (!device) {
-      // Let's also check if there are any devices for this token (ignoring active/expiry status)
-      const allDevicesWithToken = await db
-        .select({
-          userId: trustedDevices.userId,
-          id: trustedDevices.id,
-          isActive: trustedDevices.isActive,
-          expiresAt: trustedDevices.expiresAt,
-        })
-        .from(trustedDevices)
-        .where(eq(trustedDevices.deviceToken, hashedToken))
-        .limit(5);
-        
-      console.log('All devices with this token (ignoring filters):', allDevicesWithToken);
-      return null;
-    }
+    if (!device) return null;
 
     // Update last used timestamp
     await db
       .update(trustedDevices)
-      .set({ 
-        lastUsedAt: now,
-        updatedAt: now 
-      })
+      .set({ lastUsedAt: now, updatedAt: now })
       .where(eq(trustedDevices.id, device.id));
 
     return device.userId;
   } catch (error) {
-    console.error('Error validating device token:', error);
+    logger.error('Error validating device token', { error });
     return null;
   }
 }
@@ -189,7 +134,7 @@ export async function revokeTrustedDevice(userId: string, deviceId: string): Pro
 
     return (result.rowCount ?? 0) > 0;
   } catch (error) {
-    console.error('Error revoking trusted device:', error);
+    logger.error('Error revoking trusted device', { error });
     return false;
   }
 }
@@ -220,7 +165,7 @@ export async function getUserTrustedDevices(userId: string) {
 
     return devices;
   } catch (error) {
-    console.error('Error getting user trusted devices:', error);
+    logger.error('Error getting user trusted devices', { error });
     return [];
   }
 }
@@ -240,7 +185,7 @@ export async function revokeAllUserDevices(userId: string): Promise<number> {
 
     return result.rowCount ?? 0;
   } catch (error) {
-    console.error('Error revoking all user devices:', error);
+    logger.error('Error revoking all user devices', { error });
     return 0;
   }
 }
@@ -266,7 +211,7 @@ export async function cleanupExpiredTokens(): Promise<number> {
 
     return result.rowCount ?? 0;
   } catch (error) {
-    console.error('Error cleaning up expired tokens:', error);
+    logger.error('Error cleaning up expired tokens', { error });
     return 0;
   }
 }

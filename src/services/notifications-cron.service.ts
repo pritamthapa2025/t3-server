@@ -32,6 +32,7 @@ import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
 import { inventoryPurchaseOrders } from "../drizzle/schema/inventory.schema.js";
+import { notificationCooldowns } from "../drizzle/schema/notifications.schema.js";
 import { NotificationService } from "./notification.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -60,6 +61,73 @@ function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().split("T")[0]!;
+}
+
+// ---------------------------------------------------------------------------
+// Cooldown helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if a notification for this (eventType, entityType, entityId)
+ * was already sent and the cooldown window has not expired yet.
+ */
+async function isCoolingDown(
+  eventType: string,
+  entityType: string,
+  entityId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ nextAllowedAt: notificationCooldowns.nextAllowedAt })
+    .from(notificationCooldowns)
+    .where(
+      and(
+        eq(notificationCooldowns.eventType, eventType),
+        eq(notificationCooldowns.entityType, entityType),
+        eq(notificationCooldowns.entityId, entityId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return false;
+  return row.nextAllowedAt > new Date();
+}
+
+/**
+ * Records that a notification was just sent and sets the next allowed time.
+ * Uses upsert so repeated calls simply extend the cooldown window.
+ */
+async function setCooldown(
+  eventType: string,
+  entityType: string,
+  entityId: string,
+  cooldownDays: number,
+): Promise<void> {
+  const now = new Date();
+  const nextAllowedAt = new Date(now.getTime() + cooldownDays * 86_400_000);
+
+  await db
+    .insert(notificationCooldowns)
+    .values({
+      eventType,
+      entityType,
+      entityId,
+      lastSentAt: now,
+      nextAllowedAt,
+      cooldownDays,
+    })
+    .onConflictDoUpdate({
+      target: [
+        notificationCooldowns.eventType,
+        notificationCooldowns.entityType,
+        notificationCooldowns.entityId,
+      ],
+      set: {
+        lastSentAt: now,
+        nextAllowedAt,
+        cooldownDays,
+        updatedAt: now,
+      },
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +169,7 @@ export async function notifyJobOverdue(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const job of overdueJobs) {
+      if (await isCoolingDown("job_overdue", "Job", job.id)) continue;
       try {
         const dueDate = job.scheduledEndDate ? new Date(job.scheduledEndDate) : null;
         const today2 = new Date();
@@ -121,6 +190,7 @@ export async function notifyJobOverdue(): Promise<CronResult> {
             ...(daysOverdue !== undefined ? { daysOverdue } : {}),
           },
         });
+        await setCooldown("job_overdue", "Job", job.id, 3);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] job_overdue failed for job ${job.id}:`, err);
@@ -492,6 +562,7 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const v of overdueVehicles) {
+      if (await isCoolingDown("maintenance_overdue", "Vehicle", v.id)) continue;
       try {
         await svc.triggerNotification({
           type: "maintenance_overdue",
@@ -506,6 +577,7 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
             ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
           },
         });
+        await setCooldown("maintenance_overdue", "Vehicle", v.id, 3);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] maintenance_overdue failed for vehicle ${v.id}:`, err);
@@ -557,6 +629,7 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const v of expiredVehicles) {
+      if (await isCoolingDown("safety_inspection_expired", "Vehicle", v.id)) continue;
       try {
         await svc.triggerNotification({
           type: "safety_inspection_expired",
@@ -571,6 +644,7 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
             ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
           },
         });
+        await setCooldown("safety_inspection_expired", "Vehicle", v.id, 3);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] safety_inspection_expired failed for vehicle ${v.id}:`, err);
@@ -624,6 +698,7 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const v of expiringVehicles) {
+      if (await isCoolingDown("vehicle_registration_expiring", "Vehicle", v.id)) continue;
       try {
         await svc.triggerNotification({
           type: "vehicle_registration_expiring",
@@ -638,6 +713,7 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
             ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
           },
         });
+        await setCooldown("vehicle_registration_expiring", "Vehicle", v.id, 7);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] vehicle_registration_expiring failed for vehicle ${v.id}:`, err);
@@ -691,6 +767,7 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const v of expiringVehicles) {
+      if (await isCoolingDown("vehicle_insurance_expiring", "Vehicle", v.id)) continue;
       try {
         await svc.triggerNotification({
           type: "vehicle_insurance_expiring",
@@ -705,6 +782,7 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
             ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
           },
         });
+        await setCooldown("vehicle_insurance_expiring", "Vehicle", v.id, 7);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] vehicle_insurance_expiring failed for vehicle ${v.id}:`, err);
@@ -753,6 +831,7 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const emp of dueEmployees) {
+      if (await isCoolingDown("performance_review_due", "Employee", String(emp.id))) continue;
       try {
         await svc.triggerNotification({
           type: "performance_review_due",
@@ -765,6 +844,7 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
             entityName: emp.employeeId || String(emp.id),
           },
         });
+        await setCooldown("performance_review_due", "Employee", String(emp.id), 3);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] performance_review_due failed for employee ${emp.id}:`, err);
@@ -819,6 +899,7 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const v of upcomingVehicles) {
+      if (await isCoolingDown("safety_inspection_required", "Vehicle", v.id)) continue;
       try {
         await svc.triggerNotification({
           type: "safety_inspection_required",
@@ -833,6 +914,7 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
             ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
           },
         });
+        await setCooldown("safety_inspection_required", "Vehicle", v.id, 7);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] safety_inspection_required failed for vehicle ${v.id}:`, err);
@@ -886,6 +968,7 @@ export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
       .limit(BATCH_SIZE);
 
     for (const po of delayedOrders) {
+      if (await isCoolingDown("purchase_order_delayed", "PurchaseOrder", po.id)) continue;
       try {
         const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : null;
         const now = new Date();
@@ -906,6 +989,7 @@ export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
             ...(po.totalAmount ? { amount: Number(po.totalAmount) } : {}),
           },
         });
+        await setCooldown("purchase_order_delayed", "PurchaseOrder", po.id, 3);
         processed++;
       } catch (err) {
         logger.error(`[CronNotif] purchase_order_delayed failed for PO ${po.id}:`, err);

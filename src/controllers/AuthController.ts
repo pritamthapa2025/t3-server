@@ -3,7 +3,7 @@ import { asSingleString } from "../utils/request-helpers.js";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
-import { generateToken } from "../utils/jwt.js";
+import { generateToken, verifyToken } from "../utils/jwt.js";
 import { db } from "../config/db.js";
 import { userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
@@ -13,6 +13,7 @@ import {
   store2FACode,
   verify2FACode,
   delete2FACode,
+  type OTPVerifyResult,
 } from "../utils/twoFactor.js";
 import {
   generateDeviceToken,
@@ -32,7 +33,9 @@ import {
   getUserById,
   getUserByIdForProfile,
   updatePassword,
+  markSetupTokenUsed,
 } from "../services/auth.service.js";
+import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { logger } from "../utils/logger.js";
 import { ErrorMessages } from "../utils/error-messages.js";
 
@@ -58,24 +61,9 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
     // Check for trusted device token
     const deviceToken = req.cookies?.device_token;
-    logger.info("Device token check", { 
-      hasDeviceToken: !!deviceToken, 
-      userId: user.id,
-      cookieKeys: Object.keys(req.cookies || {}),
-      deviceTokenLength: deviceToken?.length,
-      requestOrigin: req.headers.origin,
-      requestHost: req.headers.host,
-      cookieHeader: req.headers.cookie,
-      userAgent: req.headers['user-agent']
-    });
-    
+
     if (deviceToken) {
       const trustedUserId = await validateDeviceToken(deviceToken);
-      logger.info("Device token validation result", { 
-        trustedUserId, 
-        userIdMatch: trustedUserId === user.id,
-        expectedUserId: user.id 
-      });
       
       if (trustedUserId === user.id) {
         // Device is trusted, skip 2FA and login directly
@@ -170,20 +158,25 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const valid = await verify2FACode(email, codeString);
-    if (!valid) {
+    const result: OTPVerifyResult = await verify2FACode(email, codeString);
+    if (result === "locked") {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid or expired 2FA code. Please request a new code if needed.",
+        message: "Too many failed attempts. Please request a new 2FA code.",
+      });
+    }
+    if (result === "invalid") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired 2FA code. Please request a new code if needed.",
       });
     }
 
     const user = await getUserByEmail(email);
     if (!user) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        message: ErrorMessages.notFound("User"),
+        message: "Invalid or expired 2FA code. Please request a new code if needed.",
       });
     }
 
@@ -225,9 +218,9 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
         const cookieOptions = {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: "lax" as const, // Recommended for same-site applications
+          sameSite: "strict" as const,
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
-          path: "/", // Explicitly set path to root
+          path: "/",
         };
         
         res.cookie("device_token", deviceToken, cookieOptions);
@@ -236,11 +229,6 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
         logger.info("Device token set for user", {
           userId: user.id,
           deviceId: trustedDevice?.id,
-          deviceTokenLength: deviceToken.length,
-          cookieOptions,
-          nodeEnv: process.env.NODE_ENV,
-          requestOrigin: req.headers.origin,
-          requestHost: req.headers.host
         });
       } catch (deviceError) {
         logger.logApiError("Failed to set device token", deviceError, req);
@@ -279,12 +267,14 @@ export const resend2FAHandler = async (req: Request, res: Response) => {
   const { email } = req.body;
 
   try {
-    // Check if the user exists
+    // Check if the user exists — return the same 200 response regardless
+    // to prevent email enumeration
     const user = await getUserByEmail(email);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(200).json({
+        success: true,
+        message: "If this email is registered, a new 2FA code has been sent.",
+      });
     }
 
     // Delete the old 2FA code to invalidate it
@@ -300,9 +290,10 @@ export const resend2FAHandler = async (req: Request, res: Response) => {
     });
 
     logger.info("2FA code resent to email");
-    return res
-      .status(200)
-      .json({ success: true, message: "2FA code resent to email" });
+    return res.status(200).json({
+      success: true,
+      message: "If this email is registered, a new 2FA code has been sent.",
+    });
   } catch (err) {
     logger.logApiError("Resend 2FA error", err, req);
     return res
@@ -387,12 +378,14 @@ export const requestPasswordResetHandler = async (
   const { email } = req.body;
 
   try {
-    // Check if the user exists
+    // Check if the user exists — return the same 200 response regardless
+    // to prevent email enumeration
     const user = await getUserByEmail(email);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(200).json({
+        success: true,
+        message: "If this email is registered, a password reset OTP has been sent.",
+      });
     }
 
     // Generate a password reset OTP
@@ -424,7 +417,7 @@ export const requestPasswordResetHandler = async (
     logger.info("Password reset OTP sent to email");
     return res.status(200).json({
       success: true,
-      message: "Password reset OTP sent to your email",
+      message: "If this email is registered, a password reset OTP has been sent.",
     });
   } catch (err) {
     logger.logApiError("Request password reset error", err, req);
@@ -450,19 +443,23 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the reset OTP using the same key format as request
-    const isValidOTP = await verify2FACode(`reset_${email}`, otpString);
-    if (!isValidOTP) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired OTP" });
+    const otpResult: OTPVerifyResult = await verify2FACode(`reset_${email}`, otpString);
+    if (otpResult === "locked") {
+      return res.status(400).json({
+        success: false,
+        message: "Too many failed attempts. Please request a new password reset OTP.",
+      });
+    }
+    if (otpResult === "invalid") {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Find user by email
     const user = await getUserByEmail(email);
     if (!user) {
       return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Generate a short-lived verification token (10 minutes)
@@ -605,19 +602,23 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the reset OTP using the same key format as request
-    const isValidOTP = await verify2FACode(`reset_${email}`, otpString);
-    if (!isValidOTP) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired OTP" });
+    const otpResult: OTPVerifyResult = await verify2FACode(`reset_${email}`, otpString);
+    if (otpResult === "locked") {
+      return res.status(400).json({
+        success: false,
+        message: "Too many failed attempts. Please request a new password reset OTP.",
+      });
+    }
+    if (otpResult === "invalid") {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Find user by email
     const user = await getUserByEmail(email);
     if (!user) {
       return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Hash the new password
@@ -645,12 +646,14 @@ export const resendPasswordResetOTPHandler = async (
   const { email } = req.body;
 
   try {
-    // Check if the user exists
+    // Check if the user exists — return the same 200 response regardless
+    // to prevent email enumeration
     const user = await getUserByEmail(email);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(200).json({
+        success: true,
+        message: "If this email is registered, a new password reset OTP has been sent.",
+      });
     }
 
     // Delete the old password reset OTP to invalidate it
@@ -670,7 +673,7 @@ export const resendPasswordResetOTPHandler = async (
     logger.info("New password reset OTP sent to email");
     return res.status(200).json({
       success: true,
-      message: "New password reset OTP sent to your email",
+      message: "If this email is registered, a new password reset OTP has been sent.",
     });
   } catch (err) {
     logger.logApiError("Resend password reset OTP error", err, req);
@@ -751,11 +754,15 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the change password OTP
-    const isValidOTP = await verify2FACode(`change_${user.email}`, otpString);
-    if (!isValidOTP) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired OTP" });
+    const otpResult: OTPVerifyResult = await verify2FACode(`change_${user.email}`, otpString);
+    if (otpResult === "locked") {
+      return res.status(400).json({
+        success: false,
+        message: "Too many failed attempts. Please request a new OTP.",
+      });
+    }
+    if (otpResult === "invalid") {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Hash the new password
@@ -875,10 +882,22 @@ export const setupNewPasswordHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // Enforce single-use: reject if this setup link has already been consumed
+    if (user.setupTokenUsedAt) {
+      return res.status(410).json({
+        success: false,
+        message:
+          "This setup link has already been used. If you need access, please contact your administrator.",
+      });
+    }
+
     // Hash the new password
     const hashedPassword = await hashPassword(newPassword);
 
-    // Update the password in the database
+    // Update the password and mark the setup token as consumed in one logical step.
+    // markSetupTokenUsed is called first so that even if updatePassword somehow fails,
+    // the token cannot be reused for a second attempt.
+    await markSetupTokenUsed(user.id);
     await updatePassword(user.id, hashedPassword);
 
     logger.info("Password set up successfully");
@@ -1022,7 +1041,19 @@ export const revokeAllTrustedDevicesHandler = async (
 
 export const logoutHandler = async (req: Request, res: Response) => {
   try {
-    // Clear the device token cookie on logout
+    // Blacklist the JWT so it cannot be reused even within its 7-day window.
+    // The logout route has no authenticate middleware, so we extract the token manually.
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      const decoded = verifyToken(token);
+      if (decoded?.jti && decoded.exp) {
+        await blacklistToken(decoded.jti, decoded.exp).catch((err) => {
+          logger.warn("Failed to blacklist token on logout: " + (err?.message ?? String(err)));
+        });
+      }
+    }
+
     res.clearCookie("device_token");
 
     logger.info("User logged out successfully");
@@ -1039,34 +1070,3 @@ export const logoutHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Debug endpoint to check cookies
-export const debugCookiesHandler = async (req: Request, res: Response) => {
-  try {
-    logger.info("Debug cookies endpoint called", {
-      cookieKeys: Object.keys(req.cookies || {}),
-      cookies: req.cookies,
-      cookieHeader: req.headers.cookie,
-      requestOrigin: req.headers.origin,
-      requestHost: req.headers.host,
-      userAgent: req.headers['user-agent']
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Cookie debug info",
-      data: {
-        cookieKeys: Object.keys(req.cookies || {}),
-        cookies: req.cookies || {},
-        cookieHeader: req.headers.cookie || null,
-        requestOrigin: req.headers.origin || null,
-        requestHost: req.headers.host || null,
-      }
-    });
-  } catch (err: any) {
-    logger.logApiError("Debug cookies error", err, req);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to debug cookies",
-    });
-  }
-};

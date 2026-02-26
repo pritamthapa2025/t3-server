@@ -25,7 +25,8 @@ const router: IRouter = Router();
 
 /**
  * Middleware: allow request only when CRON_SECRET matches.
- * Use with external schedulers (e.g. Cronicles): set CRON_SECRET in env and pass it in the request.
+ * Pass the secret via X-Cron-Secret header or Authorization: Bearer <CRON_SECRET>.
+ * Query-string delivery (?key=) is intentionally not supported to prevent secret leakage in logs.
  */
 function requireCronSecret(req: Request, res: Response, next: NextFunction) {
   const secret = process.env.CRON_SECRET;
@@ -38,7 +39,7 @@ function requireCronSecret(req: Request, res: Response, next: NextFunction) {
   }
 
   const provided =
-    req.get("X-Cron-Secret") ?? req.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? (req.query.key as string);
+    req.get("X-Cron-Secret") ?? req.get("Authorization")?.replace(/^Bearer\s+/i, "");
 
   if (provided !== secret) {
     return res.status(401).json({
@@ -55,7 +56,7 @@ router.use(requireCronSecret);
 /**
  * GET /api/v1/cron/expire-bids
  * Expire bids whose endDate has passed. Call this from Cronicles (or any cron) on a schedule (e.g. daily).
- * Requires CRON_SECRET in header (X-Cron-Secret or Authorization: Bearer <CRON_SECRET>) or query (?key=<CRON_SECRET>).
+ * Requires CRON_SECRET via X-Cron-Secret or Authorization: Bearer <CRON_SECRET> header.
  */
 router.get("/expire-bids", async (req: Request, res: Response) => {
   try {
@@ -81,7 +82,7 @@ router.get("/expire-bids", async (req: Request, res: Response) => {
  * then hard-deletes the DB rows.
  *
  * Schedule recommendation: daily (e.g. 02:00 AM).
- * Auth: pass CRON_SECRET in header X-Cron-Secret or Authorization: Bearer <CRON_SECRET> or ?key=<CRON_SECRET>.
+ * Auth: pass CRON_SECRET via X-Cron-Secret or Authorization: Bearer <CRON_SECRET> header.
  */
 router.get("/purge-deleted-files", async (req: Request, res: Response) => {
   try {
@@ -113,7 +114,7 @@ router.get("/purge-deleted-files", async (req: Request, res: Response) => {
  * that have been soft-deleted for more than 30 days (deletedAt < now - 30d).
  *
  * Schedule recommendation: daily (e.g. 03:00 AM UTC, run AFTER purge-deleted-files).
- * Auth: pass CRON_SECRET in header X-Cron-Secret or Authorization: Bearer <CRON_SECRET> or ?key=<CRON_SECRET>.
+ * Auth: pass CRON_SECRET via X-Cron-Secret or Authorization: Bearer <CRON_SECRET> header.
  */
 router.get("/purge-deleted-records", async (req: Request, res: Response) => {
   try {
