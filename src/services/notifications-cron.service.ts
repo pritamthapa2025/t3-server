@@ -197,8 +197,10 @@ interface DigestParams {
   hasMore?: boolean;
   /** Cooldown in days before the same digest fires again. */
   cooldownDays: number;
-  /** Optional dashboard path appended to CLIENT_URL. */
+  /** Optional dashboard path appended to CLIENT_URL. Must start with /dashboard/. */
   actionUrl?: string;
+  /** Button label in the email. Defaults to "View Dashboard". */
+  actionLabel?: string;
 }
 
 /**
@@ -223,6 +225,7 @@ async function sendCronDigest(params: DigestParams): Promise<CronResult> {
     hasMore,
     cooldownDays,
     actionUrl,
+    actionLabel,
   } = params;
 
   if (rows.length === 0) return { processed: 0, errors: 0 };
@@ -246,6 +249,7 @@ async function sendCronDigest(params: DigestParams): Promise<CronResult> {
     rows,
     ...(hasMore ? { hasMore } : {}),
     ...(actionUrl ? { actionUrl } : {}),
+    ...(actionLabel ? { actionLabel } : {}),
   });
 
   if (result.sent > 0) {
@@ -320,7 +324,8 @@ export async function notifyJobOverdue(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 3,
-      actionUrl: "/jobs",
+      actionUrl: "/dashboard/jobs",
+      actionLabel: "View All Jobs",
     });
   } catch (err) {
     logger.error("[CronNotif] notifyJobOverdue failed:", err);
@@ -707,7 +712,8 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 3,
-      actionUrl: "/fleet",
+      actionUrl: "/dashboard/fleet",
+      actionLabel: "View Fleet",
     });
   } catch (err) {
     logger.error("[CronNotif] notifyMaintenanceOverdue failed:", err);
@@ -774,7 +780,8 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 3,
-      actionUrl: "/fleet",
+      actionUrl: "/dashboard/fleet",
+      actionLabel: "View Fleet",
     });
   } catch (err) {
     logger.error("[CronNotif] notifySafetyInspectionExpired failed:", err);
@@ -843,7 +850,8 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 7,
-      actionUrl: "/fleet",
+      actionUrl: "/dashboard/fleet",
+      actionLabel: "View Fleet",
     });
   } catch (err) {
     logger.error("[CronNotif] notifyVehicleRegistrationExpiring failed:", err);
@@ -912,7 +920,8 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 7,
-      actionUrl: "/fleet",
+      actionUrl: "/dashboard/fleet",
+      actionLabel: "View Fleet",
     });
   } catch (err) {
     logger.error("[CronNotif] notifyVehicleInsuranceExpiring failed:", err);
@@ -981,7 +990,8 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 3,
-      actionUrl: "/employees",
+      actionUrl: "/dashboard/team/employees",
+      actionLabel: "View Employees",
     });
   } catch (err) {
     logger.warn("[CronNotif] notifyPerformanceReviewDue skipped:", (err as any)?.message);
@@ -1051,7 +1061,8 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 7,
-      actionUrl: "/fleet",
+      actionUrl: "/dashboard/fleet",
+      actionLabel: "View Fleet",
     });
   } catch (err) {
     logger.error("[CronNotif] notifySafetyInspectionUpcoming failed:", err);
@@ -1121,7 +1132,8 @@ export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
       rows,
       hasMore,
       cooldownDays: 3,
-      actionUrl: "/inventory/purchase-orders",
+      actionUrl: "/dashboard/inventory/purchase-orders",
+      actionLabel: "View Purchase Orders",
     });
   } catch (err) {
     logger.error("[CronNotif] notifyPurchaseOrderDelayed failed:", err);

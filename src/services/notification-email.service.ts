@@ -333,6 +333,7 @@ export class NotificationEmailService {
     rows: string[][];
     hasMore?: boolean;
     actionUrl?: string;
+    actionLabel?: string;
   }): Promise<{ sent: number; errors: number }> {
     if (!apiInstance) {
       logger.warn("Brevo API not initialized. Skipping digest email.");
@@ -346,7 +347,13 @@ export class NotificationEmailService {
       try {
         const htmlContent = this.generateDigestEmailHTML({
           recipientName: recipient.name || "User",
-          ...params,
+          title: params.title,
+          intro: params.intro,
+          columns: params.columns,
+          rows: params.rows,
+          ...(params.hasMore ? { hasMore: params.hasMore } : {}),
+          ...(params.actionUrl ? { actionUrl: params.actionUrl } : {}),
+          ...(params.actionLabel ? { actionLabel: params.actionLabel } : {}),
         });
 
         const sendSmtpEmail = new brevo.SendSmtpEmail();
@@ -375,8 +382,9 @@ export class NotificationEmailService {
     rows: string[][];
     hasMore?: boolean;
     actionUrl?: string;
+    actionLabel?: string;
   }): string {
-    const { recipientName, title, intro, columns, rows, hasMore, actionUrl } = params;
+    const { recipientName, title, intro, columns, rows, hasMore, actionUrl, actionLabel } = params;
 
     const theadCells = columns
       .map(
@@ -402,7 +410,7 @@ export class NotificationEmailService {
       : "";
 
     const buttonHtml = actionUrl
-      ? `<div style="text-align:center;margin-top:28px;"><a href="${process.env.CLIENT_URL ?? ""}${actionUrl}" style="display:inline-block;padding:13px 32px;background-color:#46931f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View Dashboard</a></div>`
+      ? `<div style="text-align:center;margin-top:28px;"><a href="${process.env.CLIENT_URL ?? ""}${actionUrl}" style="display:inline-block;padding:13px 32px;background-color:#46931f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">${actionLabel ?? "View Dashboard"}</a></div>`
       : "";
 
     return `<!DOCTYPE html>
