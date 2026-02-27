@@ -696,10 +696,38 @@
       "breakpoints": true
     },
     {
+      "idx": 99,
+      "version": "7",
+      "when": 1771994394541,
+      "tag": "0099_flowery_electro",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1772001132127,
+      "tag": "0100_parched_speed_demon",
+      "breakpoints": true
+    },
+    {
       "idx": 101,
       "version": "7",
       "when": 1772110325804,
       "tag": "0101_rainy_human_cannonball",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1772112134856,
+      "tag": "0102_rich_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1772167441606,
+      "tag": "0103_naive_butterfly",
       "breakpoints": true
     }
   ]

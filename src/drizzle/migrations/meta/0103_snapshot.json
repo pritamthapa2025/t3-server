@@ -1,6 +1,6 @@
 {
-  "id": "32838f97-9e50-4163-8225-720f674d8521",
-  "prevId": "7c673ef1-02f8-49f6-adde-33e24703fafa",
+  "id": "5126ebcb-d919-4eb3-ada7-5e9c9e8897a0",
+  "prevId": "405d5034-578b-4a81-ac1a-0aafd1de8985",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1923,6 +1923,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "days": {
           "name": "days",

@@ -1,6 +1,6 @@
 {
-  "id": "32838f97-9e50-4163-8225-720f674d8521",
-  "prevId": "7c673ef1-02f8-49f6-adde-33e24703fafa",
+  "id": "7c673ef1-02f8-49f6-adde-33e24703fafa",
+  "prevId": "4b06791a-8599-4114-8267-7eaadc3b2ff8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -687,12 +687,6 @@
         },
         "password_changed_at": {
           "name": "password_changed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "setup_token_used_at": {
-          "name": "setup_token_used_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -25222,117 +25216,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "notifications.notification_cooldowns": {
-      "name": "notification_cooldowns",
-      "schema": "notifications",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "event_type": {
-          "name": "event_type",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entity_type": {
-          "name": "entity_type",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_sent_at": {
-          "name": "last_sent_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "next_allowed_at": {
-          "name": "next_allowed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cooldown_days": {
-          "name": "cooldown_days",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "notif_cooldowns_next_allowed_idx": {
-          "name": "notif_cooldowns_next_allowed_idx",
-          "columns": [
-            {
-              "expression": "next_allowed_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "notif_cooldowns_event_type_idx": {
-          "name": "notif_cooldowns_event_type_idx",
-          "columns": [
-            {
-              "expression": "event_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "notif_cooldowns_unique": {
-          "name": "notif_cooldowns_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "event_type",
-            "entity_type",
-            "entity_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "notifications.notification_delivery_log": {
       "name": "notification_delivery_log",
       "schema": "notifications",
@@ -26664,19 +26547,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'available'"
-        },
-        "is_online": {
-          "name": "is_online",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        },
-        "last_seen": {
-          "name": "last_seen",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
         },
         "is_deleted": {
           "name": "is_deleted",

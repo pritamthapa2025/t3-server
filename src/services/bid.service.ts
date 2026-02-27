@@ -1801,6 +1801,7 @@ export const getBidLabor = async (bidId: string) => {
       bidId: bidLabor.bidId,
       positionId: bidLabor.positionId,
       positionName: positions.name,
+      quantity: bidLabor.quantity,
       days: bidLabor.days,
       hoursPerDay: bidLabor.hoursPerDay,
       totalHours: bidLabor.totalHours,
@@ -1832,6 +1833,7 @@ export const getBidLaborById = async (laborId: string) => {
       bidId: bidLabor.bidId,
       positionId: bidLabor.positionId,
       positionName: positions.name,
+      quantity: bidLabor.quantity,
       days: bidLabor.days,
       hoursPerDay: bidLabor.hoursPerDay,
       totalHours: bidLabor.totalHours,
@@ -1859,6 +1861,7 @@ export const getBidLaborById = async (laborId: string) => {
 export const createBidLabor = async (data: {
   bidId: string;
   positionId: number;
+  quantity?: number;
   days: number;
   hoursPerDay: string;
   totalHours: string;
@@ -1872,6 +1875,7 @@ export const createBidLabor = async (data: {
       .insert(bidLabor)
       .values({
         ...data,
+        quantity: data.quantity ?? 1, // Default to 1 if not provided
         actualDays: data.days,
         actualHoursPerDay: data.hoursPerDay,
         actualTotalHours: data.totalHours,
@@ -1895,6 +1899,7 @@ export const updateBidLabor = async (
   id: string,
   data: Partial<{
     positionId: number;
+    quantity: number;
     days: number;
     hoursPerDay: string;
     totalHours: string;
@@ -1920,6 +1925,7 @@ export const updateBidLabor = async (
     data.actualTotalCost !== undefined ||
     data.actualTotalPrice !== undefined;
   const hasInitial =
+    data.quantity !== undefined ||
     data.days !== undefined ||
     data.hoursPerDay !== undefined ||
     data.totalHours !== undefined ||
@@ -1943,6 +1949,7 @@ export const updateBidLabor = async (
     if (data.actualTotalPrice !== undefined)
       setPayload.actualTotalPrice = data.actualTotalPrice;
   } else if (hasInitial) {
+    if (data.quantity !== undefined) setPayload.quantity = data.quantity;
     if (data.days !== undefined) setPayload.actualDays = data.days;
     if (data.hoursPerDay !== undefined)
       setPayload.actualHoursPerDay = data.hoursPerDay;
@@ -1955,6 +1962,10 @@ export const updateBidLabor = async (
       setPayload.actualTotalCost = data.totalCost;
     if (data.totalPrice !== undefined)
       setPayload.actualTotalPrice = data.totalPrice;
+  }
+  // Also handle direct quantity update
+  if (data.quantity !== undefined) {
+    setPayload.quantity = data.quantity;
   }
   if (Object.keys(setPayload).length <= 1)
     return (await getBidLaborById(id)) ?? null;

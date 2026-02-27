@@ -3709,7 +3709,13 @@ export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
       success: true,
       data: jobData,
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message === "Job not found") {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
     logger.logApiError("Job error", error, req);
     return res.status(500).json({
       success: false,
