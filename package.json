@@ -10,7 +10,7 @@
     "build:skip-lint": "tsc && node scripts/copy-templates.js",
     "dev": "nodemon",
     "start": "node dist/server.js",
-    "start:dev": "tsx src/server.ts",
+    "start:dev": "tsx --env-file=.env src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint src --ext .ts,.js --max-warnings 0",
     "lint:warnings-ok": "eslint src --ext .ts,.js",
