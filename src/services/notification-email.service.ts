@@ -321,6 +321,141 @@ export class NotificationEmailService {
   }
 
   /**
+   * Send a digest (summary table) email to multiple recipients.
+   * Each recipient gets one email with all records in an HTML table —
+   * instead of N individual emails for N records.
+   */
+  async sendDigestEmail(params: {
+    recipients: Array<{ email: string; name: string }>;
+    title: string;
+    intro: string;
+    columns: string[];
+    rows: string[][];
+    hasMore?: boolean;
+    actionUrl?: string;
+  }): Promise<{ sent: number; errors: number }> {
+    if (!apiInstance) {
+      logger.warn("Brevo API not initialized. Skipping digest email.");
+      return { sent: 0, errors: 0 };
+    }
+
+    let sent = 0;
+    let errors = 0;
+
+    for (const recipient of params.recipients) {
+      try {
+        const htmlContent = this.generateDigestEmailHTML({
+          recipientName: recipient.name || "User",
+          ...params,
+        });
+
+        const sendSmtpEmail = new brevo.SendSmtpEmail();
+        sendSmtpEmail.sender = { name: senderName, email: senderEmail };
+        sendSmtpEmail.to = [{ email: recipient.email, name: recipient.name }];
+        sendSmtpEmail.subject = `[T3 Mechanical] ${params.title}`;
+        sendSmtpEmail.htmlContent = htmlContent;
+
+        await apiInstance.sendTransacEmail(sendSmtpEmail);
+        logger.info(`✅ Digest email sent to ${recipient.email}`);
+        sent++;
+      } catch (error: any) {
+        logger.error(`❌ Failed to send digest email to ${recipient.email}:`, error);
+        errors++;
+      }
+    }
+
+    return { sent, errors };
+  }
+
+  private generateDigestEmailHTML(params: {
+    recipientName: string;
+    title: string;
+    intro: string;
+    columns: string[];
+    rows: string[][];
+    hasMore?: boolean;
+    actionUrl?: string;
+  }): string {
+    const { recipientName, title, intro, columns, rows, hasMore, actionUrl } = params;
+
+    const theadCells = columns
+      .map(
+        (c) =>
+          `<th style="padding:10px 14px;text-align:left;color:#ffffff;font-weight:600;white-space:nowrap;font-size:12px;">${c}</th>`,
+      )
+      .join("");
+
+    const tbodyRows = rows
+      .map((row, i) => {
+        const cells = row
+          .map(
+            (cell) =>
+              `<td style="padding:9px 14px;color:#333333;border-bottom:1px solid #F0F0F0;font-size:13px;">${cell ?? "—"}</td>`,
+          )
+          .join("");
+        return `<tr style="background-color:${i % 2 === 0 ? "#ffffff" : "#F9F9F9"};">${cells}</tr>`;
+      })
+      .join("");
+
+    const moreNote = hasMore
+      ? `<p style="font-size:12px;color:#888888;margin-top:8px;">Showing top 50 records. Check your dashboard for the full list.</p>`
+      : "";
+
+    const buttonHtml = actionUrl
+      ? `<div style="text-align:center;margin-top:28px;"><a href="${process.env.CLIENT_URL ?? ""}${actionUrl}" style="display:inline-block;padding:13px 32px;background-color:#46931f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View Dashboard</a></div>`
+      : "";
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;line-height:1.6;color:#000000;background-color:#F4F4F5;margin:0;padding:0;">
+  <div style="max-width:700px;margin:40px auto;background-color:#ffffff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden;">
+
+    <div style="background-color:#CC1F1F;padding:28px 30px;text-align:center;">
+      ${logoHeader}
+    </div>
+
+    <div style="background-color:#F9F9F9;padding:18px 30px;border-bottom:1px solid #EBEBEB;">
+      <h2 style="margin:0;font-size:18px;font-weight:700;color:#111111;">${title}</h2>
+    </div>
+
+    <div style="padding:32px 30px 24px;">
+      <p style="font-size:15px;margin-bottom:16px;color:#111111;">Hi <strong>${recipientName}</strong>,</p>
+      <p style="font-size:15px;color:#444444;margin-bottom:20px;line-height:1.8;">${intro}</p>
+
+      <div style="overflow-x:auto;">
+        <table width="100%" cellpadding="0" cellspacing="0"
+          style="border-collapse:collapse;border:1px solid #E8E8E8;border-radius:8px;overflow:hidden;min-width:500px;">
+          <thead>
+            <tr style="background-color:#CC1F1F;">
+              ${theadCells}
+            </tr>
+          </thead>
+          <tbody>
+            ${tbodyRows}
+          </tbody>
+        </table>
+      </div>
+
+      ${moreNote}
+      ${buttonHtml}
+    </div>
+
+    <div style="background-color:#F4F4F5;padding:18px 30px;text-align:center;font-size:12px;color:#888888;border-top:1px solid #E8E8E8;">
+      <p style="margin:4px 0;">This is an automated notification from <strong>T3 Mechanical</strong>.</p>
+      <p style="margin:4px 0;">For questions, contact your administrator or support team.</p>
+    </div>
+
+  </div>
+</body>
+</html>`.trim();
+  }
+
+  /**
    * Send test email
    */
   async sendTestEmail(recipientEmail: string): Promise<boolean> {
