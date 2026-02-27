@@ -453,11 +453,6 @@ export const clockIn = async (data: {
     })
     .returning();
 
-  // Mark employee as online when they clock in
-  await db
-    .update(employees)
-    .set({ isOnline: true, lastSeen: new Date() })
-    .where(eq(employees.id, data.employeeId));
 
   return formatTimesheetResponse(timesheet);
 };
@@ -533,11 +528,6 @@ export const clockOut = async (data: {
     .where(eq(timesheets.id, existingTimesheet.id))
     .returning();
 
-  // Mark employee as offline when they clock out
-  await db
-    .update(employees)
-    .set({ isOnline: false, lastSeen: new Date() })
-    .where(eq(employees.id, data.employeeId));
 
   return formatTimesheetResponse(updatedTimesheet);
 };

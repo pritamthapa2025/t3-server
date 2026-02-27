@@ -4,6 +4,7 @@ import { dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
 import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { employees, revenueTargets } from "../drizzle/schema/org.schema.js";
+import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { eq, and, or, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
@@ -483,13 +484,14 @@ export const getTodaysDispatch = async (
     : undefined;
 
   const dispatch = await db
-    .select({
+    .selectDistinctOn([employees.id], {
       id: employees.id,
       employeeId: employees.employeeId,
       name: users.fullName,
       avatar: users.profilePicture,
       location: bidsTable.siteAddress,
-      status: sql<string>`CASE WHEN ${employees.isOnline} = true THEN 'active' ELSE 'inactive' END`,
+      // active = has a timesheet clock-in record for today; inactive = has not clocked in
+      status: sql<string>`CASE WHEN ${timesheets.id} IS NOT NULL THEN 'active' ELSE 'inactive' END`,
       jobId: jobs.id,
       jobNumber: jobs.jobNumber,
       dispatchDate: sql<string>`(${dispatchTasks.startTime})::date`,
@@ -507,6 +509,15 @@ export const getTodaysDispatch = async (
         sql`(${dispatchTasks.startTime})::date = ${dispatchDate}::date`,
       ),
     )
+    // LEFT JOIN timesheets to check if the employee has clocked in today
+    .leftJoin(
+      timesheets,
+      and(
+        eq(timesheets.employeeId, employees.id),
+        sql`${timesheets.sheetDate} = ${dispatchDate}::date`,
+        eq(timesheets.isDeleted, false),
+      ),
+    )
     .where(
       and(
         ...(dispatchBidOrgFilter ? [dispatchBidOrgFilter] : []),
@@ -515,8 +526,7 @@ export const getTodaysDispatch = async (
         eq(jobs.isDeleted, false),
       ),
     )
-    .limit(20)
-    .orderBy(sql`CASE WHEN ${employees.isOnline} = true THEN 0 ELSE 1 END`);
+    .orderBy(employees.id, sql`CASE WHEN ${timesheets.id} IS NOT NULL THEN 0 ELSE 1 END`);
 
   const activeCount = dispatch.filter((d) => d.status === "active").length;
   const inactiveCount = dispatch.filter((d) => d.status === "inactive").length;
