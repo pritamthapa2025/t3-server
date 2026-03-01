@@ -50,9 +50,9 @@ export const getEmployees = async (
     departmentId?: number;
   },
 ) => {
+  // Show all non-deleted employees (include inactive user accounts so team list matches total count)
   const conditions: ReturnType<typeof eq>[] = [
     eq(employees.isDeleted, false),
-    eq(users.isActive, true),
   ];
 
   if (filters?.status) {
@@ -646,20 +646,23 @@ export const generateEmployeeId = async (): Promise<string> => {
     const padding = Math.max(4, nextNumber.toString().length);
     return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet
+    // Fallback: find next ID by max existing number for this year (includes deleted so we never reuse)
     console.warn(
       "Employee ID sequence not found, using fallback method:",
       error,
     );
 
-    const totalResult = await db
-      .select({ count: count() })
+    const prefix = `T3-${year}-`;
+    const [maxRow] = await db
+      .select({
+        maxNum: sql<string>`COALESCE(MAX(CAST(SUBSTRING(${employees.employeeId} FROM '([0-9]+)$') AS INTEGER)), 0)`.as("max_num"),
+      })
       .from(employees)
-      .where(eq(employees.isDeleted, false));
-    const total = totalResult[0]?.count ?? 0;
-    const nextNumber = total + 1;
+      .where(sql`${employees.employeeId} LIKE ${prefix + "%"}`);
 
-    // Use 4 digits minimum, auto-expand when exceeds 9999
+    const maxNum = maxRow?.maxNum != null ? parseInt(String(maxRow.maxNum), 10) : 0;
+    const nextNumber = maxNum + 1;
+
     const padding = Math.max(4, nextNumber.toString().length);
     return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
   }

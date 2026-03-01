@@ -55,6 +55,32 @@ export const getUserById = async (userId: string) => {
   return user || null;
 };
 
+/**
+ * Get user by email (includes soft-deleted users).
+ * Used when re-adding an employee for an email that already has a user record.
+ */
+export const getUserByEmail = async (email: string) => {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  return user || null;
+};
+
+/**
+ * Reactivate a soft-deleted user so they can log in again.
+ */
+export const reactivateUser = async (userId: string) => {
+  const [user] = await db
+    .update(users)
+    .set({ isDeleted: false, isActive: true, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning();
+  return user || null;
+};
+
 export const createUser = async (data: {
   fullName: string;
   email: string;
