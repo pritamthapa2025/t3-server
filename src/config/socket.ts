@@ -84,6 +84,7 @@ export async function setupSocketIO(httpServer: any): Promise<Server> {
 
       socket.data.userId = user.id;
       socket.data.userEmail = user.email;
+      socket.data.userName = user.fullName;
       socket.data.employeeId = user.employeeId;
 
       next();
@@ -97,12 +98,11 @@ export async function setupSocketIO(httpServer: any): Promise<Server> {
   io.on("connection", (socket: Socket) => {
     const userId = socket.data.userId;
     const userEmail = socket.data.userEmail;
+    const userName = socket.data.userName;
 
     socket.join(`user:${userId}`);
 
-    logger.info(
-      `✅ Socket.IO: User connected - ${userEmail} (${userId}) [Socket: ${socket.id}]`
-    );
+    logger.info(`✅ Socket.IO: User connected - ${userName}`);
 
     socket.on(SOCKET_EVENTS.MARK_READ, async (notificationId: string) => {
       try {

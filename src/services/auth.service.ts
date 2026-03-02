@@ -49,6 +49,7 @@ export const getUserByIdForAuth = async (userId: string) => {
     .select({
       id: users.id,
       email: users.email,
+      fullName: users.fullName,
       isActive: users.isActive,
       isDeleted: users.isDeleted,
     })
