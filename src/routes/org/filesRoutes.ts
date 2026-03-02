@@ -8,6 +8,7 @@ import type { IRouter } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
+import { authorizeFeature } from "../../middleware/featureAuthorize.js";
 import {
   paginationSchema,
   toggleStarSchema,
@@ -21,8 +22,9 @@ const bodyBulkDeleteSchema = z.object({ body: bulkDeleteFilesSchema });
 
 const router: IRouter = Router();
 
-// Apply authentication to all routes
+// Apply authentication + Executive-only guard to all routes
 router.use(authenticate);
+router.use(authorizeFeature("files", "view"));
 
 /**
  * ============================================================================

@@ -35,12 +35,12 @@ const router: IRouter = Router();
 router.use(authenticate);
 
 // Invoicing is Manager/Executive only — Technicians have no access
-const viewInvoices = authorizeFeature("financial", "view_invoices");
-const createInvoice = authorizeFeature("financial", "create_invoice");
-const editInvoice = authorizeFeature("financial", "edit_invoice");
-const deleteInvoice = authorizeFeature("financial", "delete_invoice");
-const sendInvoice = authorizeFeature("financial", "send_invoice");
-const recordPayment = authorizeFeature("financial", "record_payment");
+const viewInvoices = authorizeFeature("invoicing", "view");
+const createInvoice = authorizeFeature("invoicing", "create");
+const editInvoice = authorizeFeature("invoicing", "edit");
+const deleteInvoice = authorizeFeature("invoicing", "delete");
+const sendInvoice = authorizeFeature("invoicing", "send");
+const recordPayment = authorizeFeature("invoicing", "record_payment");
 
 // ==================== INVOICE ROUTES ====================
 

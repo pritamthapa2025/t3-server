@@ -300,6 +300,7 @@ const FEATURES_DATA = [
   { module: "invoicing", featureCode: "view", featureName: "View Invoices", description: "View invoices" },
   { module: "invoicing", featureCode: "create", featureName: "Create Invoice", description: "Create invoices" },
   { module: "invoicing", featureCode: "edit", featureName: "Edit Invoice", description: "Edit invoices" },
+  { module: "invoicing", featureCode: "delete", featureName: "Delete Invoice", description: "Delete invoices (Manager: draft only, Executive: all)" },
   { module: "invoicing", featureCode: "send", featureName: "Send Invoice", description: "Send invoices to clients" },
   { module: "invoicing", featureCode: "record_payment", featureName: "Record Payment", description: "Record invoice payments" },
 
@@ -515,6 +516,36 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "upload", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "edit", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "files", featureCode: "delete", accessLevel: "none" },
+
+  // Expenses - No standalone module access (expenses submitted through job profile only)
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "view_own",    accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "view_all",    accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "create",      accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "edit_own",    accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "approve",     accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "expenses", featureCode: "bulk_delete", accessLevel: "none" },
+
+  // Tasks - View and update status on assigned tasks only
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "view_own",  accessLevel: "view_assigned" },
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "view_all",  accessLevel: "none"          },
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "create",    accessLevel: "none"          },
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "assign",    accessLevel: "none"          },
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "edit",      accessLevel: "edit_assigned" },
+  { roleId: ROLES.TECHNICIAN, module: "tasks", featureCode: "delete",    accessLevel: "none"          },
+
+  // Documents - No module access
+  { roleId: ROLES.TECHNICIAN, module: "documents", featureCode: "view",   accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "documents", featureCode: "upload", accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "documents", featureCode: "edit",   accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "documents", featureCode: "delete", accessLevel: "none" },
+
+  // Invoicing - No access (bulk_delete is covered in the bulk_delete section below)
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "view",           accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "create",         accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "edit",           accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "delete",         accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "send",           accessLevel: "none" },
+  { roleId: ROLES.TECHNICIAN, module: "invoicing", featureCode: "record_payment", accessLevel: "none" },
 
   // === MANAGER (Role ID: 2) - Full operational access, limited financial ===
   
@@ -932,11 +963,12 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "expenses", featureCode: "approve", accessLevel: "approve" },
 
   // Invoicing - Full access
-  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "view", accessLevel: "view" },
-  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "create", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "edit", accessLevel: "edit_all" },
-  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "send", accessLevel: "edit_all" },
-  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "record_payment", accessLevel: "edit_all" },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "view",           accessLevel: "view"       },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "create",         accessLevel: "create"     },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "edit",           accessLevel: "edit_all"   },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "delete",         accessLevel: "delete_own" },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "send",           accessLevel: "edit_all"   },
+  { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "record_payment", accessLevel: "edit_all"   },
 
   // Bids - Full access except approval
   { roleId: ROLES.MANAGER, module: "bids", featureCode: "view", accessLevel: "view" },
@@ -1060,10 +1092,11 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.EXECUTIVE, module: "payroll", featureCode: "view", accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "payroll", featureCode: "process", accessLevel: "admin" },
 
-  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "view", accessLevel: "admin" },
-  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "create", accessLevel: "admin" },
-  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "edit", accessLevel: "admin" },
-  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "send", accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "view",           accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "create",         accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "edit",           accessLevel: "admin" },
+  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "delete",         accessLevel: "delete_all" },
+  { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "send",           accessLevel: "admin" },
   { roleId: ROLES.EXECUTIVE, module: "invoicing", featureCode: "record_payment", accessLevel: "admin" },
 
   { roleId: ROLES.EXECUTIVE, module: "documents", featureCode: "view", accessLevel: "admin" },
