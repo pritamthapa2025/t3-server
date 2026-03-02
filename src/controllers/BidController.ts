@@ -76,6 +76,10 @@ import {
   updateBidPlanSpecData,
   getBidDesignBuildData,
   updateBidDesignBuildData,
+  getBidServiceData,
+  updateBidServiceData,
+  getBidPreventativeMaintenanceData,
+  updateBidPreventativeMaintenanceData,
   getBidOperatingExpenses,
   createBidOperatingExpenses,
   updateBidOperatingExpenses,
@@ -273,6 +277,8 @@ export const createBidHandler = async (req: Request, res: Response) => {
       surveyData,
       planSpecData,
       designBuildData,
+      serviceData,
+      preventativeMaintenanceData,
       ...bidFields
     } = req.body;
 
@@ -366,6 +372,22 @@ export const createBidHandler = async (req: Request, res: Response) => {
         organizationId,
         designBuildData,
       );
+    } else if (serviceData && bid.jobType === "service") {
+      createdRecords.serviceData = await updateBidServiceData(
+        bid.id,
+        organizationId,
+        serviceData,
+      );
+    } else if (
+      preventativeMaintenanceData &&
+      bid.jobType === "preventative_maintenance"
+    ) {
+      createdRecords.preventativeMaintenanceData =
+        await updateBidPreventativeMaintenanceData(
+          bid.id,
+          organizationId,
+          preventativeMaintenanceData,
+        );
     }
 
     // Handle document uploads if provided (document_0, document_1, etc.)
@@ -487,6 +509,8 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       surveyData,
       planSpecData,
       designBuildData,
+      serviceData,
+      preventativeMaintenanceData,
       documentIdsToUpdate,
       documentUpdates,
       documentIdsToDelete,
@@ -632,6 +656,22 @@ export const updateBidHandler = async (req: Request, res: Response) => {
         clientOrgId,
         designBuildData,
       );
+    } else if (serviceData && jobType === "service") {
+      updatedRecords.serviceData = await updateBidServiceData(
+        id!,
+        clientOrgId,
+        serviceData,
+      );
+    } else if (
+      preventativeMaintenanceData &&
+      jobType === "preventative_maintenance"
+    ) {
+      updatedRecords.preventativeMaintenanceData =
+        await updateBidPreventativeMaintenanceData(
+          id!,
+          clientOrgId,
+          preventativeMaintenanceData,
+        );
     }
 
     // Handle document operations
@@ -2525,6 +2565,182 @@ export const updateBidDesignBuildDataHandler = async (
       success: true,
       data: designBuildData,
       message: "Design Build data updated successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Service Data Operations
+// ============================
+
+export const getBidServiceDataHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const serviceData = await getBidServiceData(bidId!, clientOrgId);
+
+    logger.info("Bid service data fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: serviceData,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidServiceDataHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const serviceData = await updateBidServiceData(bidId!, clientOrgId, req.body);
+
+    if (!serviceData) {
+      return res.status(404).json({
+        success: false,
+        message: "Service data not found",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: clientOrgId,
+      action: "service_data_updated",
+      description: "Service data was updated",
+      performedBy: performedBy,
+    });
+
+    logger.info("Bid service data updated successfully");
+    return res.status(200).json({
+      success: true,
+      data: serviceData,
+      message: "Service data updated successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// ============================
+// Preventative Maintenance Data Operations
+// ============================
+
+export const getBidPreventativeMaintenanceDataHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const pmData = await getBidPreventativeMaintenanceData(bidId!, clientOrgId);
+
+    logger.info("Bid preventative maintenance data fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: pmData,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const updateBidPreventativeMaintenanceDataHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const performedBy = req.user!.id;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+    const clientOrgId = bid.organizationId;
+
+    const pmData = await updateBidPreventativeMaintenanceData(
+      bidId!,
+      clientOrgId,
+      req.body,
+    );
+
+    if (!pmData) {
+      return res.status(404).json({
+        success: false,
+        message: "Preventative Maintenance data not found",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: clientOrgId,
+      action: "pm_data_updated",
+      description: "Preventative Maintenance data was updated",
+      performedBy: performedBy,
+    });
+
+    logger.info("Bid preventative maintenance data updated successfully");
+    return res.status(200).json({
+      success: true,
+      data: pmData,
+      message: "Preventative Maintenance data updated successfully",
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);

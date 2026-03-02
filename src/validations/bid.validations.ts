@@ -369,6 +369,45 @@ export const createBidSchema = z.object({
           buildSpecifications: z.string().optional(),
         })
         .optional(),
+
+      // Service specific data
+      serviceData: z
+        .object({
+          serviceCallTechnician: z.number().int().positive().optional().nullable(),
+          timeIn: z.string().max(50).optional().nullable(),
+          timeOut: z.string().max(50).optional().nullable(),
+          serviceDescription: z.string().optional().nullable(),
+          plumbingSystemCheck: z.boolean().optional(),
+          thermostatCheck: z.boolean().optional(),
+          hvacSystemCheck: z.boolean().optional(),
+          clientCommunicationCheck: z.boolean().optional(),
+          customerSignaturePath: z.string().max(500).optional().nullable(),
+          customerSignatureDate: z.string().datetime().optional().nullable(),
+          serviceNotes: z.string().optional().nullable(),
+        })
+        .optional(),
+
+      // Preventative Maintenance specific data
+      preventativeMaintenanceData: z
+        .object({
+          pmType: z.enum(["new_pm_bid", "existing_pm_renewal"]).optional().nullable(),
+          maintenanceFrequency: z
+            .enum(["quarterly", "semi_annual", "annual"])
+            .optional()
+            .nullable(),
+          numberOfBuildings: z.number().int().positive().optional().nullable(),
+          numberOfUnits: z.number().int().positive().optional().nullable(),
+          buildingNumbers: z.string().optional().nullable(), // JSON string array
+          expectedUnitTags: z.string().optional().nullable(), // JSON string array
+          filterReplacementIncluded: z.boolean().optional(),
+          coilCleaningIncluded: z.boolean().optional(),
+          temperatureReadingsIncluded: z.boolean().optional(),
+          visualInspectionIncluded: z.boolean().optional(),
+          serviceScope: z.string().optional().nullable(),
+          specialRequirements: z.string().optional().nullable(),
+          clientPmRequirements: z.string().optional().nullable(),
+        })
+        .optional(),
     })
     .refine(
       (data) => {
@@ -651,6 +690,45 @@ export const updateBidSchema = z.object({
         designPrice: z.string().optional(),
         // Legacy/Construction
         buildSpecifications: z.string().optional(),
+      })
+      .optional(),
+
+    // Service specific data
+    serviceData: z
+      .object({
+        serviceCallTechnician: z.number().int().positive().optional().nullable(),
+        timeIn: z.string().max(50).optional().nullable(),
+        timeOut: z.string().max(50).optional().nullable(),
+        serviceDescription: z.string().optional().nullable(),
+        plumbingSystemCheck: z.boolean().optional(),
+        thermostatCheck: z.boolean().optional(),
+        hvacSystemCheck: z.boolean().optional(),
+        clientCommunicationCheck: z.boolean().optional(),
+        customerSignaturePath: z.string().max(500).optional().nullable(),
+        customerSignatureDate: z.string().datetime().optional().nullable(),
+        serviceNotes: z.string().optional().nullable(),
+      })
+      .optional(),
+
+    // Preventative Maintenance specific data
+    preventativeMaintenanceData: z
+      .object({
+        pmType: z.enum(["new_pm_bid", "existing_pm_renewal"]).optional().nullable(),
+        maintenanceFrequency: z
+          .enum(["quarterly", "semi_annual", "annual"])
+          .optional()
+          .nullable(),
+        numberOfBuildings: z.number().int().positive().optional().nullable(),
+        numberOfUnits: z.number().int().positive().optional().nullable(),
+        buildingNumbers: z.string().optional().nullable(), // JSON string array
+        expectedUnitTags: z.string().optional().nullable(), // JSON string array
+        filterReplacementIncluded: z.boolean().optional(),
+        coilCleaningIncluded: z.boolean().optional(),
+        temperatureReadingsIncluded: z.boolean().optional(),
+        visualInspectionIncluded: z.boolean().optional(),
+        serviceScope: z.string().optional().nullable(),
+        specialRequirements: z.string().optional().nullable(),
+        clientPmRequirements: z.string().optional().nullable(),
       })
       .optional(),
 
@@ -1223,6 +1301,60 @@ export const updateBidDesignBuildDataSchema = z.object({
   body: z.object({
     designRequirements: z.string().optional(),
     buildSpecifications: z.string().optional(),
+  }),
+});
+
+export const getBidServiceDataSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const updateBidServiceDataSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    serviceCallTechnician: z.number().int().positive().optional().nullable(),
+    timeIn: z.string().max(50).optional().nullable(),
+    timeOut: z.string().max(50).optional().nullable(),
+    serviceDescription: z.string().optional().nullable(),
+    serviceNotes: z.string().optional().nullable(),
+    plumbingSystemCheck: z.boolean().optional().nullable(),
+    thermostatFunctionality: z.boolean().optional().nullable(),
+    heatingCoolingOperational: z.boolean().optional().nullable(),
+    clientCommunicationCompleted: z.boolean().optional().nullable(),
+    customerSignature: z.string().optional().nullable(),
+  }),
+});
+
+export const getBidPreventativeMaintenanceDataSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const updateBidPreventativeMaintenanceDataSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z.object({
+    pmType: z.enum(["new_pm_bid", "existing_pm_renewal"]).optional().nullable(),
+    maintenanceFrequency: z
+      .enum(["quarterly", "semi_annual", "annual"])
+      .optional()
+      .nullable(),
+    numberOfBuildings: z.number().int().positive().optional().nullable(),
+    numberOfUnits: z.number().int().positive().optional().nullable(),
+    buildingNumbers: z.string().optional().nullable(),
+    expectedUnitTags: z.string().optional().nullable(),
+    filterReplacement: z.boolean().optional().nullable(),
+    coilCleaning: z.boolean().optional().nullable(),
+    drainCleaning: z.boolean().optional().nullable(),
+    refrigerantCheck: z.boolean().optional().nullable(),
+    thermostatCalibration: z.boolean().optional().nullable(),
+    specialClientRequirements: z.string().optional().nullable(),
+    pmNotes: z.string().optional().nullable(),
   }),
 });
 

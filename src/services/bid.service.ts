@@ -23,6 +23,8 @@ import {
   bidSurveyData,
   bidPlanSpecData,
   bidDesignBuildData,
+  bidServiceData,
+  bidPreventativeMaintenanceData,
   bidTimeline,
   bidNotes,
   bidHistory,
@@ -1035,6 +1037,21 @@ export const deleteBid = async (
         and(
           eq(bidDesignBuildData.bidId, id),
           eq(bidDesignBuildData.isDeleted, false),
+        ),
+      ),
+    db
+      .update(bidServiceData)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(eq(bidServiceData.bidId, id), eq(bidServiceData.isDeleted, false)),
+      ),
+    db
+      .update(bidPreventativeMaintenanceData)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(bidPreventativeMaintenanceData.bidId, id),
+          eq(bidPreventativeMaintenanceData.isDeleted, false),
         ),
       ),
     db
@@ -2517,6 +2534,130 @@ export const updateBidDesignBuildData = async (
 };
 
 // ============================
+// Service Bid Data Operations
+// ============================
+
+export const getBidServiceData = async (
+  bidId: string,
+  _organizationId: string,
+) => {
+  const [serviceData] = await db
+    .select()
+    .from(bidServiceData)
+    .where(
+      and(eq(bidServiceData.bidId, bidId), eq(bidServiceData.isDeleted, false)),
+    );
+  return serviceData || null;
+};
+
+export const updateBidServiceData = async (
+  bidId: string,
+  organizationId: string,
+  data: Partial<{
+    serviceCallTechnician: number | null;
+    timeIn: string | null;
+    timeOut: string | null;
+    serviceDescription: string | null;
+    plumbingSystemCheck: boolean;
+    thermostatCheck: boolean;
+    hvacSystemCheck: boolean;
+    clientCommunicationCheck: boolean;
+    customerSignaturePath: string | null;
+    customerSignatureDate: Date | null;
+    serviceNotes: string | null;
+  }>,
+) => {
+  const existing = await getBidServiceData(bidId, organizationId);
+
+  if (existing) {
+    const [serviceData] = await db
+      .update(bidServiceData)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(bidServiceData.id, existing.id))
+      .returning();
+    return serviceData;
+  } else {
+    const [serviceData] = await db
+      .insert(bidServiceData)
+      .values({
+        bidId,
+        ...data,
+      })
+      .returning();
+    return serviceData;
+  }
+};
+
+// ============================
+// Preventative Maintenance Bid Data Operations
+// ============================
+
+export const getBidPreventativeMaintenanceData = async (
+  bidId: string,
+  _organizationId: string,
+) => {
+  const [pmData] = await db
+    .select()
+    .from(bidPreventativeMaintenanceData)
+    .where(
+      and(
+        eq(bidPreventativeMaintenanceData.bidId, bidId),
+        eq(bidPreventativeMaintenanceData.isDeleted, false),
+      ),
+    );
+  return pmData || null;
+};
+
+export const updateBidPreventativeMaintenanceData = async (
+  bidId: string,
+  organizationId: string,
+  data: Partial<{
+    pmType: string | null;
+    maintenanceFrequency: string | null;
+    numberOfBuildings: number | null;
+    numberOfUnits: number | null;
+    buildingNumbers: string | null;
+    expectedUnitTags: string | null;
+    filterReplacementIncluded: boolean;
+    coilCleaningIncluded: boolean;
+    temperatureReadingsIncluded: boolean;
+    visualInspectionIncluded: boolean;
+    serviceScope: string | null;
+    specialRequirements: string | null;
+    clientPmRequirements: string | null;
+  }>,
+) => {
+  const existing = await getBidPreventativeMaintenanceData(
+    bidId,
+    organizationId,
+  );
+
+  if (existing) {
+    const [pmData] = await db
+      .update(bidPreventativeMaintenanceData)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(bidPreventativeMaintenanceData.id, existing.id))
+      .returning();
+    return pmData;
+  } else {
+    const [pmData] = await db
+      .insert(bidPreventativeMaintenanceData)
+      .values({
+        bidId,
+        ...data,
+      })
+      .returning();
+    return pmData;
+  }
+};
+
+// ============================
 // Timeline Operations
 // ============================
 
@@ -2800,12 +2941,17 @@ const createRelatedRecords = async (
         bidId,
       });
       break;
-    // "general", "service", and "preventative_maintenance" don't have specific data tables
-    // They only use the main bid table and related financial/operating expense tables
-    case "general":
     case "service":
+      await db.insert(bidServiceData).values({
+        bidId,
+      });
+      break;
     case "preventative_maintenance":
-      // No specific data tables for these types
+      await db.insert(bidPreventativeMaintenanceData).values({
+        bidId,
+      });
+      break;
+    case "general":
       break;
   }
 };
@@ -2828,6 +2974,8 @@ export const getBidWithAllData = async (id: string) => {
     surveyData,
     planSpecData,
     designBuildData,
+    serviceData,
+    preventativeMaintenanceData,
     timeline,
     notes,
     history,
@@ -2842,6 +2990,8 @@ export const getBidWithAllData = async (id: string) => {
     getBidSurveyData(id, organizationId),
     getBidPlanSpecData(id, organizationId),
     getBidDesignBuildData(id, organizationId),
+    getBidServiceData(id, organizationId),
+    getBidPreventativeMaintenanceData(id, organizationId),
     getBidTimeline(id),
     getBidNotes(id),
     getBidHistory(id),
@@ -2867,6 +3017,8 @@ export const getBidWithAllData = async (id: string) => {
     surveyData,
     planSpecData,
     designBuildData,
+    serviceData,
+    preventativeMaintenanceData,
     timeline,
     notes,
     history,
@@ -3767,6 +3919,24 @@ export const bulkDeleteBids = async (ids: string[], deletedBy: string) => {
         and(
           inArray(bidDesignBuildData.bidId, ids),
           eq(bidDesignBuildData.isDeleted, false),
+        ),
+      ),
+    db
+      .update(bidServiceData)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          inArray(bidServiceData.bidId, ids),
+          eq(bidServiceData.isDeleted, false),
+        ),
+      ),
+    db
+      .update(bidPreventativeMaintenanceData)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          inArray(bidPreventativeMaintenanceData.bidId, ids),
+          eq(bidPreventativeMaintenanceData.isDeleted, false),
         ),
       ),
     db

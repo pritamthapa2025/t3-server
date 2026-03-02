@@ -356,6 +356,8 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       surveyData,
       planSpecData,
       designBuildData,
+      serviceData,
+      preventativeMaintenanceData,
       timeline,
       notes,
       documentIdsToUpdate,
@@ -398,6 +400,8 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       updateBidSurveyData,
       updateBidPlanSpecData,
       updateBidDesignBuildData,
+      updateBidServiceData,
+      updateBidPreventativeMaintenanceData,
       createBidTimelineEvent,
       updateBidTimelineEvent,
       deleteBidTimelineEvent,
@@ -544,6 +548,22 @@ export const updateJobHandler = async (req: Request, res: Response) => {
         clientOrgId,
         designBuildData,
       );
+    } else if (serviceData && jobType === "service") {
+      updatedRecords.serviceData = await updateBidServiceData(
+        bidId,
+        clientOrgId,
+        serviceData,
+      );
+    } else if (
+      preventativeMaintenanceData &&
+      jobType === "preventative_maintenance"
+    ) {
+      updatedRecords.preventativeMaintenanceData =
+        await updateBidPreventativeMaintenanceData(
+          bidId,
+          clientOrgId,
+          preventativeMaintenanceData,
+        );
     }
 
     // Handle timeline operations

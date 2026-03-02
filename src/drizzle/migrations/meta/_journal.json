@@ -743,6 +743,13 @@
       "when": 1772188826700,
       "tag": "0105_fearless_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1772452010464,
+      "tag": "0106_lucky_madame_masque",
+      "breakpoints": true
     }
   ]
 }

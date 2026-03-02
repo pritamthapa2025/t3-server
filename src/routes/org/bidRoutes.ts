@@ -38,6 +38,10 @@ import {
   updateBidPlanSpecDataHandler,
   getBidDesignBuildDataHandler,
   updateBidDesignBuildDataHandler,
+  getBidServiceDataHandler,
+  updateBidServiceDataHandler,
+  getBidPreventativeMaintenanceDataHandler,
+  updateBidPreventativeMaintenanceDataHandler,
   getBidTimelineHandler,
   createBidTimelineEventHandler,
   updateBidTimelineEventHandler,
@@ -117,6 +121,10 @@ import {
   updateBidSurveyDataSchema,
   updateBidPlanSpecDataSchema,
   updateBidDesignBuildDataSchema,
+  getBidServiceDataSchema,
+  updateBidServiceDataSchema,
+  getBidPreventativeMaintenanceDataSchema,
+  updateBidPreventativeMaintenanceDataSchema,
   getBidTimelineSchema,
   createBidTimelineEventSchema,
   updateBidTimelineEventSchema,
@@ -433,6 +441,24 @@ router
   .put(
     validate(updateBidDesignBuildDataSchema),
     updateBidDesignBuildDataHandler,
+  );
+
+// Service Data Routes
+router
+  .route("/bids/:bidId/service-data")
+  .get(validate(getBidServiceDataSchema), getBidServiceDataHandler)
+  .put(validate(updateBidServiceDataSchema), updateBidServiceDataHandler);
+
+// Preventative Maintenance Data Routes
+router
+  .route("/bids/:bidId/preventative-maintenance-data")
+  .get(
+    validate(getBidPreventativeMaintenanceDataSchema),
+    getBidPreventativeMaintenanceDataHandler,
+  )
+  .put(
+    validate(updateBidPreventativeMaintenanceDataSchema),
+    updateBidPreventativeMaintenanceDataHandler,
   );
 
 // Timeline Routes

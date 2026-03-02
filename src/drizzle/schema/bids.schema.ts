@@ -584,6 +584,98 @@ export const bidDesignBuildData = org.table(
 );
 
 /**
+ * Bid Service Data Table
+ * One-to-one service data for service-type bids
+ */
+export const bidServiceData = org.table(
+  "bid_service_data",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .unique(),
+
+    // Service Call Details
+    serviceCallTechnician: integer("service_call_technician").references(
+      () => employees.id,
+    ),
+    timeIn: varchar("time_in", { length: 50 }),
+    timeOut: varchar("time_out", { length: 50 }),
+    serviceDescription: text("service_description"),
+
+    // Checklist Items
+    plumbingSystemCheck: boolean("plumbing_system_check").default(false),
+    thermostatCheck: boolean("thermostat_check").default(false),
+    hvacSystemCheck: boolean("hvac_system_check").default(false),
+    clientCommunicationCheck: boolean("client_communication_check").default(
+      false,
+    ),
+
+    // Customer Signature
+    customerSignaturePath: varchar("customer_signature_path", { length: 500 }),
+    customerSignatureDate: timestamp("customer_signature_date"),
+
+    // Additional Notes
+    serviceNotes: text("service_notes"),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("idx_bid_service_data_bid_id").on(table.bidId)],
+);
+
+/**
+ * Bid Preventative Maintenance Data Table
+ * One-to-one PM data for preventative-maintenance-type bids
+ */
+export const bidPreventativeMaintenanceData = org.table(
+  "bid_preventative_maintenance_data",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id, { onDelete: "cascade" })
+      .unique(),
+
+    // PM Type & Scope
+    pmType: varchar("pm_type", { length: 100 }), // new_pm_bid, existing_pm_renewal
+    maintenanceFrequency: varchar("maintenance_frequency", { length: 50 }), // quarterly, semi_annual, annual
+    numberOfBuildings: integer("number_of_buildings"),
+    numberOfUnits: integer("number_of_units"),
+
+    // Expected Inspection Scope (stored as JSON text)
+    buildingNumbers: text("building_numbers"),
+    expectedUnitTags: text("expected_unit_tags"),
+
+    // PM Services Included
+    filterReplacementIncluded: boolean("filter_replacement_included").default(
+      false,
+    ),
+    coilCleaningIncluded: boolean("coil_cleaning_included").default(false),
+    temperatureReadingsIncluded: boolean(
+      "temperature_readings_included",
+    ).default(false),
+    visualInspectionIncluded: boolean("visual_inspection_included").default(
+      false,
+    ),
+
+    // Planning Details
+    serviceScope: text("service_scope"),
+    specialRequirements: text("special_requirements"),
+    clientPmRequirements: text("client_pm_requirements"),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_bid_pm_data_bid_id").on(table.bidId),
+  ],
+);
+
+/**
  * Bid Timeline Table
  * Timeline and milestones for bids
  */
