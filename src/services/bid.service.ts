@@ -2466,9 +2466,12 @@ export const updateBidDesignBuildData = async (
     designDeliverables: string;
     // Client Approval
     clientApprovalRequired: boolean;
+    approvalMilestones: string;
+    designRevisionLimit: number;
     // Design Costs
     designFeeBasis: string;
-    designFees: string;
+    designPrice: string;
+    designCost: string;
     // Legacy/Construction
     buildSpecifications: string;
   }>,

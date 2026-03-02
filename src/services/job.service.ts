@@ -76,6 +76,9 @@ import {
   getBidDocuments,
   createBidDocument,
   deleteBidDocument,
+  getBidSurveyData,
+  getBidPlanSpecData,
+  getBidDesignBuildData,
 } from "./bid.service.js";
 
 // ============================
@@ -1264,6 +1267,9 @@ export const getJobWithAllData = async (jobId: string) => {
     notes,
     history,
     clientInfo,
+    surveyData,
+    planSpecData,
+    designBuildData,
   ] = await Promise.all([
     getBidFinancialBreakdown(jobData.bidId, jobData.organizationId),
     getBidMaterials(jobData.bidId, jobData.organizationId),
@@ -1273,6 +1279,9 @@ export const getJobWithAllData = async (jobId: string) => {
     getBidNotes(jobData.bidId),
     getBidHistory(jobData.bidId),
     getOrganizationById(jobData.organizationId),
+    getBidSurveyData(jobData.bidId, jobData.organizationId),
+    getBidPlanSpecData(jobData.bidId, jobData.organizationId),
+    getBidDesignBuildData(jobData.bidId, jobData.organizationId),
   ]);
 
   // Get travel for each labor entry
@@ -1365,6 +1374,9 @@ export const getJobWithAllData = async (jobId: string) => {
     notes,
     history,
     clientInfo: clientInfo?.organization ?? null,
+    surveyData: surveyData ?? null,
+    planSpecData: planSpecData ?? null,
+    designBuildData: designBuildData ?? null,
   };
 };
 

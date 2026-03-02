@@ -364,7 +364,7 @@ export const createBidSchema = z.object({
           designFeeBasis: z
             .enum(["fixed", "hourly", "percentage", "lump_sum"])
             .optional(),
-          designFees: z.string().optional(),
+          designPrice: z.string().optional(),
           // Legacy/Construction
           buildSpecifications: z.string().optional(),
         })
@@ -648,7 +648,7 @@ export const updateBidSchema = z.object({
         designFeeBasis: z
           .enum(["fixed", "hourly", "percentage", "lump_sum"])
           .optional(),
-        designFees: z.string().optional(),
+        designPrice: z.string().optional(),
         // Legacy/Construction
         buildSpecifications: z.string().optional(),
       })

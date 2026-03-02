@@ -415,7 +415,7 @@ export const updateJobSchema = z.object({
         designFeeBasis: z
           .enum(["fixed", "hourly", "percentage", "lump_sum"])
           .optional(),
-        designFees: z.string().optional(),
+        designPrice: z.string().optional(),
         buildSpecifications: z.string().optional(),
       })
       .optional(),

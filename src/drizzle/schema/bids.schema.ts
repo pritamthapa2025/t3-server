@@ -561,10 +561,15 @@ export const bidDesignBuildData = org.table(
 
     // Client Approval
     clientApprovalRequired: boolean("client_approval_required").default(false),
+    approvalMilestones: text("approval_milestones"),
+    designRevisionLimit: integer("design_revision_limit"),
 
     // Design Costs
     designFeeBasis: varchar("design_fee_basis", { length: 50 }), // fixed, hourly, percentage, lump_sum
-    designFees: numeric("design_fees", { precision: 15, scale: 2 }).default(
+    designPrice: numeric("design_price", { precision: 15, scale: 2 }).default(
+      "0",
+    ),
+    designCost: numeric("design_cost", { precision: 15, scale: 2 }).default(
       "0",
     ),
 

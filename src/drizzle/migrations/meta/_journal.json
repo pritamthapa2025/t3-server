@@ -736,6 +736,13 @@
       "when": 1772178833026,
       "tag": "0104_grey_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1772188826700,
+      "tag": "0105_fearless_slipstream",
+      "breakpoints": true
     }
   ]
 }
