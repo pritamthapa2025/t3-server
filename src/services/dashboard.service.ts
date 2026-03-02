@@ -213,19 +213,57 @@ export const getRevenueStats = async (
     targetRows.map((t) => [`${t.year}-${t.month}`, Number(t.targetAmount)]),
   );
 
+  // Build a lookup for invoice months: "YYYY-M" → monthlyRevenue item
+  const revenueMap = new Map(
+    monthlyRevenue.map((m) => [`${m.year}-${m.monthNum}`, m]),
+  );
+
+  // Union all months from both invoice data and targets (within the range)
+  // so months with a target but no invoices still appear in the chart
+  const rangeStartYear = rangeStart.getFullYear();
+  const rangeStartMonth = rangeStart.getMonth() + 1;
+  const rangeEndYear = rangeEnd.getFullYear();
+  const rangeEndMonth = rangeEnd.getMonth() + 1;
+
+  const allMonthKeys = new Set<string>([
+    ...monthlyRevenue.map((m) => `${m.year}-${m.monthNum}`),
+    ...targetRows
+      .filter((t) => {
+        // Only include target months that fall within the queried date range
+        if (t.year < rangeStartYear || t.year > rangeEndYear) return false;
+        if (t.year === rangeStartYear && t.month < rangeStartMonth) return false;
+        if (t.year === rangeEndYear && t.month > rangeEndMonth) return false;
+        return true;
+      })
+      .map((t) => `${t.year}-${t.month}`),
+  ]);
+
+  // Sort keys chronologically then build chartData
+  const sortedKeys = [...allMonthKeys].sort((a, b) => {
+    const [ay = 0, am = 0] = a.split("-").map(Number);
+    const [by = 0, bm = 0] = b.split("-").map(Number);
+    return ay !== by ? ay - by : am - bm;
+  });
+
+  const SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  const chartData = sortedKeys.map((key) => {
+    const revenueItem = revenueMap.get(key);
+    const [yr = 0, mo = 0] = key.split("-").map(Number);
+    return {
+      month: revenueItem?.month ?? SHORT_MONTHS[mo - 1],
+      year: revenueItem?.year ?? yr,
+      revenue: Number(revenueItem?.revenue || 0),
+      target: targetMap.get(key) ?? 0,
+    };
+  });
+
   const currentTotal = Number(currentMonthRevenue[0]?.total || 0);
   const previousTotal = Number(previousMonthRevenue[0]?.total || 0);
   const growthPercentage =
     previousTotal > 0
       ? ((currentTotal - previousTotal) / previousTotal) * 100
       : 0;
-
-  const chartData = monthlyRevenue.map((item) => ({
-    month: item.month,
-    year: item.year,
-    revenue: Number(item.revenue || 0),
-    target: targetMap.get(`${item.year}-${item.monthNum}`) ?? 0,
-  }));
 
   const total = chartData.reduce((acc, d) => acc + d.revenue, 0);
 

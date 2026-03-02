@@ -643,16 +643,16 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "fleet", featureCode: "perform_safety_inspection", accessLevel: "create" },
   { roleId: ROLES.MANAGER, module: "fleet", featureCode: "upload_documents", accessLevel: "create" },
 
-  // Financial - Limited access
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "view_invoices", accessLevel: "view" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "create_invoice", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "edit_invoice", accessLevel: "edit_own" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "delete_invoice", accessLevel: "delete_own" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "send_invoice", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "record_payment", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "view_payment_history", accessLevel: "view" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "create_payment_plan", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "financial", featureCode: "generate_aging_report", accessLevel: "view" },
+  // Financial - No access (Executive only)
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "view_invoices", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "create_invoice", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "edit_invoice", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "delete_invoice", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "send_invoice", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "record_payment", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "view_payment_history", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "create_payment_plan", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "financial", featureCode: "generate_aging_report", accessLevel: "none" },
 
   // Dispatch - Full access
   { roleId: ROLES.MANAGER, module: "dispatch", featureCode: "view_daily_dispatch", accessLevel: "view" },
@@ -677,10 +677,10 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "payroll", featureCode: "approve_payroll", accessLevel: "none" },
   { roleId: ROLES.MANAGER, module: "payroll", featureCode: "view_pay_stubs", accessLevel: "none" },
 
-  // Reports - Team reports
-  { roleId: ROLES.MANAGER, module: "reports", featureCode: "view_reports", accessLevel: "view_team" },
-  { roleId: ROLES.MANAGER, module: "reports", featureCode: "generate_reports", accessLevel: "create" },
-  { roleId: ROLES.MANAGER, module: "reports", featureCode: "export_reports", accessLevel: "create" },
+  // Reports - No access (Executive only)
+  { roleId: ROLES.MANAGER, module: "reports", featureCode: "view_reports", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "reports", featureCode: "generate_reports", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "reports", featureCode: "export_reports", accessLevel: "none" },
 
   // Settings - No access (Executive only)
   { roleId: ROLES.MANAGER, module: "settings", featureCode: "view_settings", accessLevel: "none" },
@@ -937,6 +937,13 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "edit", accessLevel: "edit_all" },
   { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "send", accessLevel: "edit_all" },
   { roleId: ROLES.MANAGER, module: "invoicing", featureCode: "record_payment", accessLevel: "edit_all" },
+
+  // Bids - Full access except approval
+  { roleId: ROLES.MANAGER, module: "bids", featureCode: "view", accessLevel: "view" },
+  { roleId: ROLES.MANAGER, module: "bids", featureCode: "create", accessLevel: "create" },
+  { roleId: ROLES.MANAGER, module: "bids", featureCode: "edit_own", accessLevel: "edit_own" },
+  { roleId: ROLES.MANAGER, module: "bids", featureCode: "edit_pending", accessLevel: "none" },
+  { roleId: ROLES.MANAGER, module: "bids", featureCode: "delete", accessLevel: "delete_own" },
 
   // Documents - Full access
   { roleId: ROLES.MANAGER, module: "documents", featureCode: "view", accessLevel: "view" },

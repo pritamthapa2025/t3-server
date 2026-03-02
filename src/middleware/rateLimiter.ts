@@ -8,11 +8,13 @@ const json429 = (retryAfter: number) => ({
 /** Global fallback — applied to every route */
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 200,
+  limit: 2000,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  handler: (req, res, _next, options) => {
-    const retryAfter = Math.ceil(options.windowMs / 1000);
+  handler: (req, res, _next, _options) => {
+    const resetHeader = res.getHeader("RateLimit-Reset");
+    const resetMs = resetHeader ? Number(resetHeader) * 1000 : Date.now() + 15 * 60 * 1000;
+    const retryAfter = Math.ceil((resetMs - Date.now()) / 1000);
     res.status(429).json(json429(retryAfter));
   },
 });
