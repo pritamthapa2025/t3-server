@@ -18,6 +18,8 @@ import {
   createUser,
   deleteUser,
   getUserById,
+  getUserByEmail,
+  reactivateUser,
   updateUser,
 } from "../services/user.service.js";
 import { getDepartmentById } from "../services/department.service.js";
@@ -280,11 +282,15 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       branchName,
     } = employeeData;
 
-    // Pre-validate unique fields before attempting to create
-    const uniqueFieldChecks = [];
-
-    // Check email uniqueness (only if creating new user)
+    // If no userId but email provided, check for existing user (e.g. re-adding employee after delete)
+    let existingUserByEmail: Awaited<ReturnType<typeof getUserByEmail>> = null;
     if (!userId && email) {
+      existingUserByEmail = await getUserByEmail(email);
+    }
+
+    // Pre-validate unique fields before attempting to create (only when not reusing existing user)
+    const uniqueFieldChecks = [];
+    if (!userId && email && !existingUserByEmail) {
       uniqueFieldChecks.push({
         field: "email",
         value: email,
@@ -362,8 +368,27 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Create user if userId is not provided (new user)
-    if (!userId) {
+    // Resolve user: use provided userId, existing user by email (re-add employee), or create new user
+    if (userId) {
+      // Validate existing user
+      const existingUser = await getUserById(userId);
+      if (!existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid userId provided",
+        });
+      }
+    } else if (existingUserByEmail) {
+      // Re-use existing user (e.g. re-adding employee after their employee record was deleted)
+      if (existingUserByEmail.isDeleted) {
+        await reactivateUser(existingUserByEmail.id);
+      }
+      if (fullName && fullName !== existingUserByEmail.fullName) {
+        await updateUser(existingUserByEmail.id, { fullName });
+      }
+      // createdUser stays null; we don't send setup email for re-used accounts
+    } else {
+      // Create new user
       if (!fullName || !email) {
         return res.status(400).json({
           success: false,
@@ -371,11 +396,9 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
         });
       }
 
-      // Hash default password for all new users
       const defaultPassword = "TempPass2025!ChangeMe";
       const passwordHash = await hashPassword(defaultPassword);
 
-      // Create user
       createdUser = await createUser({
         fullName,
         email,
@@ -397,18 +420,9 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
           message: "Failed to create user",
         });
       }
-    } else {
-      // Validate existing user
-      const existingUser = await getUserById(userId);
-      if (!existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid userId provided",
-        });
-      }
     }
 
-    const finalUserId = userId || createdUser!.id;
+    const finalUserId = userId || existingUserByEmail?.id || createdUser!.id;
 
     // Assign role to user if roleId is provided
     if (roleId !== undefined && roleId !== null) {

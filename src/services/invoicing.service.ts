@@ -992,11 +992,20 @@ export const markInvoiceAsPaid = async (
 ) => {
   const paidDateStr = data.paidDate || new Date().toISOString().split("T")[0];
 
+  const [inv] = await db
+    .select({ totalAmount: invoices.totalAmount })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1);
+  const totalAmount = inv?.totalAmount ?? "0";
+
   await db
     .update(invoices)
     .set({
       status: "paid",
       paidDate: paidDateStr ? new Date(paidDateStr) : null,
+      amountPaid: totalAmount,
+      balanceDue: "0",
       updatedAt: new Date(),
     })
     .where(eq(invoices.id, invoiceId));
