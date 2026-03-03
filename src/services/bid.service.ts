@@ -821,7 +821,8 @@ export const updateBid = async (
   if (data.status) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         const svc = new NotificationService();
         const entityName = bid.projectName || bid.bidNumber || "Bid";
 
@@ -3661,11 +3662,9 @@ export const getBidKPIs = async (bidId: string) => {
   const [bid] = await db
     .select({
       actualTotalPrice: bidFinancialBreakdown.actualTotalPrice,
-      estimatedDuration: bidsTable.estimatedDuration,
       profitMargin: bidsTable.profitMargin,
       endDate: bidsTable.endDate,
-      plannedStartDate: bidsTable.plannedStartDate,
-      estimatedCompletion: bidsTable.estimatedCompletion,
+      createdAt: bidsTable.createdAt,
     })
     .from(bidsTable)
     .leftJoin(
@@ -3681,14 +3680,17 @@ export const getBidKPIs = async (bidId: string) => {
     return null;
   }
 
-  // Calculate estimated duration from dates if available
-  let calculatedDuration = bid.estimatedDuration || 0;
-  if (bid.plannedStartDate && bid.estimatedCompletion) {
-    const startDate = new Date(bid.plannedStartDate);
-    const endDate = new Date(bid.estimatedCompletion);
+  // Calculate estimated duration as days from createdAt to endDate
+  let calculatedDuration = 0;
+  if (bid.createdAt && bid.endDate) {
+    const startDate = new Date(bid.createdAt);
+    const endDate = new Date(bid.endDate);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
     const msPerDay = 24 * 60 * 60 * 1000;
-    calculatedDuration = Math.floor(
-      (endDate.getTime() - startDate.getTime()) / msPerDay,
+    calculatedDuration = Math.max(
+      0,
+      Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay),
     );
   }
 
