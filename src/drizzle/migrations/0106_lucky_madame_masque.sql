@@ -1,4 +1,4 @@
-CREATE TABLE "org"."bid_preventative_maintenance_data" (
+CREATE TABLE IF NOT EXISTS "org"."bid_preventative_maintenance_data" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"bid_id" uuid NOT NULL,
 	"pm_type" varchar(100),
@@ -20,7 +20,7 @@ CREATE TABLE "org"."bid_preventative_maintenance_data" (
 	CONSTRAINT "bid_preventative_maintenance_data_bid_id_unique" UNIQUE("bid_id")
 );
 --> statement-breakpoint
-CREATE TABLE "org"."bid_service_data" (
+CREATE TABLE IF NOT EXISTS "org"."bid_service_data" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"bid_id" uuid NOT NULL,
 	"service_call_technician" integer,
@@ -40,8 +40,8 @@ CREATE TABLE "org"."bid_service_data" (
 	CONSTRAINT "bid_service_data_bid_id_unique" UNIQUE("bid_id")
 );
 --> statement-breakpoint
-ALTER TABLE "org"."bid_preventative_maintenance_data" ADD CONSTRAINT "bid_preventative_maintenance_data_bid_id_bids_id_fk" FOREIGN KEY ("bid_id") REFERENCES "org"."bids"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."bid_service_data" ADD CONSTRAINT "bid_service_data_bid_id_bids_id_fk" FOREIGN KEY ("bid_id") REFERENCES "org"."bids"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "org"."bid_service_data" ADD CONSTRAINT "bid_service_data_service_call_technician_employees_id_fk" FOREIGN KEY ("service_call_technician") REFERENCES "org"."employees"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_bid_pm_data_bid_id" ON "org"."bid_preventative_maintenance_data" USING btree ("bid_id");--> statement-breakpoint
-CREATE INDEX "idx_bid_service_data_bid_id" ON "org"."bid_service_data" USING btree ("bid_id");
+DO $$ BEGIN ALTER TABLE "org"."bid_preventative_maintenance_data" ADD CONSTRAINT "bid_preventative_maintenance_data_bid_id_bids_id_fk" FOREIGN KEY ("bid_id") REFERENCES "org"."bids"("id") ON DELETE cascade ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."bid_service_data" ADD CONSTRAINT "bid_service_data_bid_id_bids_id_fk" FOREIGN KEY ("bid_id") REFERENCES "org"."bids"("id") ON DELETE cascade ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."bid_service_data" ADD CONSTRAINT "bid_service_data_service_call_technician_employees_id_fk" FOREIGN KEY ("service_call_technician") REFERENCES "org"."employees"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_bid_pm_data_bid_id" ON "org"."bid_preventative_maintenance_data" USING btree ("bid_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_bid_service_data_bid_id" ON "org"."bid_service_data" USING btree ("bid_id");

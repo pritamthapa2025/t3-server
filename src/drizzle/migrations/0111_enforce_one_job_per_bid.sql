@@ -7,4 +7,4 @@ WHERE id NOT IN (
   WHERE bid_id IS NOT NULL
   ORDER BY bid_id, created_at DESC NULLS LAST, id DESC
 );--> statement-breakpoint
-ALTER TABLE "org"."jobs" ADD CONSTRAINT "unique_job_per_bid" UNIQUE("bid_id");
+DO $$ BEGIN ALTER TABLE "org"."jobs" ADD CONSTRAINT "unique_job_per_bid" UNIQUE("bid_id"); EXCEPTION WHEN duplicate_object THEN null; END $$;

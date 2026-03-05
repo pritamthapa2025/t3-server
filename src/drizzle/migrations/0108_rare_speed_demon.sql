@@ -1,3 +1,142 @@
--- Tables job_service_calls, job_pm_inspections, job_plan_spec_records already exist in the database.
--- This migration is a no-op to align Drizzle's tracking with the actual DB state.
-SELECT 1;
+-- Create job_service_calls and job_pm_inspections if they don't already exist.
+-- On DBs that were set up via db:push these tables already exist, so IF NOT EXISTS makes this safe.
+
+CREATE TABLE IF NOT EXISTS "org"."job_service_calls" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"job_id" uuid NOT NULL,
+	"call_date" date,
+	"technician_id" integer,
+	"time_in" varchar(10),
+	"time_out" varchar(10),
+	"service_description" text,
+	"building_number" varchar(100),
+	"unit_tag" varchar(100),
+	"unit_location" varchar(255),
+	"make" varchar(255),
+	"model" varchar(255),
+	"serial" varchar(255),
+	"supply_air_temp" numeric(8, 2),
+	"return_air_temp" numeric(8, 2),
+	"ambient_temp" numeric(8, 2),
+	"cooling_supply_temp" numeric(8, 2),
+	"cooling_return_temp" numeric(8, 2),
+	"heating_supply_temp" numeric(8, 2),
+	"heating_return_temp" numeric(8, 2),
+	"blower_motor_status" varchar(50),
+	"compressor_status" varchar(50),
+	"heating_coil_condition" varchar(50),
+	"cooling_coil_condition" varchar(50),
+	"thermostat_status" varchar(50),
+	"plumbing_system_check" boolean DEFAULT false,
+	"thermostat_check" boolean DEFAULT false,
+	"hvac_system_check" boolean DEFAULT false,
+	"client_communication_check" boolean DEFAULT false,
+	"filter_inspected" boolean DEFAULT false,
+	"electrical_connections_check" boolean DEFAULT false,
+	"refrigerant_lines_check" boolean DEFAULT false,
+	"safety_controls_check" boolean DEFAULT false,
+	"work_performed" text,
+	"parts_replaced" text,
+	"issues_found" text,
+	"recommendations" text,
+	"priority_level" varchar(20),
+	"before_photos" text,
+	"after_photos" text,
+	"parts_photos" text,
+	"issues_photos" text,
+	"customer_signature_path" text,
+	"customer_name" varchar(255),
+	"customer_signature_date" date,
+	"customer_declined_signature" boolean DEFAULT false,
+	"status" varchar(20) DEFAULT 'draft',
+	"created_by" uuid,
+	"is_deleted" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_service_calls" ADD CONSTRAINT "job_service_calls_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "org"."jobs"("id") ON DELETE cascade ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_service_calls" ADD CONSTRAINT "job_service_calls_technician_id_employees_id_fk" FOREIGN KEY ("technician_id") REFERENCES "org"."employees"("id") ON DELETE set null ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_service_calls" ADD CONSTRAINT "job_service_calls_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_service_calls_job_id" ON "org"."job_service_calls" USING btree ("job_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_service_calls_technician" ON "org"."job_service_calls" USING btree ("technician_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_service_calls_status" ON "org"."job_service_calls" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_service_calls_is_deleted" ON "org"."job_service_calls" USING btree ("is_deleted");--> statement-breakpoint
+
+CREATE TABLE IF NOT EXISTS "org"."job_pm_inspections" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"job_id" uuid NOT NULL,
+	"building_number" varchar(100),
+	"unit_tag" varchar(100),
+	"unit_location" varchar(255),
+	"make" varchar(255),
+	"model" varchar(255),
+	"serial" varchar(255),
+	"cabinet_integrity_check" boolean DEFAULT false,
+	"corrosion_rust_check" boolean DEFAULT false,
+	"debris_blockage_check" boolean DEFAULT false,
+	"refrigerant_line_check" boolean DEFAULT false,
+	"electrical_components_check" boolean DEFAULT false,
+	"ducting_condition_check" boolean DEFAULT false,
+	"condensate_line_check" boolean DEFAULT false,
+	"filter_present" boolean DEFAULT false,
+	"filter_size" varchar(100),
+	"filter_quality" varchar(50),
+	"filter_condition" varchar(50),
+	"filter_replaced" boolean DEFAULT false,
+	"new_filter_size" varchar(100),
+	"old_filter_photo_url" text,
+	"new_filter_photo_url" text,
+	"cooling_supply_temp" numeric(8, 2),
+	"cooling_return_temp" numeric(8, 2),
+	"heating_supply_temp" numeric(8, 2),
+	"heating_return_temp" numeric(8, 2),
+	"supply_air_temp" numeric(8, 2),
+	"return_air_temp" numeric(8, 2),
+	"ambient_temp" numeric(8, 2),
+	"blower_motor_status" varchar(50),
+	"compressor_status" varchar(50),
+	"heating_coil_condition" varchar(50),
+	"cooling_coil_condition" varchar(50),
+	"thermostat_status" varchar(50),
+	"cooling_functionality" varchar(20),
+	"heating_functionality" varchar(20),
+	"airflow_output" varchar(20),
+	"exhaust_fans_inspected" varchar(10),
+	"exhaust_fan_issues" varchar(10),
+	"exhaust_fan_issues_description" text,
+	"locking_panel_in_good_condition" varchar(10),
+	"check_for_grime_on_external_surfaces" varchar(10),
+	"condensate_pans_cleaned_provide_photos" varchar(10),
+	"compressor_connections_provide_photos" varchar(10),
+	"coils_suppressants_applied" varchar(10),
+	"add_coils_evap_condensator_refrig_damaged" varchar(10),
+	"coils_clean_with_power_wash_good_condition" varchar(10),
+	"heating_and_heat_pump_operating_belts" varchar(10),
+	"refrigerant_lines_leaks_repaired" varchar(10),
+	"economize_or_exhaust_damper_open_close" varchar(10),
+	"supercool_with_power_refrigeration_safety" varchar(10),
+	"unit_safe_good_working_order" varchar(10),
+	"has_recommendations" boolean DEFAULT false,
+	"recommendation_info" text,
+	"overall_photo_url" text,
+	"inspection_notes" text,
+	"issues_identified" text,
+	"recommended_actions" text,
+	"priority_level" varchar(20),
+	"technician_id" integer,
+	"inspection_date" date,
+	"status" varchar(20) DEFAULT 'draft',
+	"created_by" uuid,
+	"is_deleted" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_pm_inspections" ADD CONSTRAINT "job_pm_inspections_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "org"."jobs"("id") ON DELETE cascade ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_pm_inspections" ADD CONSTRAINT "job_pm_inspections_technician_id_employees_id_fk" FOREIGN KEY ("technician_id") REFERENCES "org"."employees"("id") ON DELETE set null ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN ALTER TABLE "org"."job_pm_inspections" ADD CONSTRAINT "job_pm_inspections_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_pm_inspections_job_id" ON "org"."job_pm_inspections" USING btree ("job_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_pm_inspections_technician" ON "org"."job_pm_inspections" USING btree ("technician_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_pm_inspections_status" ON "org"."job_pm_inspections" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_job_pm_inspections_is_deleted" ON "org"."job_pm_inspections" USING btree ("is_deleted");

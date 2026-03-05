@@ -1,2 +1,2 @@
-ALTER TABLE "org"."employees" DROP COLUMN "is_online";--> statement-breakpoint
-ALTER TABLE "org"."employees" DROP COLUMN "last_seen";
+ALTER TABLE "org"."employees" DROP COLUMN IF EXISTS "is_online";--> statement-breakpoint
+ALTER TABLE "org"."employees" DROP COLUMN IF EXISTS "last_seen";

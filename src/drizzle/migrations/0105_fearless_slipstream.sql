@@ -1,4 +1,4 @@
-ALTER TABLE "org"."bid_design_build_data" RENAME COLUMN "design_fees" TO "design_price";--> statement-breakpoint
-ALTER TABLE "org"."bid_design_build_data" ADD COLUMN "approval_milestones" text;--> statement-breakpoint
-ALTER TABLE "org"."bid_design_build_data" ADD COLUMN "design_revision_limit" integer;--> statement-breakpoint
-ALTER TABLE "org"."bid_design_build_data" ADD COLUMN "design_cost" numeric(15, 2) DEFAULT '0';
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'org' AND table_name = 'bid_design_build_data' AND column_name = 'design_fees') THEN ALTER TABLE "org"."bid_design_build_data" RENAME COLUMN "design_fees" TO "design_price"; END IF; END $$;--> statement-breakpoint
+ALTER TABLE "org"."bid_design_build_data" ADD COLUMN IF NOT EXISTS "approval_milestones" text;--> statement-breakpoint
+ALTER TABLE "org"."bid_design_build_data" ADD COLUMN IF NOT EXISTS "design_revision_limit" integer;--> statement-breakpoint
+ALTER TABLE "org"."bid_design_build_data" ADD COLUMN IF NOT EXISTS "design_cost" numeric(15, 2) DEFAULT '0';

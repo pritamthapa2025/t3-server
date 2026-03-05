@@ -20,5 +20,5 @@ CREATE INDEX "idx_user_orgs_user" ON "org"."user_organizations" USING btree ("us
 CREATE INDEX "idx_user_orgs_org" ON "org"."user_organizations" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "idx_user_orgs_type" ON "org"."user_organizations" USING btree ("user_type");--> statement-breakpoint
 CREATE INDEX "idx_user_orgs_is_active" ON "org"."user_organizations" USING btree ("is_active");--> statement-breakpoint
-ALTER TABLE "org"."employees" DROP COLUMN "is_online";--> statement-breakpoint
-ALTER TABLE "org"."employees" DROP COLUMN "last_seen";
+ALTER TABLE "org"."employees" DROP COLUMN IF EXISTS "is_online";--> statement-breakpoint
+ALTER TABLE "org"."employees" DROP COLUMN IF EXISTS "last_seen";
