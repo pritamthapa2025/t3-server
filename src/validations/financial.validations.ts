@@ -11,6 +11,14 @@ export const getFinancialDashboardQuerySchema = z.object({
     organizationId: uuidSchema.optional(),
     startDate: dateSchema.optional(),
     endDate: dateSchema.optional(),
+    month: z
+      .string()
+      .regex(/^([1-9]|1[0-2])$/, "month must be 1–12")
+      .optional(),
+    year: z
+      .string()
+      .regex(/^\d{4}$/, "year must be a 4-digit number")
+      .optional(),
   }),
 });
 
@@ -413,6 +421,64 @@ export const updateFinancialReportSchema = z.object({
 });
 
 export const deleteFinancialReportSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+});
+
+// ─── Financial Category Budget Validations ────────────────────────────────────
+
+const categoryBudgetCategoryEnum = z.enum(
+  ["materials", "labor", "travel", "operating"],
+  { message: "Category must be one of: materials, labor, travel, operating" },
+);
+
+export const listFinancialCategoryBudgetsQuerySchema = z.object({
+  query: z.object({
+    month: z
+      .string()
+      .regex(/^([1-9]|1[0-2])$/, "month must be 1–12")
+      .optional(),
+    year: z
+      .string()
+      .regex(/^\d{4}$/, "year must be a 4-digit number")
+      .optional(),
+    category: categoryBudgetCategoryEnum.optional(),
+  }),
+});
+
+export const createFinancialCategoryBudgetSchema = z.object({
+  body: z.object({
+    category: categoryBudgetCategoryEnum,
+    month: z.number().int().min(1, "month must be 1–12").max(12, "month must be 1–12"),
+    year: z
+      .number()
+      .int()
+      .min(2000, "year must be 2000 or later")
+      .max(2100, "year must be 2100 or earlier"),
+    budgetAmount: z.number().positive("budgetAmount must be a positive number").optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+export const updateFinancialCategoryBudgetSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+  body: z
+    .object({
+      category: categoryBudgetCategoryEnum.optional(),
+      month: z.number().int().min(1).max(12).optional(),
+      year: z.number().int().min(2000).max(2100).optional(),
+      budgetAmount: z.number().positive().optional(),
+      notes: z.string().optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, {
+      message: "At least one field must be provided to update the budget",
+    }),
+});
+
+export const financialCategoryBudgetIdParamSchema = z.object({
   params: z.object({
     id: uuidSchema,
   }),

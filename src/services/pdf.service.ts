@@ -113,39 +113,44 @@ const renderTemplate = (
 ): string => {
   let rendered = template;
 
-  // Replace simple variables {{variable}}
-  rendered = rendered.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
-    const keys = variable.trim().split(".");
-    let value = data;
-
-    for (const key of keys) {
-      value = value?.[key];
-    }
-
-    return value !== undefined && value !== null ? String(value) : "";
-  });
-
-  // Handle simple {{#if condition}} blocks
-  rendered = rendered.replace(
-    /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
-    (match, condition, content) => {
-      const value = data[condition.trim()];
-      return value && value !== "" && value !== null ? content : "";
-    },
-  );
-
-  // Handle {{#each array}} blocks
+  // Process {{#each array}} blocks FIRST (before {{#if}} so nested each/if work)
   rendered = rendered.replace(
     /\{\{#each\s+([^}]+)\}\}([\s\S]*?)\{\{\/each\}\}/g,
     (match, arrayName, itemTemplate) => {
       const array = data[arrayName.trim()];
       if (!Array.isArray(array)) return "";
-
       return array
         .map((item) => renderTemplate(itemTemplate, { ...data, this: item }))
         .join("");
     },
   );
+
+  // Process {{#if condition}} blocks SECOND (before simple variable replacement
+  // so that the {{#if ...}} tokens are not consumed by the variable regex)
+  let prevRendered: string;
+  do {
+    prevRendered = rendered;
+    rendered = rendered.replace(
+      /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
+      (match, condition, content) => {
+        const value = data[condition.trim()];
+        return value && value !== "" && value !== null ? content : "";
+      },
+    );
+  } while (rendered !== prevRendered); // repeat for nested {{#if}} blocks
+
+  // Replace simple variables {{variable}} LAST
+  rendered = rendered.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
+    const trimmed = variable.trim();
+    // Skip any remaining control tokens (should be none at this point)
+    if (trimmed.startsWith("#") || trimmed.startsWith("/")) return "";
+    const keys = trimmed.split(".");
+    let value: any = data;
+    for (const key of keys) {
+      value = value?.[key];
+    }
+    return value !== undefined && value !== null ? String(value) : "";
+  });
 
   return rendered;
 };
@@ -255,7 +260,7 @@ export interface QuotePDFData {
   clientAddress: string;
   proposalNote: string;
   workItems: Array<{ index: number; description: string }>;
-  // Financial breakdown
+  // Financial breakdown (standard)
   materialsCost: string;
   laborCost: string;
   travelCost: string;
@@ -263,6 +268,107 @@ export interface QuotePDFData {
   hasOperatingExpenses: boolean;
   totalAmount: string;
   expirationDate: string;
+
+  // Job type discriminators for template {{#if}} blocks
+  isGeneral: boolean;
+  isPlanSpec: boolean;
+  isDesignBuild: boolean;
+  isSurvey: boolean;
+  isService: boolean;
+  isPM: boolean;
+
+  // Shared enrichment fields (all types)
+  projectTimeline: string;
+  hasProjectTimeline: boolean;
+  estimatedDurationLabel: string;
+  hasDuration: boolean;
+  siteContact: string;
+  hasSiteContact: boolean;
+
+  // Plan Spec specific
+  planRevision: string;
+  plansReceivedDate: string;
+  specRevision: string;
+  specsReceivedDate: string;
+  addendaAcknowledged: string;
+  complianceRequirements: string;
+  hasAddenda: boolean;
+  hasComplianceRequirements: boolean;
+  codeComplianceStatus: string;
+  hasCodeComplianceStatus: boolean;
+  addendaNotes: string;
+  hasAddendaNotes: boolean;
+
+  // Design Build specific
+  designPhaseLabel: string;
+  designSchedule: string;
+  conceptDescription: string;
+  designDeliverables: string;
+  designRevisionNote: string;
+  designFeeLabel: string;
+  designFeeAmount: string;
+  hasDesignFee: boolean;
+  hasConceptDescription: boolean;
+  hasDesignDeliverables: boolean;
+  clientApprovalNote: string;
+  hasClientApproval: boolean;
+  approvalMilestones: string;
+  hasApprovalMilestones: boolean;
+
+  // Survey specific
+  surveyTypeLabel: string;
+  surveyScope: string;
+  unitTypesList: string;
+  surveyServicesHtml: string;
+  surveySchedulingNotes: string;
+  hasSurveySchedulingNotes: boolean;
+  surveyPricingRowsHtml: string;
+  surveyDateLabel: string;
+  hasSurveyDate: boolean;
+  surveyPricingModelLabel: string;
+  surveyNotes: string;
+  hasSurveyNotes: boolean;
+
+  // Service specific
+  serviceTypeLabel: string;
+  equipmentTypeLabel: string;
+  issueCategoryLabel: string;
+  reportedIssue: string;
+  preliminaryAssessment: string;
+  hasReportedIssue: boolean;
+  hasPreliminaryAssessment: boolean;
+  servicePricingRowsHtml: string;
+  estimatedWorkScope: string;
+  hasEstimatedWorkScope: boolean;
+  servicePricingNotes: string;
+  hasServicePricingNotes: boolean;
+  crewSummary: string;
+  hasCrewSummary: boolean;
+  scheduledDateLabel: string;
+  hasScheduledDate: boolean;
+
+  // PM specific
+  pmTypeLabel: string;
+  frequencyLabel: string;
+  coverageLabel: string;
+  pmServicesHtml: string;
+  emergencyRateNote: string;
+  hasEmergencyRate: boolean;
+  paymentScheduleLabel: string;
+  pmPricingRowsHtml: string;
+  pmServiceScope: string;
+  hasPMServiceScope: boolean;
+  pmPricingModelLabel: string;
+
+  // Conditional section visibility
+  showExclusions: boolean;
+  showStandardWarranty: boolean;
+  showShortWarranty: boolean;
+  showServiceGuarantee: boolean;
+  customPaymentTerms: string;
+  hasCustomPaymentTerms: boolean;
+  customExclusions: string;
+  hasCustomExclusions: boolean;
 }
 
 /**
@@ -553,20 +659,129 @@ function buildQuoteWorkItems(
   return lines.map((description, i) => ({ index: i + 1, description }));
 }
 
+/** Resolve the correct total amount based on job type and type-specific pricing data */
+function resolveTotal(
+  jobType: string,
+  breakdown: Record<string, any> | null,
+  typeData: Record<string, any> | null,
+): string {
+  if (jobType === "survey") {
+    return Number(typeData?.totalSurveyFee || 0).toFixed(2);
+  }
+  if (jobType === "service") {
+    const model = typeData?.pricingModel;
+    if (model === "flat_rate")
+      return Number(typeData?.flatRatePrice || 0).toFixed(2);
+    if (model === "diagnostic_repair")
+      return (
+        Number(typeData?.diagnosticFee || 0) +
+        Number(typeData?.estimatedRepairCost || 0)
+      ).toFixed(2);
+    // time_materials
+    const laborTotal =
+      (Number(typeData?.numberOfTechs) || 1) *
+      (Number(typeData?.laborHours) || 0) *
+      (Number(typeData?.laborRate) || 0);
+    const mat = Number(typeData?.materialsCost || 0);
+    const travel = Number(typeData?.travelCost || 0);
+    const markup = 1 + Number(typeData?.serviceMarkup || 0) / 100;
+    return ((laborTotal + mat + travel) * markup).toFixed(2);
+  }
+  if (jobType === "preventative_maintenance") {
+    const freqMap: Record<string, number> = {
+      quarterly: 4,
+      semi_annual: 2,
+      annual: 1,
+    };
+    const visits = freqMap[typeData?.maintenanceFrequency as string] ?? 0;
+    const model = typeData?.pricingModel;
+    let base = 0;
+    if (model === "per_unit")
+      base =
+        Number(typeData?.pricePerUnit || 0) *
+        Number(typeData?.numberOfUnits || 0) *
+        visits;
+    else if (model === "flat_rate")
+      base = Number(typeData?.flatRatePerVisit || 0) * visits;
+    else if (model === "annual_contract")
+      base = Number(typeData?.annualContractValue || 0);
+    const addons =
+      (typeData?.includeFilterReplacement
+        ? Number(typeData?.filterReplacementCost || 0) *
+          Number(typeData?.numberOfUnits || 0) *
+          visits
+        : 0) +
+      (typeData?.includeCoilCleaning
+        ? Number(typeData?.coilCleaningCost || 0) * visits
+        : 0);
+    return (base + addons).toFixed(2);
+  }
+  if (jobType === "design_build") {
+    const construction = Number(breakdown?.totalPrice || 0);
+    const design = Number(typeData?.designPrice || 0);
+    return (construction + design).toFixed(2);
+  }
+  // general / plan_spec
+  return Number(breakdown?.totalPrice || 0).toFixed(2);
+}
+
+/** Build HTML rows for the pricing table from an array of {label, amount} pairs */
+function buildPricingRowsHtml(
+  rows: Array<{ label: string; amount: string }>,
+): string {
+  return rows
+    .map(
+      (row, i) =>
+        `<tr><td>${i + 1}</td><td>${escHtml(row.label)}</td><td style="text-align:right;font-weight:700;">${escHtml(row.amount)}</td></tr>`,
+    )
+    .join("");
+}
+
+/** Build a simple checklist HTML for included services */
+function buildChecklistHtml(items: string[]): string {
+  if (items.length === 0) return "";
+  return (
+    `<ul class="services-checklist">` +
+    items.map((item) => `<li>${escHtml(item)}</li>`).join("") +
+    `</ul>`
+  );
+}
+
+/** Format a date string/Date to a readable string, returning fallback if empty */
+function fmtDate(d: string | Date | null | undefined, fallback = "—"): string {
+  if (!d) return fallback;
+  try {
+    return new Date(d).toLocaleDateString();
+  } catch {
+    return fallback;
+  }
+}
+
 /**
- * Prepare quote (bid) data for PDF generation
+ * Prepare quote (bid) data for PDF generation — job-type-aware version
  */
 export const prepareQuoteDataForPDF = (
   bid: {
     bidNumber: string;
+    jobType?: string | null;
     createdDate?: string | Date | null;
     endDate?: string | Date | null;
     siteAddress?: string | null;
     scopeOfWork?: string | null;
+    description?: string | null;
     referenceDate?: string | null;
     proposalBasis?: string | null;
     assignedToName?: string | null;
     createdByName?: string | null;
+    plannedStartDate?: string | null;
+    estimatedCompletion?: string | null;
+    completionDate?: string | null;
+    estimatedDuration?: string | number | null;
+    siteContactName?: string | null;
+    siteContactPhone?: string | null;
+    scheduledDateTime?: string | null;
+    paymentTerms?: string | null;
+    exclusions?: string | null;
   },
   organization: {
     name?: string | null;
@@ -590,16 +805,14 @@ export const prepareQuoteDataForPDF = (
     zipCode?: string | null;
   } | null,
   options?: { officeAddress?: string; officePhone?: string },
+  typeSpecificData?: Record<string, any> | null,
 ): QuotePDFData => {
+  const jobType = bid.jobType ?? "general";
+  const typeData = typeSpecificData ?? null;
+
   const createdDate = bid.createdDate ? new Date(bid.createdDate) : new Date();
   const endDate = bid.endDate ? new Date(bid.endDate) : null;
-  const totalPrice =
-    financialBreakdown?.totalPrice != null
-      ? Number(financialBreakdown.totalPrice)
-        : NaN;
-  const totalAmount = Number.isFinite(totalPrice)
-    ? totalPrice.toFixed(2)
-    : "0.00";
+
   const clientAddressParts = [
     property?.addressLine1,
     [property?.city, property?.state, property?.zipCode]
@@ -618,12 +831,27 @@ export const prepareQuoteDataForPDF = (
           .filter(Boolean)
           .join(", ") || "";
 
-  const proposalNote =
-    bid.referenceDate || bid.proposalBasis
-      ? `This proposal was based on Clients RFP, job walk information from ${bid.referenceDate ?? "—"}, and revised plans dated ${bid.referenceDate ?? "—"} by ${bid.proposalBasis ?? "—"}.`
-      : "This proposal was based on the client RFP and job walk information.";
+  // Resolve the scope text — use scopeOfWork, fallback to description
+  const scopeText = bid.scopeOfWork?.trim() || bid.description?.trim() || "—";
 
-  // Format financial breakdown costs
+  // Proposal note — customise for Plan Spec
+  let proposalNote: string;
+  if (jobType === "plan_spec" && typeData) {
+    const planRev = typeData.planRevision ? `Rev. ${typeData.planRevision}` : "";
+    const planDate = fmtDate(typeData.plansReceivedDate, "");
+    const specRev = typeData.specificationRevision ? `Rev. ${typeData.specificationRevision}` : "";
+    const addendaNote =
+      typeData.addendaReceived && typeData.addendaCount
+        ? `, Addendum #${typeData.addendaCount} acknowledged`
+        : "";
+    proposalNote = `This proposal is based on Plans ${[planRev, planDate].filter(Boolean).join(" received ")} and Specifications ${[specRev].filter(Boolean).join(", ")}${addendaNote}.`;
+  } else if (bid.referenceDate || bid.proposalBasis) {
+    proposalNote = `This proposal was based on Clients RFP, job walk information from ${bid.referenceDate ?? "—"}, and revised plans dated ${bid.referenceDate ?? "—"} by ${bid.proposalBasis ?? "—"}.`;
+  } else {
+    proposalNote = "This proposal was based on the client RFP and job walk information.";
+  }
+
+  // Standard financial breakdown fields
   const materialsCost = financialBreakdown?.materialsEquipment
     ? Number(financialBreakdown.materialsEquipment).toFixed(2)
     : "0.00";
@@ -638,8 +866,357 @@ export const prepareQuoteDataForPDF = (
     : "0.00";
   const hasOperatingExpenses = Boolean(
     financialBreakdown?.operatingExpenses &&
-      Number(financialBreakdown.operatingExpenses) > 0
+      Number(financialBreakdown.operatingExpenses) > 0,
   );
+
+  const totalAmount = resolveTotal(jobType, financialBreakdown as any, typeData);
+
+  // ── Plan Spec fields ──────────────────────────────────────────────────────
+  const planRevision = typeData?.planRevision ? `Rev. ${typeData.planRevision}` : "—";
+  const plansReceivedDate = fmtDate(typeData?.plansReceivedDate);
+  const specRevision = typeData?.specificationRevision ? `Rev. ${typeData.specificationRevision}` : "—";
+  const specsReceivedDate = fmtDate(typeData?.specificationsReceivedDate);
+  const hasAddenda = Boolean(typeData?.addendaReceived && typeData?.addendaCount);
+  const addendaAcknowledged = hasAddenda
+    ? `Addendum #${typeData!.addendaCount} acknowledged`
+    : "";
+  const complianceRequirements = typeData?.complianceRequirements?.trim() || "";
+  const hasComplianceRequirements = Boolean(complianceRequirements);
+
+  // ── Design Build fields ───────────────────────────────────────────────────
+  const designPhaseMap: Record<string, string> = {
+    conceptual: "Conceptual Design",
+    schematic: "Schematic Design",
+    design_development: "Design Development",
+    construction_documents: "Construction Documents",
+    bidding: "Bidding",
+    construction_admin: "Construction Administration",
+  };
+  const designPhaseLabel =
+    designPhaseMap[typeData?.designPhase as string] || typeData?.designPhase || "—";
+  const dsStart = fmtDate(typeData?.designStartDate, "");
+  const dsEnd = fmtDate(typeData?.designCompletionDate, "");
+  const designSchedule =
+    dsStart && dsEnd ? `${dsStart} – ${dsEnd}` : dsStart || dsEnd || "—";
+  const conceptDescription = typeData?.conceptDescription?.trim() || "";
+  const designDeliverables = typeData?.designDeliverables?.trim() || "";
+  const designRevisionNote =
+    typeData?.designRevisionLimit
+      ? `Up to ${typeData.designRevisionLimit} design revision${typeData.designRevisionLimit > 1 ? "s" : ""} included`
+      : "";
+  const designFeeBasisMap: Record<string, string> = {
+    fixed: "Fixed Fee",
+    hourly: "Hourly",
+    percentage: "Percentage",
+    lump_sum: "Lump Sum",
+  };
+  const designFeeLabel =
+    designFeeBasisMap[typeData?.designFeeBasis as string] || typeData?.designFeeBasis || "Design Fee";
+  const designFeeAmount = Number(typeData?.designPrice || 0).toFixed(2);
+  const hasDesignFee = Number(typeData?.designPrice || 0) > 0;
+  const hasConceptDescription = Boolean(conceptDescription);
+  const hasDesignDeliverables = Boolean(designDeliverables);
+
+  // ── Survey fields ─────────────────────────────────────────────────────────
+  const surveyTypeMap: Record<string, string> = {
+    "new-installation": "New Installation Survey",
+    "existing-assessment": "Existing System Assessment",
+    "energy-audit": "Energy Audit",
+    "feasibility-study": "Feasibility Study",
+  };
+  const surveyTypeLabel =
+    surveyTypeMap[typeData?.surveyType as string] || typeData?.surveyType || "Site Survey";
+  const numBuildings = typeData?.numberOfBuildings || 0;
+  const numUnits = typeData?.expectedUnitsToSurvey || 0;
+  const surveyScope = [
+    numBuildings > 0 ? `${numBuildings} building${numBuildings > 1 ? "s" : ""}` : "",
+    numUnits > 0 ? `${numUnits} unit${numUnits > 1 ? "s" : ""} to survey` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ") || "—";
+
+  let unitTypesList = "—";
+  try {
+    const parsed = typeData?.unitTypes ? JSON.parse(String(typeData.unitTypes)) : [];
+    if (Array.isArray(parsed) && parsed.length > 0) unitTypesList = parsed.join(", ");
+  } catch { /* ignore */ }
+
+  const surveyServiceItems: string[] = [];
+  if (typeData?.includePhotoDocumentation) surveyServiceItems.push("Photo Documentation");
+  if (typeData?.includePerformanceTesting) surveyServiceItems.push("Performance Testing");
+  if (typeData?.includeEnergyAnalysis) surveyServiceItems.push("Energy Analysis");
+  if (typeData?.includeRecommendations) surveyServiceItems.push("Written Recommendations Report");
+  const surveyServicesHtml = buildChecklistHtml(surveyServiceItems);
+
+  const surveySchedulingNotes =
+    (typeData?.schedulingConstraints?.trim() || typeData?.accessRequirements?.trim() || "");
+  const hasSurveySchedulingNotes = Boolean(surveySchedulingNotes);
+
+  const surveyPricingRows: Array<{ label: string; amount: string }> = [];
+  if (jobType === "survey" && typeData) {
+    const model = typeData.pricingModel;
+    if (model === "flat_fee") {
+      surveyPricingRows.push({
+        label: "Survey Fee (Flat Rate)",
+        amount: `$${Number(typeData.flatSurveyFee || 0).toFixed(2)}`,
+      });
+    } else if (model === "per_unit") {
+      const perUnit = Number(typeData.pricePerUnit || 0);
+      const units = Number(typeData.expectedUnitsToSurvey || 0);
+      surveyPricingRows.push({
+        label: `Per-Unit Rate ($${perUnit.toFixed(2)} × ${units} units)`,
+        amount: `$${(perUnit * units).toFixed(2)}`,
+      });
+    } else {
+      // time_materials
+      const hrs = Number(typeData.estimatedHours || 0);
+      const rate = Number(typeData.hourlyRate || 0);
+      const expenses = Number(typeData.estimatedExpenses || 0);
+      surveyPricingRows.push(
+        { label: `Labour (${hrs} hrs × $${rate.toFixed(2)}/hr)`, amount: `$${(hrs * rate).toFixed(2)}` },
+        { label: "Site Expenses", amount: `$${expenses.toFixed(2)}` },
+      );
+    }
+    if (travelCost !== "0.00")
+      surveyPricingRows.push({ label: "Travel", amount: `$${travelCost}` });
+  }
+  const surveyPricingRowsHtml = buildPricingRowsHtml(surveyPricingRows);
+
+  // ── Service fields ────────────────────────────────────────────────────────
+  const serviceTypeMap: Record<string, string> = {
+    emergency_repair: "Emergency Repair",
+    scheduled_repair: "Scheduled Repair",
+    diagnostic: "Diagnostic",
+    installation: "Installation",
+    other: "General Service",
+  };
+  const serviceTypeLabel =
+    serviceTypeMap[typeData?.serviceType as string] || typeData?.serviceType || "Service Call";
+
+  const equipmentTypeMap: Record<string, string> = {
+    rooftop_unit: "Rooftop Unit (RTU)",
+    split_system: "Split System",
+    boiler: "Boiler",
+    chiller: "Chiller",
+    air_handler: "Air Handler (AHU)",
+    other: "HVAC Equipment",
+  };
+  const equipmentTypeLabel =
+    equipmentTypeMap[typeData?.equipmentType as string] || typeData?.equipmentType || "—";
+
+  const issueCategoryMap: Record<string, string> = {
+    cooling: "Cooling System",
+    heating: "Heating System",
+    ventilation: "Ventilation",
+    controls: "Controls/BMS",
+    electrical: "Electrical",
+    plumbing: "Plumbing",
+    other: "General",
+  };
+  const issueCategoryLabel =
+    issueCategoryMap[typeData?.issueCategory as string] || typeData?.issueCategory || "—";
+
+  const reportedIssue = typeData?.reportedIssue?.trim() || "";
+  const preliminaryAssessment = typeData?.preliminaryAssessment?.trim() || "";
+  const hasReportedIssue = Boolean(reportedIssue);
+  const hasPreliminaryAssessment = Boolean(preliminaryAssessment);
+
+  const servicePricingRows: Array<{ label: string; amount: string }> = [];
+  if (jobType === "service" && typeData) {
+    const model = typeData.pricingModel;
+    if (model === "flat_rate") {
+      servicePricingRows.push({
+        label: `Flat Rate Service — ${serviceTypeLabel}`,
+        amount: `$${Number(typeData.flatRatePrice || 0).toFixed(2)}`,
+      });
+    } else if (model === "diagnostic_repair") {
+      servicePricingRows.push(
+        { label: "Diagnostic Fee", amount: `$${Number(typeData.diagnosticFee || 0).toFixed(2)}` },
+        { label: "Estimated Repair Cost", amount: `$${Number(typeData.estimatedRepairCost || 0).toFixed(2)}` },
+      );
+    } else {
+      // time_materials
+      const techs = Number(typeData.numberOfTechs || 1);
+      const hrs = Number(typeData.laborHours || 0);
+      const rate = Number(typeData.laborRate || 0);
+      const mat = Number(typeData.materialsCost || 0);
+      const trav = Number(typeData.travelCost || 0);
+      const markup = Number(typeData.serviceMarkup || 0);
+      servicePricingRows.push(
+        { label: `Labour (${techs} tech${techs > 1 ? "s" : ""} × ${hrs} hrs × $${rate.toFixed(2)}/hr)`, amount: `$${(techs * hrs * rate).toFixed(2)}` },
+        { label: "Materials & Parts", amount: `$${mat.toFixed(2)}` },
+        { label: "Travel", amount: `$${trav.toFixed(2)}` },
+      );
+      if (markup > 0)
+        servicePricingRows.push({ label: `Markup (${markup}%)`, amount: "" });
+    }
+  }
+  const servicePricingRowsHtml = buildPricingRowsHtml(servicePricingRows);
+
+  // ── PM fields ─────────────────────────────────────────────────────────────
+  const pmTypeLabel =
+    typeData?.pmType === "existing_pm_renewal" ? "PM Contract Renewal" : "New PM Contract";
+
+  const freqLabelMap: Record<string, string> = {
+    quarterly: "Quarterly (4 visits/year)",
+    semi_annual: "Semi-Annual (2 visits/year)",
+    annual: "Annual (1 visit/year)",
+  };
+  const frequencyLabel =
+    freqLabelMap[typeData?.maintenanceFrequency as string] || typeData?.maintenanceFrequency || "—";
+
+  const pmBuildings = typeData?.numberOfBuildings || 0;
+  const pmUnits = typeData?.numberOfUnits || 0;
+  const coverageLabel = [
+    pmBuildings > 0 ? `${pmBuildings} building${pmBuildings > 1 ? "s" : ""}` : "",
+    pmUnits > 0 ? `${pmUnits} unit${pmUnits > 1 ? "s" : ""}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ") || "—";
+
+  const pmServiceItems: string[] = [];
+  if (typeData?.filterReplacementIncluded || typeData?.includeFilterReplacement)
+    pmServiceItems.push("Filter Replacement");
+  if (typeData?.coilCleaningIncluded || typeData?.includeCoilCleaning)
+    pmServiceItems.push("Coil Cleaning");
+  if (typeData?.temperatureReadingsIncluded) pmServiceItems.push("Temperature Readings");
+  if (typeData?.visualInspectionIncluded) pmServiceItems.push("Visual Inspection");
+  const pmServicesHtml = buildChecklistHtml(
+    pmServiceItems.length > 0 ? pmServiceItems : ["Standard preventative maintenance inspection"],
+  );
+
+  const emergencyRate = Number(typeData?.emergencyServiceRate || 0);
+  const hasEmergencyRate = emergencyRate > 0;
+  const emergencyRateNote = hasEmergencyRate
+    ? `Emergency service rate: $${emergencyRate.toFixed(2)}/hr (charged when used)`
+    : "";
+
+  const paymentScheduleMap: Record<string, string> = {
+    annual: "Annual (billed once per year)",
+    per_visit: "Per Visit (billed after each visit)",
+    quarterly: "Quarterly",
+  };
+  const paymentScheduleLabel =
+    paymentScheduleMap[typeData?.paymentSchedule as string] ||
+    typeData?.paymentSchedule ||
+    "Net 30 days from date of invoice";
+
+  const freqMap2: Record<string, number> = { quarterly: 4, semi_annual: 2, annual: 1 };
+  const pmVisits = freqMap2[typeData?.maintenanceFrequency as string] ?? 0;
+  const pmPricingRows: Array<{ label: string; amount: string }> = [];
+  if (jobType === "preventative_maintenance" && typeData) {
+    const pmModel = typeData.pricingModel;
+    if (pmModel === "per_unit") {
+      const rate = Number(typeData.pricePerUnit || 0);
+      const units = Number(typeData.numberOfUnits || 0);
+      const perVisit = rate * units;
+      pmPricingRows.push(
+        { label: `Per-Unit Rate ($${rate.toFixed(2)}/unit × ${units} units × ${pmVisits} visits)`, amount: `$${(perVisit * pmVisits).toFixed(2)}` },
+      );
+    } else if (pmModel === "flat_rate") {
+      const perVisit = Number(typeData.flatRatePerVisit || 0);
+      pmPricingRows.push(
+        { label: `Flat Rate Per Visit × ${pmVisits} visits`, amount: `$${(perVisit * pmVisits).toFixed(2)}` },
+      );
+    } else if (pmModel === "annual_contract") {
+      pmPricingRows.push({
+        label: "Annual Contract Value",
+        amount: `$${Number(typeData.annualContractValue || 0).toFixed(2)}`,
+      });
+    }
+    if (typeData.includeFilterReplacement && typeData.filterReplacementCost) {
+      const frc = Number(typeData.filterReplacementCost) * Number(typeData.numberOfUnits || 1) * pmVisits;
+      pmPricingRows.push({ label: `Filter Replacement (${pmUnits} units × ${pmVisits} visits)`, amount: `$${frc.toFixed(2)}` });
+    }
+    if (typeData.includeCoilCleaning && typeData.coilCleaningCost) {
+      const cc = Number(typeData.coilCleaningCost) * pmVisits;
+      pmPricingRows.push({ label: `Coil Cleaning × ${pmVisits} visits`, amount: `$${cc.toFixed(2)}` });
+    }
+  }
+  const pmPricingRowsHtml = buildPricingRowsHtml(pmPricingRows);
+
+  // ── Shared enrichment fields ──────────────────────────────────────────────
+  const startDate = bid.plannedStartDate ? fmtDate(bid.plannedStartDate, "") : "";
+  const completionDate = bid.completionDate ? fmtDate(bid.completionDate, "") : (bid.estimatedCompletion ? fmtDate(bid.estimatedCompletion, "") : "");
+  const projectTimeline =
+    startDate && completionDate ? `${startDate} – ${completionDate}` :
+    startDate ? `Start: ${startDate}` :
+    completionDate ? `Target: ${completionDate}` : "";
+  const hasProjectTimeline = Boolean(projectTimeline);
+  const estDays = bid.estimatedDuration ? Number(bid.estimatedDuration) : 0;
+  const estimatedDurationLabel = estDays > 0 ? `${estDays} day${estDays !== 1 ? "s" : ""}` : "";
+  const hasDuration = Boolean(estimatedDurationLabel);
+  const siteContactName = bid.siteContactName?.trim() || "";
+  const siteContactPhone = bid.siteContactPhone?.trim() || "";
+  const siteContact = siteContactName
+    ? [siteContactName, siteContactPhone].filter(Boolean).join(" · ")
+    : "";
+  const hasSiteContact = Boolean(siteContact);
+
+  // ── Plan Spec extra fields ─────────────────────────────────────────────────
+  const codeComplianceStatus = typeData?.codeComplianceStatus?.trim() || "";
+  const hasCodeComplianceStatus = Boolean(codeComplianceStatus);
+  const addendaNotes = typeData?.addendaNotes?.trim() || "";
+  const hasAddendaNotes = Boolean(addendaNotes);
+
+  // ── Design Build extra fields ──────────────────────────────────────────────
+  const clientApprovalRequired = Boolean(typeData?.clientApprovalRequired || typeData?.approvalRequired);
+  const clientApprovalNote = clientApprovalRequired ? "Client approval required at each design milestone before work may proceed." : "";
+  const hasClientApproval = clientApprovalRequired;
+  const approvalMilestones = (typeData?.approvalMilestones || typeData?.keyMilestones || "")?.trim() || "";
+  const hasApprovalMilestones = Boolean(approvalMilestones);
+
+  // ── Survey extra fields ────────────────────────────────────────────────────
+  const rawSurveyDate = typeData?.surveyDate || typeData?.scheduledDate || "";
+  const surveyDateLabel = fmtDate(rawSurveyDate, "");
+  const hasSurveyDate = Boolean(surveyDateLabel);
+  const surveyPricingModelMap: Record<string, string> = {
+    flat_fee: "Flat Fee",
+    per_unit: "Per Unit",
+    time_materials: "Time & Materials",
+  };
+  const surveyPricingModelLabel =
+    surveyPricingModelMap[typeData?.pricingModel as string] || typeData?.pricingModel || "";
+  const surveyNotes = (typeData?.surveyNotes || typeData?.additionalNotes || "")?.trim() || "";
+  const hasSurveyNotes = Boolean(surveyNotes);
+
+  // ── Service extra fields ───────────────────────────────────────────────────
+  const estimatedWorkScope = (typeData?.estimatedWorkScope || typeData?.workScope || "")?.trim() || "";
+  const hasEstimatedWorkScope = Boolean(estimatedWorkScope);
+  const servicePricingNotes = (typeData?.pricingNotes || typeData?.notes || "")?.trim() || "";
+  const hasServicePricingNotes = Boolean(servicePricingNotes);
+  const svcTechs = Number(typeData?.numberOfTechs || 0);
+  const svcHours = Number(typeData?.laborHours || 0);
+  const crewSummary =
+    svcTechs > 0 && svcHours > 0
+      ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""} · ${svcHours} hour${svcHours !== 1 ? "s" : ""} estimated`
+      : svcTechs > 0 ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""}` : "";
+  const hasCrewSummary = Boolean(crewSummary);
+  const rawScheduledDate = bid.scheduledDateTime || typeData?.scheduledDate || "";
+  const scheduledDateLabel = rawScheduledDate ? fmtDate(rawScheduledDate, "") : "";
+  const hasScheduledDate = Boolean(scheduledDateLabel);
+
+  // ── PM extra fields ────────────────────────────────────────────────────────
+  const pmServiceScope = (typeData?.serviceScope || typeData?.scope || "")?.trim() || "";
+  const hasPMServiceScope = Boolean(pmServiceScope);
+  const pmPricingModelMap: Record<string, string> = {
+    per_unit: "Per Unit",
+    flat_rate: "Flat Rate per Visit",
+    annual_contract: "Annual Contract",
+  };
+  const pmPricingModelLabel =
+    pmPricingModelMap[typeData?.pricingModel as string] || typeData?.pricingModel || "";
+
+  // ── Conditional section visibility ────────────────────────────────────────
+  const showExclusions = jobType !== "survey" && jobType !== "preventative_maintenance";
+  const showStandardWarranty = jobType === "general" || jobType === "plan_spec" || jobType === "design_build";
+  const showShortWarranty = jobType === "service";
+  const showServiceGuarantee = jobType === "preventative_maintenance";
+
+  const customPaymentTerms = bid.paymentTerms?.trim() || "";
+  const hasCustomPaymentTerms = Boolean(customPaymentTerms);
+  const customExclusions = bid.exclusions?.trim() || "";
+  const hasCustomExclusions = Boolean(customExclusions);
 
   return {
     date: createdDate.toLocaleDateString(),
@@ -652,11 +1229,11 @@ export const prepareQuoteDataForPDF = (
     companyName: organization?.name ?? "—",
     siteAddress: bid.siteAddress ?? "—",
     contactName: primaryContact?.fullName ?? "—",
-    scope: bid.scopeOfWork ?? "—",
+    scope: scopeText,
     email: primaryContact?.email ?? "—",
     clientAddress: clientAddress || "—",
     proposalNote,
-    workItems: buildQuoteWorkItems(bid.scopeOfWork),
+    workItems: buildQuoteWorkItems(scopeText === "—" ? null : scopeText),
     materialsCost,
     laborCost,
     travelCost,
@@ -664,6 +1241,107 @@ export const prepareQuoteDataForPDF = (
     hasOperatingExpenses,
     totalAmount,
     expirationDate: endDate ? endDate.toLocaleDateString() : "—",
+
+    // Type discriminators
+    isGeneral: jobType === "general",
+    isPlanSpec: jobType === "plan_spec",
+    isDesignBuild: jobType === "design_build",
+    isSurvey: jobType === "survey",
+    isService: jobType === "service",
+    isPM: jobType === "preventative_maintenance",
+
+    // Shared enrichment
+    projectTimeline,
+    hasProjectTimeline,
+    estimatedDurationLabel,
+    hasDuration,
+    siteContact,
+    hasSiteContact,
+
+    // Plan Spec
+    planRevision,
+    plansReceivedDate,
+    specRevision,
+    specsReceivedDate,
+    addendaAcknowledged,
+    complianceRequirements,
+    hasAddenda,
+    hasComplianceRequirements,
+    codeComplianceStatus,
+    hasCodeComplianceStatus,
+    addendaNotes,
+    hasAddendaNotes,
+
+    // Design Build
+    designPhaseLabel,
+    designSchedule,
+    conceptDescription,
+    designDeliverables,
+    designRevisionNote,
+    designFeeLabel,
+    designFeeAmount,
+    hasDesignFee,
+    hasConceptDescription,
+    hasDesignDeliverables,
+    clientApprovalNote,
+    hasClientApproval,
+    approvalMilestones,
+    hasApprovalMilestones,
+
+    // Survey
+    surveyTypeLabel,
+    surveyScope,
+    unitTypesList,
+    surveyServicesHtml,
+    surveySchedulingNotes,
+    hasSurveySchedulingNotes,
+    surveyPricingRowsHtml,
+    surveyDateLabel,
+    hasSurveyDate,
+    surveyPricingModelLabel,
+    surveyNotes,
+    hasSurveyNotes,
+
+    // Service
+    serviceTypeLabel,
+    equipmentTypeLabel,
+    issueCategoryLabel,
+    reportedIssue,
+    preliminaryAssessment,
+    hasReportedIssue,
+    hasPreliminaryAssessment,
+    servicePricingRowsHtml,
+    estimatedWorkScope,
+    hasEstimatedWorkScope,
+    servicePricingNotes,
+    hasServicePricingNotes,
+    crewSummary,
+    hasCrewSummary,
+    scheduledDateLabel,
+    hasScheduledDate,
+
+    // PM
+    pmTypeLabel,
+    frequencyLabel,
+    coverageLabel,
+    pmServicesHtml,
+    emergencyRateNote,
+    hasEmergencyRate,
+    paymentScheduleLabel,
+    pmPricingRowsHtml,
+    pmServiceScope,
+    hasPMServiceScope,
+    pmPricingModelLabel,
+
+    // Visibility flags
+    showExclusions,
+    showStandardWarranty,
+    showShortWarranty,
+    showServiceGuarantee,
+    customPaymentTerms,
+    hasCustomPaymentTerms,
+    customExclusions,
+    hasCustomExclusions,
   };
 };
 
@@ -715,6 +1393,190 @@ export const generateQuotePDF = async (
     if (page) {
       await page.close();
     }
+  }
+};
+
+// ============================================================
+// Financial Report PDF
+// ============================================================
+
+export interface FinancialReportPDFData {
+  reportTitle: string;
+  reportSubtitle: string;
+  reportId: string;
+  dateRange: string;
+  organizationName: string;
+  generatedDate: string;
+  /** Pre-rendered HTML for summary KPI cards block (or empty string). */
+  summaryCardsHtml: string;
+  /** Pre-rendered HTML for the main table / content block. */
+  mainContentHtml: string;
+}
+
+/** Build a grid of KPI summary cards (matches financial-report-template card styles) */
+export function buildSummaryCardsHtml(
+  cards: Array<{ label: string; value: string; sub?: string; variant?: "positive" | "negative" | "neutral" }>
+): string {
+  if (!cards.length) return "";
+  const cardHtml = cards
+    .map(
+      (c) =>
+        `<div class="summary-card">
+          <div class="summary-card-label">${escHtml(c.label)}</div>
+          <div class="summary-card-body">
+            <div class="summary-card-value ${c.variant === "positive" ? "positive" : c.variant === "negative" ? "negative" : ""}">${escHtml(c.value)}</div>
+            ${c.sub ? `<div class="summary-card-sub">${escHtml(c.sub)}</div>` : ""}
+          </div>
+        </div>`
+    )
+    .join("");
+  return `<div class="summary-cards">${cardHtml}</div>`;
+}
+
+/** Build a standard data table with thead/tbody/tfoot */
+export function buildDataTableHtml(opts: {
+  sectionTitle?: string;
+  columns: Array<{ label: string; align?: "left" | "right" | "center" }>;
+  rows: Array<Array<string | { text: string; badge?: string; badgeVariant?: string }>>;
+  totalsRow?: string[];
+}): string {
+  const { sectionTitle, columns, rows, totalsRow } = opts;
+
+  const thHtml = columns
+    .map((c) => `<th class="${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : ""}">${escHtml(c.label)}</th>`)
+    .join("");
+
+  const tbodyHtml = rows
+    .map((row) => {
+      const tdsHtml = row
+        .map((cell, i) => {
+          const align = columns[i]?.align;
+          const alignClass = align === "right" ? "text-right" : align === "center" ? "text-center" : "";
+          if (typeof cell === "string") {
+            return `<td class="${alignClass}">${escHtml(cell)}</td>`;
+          }
+          const badge = cell.badge
+            ? `<span class="badge badge-${cell.badgeVariant ?? "gray"}">${escHtml(cell.badge)}</span>`
+            : "";
+          return `<td class="${alignClass}">${escHtml(cell.text)}${badge ? " " + badge : ""}</td>`;
+        })
+        .join("");
+      return `<tr>${tdsHtml}</tr>`;
+    })
+    .join("");
+
+  const tfootHtml = totalsRow
+    ? `<tfoot><tr>${totalsRow.map((t, i) => `<td class="${columns[i]?.align === "right" ? "text-right" : ""}">${escHtml(t)}</td>`).join("")}</tr></tfoot>`
+    : "";
+
+  const title = sectionTitle
+    ? `<div class="section-label">${escHtml(sectionTitle)}</div>`
+    : "";
+
+  return `${title}
+<div class="data-table-wrapper">
+  <table class="data-table">
+    <thead><tr>${thHtml}</tr></thead>
+    <tbody>${tbodyHtml}</tbody>
+    ${tfootHtml}
+  </table>
+</div>`;
+}
+
+/** Build a P&L-style section (label + value rows grouped under headers) */
+export function buildPLHtml(
+  sections: Array<{
+    header: string;
+    rows: Array<{ label: string; value: string; indent?: boolean }>;
+    subtotal?: { label: string; value: string; valueClass?: "positive" | "negative" };
+  }>,
+  netTotal?: { label: string; value: string; valueClass?: "positive" | "negative" }
+): string {
+  const sectionsHtml = sections
+    .map((s) => {
+      const rowsHtml = s.rows
+        .map(
+          (r) =>
+            `<div class="pl-row" style="${r.indent ? "padding-left:28px" : ""}">
+              <span class="pl-label">${escHtml(r.label)}</span>
+              <span class="pl-value">${escHtml(r.value)}</span>
+            </div>`
+        )
+        .join("");
+      const subtotalHtml = s.subtotal
+        ? `<div class="pl-row subtotal">
+            <span class="pl-label">${escHtml(s.subtotal.label)}</span>
+            <span class="pl-value ${s.subtotal.valueClass ?? ""}">${escHtml(s.subtotal.value)}</span>
+          </div>`
+        : "";
+      return `<div class="pl-section">
+          <div class="pl-section-header">${escHtml(s.header)}</div>
+          ${rowsHtml}
+          ${subtotalHtml}
+        </div>`;
+    })
+    .join("");
+
+  const netHtml = netTotal
+    ? `<div class="pl-row net-total">
+        <span class="pl-label">${escHtml(netTotal.label)}</span>
+        <span class="pl-value ${netTotal.valueClass ?? ""}">${escHtml(netTotal.value)}</span>
+      </div>`
+    : "";
+
+  return `<div class="section-label">Statement</div>
+<div class="pl-wrapper">
+  ${sectionsHtml}
+  ${netHtml}
+</div>`;
+}
+
+function escHtml(s: string | undefined | null): string {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Generate a PDF buffer for a financial report using the financial-report-template.
+ */
+export const generateFinancialReportPDF = async (
+  reportData: FinancialReportPDFData,
+  options: PDFGenerationOptions = {}
+): Promise<Buffer> => {
+  let page: Page | null = null;
+  try {
+    const templatePath = resolveTemplatePath("financial-report-template.html");
+    const template = fs.readFileSync(templatePath, "utf-8");
+    const html = renderTemplate(template, reportData);
+
+    const browser = await getBrowser();
+    page = await browser.newPage();
+
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+
+    const pdfBuffer = await page.pdf({
+      format: (options.format || "A4") as "A4" | "Letter",
+      printBackground: true,
+      margin: {
+        top: "0.5in",
+        right: "0.5in",
+        bottom: "0.5in",
+        left: "0.5in",
+        ...options.margin,
+      },
+      displayHeaderFooter: false,
+    });
+
+    return Buffer.from(pdfBuffer);
+  } catch (err) {
+    console.error("Financial report PDF error:", err);
+    throw new Error(`Failed to generate report PDF: ${err instanceof Error ? err.message : "Unknown error"}`);
+  } finally {
+    if (page) await page.close();
   }
 };
 

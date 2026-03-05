@@ -56,6 +56,26 @@ import {
   createJobSurveyHandler,
   updateJobSurveyHandler,
   deleteJobSurveyHandler,
+  getJobServiceCallsHandler,
+  getJobServiceCallByIdHandler,
+  createJobServiceCallHandler,
+  updateJobServiceCallHandler,
+  deleteJobServiceCallHandler,
+  getJobPMInspectionsHandler,
+  getJobPMInspectionByIdHandler,
+  createJobPMInspectionHandler,
+  updateJobPMInspectionHandler,
+  deleteJobPMInspectionHandler,
+  getJobPlanSpecRecordsHandler,
+  getJobPlanSpecRecordByIdHandler,
+  createJobPlanSpecRecordHandler,
+  updateJobPlanSpecRecordHandler,
+  deleteJobPlanSpecRecordHandler,
+  getJobDesignBuildNotesHandler,
+  getJobDesignBuildNoteByIdHandler,
+  createJobDesignBuildNoteHandler,
+  updateJobDesignBuildNoteHandler,
+  deleteJobDesignBuildNoteHandler,
   getJobExpensesHandler,
   getJobExpenseByIdHandler,
   createJobExpenseHandler,
@@ -556,5 +576,53 @@ router.post(
   validate(bulkDeleteUuidSchema),
   bulkDeleteJobsHandler,
 );
+
+// Service Calls Routes
+router
+  .route("/jobs/:jobId/service-calls")
+  .get(viewJobs, getJobServiceCallsHandler)
+  .post(editJob, createJobServiceCallHandler);
+
+router
+  .route("/jobs/:jobId/service-calls/:id")
+  .get(viewJobs, getJobServiceCallByIdHandler)
+  .put(editJob, updateJobServiceCallHandler)
+  .delete(editJob, deleteJobServiceCallHandler);
+
+// PM Inspections Routes
+router
+  .route("/jobs/:jobId/pm-inspections")
+  .get(viewJobs, getJobPMInspectionsHandler)
+  .post(editJob, createJobPMInspectionHandler);
+
+router
+  .route("/jobs/:jobId/pm-inspections/:id")
+  .get(viewJobs, getJobPMInspectionByIdHandler)
+  .put(editJob, updateJobPMInspectionHandler)
+  .delete(editJob, deleteJobPMInspectionHandler);
+
+// Plan Spec Records Routes
+router
+  .route("/jobs/:jobId/plan-spec-records")
+  .get(viewJobs, getJobPlanSpecRecordsHandler)
+  .post(editJob, createJobPlanSpecRecordHandler);
+
+router
+  .route("/jobs/:jobId/plan-spec-records/:id")
+  .get(viewJobs, getJobPlanSpecRecordByIdHandler)
+  .put(editJob, updateJobPlanSpecRecordHandler)
+  .delete(editJob, deleteJobPlanSpecRecordHandler);
+
+// Design Build Notes Routes
+router
+  .route("/jobs/:jobId/design-build-notes")
+  .get(viewJobs, getJobDesignBuildNotesHandler)
+  .post(editJob, createJobDesignBuildNoteHandler);
+
+router
+  .route("/jobs/:jobId/design-build-notes/:id")
+  .get(viewJobs, getJobDesignBuildNoteByIdHandler)
+  .put(editJob, updateJobDesignBuildNoteHandler)
+  .delete(editJob, deleteJobDesignBuildNoteHandler);
 
 export default router;

@@ -34,6 +34,11 @@ import {
   createFinancialReportHandler,
   updateFinancialReportHandler,
   deleteFinancialReportHandler,
+  listFinancialCategoryBudgetsHandler,
+  getFinancialCategoryBudgetHandler,
+  createFinancialCategoryBudgetHandler,
+  updateFinancialCategoryBudgetHandler,
+  deleteFinancialCategoryBudgetHandler,
 } from "../../controllers/FinancialController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeAnyFeature } from "../../middleware/featureAuthorize.js";
@@ -67,6 +72,10 @@ import {
   createFinancialReportSchema,
   updateFinancialReportSchema,
   deleteFinancialReportSchema,
+  listFinancialCategoryBudgetsQuerySchema,
+  createFinancialCategoryBudgetSchema,
+  updateFinancialCategoryBudgetSchema,
+  financialCategoryBudgetIdParamSchema,
 } from "../../validations/financial.validations.js";
 
 const router: IRouter = Router();
@@ -221,5 +230,17 @@ router
   .route("/financial-reports/:id")
   .put(viewFinancial, validate(updateFinancialReportSchema), updateFinancialReportHandler)
   .delete(viewFinancial, validate(deleteFinancialReportSchema), deleteFinancialReportHandler);
+
+// Financial Category Budget Routes — Executive only
+router
+  .route("/financial-category-budgets")
+  .get(viewFinancial, validate(listFinancialCategoryBudgetsQuerySchema), listFinancialCategoryBudgetsHandler)
+  .post(viewFinancial, validate(createFinancialCategoryBudgetSchema), createFinancialCategoryBudgetHandler);
+
+router
+  .route("/financial-category-budgets/:id")
+  .get(viewFinancial, validate(financialCategoryBudgetIdParamSchema), getFinancialCategoryBudgetHandler)
+  .put(viewFinancial, validate(updateFinancialCategoryBudgetSchema), updateFinancialCategoryBudgetHandler)
+  .delete(viewFinancial, validate(financialCategoryBudgetIdParamSchema), deleteFinancialCategoryBudgetHandler);
 
 export default router;

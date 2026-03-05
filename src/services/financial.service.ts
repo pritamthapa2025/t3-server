@@ -1,4 +1,5 @@
 import { count, eq, and, desc, asc, sql, or, ilike, gte, lte, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
@@ -7,6 +8,7 @@ import { expenses } from "../drizzle/schema/expenses.schema.js";
 import { payrollTimesheetEntries } from "../drizzle/schema/payroll.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
+import { users } from "../drizzle/schema/auth.schema.js";
 import { getBidFinancialBreakdown } from "./bid.service.js";
 import {
   financialSummary,
@@ -17,6 +19,7 @@ import {
   revenueForecast,
   financialReports,
 } from "../drizzle/schema/client.schema.js";
+import { financialCategoryBudgets } from "../drizzle/schema/financial.schema.js";
 import {
   getProfitAndLossStatement,
   getJobProfitability,
@@ -689,6 +692,8 @@ export const deleteFinancialReport = async (id: string) => {
 export interface FinancialDashboardFilters {
   startDate?: string | undefined;
   endDate?: string | undefined;
+  month?: number | undefined;
+  year?: number | undefined;
 }
 
 type SummaryShape = {
@@ -1051,20 +1056,168 @@ export const getFinancialCostCategoriesSection = async (
   // Calculate total cost
   const totalCost = Object.values(categoryMap).reduce((sum, cat) => sum + cat.spent, 0);
 
+  // Fetch monthly budgets for the target period (default to current month/year)
+  const now = new Date();
+  const targetMonth = filters?.month ?? now.getMonth() + 1;
+  const targetYear = filters?.year ?? now.getFullYear();
+
+  const budgetRows = await db
+    .select({
+      category: financialCategoryBudgets.category,
+      budgetAmount: financialCategoryBudgets.budgetAmount,
+    })
+    .from(financialCategoryBudgets)
+    .where(
+      and(
+        eq(financialCategoryBudgets.month, targetMonth),
+        eq(financialCategoryBudgets.year, targetYear),
+        eq(financialCategoryBudgets.isDeleted, false),
+      ),
+    );
+
+  const budgetByCategory: Record<string, number> = Object.fromEntries(
+    budgetRows.map((r) => [r.category, parseFloat(r.budgetAmount ?? "0")]),
+  );
+
+  const deriveStatus = (spent: number, budget: number): string => {
+    if (!budget) return "on-track";
+    const pct = spent / budget;
+    if (pct >= 1) return "over-budget";
+    if (pct >= 0.8) return "at-risk";
+    return "on-track";
+  };
+
+  // Categories that are always included in the response regardless of spend
+  const alwaysInclude = new Set(["materials", "labor", "travel", "operating"]);
+
   // Format response
   const data = Object.entries(categoryMap)
-    .filter(([_, cat]) => cat.spent > 0) // Only show categories with spending
-    .map(([id, cat]) => ({
-      id,
-      label: cat.label,
-      spent: cat.spent,
-      budget: 0, // TODO: Get from budget system if implemented
-      percentOfTotal: totalCost > 0 ? cat.spent / totalCost : 0,
-      status: "on-track" as const, // TODO: Compare with budget when available
-    }));
+    .filter(([id, cat]) => alwaysInclude.has(id) || cat.spent > 0)
+    .map(([id, cat]) => {
+      const budget = budgetByCategory[id] ?? 0;
+      return {
+        id,
+        label: cat.label,
+        spent: cat.spent,
+        budget,
+        percentOfTotal: totalCost > 0 ? cat.spent / totalCost : 0,
+        status: deriveStatus(cat.spent, budget),
+      };
+    });
 
   return { data, totalCost };
 };
+
+/**
+ * Returns the Monday (ISO week start) for a given date as "YYYY-MM-DD".
+ * PostgreSQL DATE_TRUNC('week', ...) also uses Monday as the start.
+ */
+function getISOWeekStart(date: Date): string {
+  const d = new Date(date);
+  const day = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Dynamically compute weekly profit trend from live invoices + expenses data.
+ *  Covers every ISO week between startDate and endDate (defaults to last 30 days).
+ *  Every week slot is always present in the output (pre-filled with 0 when no data).
+ */
+async function computeProfitTrendData(
+  organizationId: string | undefined,
+  startDate?: string,
+  endDate?: string
+): Promise<{ period: string; revenue: number; expenses: number; profit: number }[]> {
+  const end = endDate ? new Date(endDate) : new Date();
+  const start = startDate ? new Date(startDate) : new Date(end.getTime() - 29 * 86400000);
+
+  // Clamp both dates to their ISO week Monday so every bucket aligns with PostgreSQL DATE_TRUNC('week')
+  const startKey = getISOWeekStart(start);
+  const endKey = getISOWeekStart(end);
+
+  // Pre-build weekMap covering every Monday from startKey to endKey
+  const weekMap = new Map<string, { revenue: number; expenses: number }>();
+  const cursor = new Date(startKey);
+  while (cursor.toISOString().slice(0, 10) <= endKey) {
+    weekMap.set(cursor.toISOString().slice(0, 10), { revenue: 0, expenses: 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+
+  const startStr = startKey;
+  const endStr = end.toISOString().slice(0, 10);
+
+  // Revenue per week from invoices filtered to the date range
+  const revenueConditions = [eq(invoices.isDeleted, false)];
+  if (organizationId) {
+    revenueConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const revenueRows = await db
+    .select({
+      weekStart: sql<string>`DATE_TRUNC('week', CAST(${invoices.invoiceDate} AS date))::text`,
+      revenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+    })
+    .from(invoices)
+    .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        ...revenueConditions,
+        sql`CAST(${invoices.invoiceDate} AS date) BETWEEN ${sql.raw(`'${startStr}'`)} AND ${sql.raw(`'${endStr}'`)}`
+      )
+    )
+    .groupBy(sql`DATE_TRUNC('week', CAST(${invoices.invoiceDate} AS date))`)
+    .orderBy(sql`DATE_TRUNC('week', CAST(${invoices.invoiceDate} AS date)) ASC`);
+
+  // Expenses per week filtered to the date range
+  const expenseConditions = [eq(expenses.isDeleted, false)];
+  if (organizationId) {
+    expenseConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const expenseRows = await db
+    .select({
+      weekStart: sql<string>`DATE_TRUNC('week', CAST(${expenses.expenseDate} AS date))::text`,
+      totalExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
+    })
+    .from(expenses)
+    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        ...expenseConditions,
+        sql`CAST(${expenses.expenseDate} AS date) BETWEEN ${sql.raw(`'${startStr}'`)} AND ${sql.raw(`'${endStr}'`)}`
+      )
+    )
+    .groupBy(sql`DATE_TRUNC('week', CAST(${expenses.expenseDate} AS date))`)
+    .orderBy(sql`DATE_TRUNC('week', CAST(${expenses.expenseDate} AS date)) ASC`);
+
+  // Merge DB results into the pre-populated weekMap
+  for (const row of revenueRows) {
+    const week = String(row.weekStart).slice(0, 10);
+    if (weekMap.has(week)) {
+      weekMap.set(week, { revenue: parseFloat(row.revenue ?? "0"), expenses: weekMap.get(week)!.expenses });
+    }
+  }
+
+  for (const row of expenseRows) {
+    const week = String(row.weekStart).slice(0, 10);
+    if (weekMap.has(week)) {
+      weekMap.set(week, { revenue: weekMap.get(week)!.revenue, expenses: parseFloat(row.totalExpenses ?? "0") });
+    }
+  }
+
+  // Sort chronologically and label as "Week 1", "Week 2", ...
+  return Array.from(weekMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, data], idx) => ({
+      period: `Week ${idx + 1}`,
+      revenue: data.revenue,
+      expenses: data.expenses,
+      profit: data.revenue - data.expenses,
+    }));
+}
 
 /** GET /financial/profitability – Projected vs actual, job list, trend for Profitability tab */
 export const getFinancialProfitabilitySection = async (
@@ -1102,13 +1255,14 @@ export const getFinancialProfitabilitySection = async (
       };
     }
   );
-  const trendRows = organizationId ? await getProfitTrend(organizationId, 12) : [];
-  const profitTrendData = trendRows.map((t) => ({
-    period: t.period,
-    revenue: parseFloat(t.revenue ?? "0"),
-    expenses: parseFloat(t.expenses ?? "0"),
-    profit: parseFloat(t.revenue ?? "0") - parseFloat(t.expenses ?? "0"),
-  }));
+
+  // Compute trend from live data scoped to the selected date range
+  const profitTrendData = await computeProfitTrendData(
+    organizationId,
+    filters?.startDate,
+    filters?.endDate
+  );
+
   const deviation = summary.actualProfit - summary.projectedProfit;
   return {
     data: {
@@ -1122,59 +1276,220 @@ export const getFinancialProfitabilitySection = async (
 };
 
 /** GET /financial/profit-trend – Trend data only (for chart) */
-export const getFinancialProfitTrendSection = async (organizationId: string | undefined) => {
-  // Allow fetching without organizationId (returns all profit trends across all organizations)
-  const trendRows = await getProfitTrend(organizationId, 12);
-  const data = trendRows.map((t) => ({
-    period: t.period,
-    revenue: parseFloat(t.revenue ?? "0"),
-    expenses: parseFloat(t.expenses ?? "0"),
-    profit: parseFloat(t.revenue ?? "0") - parseFloat(t.expenses ?? "0"),
-  }));
+export const getFinancialProfitTrendSection = async (
+  organizationId: string | undefined,
+  filters?: { startDate?: string; endDate?: string }
+) => {
+  const data = await computeProfitTrendData(organizationId, filters?.startDate, filters?.endDate);
   return { data };
 };
 
 /** GET /financial/forecasting – Cash flow projection, scenarios, revenue forecast */
+/** GET /financial/forecasting – Cash flow projection, scenarios, revenue forecast (computed from live data) */
 export const getFinancialForecastingSection = async (organizationId: string | undefined) => {
-  // Allow fetching without organizationId (returns all forecasting data across all organizations)
-  const projections = await getCashFlowProjections(organizationId);
-  const latestProjection = projections[0] ?? null;
-  const scenariosRows = await getCashFlowScenarios(organizationId);
-  const cashFlowProjection = latestProjection
-    ? {
-        projectedIncome: parseFloat(latestProjection.projectedIncome ?? "0"),
-        projectedExpenses: parseFloat(latestProjection.projectedExpenses ?? "0"),
-        netCashFlow:
-          parseFloat(latestProjection.projectedIncome ?? "0") -
-          parseFloat(latestProjection.projectedExpenses ?? "0"),
-        pipelineCoverageMonths: parseFloat(latestProjection.pipelineCoverageMonths ?? "0"),
-        openInvoicesCount: latestProjection.openInvoicesCount ?? 0,
-        averageCollectionDays: latestProjection.averageCollectionDays ?? 0,
-      }
-    : {
-        projectedIncome: 0,
-        projectedExpenses: 0,
-        netCashFlow: 0,
-        pipelineCoverageMonths: 0,
-        openInvoicesCount: 0,
-        averageCollectionDays: 0,
-      };
-  const cashFlowScenarios = scenariosRows.map((s) => ({
-    id: (s.scenarioType as "best" | "realistic" | "worst") ?? "realistic",
-    label: s.label,
-    description: s.description ?? "",
-    projectedIncome: parseFloat(s.projectedIncome ?? "0"),
-    projectedExpenses: parseFloat(s.projectedExpenses ?? "0"),
-    netCashFlow: parseFloat(s.projectedIncome ?? "0") - parseFloat(s.projectedExpenses ?? "0"),
-    change: s.changeDescription ?? "",
+  // ── 1. Open AR: sum of balanceDue for all unpaid invoices ─────────────────
+  const invoiceOrgConditions = [eq(invoices.isDeleted, false)];
+  if (organizationId) {
+    invoiceOrgConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const [openArRow] = await db
+    .select({
+      projectedIncome: sql<string>`COALESCE(SUM(
+        CAST(COALESCE(${invoices.balanceDue}, ${invoices.totalAmount} - ${invoices.amountPaid}, 0) AS NUMERIC)
+      ), 0)`,
+      openCount: count(invoices.id),
+    })
+    .from(invoices)
+    .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        ...invoiceOrgConditions,
+        sql`${invoices.status} IN ('draft', 'pending', 'sent', 'viewed', 'partial', 'overdue')`,
+      )
+    );
+
+  // ── 2. Average collection days from fully paid invoices ───────────────────
+  const [collectionRow] = await db
+    .select({
+      avgDays: sql<string>`COALESCE(AVG(
+        ${invoices.paidDate}::date - ${invoices.invoiceDate}::date
+      ), 30)`,
+    })
+    .from(invoices)
+    .innerJoin(jobs, eq(invoices.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        ...invoiceOrgConditions,
+        sql`${invoices.status} = 'paid'`,
+        sql`${invoices.paidDate} IS NOT NULL`,
+      )
+    );
+
+  // ── 3. Projected expenses: last-30-day run-rate as next-month estimate ────
+  const expenseOrgConditions = [eq(expenses.isDeleted, false)];
+  if (organizationId) {
+    expenseOrgConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const [expenseRow] = await db
+    .select({
+      totalExpenses: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
+    })
+    .from(expenses)
+    .leftJoin(jobs, eq(expenses.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        ...expenseOrgConditions,
+        sql`CAST(${expenses.expenseDate} AS date) >= CURRENT_DATE - INTERVAL '30 days'`,
+      )
+    );
+
+  const projectedIncome = parseFloat(openArRow?.projectedIncome ?? "0");
+  const projectedExpenses = parseFloat(expenseRow?.totalExpenses ?? "0");
+  const netCashFlow = projectedIncome - projectedExpenses;
+  const openInvoicesCount = openArRow?.openCount ?? 0;
+  const avgCollectionDays = Math.round(parseFloat(collectionRow?.avgDays ?? "30"));
+  // Pipeline coverage = how many months of expenses the open AR covers
+  const pipelineCoverageMonths =
+    projectedExpenses > 0
+      ? parseFloat((projectedIncome / projectedExpenses).toFixed(1))
+      : 0;
+
+  const cashFlowProjection = {
+    projectedIncome,
+    projectedExpenses,
+    netCashFlow,
+    pipelineCoverageMonths,
+    openInvoicesCount,
+    averageCollectionDays: avgCollectionDays,
+  };
+
+  // ── 4. Scenarios: derived at standard industry collection rates ───────────
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const cashFlowScenarios = [
+    {
+      id: "best" as const,
+      label: "Best Case",
+      description: "100% invoice collection, current expense level",
+      projectedIncome: round2(projectedIncome),
+      projectedExpenses: round2(projectedExpenses),
+      netCashFlow: round2(projectedIncome - projectedExpenses),
+      change: "+Favorable",
+    },
+    {
+      id: "realistic" as const,
+      label: "Realistic",
+      description: "80% invoice collection, current expense level",
+      projectedIncome: round2(projectedIncome * 0.8),
+      projectedExpenses: round2(projectedExpenses),
+      netCashFlow: round2(projectedIncome * 0.8 - projectedExpenses),
+      change: "Expected outcome",
+    },
+    {
+      id: "worst" as const,
+      label: "Worst Case",
+      description: "60% invoice collection, expenses up 15%",
+      projectedIncome: round2(projectedIncome * 0.6),
+      projectedExpenses: round2(projectedExpenses * 1.15),
+      netCashFlow: round2(projectedIncome * 0.6 - projectedExpenses * 1.15),
+      change: "Needs attention",
+    },
+  ];
+
+  // ── 5. Revenue Forecast: next 6 months ────────────────────────────────────
+  // Committed = bid prices of existing (non-deleted) jobs ending in each month
+  // Pipeline  = finalBidAmount of bids not yet converted to jobs, expected in each month
+  const jobOrgConditions = [eq(jobs.isDeleted, false)];
+  if (organizationId) {
+    jobOrgConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const committedRows = await db
+    .select({
+      monthDate: sql<string>`DATE_TRUNC('month', ${jobs.scheduledEndDate}::date)::text`,
+      committed: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.totalPrice} AS NUMERIC)), 0)`,
+    })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidFinancialBreakdown.bidId, bidsTable.id),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
+    .where(
+      and(
+        ...jobOrgConditions,
+        sql`${jobs.scheduledEndDate} IS NOT NULL`,
+        sql`${jobs.scheduledEndDate}::date >= CURRENT_DATE`,
+        sql`${jobs.scheduledEndDate}::date < CURRENT_DATE + INTERVAL '6 months'`,
+      )
+    )
+    .groupBy(sql`DATE_TRUNC('month', ${jobs.scheduledEndDate}::date)`)
+    .orderBy(sql`DATE_TRUNC('month', ${jobs.scheduledEndDate}::date) ASC`);
+
+  const bidOrgConditions = [eq(bidsTable.isDeleted, false)];
+  if (organizationId) {
+    bidOrgConditions.push(eq(bidsTable.organizationId, organizationId));
+  }
+
+  const pipelineRows = await db
+    .select({
+      monthDate: sql<string>`DATE_TRUNC('month', ${bidsTable.estimatedCompletion}::date)::text`,
+      pipeline: sql<string>`COALESCE(SUM(CAST(${bidsTable.finalBidAmount} AS NUMERIC)), 0)`,
+    })
+    .from(bidsTable)
+    .where(
+      and(
+        ...bidOrgConditions,
+        // Pipeline = bids not yet converted to a job (convertedToJobId is null)
+        sql`${bidsTable.convertedToJobId} IS NULL`,
+        sql`${bidsTable.finalBidAmount} IS NOT NULL`,
+        sql`CAST(${bidsTable.finalBidAmount} AS NUMERIC) > 0`,
+        sql`${bidsTable.estimatedCompletion} IS NOT NULL`,
+        sql`${bidsTable.estimatedCompletion}::date >= CURRENT_DATE`,
+        sql`${bidsTable.estimatedCompletion}::date < CURRENT_DATE + INTERVAL '6 months'`,
+      )
+    )
+    .groupBy(sql`DATE_TRUNC('month', ${bidsTable.estimatedCompletion}::date)`)
+    .orderBy(sql`DATE_TRUNC('month', ${bidsTable.estimatedCompletion}::date) ASC`);
+
+  // Pre-seed next 6 months with zeros so every month always appears
+  const monthMap = new Map<string, { month: string; committed: number; pipeline: number }>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + i);
+    const key = d.toISOString().slice(0, 7); // "YYYY-MM"
+    const monthLabel = d.toLocaleString("en-US", { month: "short" });
+    monthMap.set(key, { month: monthLabel, committed: 0, pipeline: 0 });
+  }
+
+  for (const row of committedRows) {
+    const key = String(row.monthDate).slice(0, 7);
+    const entry = monthMap.get(key);
+    if (entry) entry.committed = parseFloat(row.committed ?? "0");
+  }
+
+  for (const row of pipelineRows) {
+    const key = String(row.monthDate).slice(0, 7);
+    const entry = monthMap.get(key);
+    if (entry) entry.pipeline = parseFloat(row.pipeline ?? "0");
+  }
+
+  const revenueForecast = Array.from(monthMap.values()).map((m) => ({
+    month: m.month,
+    committed: m.committed,
+    pipeline: m.pipeline,
+    // Committed revenue = certainty 1.0; pipeline uses standard 70% win probability
+    probability: m.committed > 0 ? 1.0 : m.pipeline > 0 ? 0.7 : 0,
   }));
-  const forecastRows = await getRevenueForecast(organizationId);
-  const revenueForecast = forecastRows.slice(0, 12).map((f) => ({
-    month: f.month,
-    committed: parseFloat(f.committed ?? "0"),
-    pipeline: parseFloat(f.pipeline ?? "0"),
-    probability: parseFloat(f.probability ?? "0"),
-  }));
+
   return {
     data: {
       cashFlowProjection,
@@ -1184,17 +1499,131 @@ export const getFinancialForecastingSection = async (organizationId: string | un
   };
 };
 
-/** GET /financial/reports – Report definitions for Reports & Exports tab */
-export const getFinancialReportsSection = async (organizationId: string | undefined) => {
-  // Allow fetching without organizationId (returns all reports across all organizations)
-  const reportsRows = await getFinancialReports(organizationId);
-  const data = reportsRows.map((r) => ({
-    id: r.reportKey,
-    title: r.title,
-    description: r.description ?? "",
-    updatedAt: r.updatedAt ? `Updated ${formatRelativeTime(r.updatedAt)}` : "—",
-    category: (r.category as "Revenue" | "Expenses" | "Profitability" | "Vendors") ?? "Profitability",
-  }));
+/** GET /financial/reports – Hardcoded report definitions derived from business logic */
+export const getFinancialReportsSection = async (_organizationId: string | undefined) => {
+  const now = new Date();
+  const updatedStr = `Updated ${formatRelativeTime(now)}`;
+  const data = [
+    {
+      id: "profit-loss",
+      title: "Profit & Loss Statement",
+      description: "Revenue, cost of goods sold, gross profit, operating expenses, and net income for the selected period.",
+      updatedAt: updatedStr,
+      category: "Profitability" as const,
+    },
+    {
+      id: "job-profitability",
+      title: "Job Profitability Report",
+      description: "Per-job breakdown of contract value, actual revenue, expenses, profit, and margin percentage.",
+      updatedAt: updatedStr,
+      category: "Profitability" as const,
+    },
+    {
+      id: "expense-by-category",
+      title: "Expense Breakdown by Category",
+      description: "Total spend grouped by expense category (materials, labor, fleet, subcontractors, overhead) with trend.",
+      updatedAt: updatedStr,
+      category: "Expenses" as const,
+    },
+    {
+      id: "revenue-by-client",
+      title: "Revenue by Client",
+      description: "Top clients ranked by total invoiced revenue, with percentage share of total and outstanding balances.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "invoice-aging",
+      title: "Invoice Aging Report",
+      description: "Outstanding invoices bucketed by age (current, 30, 60, 90+ days) to track collections and overdue risk.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "cash-flow",
+      title: "Cash Flow Statement",
+      description: "Monthly inflows from invoices, outflows from expenses, and net cash position across the selected period.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "vendor-spend",
+      title: "Vendor Spend Summary",
+      description: "Total spending per vendor/supplier with job attribution, helping identify top vendors and cost trends.",
+      updatedAt: updatedStr,
+      category: "Vendors" as const,
+    },
+    {
+      id: "monthly-revenue-trend",
+      title: "Monthly Revenue Trend",
+      description: "Month-over-month revenue, cost, and profit breakdown — with target comparison where targets are set.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "labor-cost",
+      title: "Labor Cost Report",
+      description: "Hours worked and total labor cost per employee for the selected period, based on timesheet data.",
+      updatedAt: updatedStr,
+      category: "Expenses" as const,
+    },
+    {
+      id: "client-outstanding",
+      title: "Client Outstanding Payments",
+      description: "Clients ranked by total outstanding balance with invoice count and how long the oldest invoice has been due.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "technician-profit",
+      title: "Technician Profit Contribution",
+      description: "Revenue, costs, and profit generated by each technician across their assigned jobs.",
+      updatedAt: updatedStr,
+      category: "Profitability" as const,
+    },
+    {
+      id: "payment-collection",
+      title: "Payment Collection Rate",
+      description: "Monthly invoiced vs collected amounts and collection rate percentage — tracks AR efficiency.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "client-spend",
+      title: "Client Spend Report",
+      description: "Total billed revenue per client with job count and average job value — identify highest-value clients.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "job-cost-breakdown",
+      title: "Job Cost Breakdown",
+      description: "Total costs split across materials, labor, tools, fleet, subcontractors, and overhead.",
+      updatedAt: updatedStr,
+      category: "Expenses" as const,
+    },
+    {
+      id: "invoice-summary",
+      title: "Invoice Summary",
+      description: "Invoice count and dollar totals by status (paid, unpaid, overdue) with collection rate.",
+      updatedAt: updatedStr,
+      category: "Revenue" as const,
+    },
+    {
+      id: "monthly-expense-trend",
+      title: "Monthly Expense Trend",
+      description: "Month-over-month expense totals broken down by category — identify spending spikes over time.",
+      updatedAt: updatedStr,
+      category: "Expenses" as const,
+    },
+    {
+      id: "inventory-valuation",
+      title: "Inventory Valuation",
+      description: "Total stock value with per-category breakdown of SKU count and dollar value.",
+      updatedAt: updatedStr,
+      category: "Expenses" as const,
+    },
+  ];
   return { data };
 };
 
@@ -1246,3 +1675,168 @@ function formatRelativeTime(date: Date): string {
   if (diffD < 30) return `${diffD}d ago`;
   return d.toLocaleDateString();
 }
+
+// ============================
+// Financial Category Budgets
+// ============================
+
+const catBudgetCreatedByUser = alias(users, "cat_budget_created_by_user");
+const catBudgetUpdatedByUser = alias(users, "cat_budget_updated_by_user");
+
+const categoryBudgetSelect = {
+  id: financialCategoryBudgets.id,
+  category: financialCategoryBudgets.category,
+  month: financialCategoryBudgets.month,
+  year: financialCategoryBudgets.year,
+  budgetAmount: financialCategoryBudgets.budgetAmount,
+  notes: financialCategoryBudgets.notes,
+  createdBy: financialCategoryBudgets.createdBy,
+  createdByName: catBudgetCreatedByUser.fullName,
+  updatedBy: financialCategoryBudgets.updatedBy,
+  updatedByName: catBudgetUpdatedByUser.fullName,
+  isDeleted: financialCategoryBudgets.isDeleted,
+  createdAt: financialCategoryBudgets.createdAt,
+  updatedAt: financialCategoryBudgets.updatedAt,
+};
+
+export const getFinancialCategoryBudgetById = async (id: string) => {
+  const [row] = await db
+    .select(categoryBudgetSelect)
+    .from(financialCategoryBudgets)
+    .leftJoin(
+      catBudgetCreatedByUser,
+      eq(financialCategoryBudgets.createdBy, catBudgetCreatedByUser.id),
+    )
+    .leftJoin(
+      catBudgetUpdatedByUser,
+      eq(financialCategoryBudgets.updatedBy, catBudgetUpdatedByUser.id),
+    )
+    .where(
+      and(
+        eq(financialCategoryBudgets.id, id),
+        eq(financialCategoryBudgets.isDeleted, false),
+      ),
+    );
+
+  if (!row) return null;
+
+  const { createdByName, updatedByName, ...rest } = row;
+  return {
+    ...rest,
+    createdByName: createdByName ?? null,
+    updatedByName: updatedByName ?? null,
+  };
+};
+
+export const listFinancialCategoryBudgets = async (filters?: {
+  month?: number;
+  year?: number;
+  category?: string;
+}) => {
+  const conditions = [eq(financialCategoryBudgets.isDeleted, false)];
+  if (filters?.month) conditions.push(eq(financialCategoryBudgets.month, filters.month));
+  if (filters?.year) conditions.push(eq(financialCategoryBudgets.year, filters.year));
+  if (filters?.category) conditions.push(eq(financialCategoryBudgets.category, filters.category));
+
+  const rows = await db
+    .select(categoryBudgetSelect)
+    .from(financialCategoryBudgets)
+    .leftJoin(
+      catBudgetCreatedByUser,
+      eq(financialCategoryBudgets.createdBy, catBudgetCreatedByUser.id),
+    )
+    .leftJoin(
+      catBudgetUpdatedByUser,
+      eq(financialCategoryBudgets.updatedBy, catBudgetUpdatedByUser.id),
+    )
+    .where(and(...conditions))
+    .orderBy(asc(financialCategoryBudgets.year), asc(financialCategoryBudgets.month));
+
+  return rows.map(({ createdByName, updatedByName, ...rest }) => ({
+    ...rest,
+    createdByName: createdByName ?? null,
+    updatedByName: updatedByName ?? null,
+  }));
+};
+
+export const createFinancialCategoryBudget = async (input: {
+  category: string;
+  month: number;
+  year: number;
+  budgetAmount?: number;
+  notes?: string;
+  createdBy?: string;
+}) => {
+  const [result] = await db
+    .insert(financialCategoryBudgets)
+    .values({
+      category: input.category,
+      month: input.month,
+      year: input.year,
+      ...(input.budgetAmount !== undefined && {
+        budgetAmount: String(input.budgetAmount),
+      }),
+      notes: input.notes,
+      createdBy: input.createdBy,
+    })
+    .returning({ id: financialCategoryBudgets.id });
+
+  if (!result) throw new Error("Failed to create financial category budget");
+  return getFinancialCategoryBudgetById(result.id);
+};
+
+export const updateFinancialCategoryBudget = async (
+  id: string,
+  input: {
+    category?: string;
+    month?: number;
+    year?: number;
+    budgetAmount?: number;
+    notes?: string;
+    updatedBy?: string;
+  },
+) => {
+  const existing = await getFinancialCategoryBudgetById(id);
+  if (!existing) return null;
+
+  await db
+    .update(financialCategoryBudgets)
+    .set({
+      ...(input.category !== undefined && { category: input.category }),
+      ...(input.month !== undefined && { month: input.month }),
+      ...(input.year !== undefined && { year: input.year }),
+      ...(input.budgetAmount !== undefined && {
+        budgetAmount: String(input.budgetAmount),
+      }),
+      ...(input.notes !== undefined && { notes: input.notes }),
+      updatedBy: input.updatedBy,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(financialCategoryBudgets.id, id),
+        eq(financialCategoryBudgets.isDeleted, false),
+      ),
+    );
+
+  return getFinancialCategoryBudgetById(id);
+};
+
+export const deleteFinancialCategoryBudget = async (
+  id: string,
+  deletedBy?: string,
+) => {
+  const existing = await getFinancialCategoryBudgetById(id);
+  if (!existing) return null;
+
+  await db
+    .update(financialCategoryBudgets)
+    .set({
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: deletedBy ?? null,
+    })
+    .where(eq(financialCategoryBudgets.id, id));
+
+  return { id };
+};

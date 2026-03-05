@@ -21,6 +21,10 @@ import {
   taskComments,
   jobExpenses,
   jobSurveys,
+  jobServiceCalls,
+  jobPMInspections,
+  jobPlanSpecRecords,
+  jobDesignBuildNotes,
 } from "../drizzle/schema/jobs.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import {
@@ -79,6 +83,8 @@ import {
   getBidSurveyData,
   getBidPlanSpecData,
   getBidDesignBuildData,
+  getBidServiceData,
+  getBidPreventativeMaintenanceData,
 } from "./bid.service.js";
 
 // ============================
@@ -344,6 +350,19 @@ export const createJob = async (data: {
     throw new Error("Bid not found");
   }
 
+  // Enforce 1-to-1: check if a job already exists for this bid
+  const [existingJob] = await db
+    .select({ id: jobs.id, jobNumber: jobs.jobNumber })
+    .from(jobs)
+    .where(and(eq(jobs.bidId, data.bidId), eq(jobs.isDeleted, false)))
+    .limit(1);
+
+  if (existingJob) {
+    throw new Error(
+      `This bid has already been converted to Job ${existingJob.jobNumber}. A bid can only be converted to one job.`,
+    );
+  }
+
   // Update bid status to "won" and set convertToJob flag when creating a job from a bid
   const { updateBid } = await import("./bid.service.js");
   const bidUpdateData: any = {
@@ -402,6 +421,15 @@ export const createJob = async (data: {
     .returning();
 
   const job = (result as any[])[0];
+
+  // Write back the job ID to the bid so we can navigate to it later
+  await db
+    .update(bidsTable)
+    .set({
+      convertedToJobId: job.id,
+      conversionDate: new Date().toISOString().split("T")[0],
+    })
+    .where(eq(bidsTable.id, data.bidId));
 
   // Add team members if provided
   // addJobTeamMember already fires job_assigned for each team member
@@ -1270,6 +1298,8 @@ export const getJobWithAllData = async (jobId: string) => {
     surveyData,
     planSpecData,
     designBuildData,
+    serviceData,
+    preventativeMaintenanceData,
   ] = await Promise.all([
     getBidFinancialBreakdown(jobData.bidId, jobData.organizationId),
     getBidMaterials(jobData.bidId, jobData.organizationId),
@@ -1282,6 +1312,8 @@ export const getJobWithAllData = async (jobId: string) => {
     getBidSurveyData(jobData.bidId, jobData.organizationId),
     getBidPlanSpecData(jobData.bidId, jobData.organizationId),
     getBidDesignBuildData(jobData.bidId, jobData.organizationId),
+    getBidServiceData(jobData.bidId, jobData.organizationId),
+    getBidPreventativeMaintenanceData(jobData.bidId, jobData.organizationId),
   ]);
 
   // Get travel for each labor entry
@@ -1377,6 +1409,8 @@ export const getJobWithAllData = async (jobId: string) => {
     surveyData: surveyData ?? null,
     planSpecData: planSpecData ?? null,
     designBuildData: designBuildData ?? null,
+    serviceData: serviceData ?? null,
+    preventativeMaintenanceData: preventativeMaintenanceData ?? null,
   };
 };
 
@@ -3102,6 +3136,355 @@ export const deleteJobSurvey = async (surveyId: string, jobId: string) => {
         eq(jobSurveys.id, surveyId),
         eq(jobSurveys.jobId, jobId),
         eq(jobSurveys.isDeleted, false),
+      ),
+    )
+    .returning();
+  return softDeleted ?? null;
+};
+
+// ============================
+// Job Service Calls Operations
+// ============================
+
+export const getJobServiceCalls = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  return db
+    .select()
+    .from(jobServiceCalls)
+    .where(and(eq(jobServiceCalls.jobId, jobId), eq(jobServiceCalls.isDeleted, false)))
+    .orderBy(desc(jobServiceCalls.createdAt));
+};
+
+export const getJobServiceCallById = async (jobId: string, callId: string) => {
+  const [row] = await db
+    .select()
+    .from(jobServiceCalls)
+    .where(
+      and(
+        eq(jobServiceCalls.id, callId),
+        eq(jobServiceCalls.jobId, jobId),
+        eq(jobServiceCalls.isDeleted, false),
+      ),
+    );
+  return row ?? null;
+};
+
+export const createJobServiceCall = async (
+  jobId: string,
+  data: Record<string, unknown>,
+  createdBy: string,
+) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const [inserted] = await db
+    .insert(jobServiceCalls)
+    .values({ ...data, jobId, createdBy } as any)
+    .returning();
+  if (!inserted) return null;
+  return getJobServiceCallById(jobId, inserted.id);
+};
+
+export const updateJobServiceCall = async (
+  callId: string,
+  jobId: string,
+  data: Record<string, unknown>,
+) => {
+  const { jobId: _scJobId, createdBy: _scCreatedBy, ...safeServiceCallData } = data;
+  const [updated] = await db
+    .update(jobServiceCalls)
+    .set({ ...safeServiceCallData, updatedAt: new Date() } as any)
+    .where(
+      and(
+        eq(jobServiceCalls.id, callId),
+        eq(jobServiceCalls.jobId, jobId),
+        eq(jobServiceCalls.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+  return getJobServiceCallById(jobId, callId);
+};
+
+export const deleteJobServiceCall = async (callId: string, jobId: string) => {
+  const [softDeleted] = await db
+    .update(jobServiceCalls)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobServiceCalls.id, callId),
+        eq(jobServiceCalls.jobId, jobId),
+        eq(jobServiceCalls.isDeleted, false),
+      ),
+    )
+    .returning();
+  return softDeleted ?? null;
+};
+
+// ============================
+// Job PM Inspections Operations
+// ============================
+
+export const getJobPMInspections = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  return db
+    .select()
+    .from(jobPMInspections)
+    .where(and(eq(jobPMInspections.jobId, jobId), eq(jobPMInspections.isDeleted, false)))
+    .orderBy(desc(jobPMInspections.createdAt));
+};
+
+export const getJobPMInspectionById = async (jobId: string, inspectionId: string) => {
+  const [row] = await db
+    .select()
+    .from(jobPMInspections)
+    .where(
+      and(
+        eq(jobPMInspections.id, inspectionId),
+        eq(jobPMInspections.jobId, jobId),
+        eq(jobPMInspections.isDeleted, false),
+      ),
+    );
+  return row ?? null;
+};
+
+export const createJobPMInspection = async (
+  jobId: string,
+  data: Record<string, unknown>,
+  createdBy: string,
+) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const [inserted] = await db
+    .insert(jobPMInspections)
+    .values({ ...data, jobId, createdBy } as any)
+    .returning();
+  if (!inserted) return null;
+  return getJobPMInspectionById(jobId, inserted.id);
+};
+
+export const updateJobPMInspection = async (
+  inspectionId: string,
+  jobId: string,
+  data: Record<string, unknown>,
+) => {
+  const { jobId: _pmJobId, createdBy: _pmCreatedBy, ...safePMData } = data;
+  const [updated] = await db
+    .update(jobPMInspections)
+    .set({ ...safePMData, updatedAt: new Date() } as any)
+    .where(
+      and(
+        eq(jobPMInspections.id, inspectionId),
+        eq(jobPMInspections.jobId, jobId),
+        eq(jobPMInspections.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+  return getJobPMInspectionById(jobId, inspectionId);
+};
+
+export const deleteJobPMInspection = async (inspectionId: string, jobId: string) => {
+  const [softDeleted] = await db
+    .update(jobPMInspections)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobPMInspections.id, inspectionId),
+        eq(jobPMInspections.jobId, jobId),
+        eq(jobPMInspections.isDeleted, false),
+      ),
+    )
+    .returning();
+  return softDeleted ?? null;
+};
+
+// ============================
+// Job Plan Spec Records Operations
+// ============================
+
+export const getJobPlanSpecRecords = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  return db
+    .select()
+    .from(jobPlanSpecRecords)
+    .where(and(eq(jobPlanSpecRecords.jobId, jobId), eq(jobPlanSpecRecords.isDeleted, false)))
+    .orderBy(desc(jobPlanSpecRecords.createdAt));
+};
+
+export const getJobPlanSpecRecordById = async (jobId: string, recordId: string) => {
+  const [row] = await db
+    .select()
+    .from(jobPlanSpecRecords)
+    .where(
+      and(
+        eq(jobPlanSpecRecords.id, recordId),
+        eq(jobPlanSpecRecords.jobId, jobId),
+        eq(jobPlanSpecRecords.isDeleted, false),
+      ),
+    );
+  return row ?? null;
+};
+
+export const createJobPlanSpecRecord = async (
+  jobId: string,
+  data: Record<string, unknown>,
+  createdBy: string,
+) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const [inserted] = await db
+    .insert(jobPlanSpecRecords)
+    .values({ ...data, jobId, createdBy } as any)
+    .returning();
+  if (!inserted) return null;
+  return getJobPlanSpecRecordById(jobId, inserted.id);
+};
+
+export const updateJobPlanSpecRecord = async (
+  recordId: string,
+  jobId: string,
+  data: Record<string, unknown>,
+) => {
+  const { jobId: _psJobId, createdBy: _psCreatedBy, ...safePSData } = data;
+  const [updated] = await db
+    .update(jobPlanSpecRecords)
+    .set({ ...safePSData, updatedAt: new Date() } as any)
+    .where(
+      and(
+        eq(jobPlanSpecRecords.id, recordId),
+        eq(jobPlanSpecRecords.jobId, jobId),
+        eq(jobPlanSpecRecords.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+  return getJobPlanSpecRecordById(jobId, recordId);
+};
+
+export const deleteJobPlanSpecRecord = async (recordId: string, jobId: string) => {
+  const [softDeleted] = await db
+    .update(jobPlanSpecRecords)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobPlanSpecRecords.id, recordId),
+        eq(jobPlanSpecRecords.jobId, jobId),
+        eq(jobPlanSpecRecords.isDeleted, false),
+      ),
+    )
+    .returning();
+  return softDeleted ?? null;
+};
+
+// ============================
+// Job Design Build Notes Operations
+// ============================
+
+export const getJobDesignBuildNotes = async (jobId: string) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  return db
+    .select()
+    .from(jobDesignBuildNotes)
+    .where(and(eq(jobDesignBuildNotes.jobId, jobId), eq(jobDesignBuildNotes.isDeleted, false)))
+    .orderBy(desc(jobDesignBuildNotes.createdAt));
+};
+
+export const getJobDesignBuildNoteById = async (jobId: string, noteId: string) => {
+  const [row] = await db
+    .select()
+    .from(jobDesignBuildNotes)
+    .where(
+      and(
+        eq(jobDesignBuildNotes.id, noteId),
+        eq(jobDesignBuildNotes.jobId, jobId),
+        eq(jobDesignBuildNotes.isDeleted, false),
+      ),
+    );
+  return row ?? null;
+};
+
+export const createJobDesignBuildNote = async (
+  jobId: string,
+  data: Record<string, unknown>,
+  createdBy: string,
+  authorName: string,
+) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+  if (!jobRow) return null;
+
+  const [inserted] = await db
+    .insert(jobDesignBuildNotes)
+    .values({ ...data, jobId, createdBy, authorName } as any)
+    .returning();
+  if (!inserted) return null;
+  return getJobDesignBuildNoteById(jobId, inserted.id);
+};
+
+export const updateJobDesignBuildNote = async (
+  noteId: string,
+  jobId: string,
+  data: Record<string, unknown>,
+) => {
+  const { jobId: _jId, createdBy: _cBy, ...safeData } = data;
+  const [updated] = await db
+    .update(jobDesignBuildNotes)
+    .set({ ...safeData, updatedAt: new Date() } as any)
+    .where(
+      and(
+        eq(jobDesignBuildNotes.id, noteId),
+        eq(jobDesignBuildNotes.jobId, jobId),
+        eq(jobDesignBuildNotes.isDeleted, false),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+  return getJobDesignBuildNoteById(jobId, noteId);
+};
+
+export const deleteJobDesignBuildNote = async (noteId: string, jobId: string) => {
+  const [softDeleted] = await db
+    .update(jobDesignBuildNotes)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobDesignBuildNotes.id, noteId),
+        eq(jobDesignBuildNotes.jobId, jobId),
+        eq(jobDesignBuildNotes.isDeleted, false),
       ),
     )
     .returning();

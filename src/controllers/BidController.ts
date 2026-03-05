@@ -116,6 +116,12 @@ import {
   getBidMediaById,
   updateBidMedia,
   deleteBidMedia,
+  getBidPlanSpecFiles,
+  createBidPlanSpecFile,
+  deleteBidPlanSpecFile,
+  getBidDesignBuildFiles,
+  createBidDesignBuildFile,
+  deleteBidDesignBuildFile,
 } from "../services/bid.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import {
@@ -4285,10 +4291,19 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const financialBreakdown = await getBidFinancialBreakdown(
-      id,
-      organizationId,
-    );
+    const [financialBreakdown, typeSpecificData] = await Promise.all([
+      getBidFinancialBreakdown(id, organizationId),
+      (() => {
+        switch (bid.jobType) {
+          case "survey":               return getBidSurveyData(id, organizationId);
+          case "plan_spec":            return getBidPlanSpecData(id, organizationId);
+          case "design_build":         return getBidDesignBuildData(id, organizationId);
+          case "service":              return getBidServiceData(id, organizationId);
+          case "preventative_maintenance": return getBidPreventativeMaintenanceData(id, organizationId);
+          default:                     return Promise.resolve(null);
+        }
+      })(),
+    ]);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -4306,6 +4321,8 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       financialBreakdown,
       contactForQuote,
       bid.property ?? null,
+      undefined,
+      typeSpecificData,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -4360,10 +4377,19 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const financialBreakdown = await getBidFinancialBreakdown(
-      id,
-      organizationId,
-    );
+    const [financialBreakdown, typeSpecificData] = await Promise.all([
+      getBidFinancialBreakdown(id, organizationId),
+      (() => {
+        switch (bid.jobType) {
+          case "survey":               return getBidSurveyData(id, organizationId);
+          case "plan_spec":            return getBidPlanSpecData(id, organizationId);
+          case "design_build":         return getBidDesignBuildData(id, organizationId);
+          case "service":              return getBidServiceData(id, organizationId);
+          case "preventative_maintenance": return getBidPreventativeMaintenanceData(id, organizationId);
+          default:                     return Promise.resolve(null);
+        }
+      })(),
+    ]);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -4381,6 +4407,8 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       financialBreakdown,
       contactForQuote,
       bid.property ?? null,
+      undefined,
+      typeSpecificData,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -4473,10 +4501,19 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     const primaryContact = allRecipients[0]!;
     const ccEmails = allRecipients.slice(1).map((r) => r.email);
 
-    const financialBreakdown = await getBidFinancialBreakdown(
-      id,
-      organizationId,
-    );
+    const [financialBreakdown, typeSpecificData] = await Promise.all([
+      getBidFinancialBreakdown(id, organizationId),
+      (() => {
+        switch (bid.jobType) {
+          case "survey":               return getBidSurveyData(id, organizationId);
+          case "plan_spec":            return getBidPlanSpecData(id, organizationId);
+          case "design_build":         return getBidDesignBuildData(id, organizationId);
+          case "service":              return getBidServiceData(id, organizationId);
+          case "preventative_maintenance": return getBidPreventativeMaintenanceData(id, organizationId);
+          default:                     return Promise.resolve(null);
+        }
+      })(),
+    ]);
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -4484,6 +4521,8 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       financialBreakdown,
       primaryContact ?? null,
       bid.property ?? null,
+      undefined,
+      typeSpecificData,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -4563,10 +4602,19 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       });
     }
 
-    const financialBreakdown = await getBidFinancialBreakdown(
-      id,
-      organizationId,
-    );
+    const [financialBreakdown, typeSpecificData] = await Promise.all([
+      getBidFinancialBreakdown(id, organizationId),
+      (() => {
+        switch (bid.jobType) {
+          case "survey":               return getBidSurveyData(id, organizationId);
+          case "plan_spec":            return getBidPlanSpecData(id, organizationId);
+          case "design_build":         return getBidDesignBuildData(id, organizationId);
+          case "service":              return getBidServiceData(id, organizationId);
+          case "preventative_maintenance": return getBidPreventativeMaintenanceData(id, organizationId);
+          default:                     return Promise.resolve(null);
+        }
+      })(),
+    ]);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const primaryContact =
@@ -4584,6 +4632,8 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       financialBreakdown,
       primaryContact,
       bid.property ?? null,
+      undefined,
+      typeSpecificData,
     );
 
     let pdfAttachment: { content: Buffer; filename: string } | undefined;
@@ -4724,5 +4774,159 @@ export const bulkDeleteBidsHandler = async (req: Request, res: Response) => {
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ============================
+// Plan Spec Files Operations
+// ============================
+
+export const getBidPlanSpecFilesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const files = await getBidPlanSpecFiles(bidId!);
+    return res.status(200).json({ success: true, data: files });
+  } catch (error) {
+    logger.logApiError("Bid plan spec files error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createBidPlanSpecFilesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) return res.status(404).json({ success: false, message: "Bid not found" });
+
+    const files = (req.files as Express.Multer.File[]) || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, message: "No files provided" });
+    }
+
+    const uploadedFiles = [];
+    for (const file of files) {
+      try {
+        const uploadResult = await uploadToSpaces(file.buffer, file.originalname, "bid-plan-spec-files");
+        const fileType = req.body.fileType || (file.fieldname.includes("spec") ? "spec" : "plan");
+        const created = await createBidPlanSpecFile({
+          organizationId: bid.organizationId,
+          bidId: bidId!,
+          fileType,
+          fileName: file.originalname,
+          filePath: uploadResult.url,
+          fileSize: file.size,
+          uploadedBy: userId,
+        });
+        if (created) uploadedFiles.push(created);
+      } catch (uploadError: any) {
+        logger.error(`Error uploading plan spec file ${file.originalname}:`, uploadError);
+      }
+    }
+
+    return res.status(201).json({ success: true, data: uploadedFiles, message: "Plan spec files uploaded successfully" });
+  } catch (error) {
+    logger.logApiError("Bid plan spec files upload error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteBidPlanSpecFileHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "fileId"])) return;
+    const fileId = asSingleString(req.params.fileId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteBidPlanSpecFile(fileId!);
+    if (!deleted) return res.status(404).json({ success: false, message: "File not found" });
+
+    return res.status(200).json({ success: true, message: "Plan spec file deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Bid plan spec file delete error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ============================
+// Design Build Files Operations
+// ============================
+
+export const getBidDesignBuildFilesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const files = await getBidDesignBuildFiles(bidId!);
+    return res.status(200).json({ success: true, data: files });
+  } catch (error) {
+    logger.logApiError("Bid design build files error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createBidDesignBuildFilesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidByIdSimple(bidId!);
+    if (!bid) return res.status(404).json({ success: false, message: "Bid not found" });
+
+    const files = (req.files as Express.Multer.File[]) || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, message: "No files provided" });
+    }
+
+    const uploadedFiles = [];
+    for (const file of files) {
+      try {
+        const uploadResult = await uploadToSpaces(file.buffer, file.originalname, "bid-design-build-files");
+        const created = await createBidDesignBuildFile({
+          organizationId: bid.organizationId,
+          bidId: bidId!,
+          fileName: file.originalname,
+          filePath: uploadResult.url,
+          fileSize: file.size,
+          uploadedBy: userId,
+        });
+        if (created) uploadedFiles.push(created);
+      } catch (uploadError: any) {
+        logger.error(`Error uploading design build file ${file.originalname}:`, uploadError);
+      }
+    }
+
+    return res.status(201).json({ success: true, data: uploadedFiles, message: "Design build files uploaded successfully" });
+  } catch (error) {
+    logger.logApiError("Bid design build files upload error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteBidDesignBuildFileHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "fileId"])) return;
+    const fileId = asSingleString(req.params.fileId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteBidDesignBuildFile(fileId!);
+    if (!deleted) return res.status(404).json({ success: false, message: "File not found" });
+
+    return res.status(200).json({ success: true, message: "Design build file deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Bid design build file delete error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

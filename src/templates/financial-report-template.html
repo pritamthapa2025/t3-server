@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T3 Mechanical - {{reportTitle}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #475569;
+        --muted-2: #64748b;
+        --line: #e5e7eb;
+        --panel: #ffffff;
+        --wash: #f8fafc;
+        --wash-2: #f1f5f9;
+        --accent: #dc2626;
+        --accent-2: #991b1b;
+        --radius: 10px;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        color: var(--ink);
+        background: #ffffff;
+        line-height: 1.55;
+        font-size: 12px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .report-container {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #ffffff;
+        padding: 18mm 20mm;
+      }
+
+      /* ── Header (logo left | meta box right) ── */
+      .header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 28px;
+        align-items: start;
+        margin-bottom: 16px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .header-left {
+        display: flex;
+        align-items: flex-start;
+      }
+
+      .company-logo {
+        width: 200px;
+        max-width: 200px;
+        height: auto;
+      }
+
+      /* Right meta box — matches quote header-right */
+      .header-right {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        position: relative;
+        overflow: hidden;
+        min-width: 270px;
+        background: var(--panel);
+      }
+
+      /* Red top stripe — identical to quote */
+      .header-right::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 4px;
+        background: var(--accent);
+      }
+
+      .header-right table {
+        border-collapse: separate;
+        border-spacing: 6px 6px;
+        width: 100%;
+      }
+
+      .header-right td {
+        font-size: 10.5px;
+        padding: 8px 10px;
+      }
+
+      .header-right .label {
+        background: var(--wash-2);
+        color: var(--muted);
+        letter-spacing: 1px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 10px;
+        text-transform: uppercase;
+        text-align: center;
+      }
+
+      .header-right .value {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        background: var(--panel);
+        color: var(--ink);
+      }
+
+      /* ── Location chips (like quote) ── */
+      .locations {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 13px;
+        border: 1px solid var(--line);
+        background: var(--wash);
+        border-radius: 999px;
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 11px;
+      }
+
+      .chip strong {
+        color: var(--ink);
+        font-weight: 800;
+      }
+
+      /* ── Report title section ── */
+      .report-title-block {
+        margin-bottom: 16px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--wash);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .report-title-block::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--accent);
+        border-radius: 4px 0 0 4px;
+      }
+
+      .report-type-label {
+        font-size: 9px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--accent);
+        margin-bottom: 4px;
+      }
+
+      .report-title {
+        font-size: 22px;
+        font-weight: 900;
+        color: var(--ink);
+        letter-spacing: -0.4px;
+        margin-bottom: 3px;
+      }
+
+      .report-subtitle {
+        font-size: 11px;
+        color: var(--muted-2);
+        font-weight: 500;
+      }
+
+      /* ── Summary cards (info-box style from quote) ── */
+      .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .summary-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--panel);
+      }
+
+      .summary-card-label {
+        background: var(--accent);
+        color: #ffffff;
+        padding: 7px 12px;
+        font-weight: 900;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+      }
+
+      .summary-card-body {
+        padding: 10px 12px;
+      }
+
+      .summary-card-value {
+        font-size: 17px;
+        font-weight: 900;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.3px;
+      }
+
+      .summary-card-value.positive {
+        color: #16a34a;
+      }
+      .summary-card-value.negative {
+        color: var(--accent);
+      }
+
+      .summary-card-sub {
+        font-size: 10px;
+        color: var(--muted-2);
+        margin-top: 2px;
+      }
+
+      /* ── Section label (like quote section-header) ── */
+      .section-label {
+        font-size: 10px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--ink);
+        background: var(--wash-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius) var(--radius) 0 0;
+        padding: 9px 14px;
+        border-bottom: none;
+      }
+
+      /* ── Data table (like work-items-table from quote) ── */
+      .data-table-wrapper {
+        border: 1px solid var(--line);
+        border-radius: 0 0 var(--radius) var(--radius);
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+
+      .data-table thead {
+        background: var(--accent);
+      }
+
+      .data-table thead th {
+        padding: 11px 14px;
+        text-align: left;
+        font-size: 10px;
+        font-weight: 900;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+      }
+
+      .data-table thead th.text-right {
+        text-align: right;
+      }
+      .data-table thead th.text-center {
+        text-align: center;
+      }
+
+      .data-table tbody tr:nth-child(odd) {
+        background: #ffffff;
+      }
+      .data-table tbody tr:nth-child(even) {
+        background: var(--wash);
+      }
+
+      .data-table tbody tr {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .data-table tbody tr:last-child {
+        border-bottom: none;
+      }
+
+      .data-table tbody td {
+        padding: 10px 14px;
+        color: var(--muted);
+        vertical-align: middle;
+      }
+
+      .data-table tbody td.text-right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .data-table tbody td.text-center {
+        text-align: center;
+      }
+      .data-table tbody td.font-medium {
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      /* Totals footer row */
+      .data-table tfoot tr {
+        background: var(--wash-2);
+        border-top: 2px solid var(--line);
+      }
+
+      .data-table tfoot td {
+        padding: 10px 14px;
+        font-weight: 900;
+        color: var(--ink);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .data-table tfoot td.text-right {
+        text-align: right;
+      }
+
+      /* ── Badges ── */
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .badge-green {
+        background: #dcfce7;
+        color: #16a34a;
+      }
+      .badge-red {
+        background: rgba(220, 38, 38, 0.1);
+        color: var(--accent);
+      }
+      .badge-yellow {
+        background: #fef9c3;
+        color: #ca8a04;
+      }
+      .badge-blue {
+        background: #dbeafe;
+        color: #2563eb;
+      }
+      .badge-gray {
+        background: var(--wash-2);
+        color: var(--muted);
+      }
+
+      /* ── P&L Statement layout ── */
+      .pl-wrapper {
+        border: 1px solid var(--line);
+        border-radius: 0 0 var(--radius) var(--radius);
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+
+        .pl-section-header {
+            background: var(--accent);
+            color: #ffffff;
+            padding: 9px 14px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+        }
+
+      .pl-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+      }
+
+      .pl-row:last-child {
+        border-bottom: none;
+      }
+
+      .pl-row.subtotal {
+        background: var(--wash-2);
+        font-weight: 700;
+        border-top: 1px solid var(--line);
+        color: var(--ink);
+      }
+
+      .pl-row.net-total {
+        background: var(--wash-2);
+        font-weight: 900;
+        font-size: 13px;
+        border-top: 2px solid var(--line);
+        color: var(--ink);
+        padding: 12px 14px;
+      }
+
+      .pl-label {
+        color: var(--muted);
+      }
+      .pl-value {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .pl-value.positive {
+        color: #16a34a;
+      }
+      .pl-value.negative {
+        color: var(--accent);
+      }
+
+      /* ── Footer ── */
+      .report-footer {
+        margin-top: 28px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        text-align: center;
+        font-size: 10px;
+        line-height: 1.8;
+        color: var(--muted-2);
+      }
+
+      .report-footer strong {
+        color: var(--muted);
+      }
+
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .report-container {
+          padding: 14mm 18mm;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="report-container">
+      <!-- Header: logo left, meta right — identical layout to quote -->
+      <div class="header">
+        <div class="header-left">
+          <img
+            src="https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-black.png"
+            alt="T3 Mechanical"
+            class="company-logo"
+          />
+        </div>
+        <div class="header-right">
+          <table>
+            <tr>
+              <td class="label">Date Range</td>
+              <td class="label">Generated</td>
+              <td class="label">Report ID</td>
+            </tr>
+            <tr>
+              <td class="value">{{dateRange}}</td>
+              <td class="value">{{generatedDate}}</td>
+              <td class="value">{{reportId}}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Location chips -->
+      <div class="locations">
+        <span class="chip"
+          ><strong>Organization</strong>: {{organizationName}}</span
+        >
+        <span class="chip"
+          ><strong>Office</strong>: 4749 Bennett Drive, Suite H, Livermore, CA
+          94551</span
+        >
+        <span class="chip"><strong>Phone</strong>: (888) 488-2312</span>
+      </div>
+
+      <!-- Report title block with red left accent bar -->
+      <div class="report-title-block">
+        <div class="report-type-label">Financial Report</div>
+        <div class="report-title">{{reportTitle}}</div>
+        <div class="report-subtitle">{{reportSubtitle}}</div>
+      </div>
+
+      <!-- Summary KPI cards (injected as HTML) -->
+      {{summaryCardsHtml}}
+
+      <!-- Main table / P&L content (injected as HTML) -->
+      {{mainContentHtml}}
+
+      <!-- Footer -->
+      <div class="report-footer">
+        <strong>T3 Mechanical Inc.</strong> &nbsp;|&nbsp; CA License #1038631
+        &nbsp;|&nbsp; 1.888.488.2312 &nbsp;|&nbsp; info@t3mechanicalinc.com<br />
+        Confidential · For internal use only · Figures may be subject to
+        accounting adjustments.
+      </div>
+    </div>
+  </body>
+</html>

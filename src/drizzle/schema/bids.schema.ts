@@ -91,6 +91,24 @@ export const bidsTable: any = org.table(
       () => employees.id,
     ),
 
+    // Additional Project Fields
+    industryClassification: varchar("industry_classification", { length: 255 }),
+    scheduledDateTime: timestamp("scheduled_date_time"),
+    termsTemplateSelection: varchar("terms_template_selection", { length: 100 }),
+    siteContactName: varchar("site_contact_name", { length: 255 }),
+    siteContactPhone: varchar("site_contact_phone", { length: 50 }),
+    accessInstructions: text("access_instructions"),
+
+    // Lifecycle / Post-Decision Fields
+    finalBidAmount: numeric("final_bid_amount", { precision: 15, scale: 2 }),
+    actualCost: numeric("actual_cost", { precision: 15, scale: 2 }),
+    submittedDate: date("submitted_date"),
+    decisionDate: date("decision_date"),
+    convertedToJobId: uuid("converted_to_job_id"),
+    conversionDate: date("conversion_date"),
+    lostReason: text("lost_reason"),
+    rejectionReason: text("rejection_reason"),
+
     // Metadata
     createdBy: uuid("created_by")
       .notNull()
@@ -260,9 +278,8 @@ export const bidLabor = org.table(
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id, { onDelete: "cascade" }),
-    positionId: integer("position_id")
-      .notNull()
-      .references(() => positions.id),
+    positionId: integer("position_id").references(() => positions.id),
+    customRole: varchar("custom_role", { length: 255 }), // Free-text role when no positionId
     quantity: integer("quantity").notNull().default(1), // Number of workers for this position
     days: integer("days").notNull(),
     hoursPerDay: numeric("hours_per_day", { precision: 5, scale: 2 }).notNull(),
@@ -508,9 +525,48 @@ export const bidSurveyData = org.table("bid_survey_data", {
     .references(() => bidsTable.id, { onDelete: "cascade" })
     .unique(),
 
+  // New survey bid fields
+  surveyType: varchar("survey_type", { length: 50 }), // new-installation, existing-assessment, energy-audit, feasibility-study
+  numberOfBuildings: integer("number_of_buildings"),
+  expectedUnitsToSurvey: integer("expected_units_to_survey"),
+  buildingNumbers: text("building_numbers"), // JSON array
+  unitTypes: text("unit_types"), // JSON array: RTU, AHU, Chiller, Boiler, Split System, Exhaust Fan, Other
+  includePhotoDocumentation: boolean("include_photo_documentation").default(false),
+  includePerformanceTesting: boolean("include_performance_testing").default(false),
+  includeEnergyAnalysis: boolean("include_energy_analysis").default(false),
+  includeRecommendations: boolean("include_recommendations").default(false),
+  schedulingConstraints: text("scheduling_constraints"),
+  technicianId: integer("technician_id").references(() => employees.id),
+
+  // Pricing
+  pricingModel: varchar("pricing_model", { length: 50 }), // flat_fee, per_unit, time_materials
+  flatSurveyFee: numeric("flat_survey_fee", { precision: 15, scale: 2 }),
+  pricePerUnit: numeric("price_per_unit", { precision: 15, scale: 2 }),
+  estimatedHours: numeric("estimated_hours", { precision: 10, scale: 2 }),
+  hourlyRate: numeric("hourly_rate", { precision: 15, scale: 2 }),
+  estimatedExpenses: numeric("estimated_expenses", { precision: 15, scale: 2 }),
+  totalSurveyFee: numeric("total_survey_fee", { precision: 15, scale: 2 }),
+
+  // Additional survey metadata
+  surveyDate: date("survey_date"),
+  surveyBy: varchar("survey_by", { length: 255 }),
+  surveyNotes: text("survey_notes"),
+  accessRequirements: text("access_requirements"),
+  utilityLocations: text("utility_locations"),
+  existingEquipment: text("existing_equipment"),
+  measurements: text("measurements"),
+  photos: text("photos"), // JSON array of photo paths
+
+  // Shared notes fields
+  siteAccessNotes: text("site_access_notes"),
+  additionalNotes: text("additional_notes"),
+  clientRequirements: text("client_requirements"),
+  termsAndConditions: text("terms_and_conditions"),
+
+  // Legacy fields (kept for backward compatibility)
   buildingNumber: varchar("building_number", { length: 100 }),
   siteLocation: text("site_location"),
-  workType: varchar("work_type", { length: 50 }), // new-installation, existing-unit-assessment, site-condition-check
+  workType: varchar("work_type", { length: 50 }),
   hasExistingUnit: boolean("has_existing_unit").default(false),
   unitTag: varchar("unit_tag", { length: 100 }),
   unitLocation: varchar("unit_location", { length: 255 }),
@@ -521,13 +577,10 @@ export const bidSurveyData = org.table("bid_survey_data", {
   powerStatus: varchar("power_status", { length: 50 }),
   voltagePhase: varchar("voltage_phase", { length: 50 }),
   overallCondition: varchar("overall_condition", { length: 100 }),
-  siteAccessNotes: text("site_access_notes"),
-  additionalNotes: text("additional_notes"), //optional
   siteConditions: text("site_conditions"),
-  clientRequirements: text("client_requirements"),
-  termsAndConditions: text("terms_and_conditions"), //optional
   dateOfSurvey: date("date_of_survey"),
   timeOfSurvey: time("time_of_survey"),
+
   isDeleted: boolean("is_deleted").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -596,7 +649,36 @@ export const bidServiceData = org.table(
       .references(() => bidsTable.id, { onDelete: "cascade" })
       .unique(),
 
-    // Service Call Details
+    // Bid-creation fields: service scope & classification
+    serviceType: varchar("service_type", { length: 50 }), // emergency_repair, scheduled_repair, diagnostic, installation, other
+    equipmentType: varchar("equipment_type", { length: 100 }), // rooftop_unit, split_system, boiler, chiller, air_handler, other
+    issueCategory: varchar("issue_category", { length: 100 }), // cooling, heating, ventilation, controls, electrical, plumbing, other
+    reportedIssue: text("reported_issue"),
+    preliminaryAssessment: text("preliminary_assessment"),
+    estimatedWorkScope: text("estimated_work_scope"),
+
+    // Bid-creation fields: assigned technicians
+    leadTechnicianId: integer("lead_technician_id").references(
+      () => employees.id,
+    ),
+    helperTechnicianId: integer("helper_technician_id").references(
+      () => employees.id,
+    ),
+
+    // Bid-creation fields: pricing
+    pricingModel: varchar("pricing_model", { length: 50 }), // time_materials, flat_rate, diagnostic_repair
+    numberOfTechs: integer("number_of_techs"),
+    laborHours: numeric("labor_hours", { precision: 10, scale: 2 }),
+    laborRate: numeric("labor_rate", { precision: 15, scale: 2 }),
+    materialsCost: numeric("materials_cost", { precision: 15, scale: 2 }),
+    travelCost: numeric("travel_cost", { precision: 15, scale: 2 }),
+    serviceMarkup: numeric("service_markup", { precision: 5, scale: 2 }),
+    flatRatePrice: numeric("flat_rate_price", { precision: 15, scale: 2 }),
+    diagnosticFee: numeric("diagnostic_fee", { precision: 15, scale: 2 }),
+    estimatedRepairCost: numeric("estimated_repair_cost", { precision: 15, scale: 2 }),
+    pricingNotes: text("pricing_notes"),
+
+    // Execution-phase fields (populated post-bid during job)
     serviceCallTechnician: integer("service_call_technician").references(
       () => employees.id,
     ),
@@ -604,7 +686,7 @@ export const bidServiceData = org.table(
     timeOut: varchar("time_out", { length: 50 }),
     serviceDescription: text("service_description"),
 
-    // Checklist Items
+    // Checklist Items (execution phase)
     plumbingSystemCheck: boolean("plumbing_system_check").default(false),
     thermostatCheck: boolean("thermostat_check").default(false),
     hvacSystemCheck: boolean("hvac_system_check").default(false),
@@ -612,11 +694,11 @@ export const bidServiceData = org.table(
       false,
     ),
 
-    // Customer Signature
+    // Customer Signature (execution phase)
     customerSignaturePath: varchar("customer_signature_path", { length: 500 }),
     customerSignatureDate: timestamp("customer_signature_date"),
 
-    // Additional Notes
+    // Additional Notes (execution phase)
     serviceNotes: text("service_notes"),
 
     isDeleted: boolean("is_deleted").default(false),
@@ -665,6 +747,22 @@ export const bidPreventativeMaintenanceData = org.table(
     serviceScope: text("service_scope"),
     specialRequirements: text("special_requirements"),
     clientPmRequirements: text("client_pm_requirements"),
+
+    // Renewal tracking
+    previousPmJobId: varchar("previous_pm_job_id", { length: 100 }),
+
+    // Pricing
+    pricingModel: varchar("pricing_model", { length: 50 }), // per_unit, flat_rate, annual_contract
+    pricePerUnit: numeric("price_per_unit", { precision: 15, scale: 2 }),
+    flatRatePerVisit: numeric("flat_rate_per_visit", { precision: 15, scale: 2 }),
+    annualContractValue: numeric("annual_contract_value", { precision: 15, scale: 2 }),
+    includeFilterReplacement: boolean("include_filter_replacement").default(false),
+    filterReplacementCost: numeric("filter_replacement_cost", { precision: 15, scale: 2 }),
+    includeCoilCleaning: boolean("include_coil_cleaning").default(false),
+    coilCleaningCost: numeric("coil_cleaning_cost", { precision: 15, scale: 2 }),
+    emergencyServiceRate: numeric("emergency_service_rate", { precision: 15, scale: 2 }),
+    paymentSchedule: varchar("payment_schedule", { length: 50 }), // annual, per_visit, quarterly
+    pricingNotes: text("pricing_notes"),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),

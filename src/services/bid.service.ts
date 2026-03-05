@@ -496,6 +496,13 @@ export const createBid = async (data: {
   marked?: string;
   convertToJob?: boolean;
   createdBy: string;
+  // New fields
+  industryClassification?: string;
+  scheduledDateTime?: string;
+  termsTemplateSelection?: string;
+  siteContactName?: string;
+  siteContactPhone?: string;
+  accessInstructions?: string;
 }) => {
   // Generate bid number atomically (no race conditions)
   const bidNumber = await generateBidNumber(data.organizationId);
@@ -600,6 +607,12 @@ export const createBid = async (data: {
       qtyNumber: data.qtyNumber || undefined,
       marked: data.marked || undefined,
       convertToJob: data.convertToJob ?? undefined,
+      industryClassification: data.industryClassification || undefined,
+      scheduledDateTime: data.scheduledDateTime ? new Date(data.scheduledDateTime) : undefined,
+      termsTemplateSelection: data.termsTemplateSelection || undefined,
+      siteContactName: data.siteContactName || undefined,
+      siteContactPhone: data.siteContactPhone || undefined,
+      accessInstructions: data.accessInstructions || undefined,
     })
     .returning();
 
@@ -742,6 +755,21 @@ export const updateBid = async (
     qtyNumber: string;
     marked: string;
     convertToJob: boolean;
+    // New fields
+    industryClassification: string;
+    scheduledDateTime: string;
+    termsTemplateSelection: string;
+    siteContactName: string;
+    siteContactPhone: string;
+    accessInstructions: string;
+    finalBidAmount: string;
+    actualCost: string;
+    submittedDate: string;
+    decisionDate: string;
+    convertedToJobId: string | null;
+    conversionDate: string;
+    lostReason: string;
+    rejectionReason: string;
   }>,
 ) => {
   // Validate endDate: cannot be before bid's created date
@@ -804,6 +832,21 @@ export const updateBid = async (
       qtyNumber: data.qtyNumber,
       marked: data.marked,
       convertToJob: data.convertToJob,
+      // New fields
+      industryClassification: data.industryClassification,
+      scheduledDateTime: data.scheduledDateTime ? new Date(data.scheduledDateTime) : undefined,
+      termsTemplateSelection: data.termsTemplateSelection,
+      siteContactName: data.siteContactName,
+      siteContactPhone: data.siteContactPhone,
+      accessInstructions: data.accessInstructions,
+      finalBidAmount: data.finalBidAmount,
+      actualCost: data.actualCost,
+      submittedDate: data.submittedDate ? new Date(data.submittedDate).toISOString().split("T")[0] : undefined,
+      decisionDate: data.decisionDate ? new Date(data.decisionDate).toISOString().split("T")[0] : undefined,
+      convertedToJobId: data.convertedToJobId ?? undefined,
+      conversionDate: data.conversionDate ? new Date(data.conversionDate).toISOString().split("T")[0] : undefined,
+      lostReason: data.lostReason,
+      rejectionReason: data.rejectionReason,
       updatedAt: new Date(),
     })
     .where(
@@ -1877,7 +1920,8 @@ export const getBidLaborById = async (laborId: string) => {
 
 export const createBidLabor = async (data: {
   bidId: string;
-  positionId: number;
+  positionId?: number | null;
+  customRole?: string;
   quantity?: number;
   days: number;
   hoursPerDay: string;
@@ -1915,7 +1959,8 @@ export const createBidLabor = async (data: {
 export const updateBidLabor = async (
   id: string,
   data: Partial<{
-    positionId: number;
+    positionId: number | null;
+    customRole: string;
     quantity: number;
     days: number;
     hoursPerDay: string;
@@ -2324,6 +2369,39 @@ export const updateBidSurveyData = async (
   bidId: string,
   organizationId: string,
   data: Partial<{
+    // New survey bid fields
+    surveyType: string;
+    numberOfBuildings: number;
+    expectedUnitsToSurvey: number;
+    buildingNumbers: string;
+    unitTypes: string;
+    includePhotoDocumentation: boolean;
+    includePerformanceTesting: boolean;
+    includeEnergyAnalysis: boolean;
+    includeRecommendations: boolean;
+    schedulingConstraints: string;
+    technicianId: number | null;
+    pricingModel: string;
+    flatSurveyFee: string;
+    pricePerUnit: string;
+    estimatedHours: string;
+    hourlyRate: string;
+    estimatedExpenses: string;
+    totalSurveyFee: string;
+    surveyDate: string;
+    surveyBy: string;
+    surveyNotes: string;
+    accessRequirements: string;
+    utilityLocations: string;
+    existingEquipment: string;
+    measurements: string;
+    photos: string;
+    // Shared notes fields
+    siteAccessNotes: string;
+    additionalNotes: string;
+    clientRequirements: string;
+    termsAndConditions: string;
+    // Legacy fields
     buildingNumber: string;
     siteLocation: string;
     workType: string;
@@ -2337,11 +2415,7 @@ export const updateBidSurveyData = async (
     powerStatus: string;
     voltagePhase: string;
     overallCondition: string;
-    siteAccessNotes: string;
-    additionalNotes: string;
     siteConditions: string;
-    clientRequirements: string;
-    termsAndConditions: string;
     dateOfSurvey: string;
     timeOfSurvey: string;
   }>,
@@ -2554,6 +2628,27 @@ export const updateBidServiceData = async (
   bidId: string,
   organizationId: string,
   data: Partial<{
+    // Bid-creation fields
+    serviceType: string;
+    equipmentType: string;
+    issueCategory: string;
+    reportedIssue: string;
+    preliminaryAssessment: string;
+    estimatedWorkScope: string;
+    leadTechnicianId: number | null;
+    helperTechnicianId: number | null;
+    pricingModel: string;
+    numberOfTechs: number;
+    laborHours: string;
+    laborRate: string;
+    materialsCost: string;
+    travelCost: string;
+    serviceMarkup: string;
+    flatRatePrice: string;
+    diagnosticFee: string;
+    estimatedRepairCost: string;
+    pricingNotes: string;
+    // Execution-phase fields
     serviceCallTechnician: number | null;
     timeIn: string | null;
     timeOut: string | null;
@@ -2616,6 +2711,7 @@ export const updateBidPreventativeMaintenanceData = async (
   organizationId: string,
   data: Partial<{
     pmType: string | null;
+    previousPmJobId: string | null;
     maintenanceFrequency: string | null;
     numberOfBuildings: number | null;
     numberOfUnits: number | null;
@@ -2628,6 +2724,18 @@ export const updateBidPreventativeMaintenanceData = async (
     serviceScope: string | null;
     specialRequirements: string | null;
     clientPmRequirements: string | null;
+    // Pricing fields
+    pricingModel: string | null;
+    pricePerUnit: string | null;
+    flatRatePerVisit: string | null;
+    annualContractValue: string | null;
+    includeFilterReplacement: boolean;
+    filterReplacementCost: string | null;
+    includeCoilCleaning: boolean;
+    coilCleaningCost: string | null;
+    emergencyServiceRate: string | null;
+    paymentSchedule: string | null;
+    pricingNotes: string | null;
   }>,
 ) => {
   const existing = await getBidPreventativeMaintenanceData(
@@ -2983,6 +3091,8 @@ export const getBidWithAllData = async (id: string) => {
     operatingExpenses,
     documents,
     media,
+    planSpecFiles,
+    designBuildFiles,
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
@@ -2999,6 +3109,8 @@ export const getBidWithAllData = async (id: string) => {
     getBidOperatingExpenses(id, organizationId),
     getBidDocuments(id),
     getBidMedia(id),
+    getBidPlanSpecFiles(id),
+    getBidDesignBuildFiles(id),
   ]);
 
   // Get travel for each labor entry
@@ -3016,7 +3128,9 @@ export const getBidWithAllData = async (id: string) => {
     media,
     surveyData,
     planSpecData,
+    planSpecFiles,
     designBuildData,
+    designBuildFiles,
     serviceData,
     preventativeMaintenanceData,
     timeline,
@@ -3989,4 +4103,73 @@ export const bulkDeleteBids = async (ids: string[], deletedBy: string) => {
     .where(and(inArray(bidsTable.id, ids), eq(bidsTable.isDeleted, false)))
     .returning({ id: bidsTable.id });
   return { deleted: result.length, skipped: ids.length - result.length };
+};
+
+// ============================
+// Plan Spec Files Operations
+// ============================
+
+export const getBidPlanSpecFiles = async (bidId: string) => {
+  return db
+    .select()
+    .from(bidPlanSpecFiles)
+    .where(and(eq(bidPlanSpecFiles.bidId, bidId), eq(bidPlanSpecFiles.isDeleted, false)))
+    .orderBy(desc(bidPlanSpecFiles.createdAt));
+};
+
+export const createBidPlanSpecFile = async (data: {
+  organizationId: string;
+  bidId: string;
+  fileType: string;
+  fileName: string;
+  filePath: string;
+  fileSize?: number;
+  uploadedBy: string;
+}) => {
+  const [file] = await db.insert(bidPlanSpecFiles).values(data).returning();
+  return file;
+};
+
+export const deleteBidPlanSpecFile = async (fileId: string) => {
+  const now = new Date();
+  const [deleted] = await db
+    .update(bidPlanSpecFiles)
+    .set({ isDeleted: true, deletedAt: now })
+    .where(and(eq(bidPlanSpecFiles.id, fileId), eq(bidPlanSpecFiles.isDeleted, false)))
+    .returning();
+  return deleted ?? null;
+};
+
+// ============================
+// Design Build Files Operations
+// ============================
+
+export const getBidDesignBuildFiles = async (bidId: string) => {
+  return db
+    .select()
+    .from(bidDesignBuildFiles)
+    .where(and(eq(bidDesignBuildFiles.bidId, bidId), eq(bidDesignBuildFiles.isDeleted, false)))
+    .orderBy(desc(bidDesignBuildFiles.createdAt));
+};
+
+export const createBidDesignBuildFile = async (data: {
+  organizationId: string;
+  bidId: string;
+  fileName: string;
+  filePath: string;
+  fileSize?: number;
+  uploadedBy: string;
+}) => {
+  const [file] = await db.insert(bidDesignBuildFiles).values(data).returning();
+  return file;
+};
+
+export const deleteBidDesignBuildFile = async (fileId: string) => {
+  const now = new Date();
+  const [deleted] = await db
+    .update(bidDesignBuildFiles)
+    .set({ isDeleted: true, deletedAt: now })
+    .where(and(eq(bidDesignBuildFiles.id, fileId), eq(bidDesignBuildFiles.isDeleted, false)))
+    .returning();
+  return deleted ?? null;
 };

@@ -10,5 +10,5 @@ export default {
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-  schemaFilter: ["auth", "org"],
+  schemaFilter: ["auth", "org", "financial"],
 } satisfies Config;

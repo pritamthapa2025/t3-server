@@ -78,6 +78,12 @@ import {
   getBidsKPIsHandler,
   getBidKPIsHandler,
   bulkDeleteBidsHandler,
+  getBidPlanSpecFilesHandler,
+  createBidPlanSpecFilesHandler,
+  deleteBidPlanSpecFileHandler,
+  getBidDesignBuildFilesHandler,
+  createBidDesignBuildFilesHandler,
+  deleteBidDesignBuildFileHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -211,6 +217,18 @@ const uploadBidMedia = multer({
     }
   },
 }).any(); // Accept any files - controller will handle media_0, media_1, etc. pattern
+
+// Configure multer for plan spec and design build file uploads
+const uploadBidFiles = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB limit per file
+    files: 20,
+  },
+  fileFilter: (req, file, cb) => {
+    cb(null, true);
+  },
+});
 
 // Multer error handler middleware
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
@@ -434,6 +452,16 @@ router
   .get(getBidPlanSpecDataHandler)
   .put(validate(updateBidPlanSpecDataSchema), updateBidPlanSpecDataHandler);
 
+// Plan Spec Files Routes
+router
+  .route("/bids/:bidId/plan-spec-files")
+  .get(authorizeAnyFeature("bids", ["view", "view_bids"]), getBidPlanSpecFilesHandler)
+  .post(authorizeFeature("bids", "create"), uploadBidFiles.array("files"), createBidPlanSpecFilesHandler);
+
+router
+  .route("/bids/:bidId/plan-spec-files/:fileId")
+  .delete(authorizeFeature("bids", "delete"), deleteBidPlanSpecFileHandler);
+
 // Design Build Data Routes
 router
   .route("/bids/:bidId/design-build-data")
@@ -442,6 +470,16 @@ router
     validate(updateBidDesignBuildDataSchema),
     updateBidDesignBuildDataHandler,
   );
+
+// Design Build Files Routes
+router
+  .route("/bids/:bidId/design-build-files")
+  .get(authorizeAnyFeature("bids", ["view", "view_bids"]), getBidDesignBuildFilesHandler)
+  .post(authorizeFeature("bids", "create"), uploadBidFiles.array("files"), createBidDesignBuildFilesHandler);
+
+router
+  .route("/bids/:bidId/design-build-files/:fileId")
+  .delete(authorizeFeature("bids", "delete"), deleteBidDesignBuildFileHandler);
 
 // Service Data Routes
 router

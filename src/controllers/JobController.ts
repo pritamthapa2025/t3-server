@@ -105,6 +105,26 @@ import {
   getJobLaborCostTracking,
   getJobsKPIs,
   bulkDeleteJobs,
+  getJobServiceCalls,
+  getJobServiceCallById,
+  createJobServiceCall,
+  updateJobServiceCall,
+  deleteJobServiceCall,
+  getJobPMInspections,
+  getJobPMInspectionById,
+  createJobPMInspection,
+  updateJobPMInspection,
+  deleteJobPMInspection,
+  getJobPlanSpecRecords,
+  getJobPlanSpecRecordById,
+  createJobPlanSpecRecord,
+  updateJobPlanSpecRecord,
+  deleteJobPlanSpecRecord,
+  getJobDesignBuildNotes,
+  getJobDesignBuildNoteById,
+  createJobDesignBuildNote,
+  updateJobDesignBuildNote,
+  deleteJobDesignBuildNote,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -3858,5 +3878,395 @@ export const bulkDeleteJobsHandler = async (req: Request, res: Response) => {
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Job Service Calls
+// ===========================================================================
+
+export const getJobServiceCallsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const calls = await getJobServiceCalls(jobId!);
+    if (calls === null) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(200).json({ success: true, data: calls });
+  } catch (error) {
+    logger.logApiError("Service calls error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getJobServiceCallByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const callId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const call = await getJobServiceCallById(jobId!, callId!);
+    if (!call) {
+      return res.status(404).json({ success: false, message: "Service call not found" });
+    }
+    return res.status(200).json({ success: true, data: call });
+  } catch (error) {
+    logger.logApiError("Service call error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createJobServiceCallHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const call = await createJobServiceCall(jobId!, req.body || {}, userId);
+    if (!call) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(201).json({ success: true, data: call });
+  } catch (error) {
+    logger.logApiError("Service call error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateJobServiceCallHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const callId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const call = await updateJobServiceCall(callId!, jobId!, req.body || {});
+    if (!call) {
+      return res.status(404).json({ success: false, message: "Service call not found" });
+    }
+    return res.status(200).json({ success: true, data: call });
+  } catch (error) {
+    logger.logApiError("Service call error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobServiceCallHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const callId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteJobServiceCall(callId!, jobId!);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Service call not found" });
+    }
+    return res.status(200).json({ success: true, message: "Service call deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Service call error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Job PM Inspections
+// ===========================================================================
+
+export const getJobPMInspectionsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const inspections = await getJobPMInspections(jobId!);
+    if (inspections === null) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(200).json({ success: true, data: inspections });
+  } catch (error) {
+    logger.logApiError("PM inspections error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getJobPMInspectionByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const inspectionId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const inspection = await getJobPMInspectionById(jobId!, inspectionId!);
+    if (!inspection) {
+      return res.status(404).json({ success: false, message: "PM inspection not found" });
+    }
+    return res.status(200).json({ success: true, data: inspection });
+  } catch (error) {
+    logger.logApiError("PM inspection error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createJobPMInspectionHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const inspection = await createJobPMInspection(jobId!, req.body || {}, userId);
+    if (!inspection) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(201).json({ success: true, data: inspection });
+  } catch (error) {
+    logger.logApiError("PM inspection error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateJobPMInspectionHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const inspectionId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const inspection = await updateJobPMInspection(inspectionId!, jobId!, req.body || {});
+    if (!inspection) {
+      return res.status(404).json({ success: false, message: "PM inspection not found" });
+    }
+    return res.status(200).json({ success: true, data: inspection });
+  } catch (error) {
+    logger.logApiError("PM inspection error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobPMInspectionHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const inspectionId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteJobPMInspection(inspectionId!, jobId!);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "PM inspection not found" });
+    }
+    return res.status(200).json({ success: true, message: "PM inspection deleted successfully" });
+  } catch (error) {
+    logger.logApiError("PM inspection error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Job Plan Spec Records
+// ===========================================================================
+
+export const getJobPlanSpecRecordsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const records = await getJobPlanSpecRecords(jobId!);
+    if (records === null) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(200).json({ success: true, data: records });
+  } catch (error) {
+    logger.logApiError("Plan spec records error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getJobPlanSpecRecordByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const recordId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const record = await getJobPlanSpecRecordById(jobId!, recordId!);
+    if (!record) {
+      return res.status(404).json({ success: false, message: "Plan spec record not found" });
+    }
+    return res.status(200).json({ success: true, data: record });
+  } catch (error) {
+    logger.logApiError("Plan spec record error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createJobPlanSpecRecordHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const record = await createJobPlanSpecRecord(jobId!, req.body || {}, userId);
+    if (!record) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(201).json({ success: true, data: record });
+  } catch (error) {
+    logger.logApiError("Plan spec record error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateJobPlanSpecRecordHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const recordId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const record = await updateJobPlanSpecRecord(recordId!, jobId!, req.body || {});
+    if (!record) {
+      return res.status(404).json({ success: false, message: "Plan spec record not found" });
+    }
+    return res.status(200).json({ success: true, data: record });
+  } catch (error) {
+    logger.logApiError("Plan spec record error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobPlanSpecRecordHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const recordId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteJobPlanSpecRecord(recordId!, jobId!);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Plan spec record not found" });
+    }
+    return res.status(200).json({ success: true, message: "Plan spec record deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Plan spec record error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Job Design Build Notes
+// ===========================================================================
+
+export const getJobDesignBuildNotesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const notes = await getJobDesignBuildNotes(jobId!);
+    if (notes === null) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(200).json({ success: true, data: notes });
+  } catch (error) {
+    logger.logApiError("Design build note error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getJobDesignBuildNoteByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const noteId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const note = await getJobDesignBuildNoteById(jobId!, noteId!);
+    if (!note) {
+      return res.status(404).json({ success: false, message: "Design build note not found" });
+    }
+    return res.status(200).json({ success: true, data: note });
+  } catch (error) {
+    logger.logApiError("Design build note error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createJobDesignBuildNoteHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    // Get author name from the request user
+    const authorName = (req as any).user?.fullName || (req as any).user?.email || "Unknown";
+    const note = await createJobDesignBuildNote(jobId!, req.body || {}, userId, authorName);
+    if (!note) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+    return res.status(201).json({ success: true, data: note });
+  } catch (error) {
+    logger.logApiError("Design build note error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateJobDesignBuildNoteHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const noteId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const note = await updateJobDesignBuildNote(noteId!, jobId!, req.body || {});
+    if (!note) {
+      return res.status(404).json({ success: false, message: "Design build note not found" });
+    }
+    return res.status(200).json({ success: true, data: note });
+  } catch (error) {
+    logger.logApiError("Design build note error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobDesignBuildNoteHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "id"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const noteId = asSingleString(req.params.id);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteJobDesignBuildNote(noteId!, jobId!);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Design build note not found" });
+    }
+    return res.status(200).json({ success: true, message: "Design build note deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Design build note error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

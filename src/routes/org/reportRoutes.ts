@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { exportFinancialReportHandler } from "../../controllers/ReportExportController.js";
 import {
   getCompanySummaryKPIsHandler,
   getMonthlyRevenueTrendHandler,
@@ -337,6 +338,19 @@ router.get(
   managerOrAbove,
   validate(getPaymentCollectionQuerySchema),
   getPaymentCollectionHandler
+);
+
+// ============================
+// Financial Report Export (PDF & CSV)
+// GET /reports/financial/:reportType/export?format=pdf|csv&startDate=...&endDate=...
+// Supports: profit-loss, job-profitability, expense-by-category,
+//           revenue-by-client, invoice-aging, cash-flow, vendor-spend
+// ============================
+
+router.get(
+  "/reports/financial/:reportType/export",
+  managerOrAbove,
+  exportFinancialReportHandler
 );
 
 export default router;

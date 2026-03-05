@@ -750,6 +750,69 @@
       "when": 1772452010464,
       "tag": "0106_lucky_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1772537639291,
+      "tag": "0107_chief_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1772599106554,
+      "tag": "0108_rare_speed_demon",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1772605165064,
+      "tag": "0109_create_plan_spec_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1772605743890,
+      "tag": "0110_fix_job_execution_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1772610000000,
+      "tag": "0111_enforce_one_job_per_bid",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1772617913994,
+      "tag": "0112_flimsy_miek",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1772620000000,
+      "tag": "0113_fix_signature_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1772630000000,
+      "tag": "0114_job_design_build_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1772625745155,
+      "tag": "0115_gifted_scalphunter",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,11 @@ import {
   getFinancialProfitTrendSection,
   getFinancialForecastingSection,
   getFinancialReportsSection,
+  listFinancialCategoryBudgets,
+  getFinancialCategoryBudgetById,
+  createFinancialCategoryBudget,
+  updateFinancialCategoryBudget,
+  deleteFinancialCategoryBudget,
 } from "../services/financial.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -117,9 +122,15 @@ export const getFinancialCostCategoriesSectionHandler = async (
     const organizationId = (req.query.organizationId as string) || undefined;
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
+    const monthRaw = req.query.month as string | undefined;
+    const yearRaw = req.query.year as string | undefined;
+    const month = monthRaw ? parseInt(monthRaw, 10) : undefined;
+    const year = yearRaw ? parseInt(yearRaw, 10) : undefined;
     const result = await getFinancialCostCategoriesSection(organizationId, {
       startDate,
       endDate,
+      month,
+      year,
     });
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
@@ -153,7 +164,12 @@ export const getFinancialProfitTrendSectionHandler = async (
 ) => {
   try {
     const organizationId = (req.query.organizationId as string) || undefined;
-    const result = await getFinancialProfitTrendSection(organizationId);
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const result = await getFinancialProfitTrendSection(organizationId, {
+      ...(startDate !== undefined && { startDate }),
+      ...(endDate !== undefined && { endDate }),
+    });
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     logger.logApiError("Financial error", error, req);
@@ -732,6 +748,138 @@ export const deleteFinancialReportHandler = async (
     return res
       .status(200)
       .json({ message: "Financial report deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// ─── Financial Category Budget Handlers ──────────────────────────────────────
+
+export const listFinancialCategoryBudgetsHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const monthRaw = req.query.month as string | undefined;
+    const yearRaw = req.query.year as string | undefined;
+    const category = req.query.category as string | undefined;
+
+    const filters: { month?: number; year?: number; category?: string } = {};
+    if (monthRaw) filters.month = parseInt(monthRaw, 10);
+    if (yearRaw) filters.year = parseInt(yearRaw, 10);
+    if (category) filters.category = category;
+
+    const data = await listFinancialCategoryBudgets(filters);
+    logger.info("Financial category budgets fetched successfully");
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFinancialCategoryBudgetHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = asSingleString(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({ error: "ID parameter is required" });
+    }
+
+    const data = await getFinancialCategoryBudgetById(id);
+
+    if (!data) {
+      return res.status(404).json({ error: "Financial category budget not found" });
+    }
+
+    logger.info("Financial category budget fetched successfully");
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.logApiError("Financial error", error, req);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const createFinancialCategoryBudgetHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const createdBy = (req as any).user?.id as string | undefined;
+    const data = await createFinancialCategoryBudget({ ...req.body, createdBy });
+    logger.info("Financial category budget created successfully");
+    return res.status(201).json({ success: true, data });
+  } catch (error: any) {
+    logger.logApiError("Financial error", error, req);
+    if (error?.code === "23505") {
+      return res.status(409).json({
+        error: "A budget for this category, month, and year already exists",
+      });
+    }
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const updateFinancialCategoryBudgetHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = asSingleString(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({ error: "ID parameter is required" });
+    }
+
+    const updatedBy = (req as any).user?.id as string | undefined;
+    const data = await updateFinancialCategoryBudget(id, {
+      ...req.body,
+      updatedBy,
+    });
+
+    if (!data) {
+      return res.status(404).json({ error: "Financial category budget not found" });
+    }
+
+    logger.info("Financial category budget updated successfully");
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    logger.logApiError("Financial error", error, req);
+    if (error?.code === "23505") {
+      return res.status(409).json({
+        error: "A budget for this category, month, and year already exists",
+      });
+    }
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const deleteFinancialCategoryBudgetHandler = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = asSingleString(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({ error: "ID parameter is required" });
+    }
+
+    const deletedBy = (req as any).user?.id as string | undefined;
+    const result = await deleteFinancialCategoryBudget(id, deletedBy);
+
+    if (!result) {
+      return res.status(404).json({ error: "Financial category budget not found" });
+    }
+
+    logger.info("Financial category budget deleted successfully");
+    return res
+      .status(200)
+      .json({ success: true, message: "Financial category budget deleted successfully" });
   } catch (error) {
     logger.logApiError("Financial error", error, req);
     return res.status(500).json({ error: "Internal server error" });

@@ -11,4 +11,5 @@ export * from "./schema/dispatch.schema.js";
 export * from "./schema/capacity.schema.js";
 export * from "./schema/expenses.schema.js";
 export * from "./schema/settings.schema.js";
+export * from "./schema/financial.schema.js";
 export * from "./enums/index.js";
