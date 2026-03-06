@@ -193,7 +193,8 @@ const uploadReceipt = multer({
   },
   fileFilter: (req, file, cb) => {
     if (
-      (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") ||
+      (file.mimetype.startsWith("image/") &&
+        file.mimetype !== "image/svg+xml") ||
       file.mimetype === "application/pdf"
     ) {
       cb(null, true);
@@ -202,6 +203,58 @@ const uploadReceipt = multer({
     }
   },
 }).single("receipt");
+
+// Multer for service call photo uploads (before_0..4, after_0..4, parts_0..4, issues_0..4)
+const uploadServiceCallPhotos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 20 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed for service call photos"));
+    }
+  },
+});
+
+// Multer for design build note photo uploads (photo_0, photo_1, ...)
+const uploadDesignBuildNotePhotos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed for design build note photos"));
+    }
+  },
+});
+
+// Multer for PM inspection photo uploads (old_filter_photo, new_filter_photo, overall_photo)
+const uploadPMInspectionPhotos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 3 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed for PM inspection photos"));
+    }
+  },
+});
+
+// Multer for survey media uploads (media_0, media_1, ...)
+const uploadSurveyMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed for survey media"));
+    }
+  },
+});
 
 // Middleware to parse JSON "data" field from multipart/form-data
 const parseFormData = (req: any, res: any, next: any) => {
@@ -486,12 +539,42 @@ router
 router
   .route("/jobs/:jobId/survey")
   .get(viewJobs, validate(getJobSurveysSchema), getJobSurveysHandler)
-  .post(viewJobs, validate(createJobSurveySchema), createJobSurveyHandler);
+  .post(
+    viewJobs,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadSurveyMedia.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    validate(createJobSurveySchema),
+    createJobSurveyHandler,
+  );
 
 router
   .route("/jobs/:jobId/survey/:id")
   .get(viewJobs, validate(getJobSurveyByIdSchema), getJobSurveyByIdHandler)
-  .put(editJob, validate(updateJobSurveySchema), updateJobSurveyHandler)
+  .put(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadSurveyMedia.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    validate(updateJobSurveySchema),
+    updateJobSurveyHandler,
+  )
   .delete(editJob, validate(deleteJobSurveySchema), deleteJobSurveyHandler);
 
 // Expenses Routes — Technicians can add expenses; Managers/Executives can approve/view all
@@ -581,24 +664,80 @@ router.post(
 router
   .route("/jobs/:jobId/service-calls")
   .get(viewJobs, getJobServiceCallsHandler)
-  .post(editJob, createJobServiceCallHandler);
+  .post(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadServiceCallPhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    createJobServiceCallHandler,
+  );
 
 router
   .route("/jobs/:jobId/service-calls/:id")
   .get(viewJobs, getJobServiceCallByIdHandler)
-  .put(editJob, updateJobServiceCallHandler)
+  .put(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadServiceCallPhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    updateJobServiceCallHandler,
+  )
   .delete(editJob, deleteJobServiceCallHandler);
 
 // PM Inspections Routes
 router
   .route("/jobs/:jobId/pm-inspections")
   .get(viewJobs, getJobPMInspectionsHandler)
-  .post(editJob, createJobPMInspectionHandler);
+  .post(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadPMInspectionPhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    createJobPMInspectionHandler,
+  );
 
 router
   .route("/jobs/:jobId/pm-inspections/:id")
   .get(viewJobs, getJobPMInspectionByIdHandler)
-  .put(editJob, updateJobPMInspectionHandler)
+  .put(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadPMInspectionPhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    updateJobPMInspectionHandler,
+  )
   .delete(editJob, deleteJobPMInspectionHandler);
 
 // Plan Spec Records Routes
@@ -617,12 +756,40 @@ router
 router
   .route("/jobs/:jobId/design-build-notes")
   .get(viewJobs, getJobDesignBuildNotesHandler)
-  .post(editJob, createJobDesignBuildNoteHandler);
+  .post(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadDesignBuildNotePhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    createJobDesignBuildNoteHandler,
+  );
 
 router
   .route("/jobs/:jobId/design-build-notes/:id")
   .get(viewJobs, getJobDesignBuildNoteByIdHandler)
-  .put(editJob, updateJobDesignBuildNoteHandler)
+  .put(
+    editJob,
+    (req, res, next) => {
+      if (req.headers["content-type"]?.includes("multipart/form-data")) {
+        uploadDesignBuildNotePhotos.any()(req, res, (err) => {
+          if (err) return handleMulterError(err, req, res, next);
+          next();
+        });
+      } else {
+        next();
+      }
+    },
+    parseFormData,
+    updateJobDesignBuildNoteHandler,
+  )
   .delete(editJob, deleteJobDesignBuildNoteHandler);
 
 export default router;
