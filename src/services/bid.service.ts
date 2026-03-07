@@ -1,6 +1,7 @@
 import {
   count,
   eq,
+  ne,
   and,
   desc,
   asc,
@@ -176,7 +177,10 @@ export const getBids = async (
   options?: GetBidsFilterOptions,
 ) => {
   // Build where conditions array - organizationId is optional
-  const whereConditions = [eq(bidsTable.isDeleted, false)];
+  const whereConditions = [
+    eq(bidsTable.isDeleted, false),
+    ne(bidsTable.status, "won"),
+  ];
 
   // If organizationId is provided, filter by it
   if (organizationId) {
@@ -546,26 +550,24 @@ export const createBid = async (data: {
     }
   }
 
-  // Helper function to convert date string to date or undefined
-  const toDateOrUndefined = (dateStr?: string): string | undefined => {
-    if (!dateStr || dateStr.trim() === "") return undefined;
-    try {
-      return new Date(dateStr).toISOString().split("T")[0];
-    } catch {
-      return undefined;
-    }
+  const toLocalDateString = (date: Date): string => {
+    const yyyy = String(date.getFullYear());
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
   };
 
-  // Validate endDate: cannot be before created date (same or future only). On create, createdDate = now.
+  // Convert date string to YYYY-MM-DD (server-local) or undefined
+  const toDateOrUndefined = (dateStr?: string): string | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    const trimmed = dateStr.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return toLocalDateString(d);
+  };
+
   const endDateVal = toDateOrUndefined(data.endDate);
-  if (endDateVal) {
-    const createdToday = new Date().toISOString().split("T")[0] ?? "";
-    if (createdToday && endDateVal < createdToday) {
-      throw new Error(
-        "endDate cannot be before created date; it must be the same date or a future date",
-      );
-    }
-  }
 
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
@@ -772,22 +774,21 @@ export const updateBid = async (
     rejectionReason: string;
   }>,
 ) => {
-  // Validate endDate: cannot be before bid's created date
-  if (data.endDate) {
-    const existing = await getBidByIdSimple(id);
-    if (existing?.createdDate) {
-      const endStr = new Date(data.endDate).toISOString().split("T")[0] ?? "";
-      const createdStr =
-        typeof existing.createdDate === "string"
-          ? existing.createdDate.slice(0, 10)
-          : (new Date(existing.createdDate).toISOString().split("T")[0] ?? "");
-      if (endStr && createdStr && endStr < createdStr) {
-        throw new Error(
-          "endDate cannot be before created date; it must be the same date or a future date",
-        );
-      }
-    }
-  }
+  const toLocalDateString = (date: Date): string => {
+    const yyyy = String(date.getFullYear());
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const toDateOrUndefined = (dateStr?: string): string | undefined => {
+    if (!dateStr || dateStr.trim() === "") return undefined;
+    const trimmed = dateStr.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return toLocalDateString(d);
+  };
 
   const [bid] = await db
     .update(bidsTable)
@@ -801,18 +802,10 @@ export const updateBid = async (
       scopeOfWork: data.scopeOfWork,
       specialRequirements: data.specialRequirements,
       description: data.description,
-      endDate: data.endDate
-        ? new Date(data.endDate).toISOString().split("T")[0]
-        : undefined,
-      plannedStartDate: data.plannedStartDate
-        ? new Date(data.plannedStartDate).toISOString().split("T")[0]
-        : undefined,
-      estimatedCompletion: data.estimatedCompletion
-        ? new Date(data.estimatedCompletion).toISOString().split("T")[0]
-        : undefined,
-      removalDate: data.removalDate
-        ? new Date(data.removalDate).toISOString().split("T")[0]
-        : undefined,
+      endDate: toDateOrUndefined(data.endDate),
+      plannedStartDate: toDateOrUndefined(data.plannedStartDate),
+      estimatedCompletion: toDateOrUndefined(data.estimatedCompletion),
+      removalDate: toDateOrUndefined(data.removalDate),
       estimatedDuration: data.estimatedDuration,
       profitMargin: data.profitMargin,
       paymentTerms: data.paymentTerms,
@@ -3825,7 +3818,9 @@ export const expireExpiredBids = async (): Promise<{
   expired: number;
   errors: number;
 }> => {
-  const today = new Date().toISOString().split("T")[0]!;
+  // Use server-local date so a bid expiring "today" doesn't expire early due to UTC date rollover
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const systemUserId = process.env.CRON_SYSTEM_USER_ID;
 
   const expiredBids = await db

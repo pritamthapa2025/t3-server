@@ -1424,8 +1424,8 @@ export function buildSummaryCardsHtml(
         `<div class="summary-card">
           <div class="summary-card-label">${escHtml(c.label)}</div>
           <div class="summary-card-body">
-            <div class="summary-card-value ${c.variant === "positive" ? "positive" : c.variant === "negative" ? "negative" : ""}">${escHtml(c.value)}</div>
-            ${c.sub ? `<div class="summary-card-sub">${escHtml(c.sub)}</div>` : ""}
+          <div class="summary-card-value ${c.variant === "positive" ? "positive" : c.variant === "negative" ? "negative" : ""}">${escHtml(c.value)}</div>
+          ${c.sub ? `<div class="summary-card-sub">${escHtml(c.sub)}</div>` : ""}
           </div>
         </div>`
     )

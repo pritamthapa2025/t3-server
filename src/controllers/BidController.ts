@@ -539,8 +539,24 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     // Update related records if provided
     const updatedRecords: any = {};
 
-    // Update financial breakdown if provided
+    // Update financial breakdown if provided.
+    // Compare incoming values with existing row before writing so we can gate
+    // history logging on an actual change.
+    let financialBreakdownActuallyChanged = false;
     if (financialBreakdown) {
+      const existingFb = await getBidFinancialBreakdown(id!, clientOrgId);
+      if (existingFb) {
+        const normFb = (v: unknown): string =>
+          v === null || v === undefined ? "" : String(v);
+        const fbChangedKeys = Object.keys(financialBreakdown).filter((k) => {
+          const incoming = (financialBreakdown as any)[k];
+          const stored = (existingFb as any)[k];
+          return normFb(incoming) !== normFb(stored);
+        });
+        financialBreakdownActuallyChanged = fbChangedKeys.length > 0;
+      } else {
+        financialBreakdownActuallyChanged = true;
+      }
       updatedRecords.financialBreakdown = await updateBidFinancialBreakdown(
         id!,
         clientOrgId,
@@ -548,8 +564,28 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       );
     }
 
-    // Update operating expenses if provided
+    // Update operating expenses if provided.
+    // Before writing, compare incoming values with the existing row so we can
+    // decide later whether anything genuinely changed (used for history logging).
+    let operatingExpensesActuallyChanged = false;
     if (operatingExpenses) {
+      const existingOpEx = await getBidOperatingExpenses(id!, clientOrgId);
+      if (existingOpEx) {
+        // Compare every incoming key against the stored value.
+        // Normalise null / undefined / "" to "" before comparing (same logic as
+        // the base-field history normaliser above).
+        const normOp = (v: unknown): string =>
+          v === null || v === undefined ? "" : String(v);
+        const opExChangedKeys = Object.keys(operatingExpenses).filter((k) => {
+          const incoming = (operatingExpenses as any)[k];
+          const stored = (existingOpEx as any)[k];
+          return normOp(incoming) !== normOp(stored);
+        });
+        operatingExpensesActuallyChanged = opExChangedKeys.length > 0;
+      } else {
+        // No row exists yet — creating one counts as a change
+        operatingExpensesActuallyChanged = true;
+      }
       updatedRecords.operatingExpenses = await updateBidOperatingExpenses(
         id!,
         clientOrgId,
@@ -774,24 +810,36 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Create history entries for changed base bid fields
+    // Create history entries for changed base bid fields.
+    // Normalise null / undefined / "" to a common empty sentinel so that
+    // sending an empty string for a field that was NULL in the DB (or vice-versa)
+    // does NOT generate a spurious history entry.
+    const normalise = (v: unknown): string =>
+      v === null || v === undefined ? "" : String(v);
+
     for (const [key, value] of Object.entries(bidFields)) {
       const oldValue = (originalBid as any)[key];
-      if (oldValue !== value) {
-        await createBidHistoryEntry({
-          bidId: id!,
-          organizationId: clientOrgId,
-          action: `field_updated_${key}`,
-          oldValue: String(oldValue || ""),
-          newValue: String(value || ""),
-          description: `Field "${key}" was updated`,
-          performedBy: performedBy,
-        });
-      }
+      const oldNorm = normalise(oldValue);
+      const newNorm = normalise(value);
+
+      // Skip if effectively identical
+      if (oldNorm === newNorm) continue;
+
+      await createBidHistoryEntry({
+        bidId: id!,
+        organizationId: clientOrgId,
+        action: `field_updated_${key}`,
+        oldValue: oldNorm,
+        newValue: newNorm,
+        description: `Field "${key}" was updated`,
+        performedBy: performedBy,
+      });
     }
 
     // Create history entries for nested data updates
-    if (financialBreakdown) {
+    // Only log a history entry when something was actually changed/created,
+    // not just because the client sent an empty payload.
+    if (updatedRecords.financialBreakdown && financialBreakdownActuallyChanged) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
@@ -801,7 +849,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       });
     }
 
-    if (operatingExpenses) {
+    if (updatedRecords.operatingExpenses && operatingExpensesActuallyChanged) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
@@ -811,27 +859,36 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       });
     }
 
-    if (materials) {
+    if (updatedRecords.materials && updatedRecords.materials.length > 0) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
         action: "materials_updated",
-        description: `Materials were updated: ${materials.length} items`,
+        description: `Materials were updated: ${updatedRecords.materials.length} items`,
         performedBy: performedBy,
       });
     }
 
-    if (laborAndTravel) {
+    if (
+      (updatedRecords.labor && updatedRecords.labor.length > 0) ||
+      (updatedRecords.travel && updatedRecords.travel.length > 0)
+    ) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
         action: "labor_travel_updated",
-        description: `Labor and travel were updated: ${laborAndTravel.labor?.length || 0} labor entries, ${laborAndTravel.travel?.length || 0} travel entries`,
+        description: `Labor and travel were updated: ${updatedRecords.labor?.length || 0} labor entries, ${updatedRecords.travel?.length || 0} travel entries`,
         performedBy: performedBy,
       });
     }
 
-    if (surveyData || planSpecData || designBuildData) {
+    if (
+      updatedRecords.surveyData ||
+      updatedRecords.planSpecData ||
+      updatedRecords.designBuildData ||
+      updatedRecords.serviceData ||
+      updatedRecords.preventativeMaintenanceData
+    ) {
       await createBidHistoryEntry({
         bidId: id!,
         organizationId: clientOrgId,
@@ -3349,6 +3406,15 @@ export const createBidDocumentsHandler = async (
       `Successfully uploaded ${uploadedDocuments.length} document(s) for bid ${bidId}`,
     );
 
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_uploaded",
+      newValue: uploadedDocuments.map((d) => d?.fileName ?? "").join(", "),
+      description: `${uploadedDocuments.length} document(s) uploaded: ${uploadedDocuments.map((d) => d?.fileName ?? "").join(", ")}`,
+      performedBy: userId,
+    });
+
     return res.status(201).json({
       success: true,
       data: uploadedDocuments,
@@ -3539,6 +3605,15 @@ export const updateBidDocumentHandler = async (req: Request, res: Response) => {
     }
 
     logger.info(`Bid document ${documentId} updated successfully`);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_updated",
+      description: `Document "${updatedDocument.fileName}" was updated`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       data: updatedDocument,
@@ -3592,6 +3667,15 @@ export const deleteBidDocumentHandler = async (req: Request, res: Response) => {
     }
 
     logger.info(`Bid document ${documentId} deleted successfully`);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_deleted",
+      description: `Document "${existingDocument.fileName}" was deleted`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       message: "Document deleted successfully",
@@ -3691,6 +3775,16 @@ export const createBidDocumentTagHandler = async (
 
     const { name } = (req as any).body as { name: string };
     const tag = await createBidDocumentTag(bidId!, name);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_tag_created",
+      newValue: name,
+      description: `Document tag "${name}" was created`,
+      performedBy: userId,
+    });
+
     return res.status(201).json({ success: true, data: tag });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -3736,6 +3830,17 @@ export const updateBidDocumentTagHandler = async (
         message: "Tag not found",
       });
     }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_tag_updated",
+      oldValue: tag.name ?? undefined,
+      newValue: name,
+      description: `Document tag renamed from "${tag.name}" to "${name}"`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -3774,6 +3879,16 @@ export const deleteBidDocumentTagHandler = async (
     }
 
     await deleteBidDocumentTag(tagId!);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_tag_deleted",
+      oldValue: tag.name ?? undefined,
+      description: `Document tag "${tag.name}" was deleted`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       message: "Tag deleted successfully",
@@ -3859,6 +3974,14 @@ export const linkDocumentTagHandler = async (req: Request, res: Response) => {
       });
     }
 
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_tag_linked",
+      description: `Tag linked to document "${document.fileName}"`,
+      performedBy: userId,
+    });
+
     return res.status(201).json({ success: true, data: link });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -3909,6 +4032,14 @@ export const unlinkDocumentTagHandler = async (req: Request, res: Response) => {
         message: "Tag was not linked to this document",
       });
     }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "document_tag_unlinked",
+      description: `Tag "${tag.name}" unlinked from document "${document.fileName}"${result.tagDeleted ? " (tag deleted)" : ""}`,
+      performedBy: userId,
+    });
 
     return res.status(200).json({
       success: true,
@@ -4024,6 +4155,16 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
     logger.info(
       `${uploadedMedia.length} media files uploaded for bid ${bidId}`,
     );
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "media_uploaded",
+      newValue: uploadedMedia.map((m) => m?.fileName ?? "").join(", "),
+      description: `${uploadedMedia.length} media file(s) uploaded: ${uploadedMedia.map((m) => m?.fileName ?? "").join(", ")}`,
+      performedBy: userId!,
+    });
+
     return res.status(201).json({
       success: true,
       data: uploadedMedia,
@@ -4190,6 +4331,15 @@ export const updateBidMediaHandler = async (req: Request, res: Response) => {
     }
 
     logger.info(`Bid media ${mediaId} updated successfully`);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "media_updated",
+      description: `Media file "${updatedMedia.fileName}" was updated`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       data: updatedMedia,
@@ -4247,6 +4397,15 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
     }
 
     logger.info(`Bid media ${mediaId} deleted successfully`);
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      organizationId: bid.organizationId,
+      action: "media_deleted",
+      description: `Media file "${existingMedia.fileName}" was deleted`,
+      performedBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       message: "Media deleted successfully",
@@ -4273,6 +4432,9 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
         message: "Bid ID is required",
       });
     }
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
 
     const bid = await getBidById(id);
     if (!bid) {
@@ -4335,6 +4497,15 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
     res.setHeader("Content-Length", String(pdfBuffer.length));
 
     logger.info(`Quote PDF downloaded for bid: ${id}`);
+
+    await createBidHistoryEntry({
+      bidId: id,
+      organizationId: bid.organizationId,
+      action: "quote_pdf_downloaded",
+      description: `Quote PDF downloaded (bid #${bid.bidNumber})`,
+      performedBy: userId,
+    });
+
     res.send(pdfBuffer);
   } catch (error: any) {
     logger.logApiError("Error generating quote PDF", error, req);
@@ -4446,6 +4617,9 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       });
     }
 
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
     const bid = await getBidById(id);
     if (!bid) {
       return res.status(404).json({
@@ -4545,6 +4719,16 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
 
     const sentTo = allRecipients.map((r) => r.email).join(", ");
     logger.info(`Quote ${id} sent successfully to ${sentTo}`);
+
+    await createBidHistoryEntry({
+      bidId: id,
+      organizationId: bid.organizationId,
+      action: "quote_sent_to_client",
+      newValue: sentTo,
+      description: `Quote emailed to: ${sentTo}`,
+      performedBy: userId,
+    });
+
     res.json({
       success: true,
       data: {
@@ -4831,6 +5015,17 @@ export const createBidPlanSpecFilesHandler = async (req: Request, res: Response)
       }
     }
 
+    if (uploadedFiles.length > 0) {
+      await createBidHistoryEntry({
+        bidId: bidId!,
+        organizationId: bid.organizationId,
+        action: "plan_spec_file_uploaded",
+        newValue: uploadedFiles.map((f) => f.fileName).join(", "),
+        description: `${uploadedFiles.length} plan/spec file(s) uploaded: ${uploadedFiles.map((f) => f.fileName).join(", ")}`,
+        performedBy: userId,
+      });
+    }
+
     return res.status(201).json({ success: true, data: uploadedFiles, message: "Plan spec files uploaded successfully" });
   } catch (error) {
     logger.logApiError("Bid plan spec files upload error", error, req);
@@ -4847,6 +5042,14 @@ export const deleteBidPlanSpecFileHandler = async (req: Request, res: Response) 
 
     const deleted = await deleteBidPlanSpecFile(fileId!);
     if (!deleted) return res.status(404).json({ success: false, message: "File not found" });
+
+    await createBidHistoryEntry({
+      bidId: deleted.bidId,
+      organizationId: deleted.organizationId,
+      action: "plan_spec_file_deleted",
+      description: `Plan/spec file "${deleted.fileName}" was deleted`,
+      performedBy: userId,
+    });
 
     return res.status(200).json({ success: true, message: "Plan spec file deleted successfully" });
   } catch (error) {
@@ -4907,6 +5110,17 @@ export const createBidDesignBuildFilesHandler = async (req: Request, res: Respon
       }
     }
 
+    if (uploadedFiles.length > 0) {
+      await createBidHistoryEntry({
+        bidId: bidId!,
+        organizationId: bid.organizationId,
+        action: "design_build_file_uploaded",
+        newValue: uploadedFiles.map((f) => f.fileName).join(", "),
+        description: `${uploadedFiles.length} design build file(s) uploaded: ${uploadedFiles.map((f) => f.fileName).join(", ")}`,
+        performedBy: userId,
+      });
+    }
+
     return res.status(201).json({ success: true, data: uploadedFiles, message: "Design build files uploaded successfully" });
   } catch (error) {
     logger.logApiError("Bid design build files upload error", error, req);
@@ -4923,6 +5137,14 @@ export const deleteBidDesignBuildFileHandler = async (req: Request, res: Respons
 
     const deleted = await deleteBidDesignBuildFile(fileId!);
     if (!deleted) return res.status(404).json({ success: false, message: "File not found" });
+
+    await createBidHistoryEntry({
+      bidId: deleted.bidId,
+      organizationId: deleted.organizationId,
+      action: "design_build_file_deleted",
+      description: `Design build file "${deleted.fileName}" was deleted`,
+      performedBy: userId,
+    });
 
     return res.status(200).json({ success: true, message: "Design build file deleted successfully" });
   } catch (error) {

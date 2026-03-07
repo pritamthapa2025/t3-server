@@ -427,11 +427,11 @@ export const bidOperatingExpenses = org.table(
       { precision: 15, scale: 2 },
     ).default("0"),
     inflationRate: numeric("inflation_rate", {
-      precision: 5,
+      precision: 10,
       scale: 2,
     }).default("0"),
     utilizationPercentage: numeric("utilization_percentage", {
-      precision: 5,
+      precision: 10,
       scale: 2,
     }).default("0"),
     calculatedOperatingCost: numeric("calculated_operating_cost", {
@@ -440,7 +440,7 @@ export const bidOperatingExpenses = org.table(
     }).default("0"),
     applyMarkup: boolean("apply_markup").default(false),
     markupPercentage: numeric("markup_percentage", {
-      precision: 5,
+      precision: 10,
       scale: 2,
     }).default("0"),
     operatingPrice: numeric("operating_price", {
