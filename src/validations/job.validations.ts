@@ -105,6 +105,7 @@ export const createJobSchema = z.object({
             .int()
             .positive("Position ID must be a positive number")
             .optional(),
+          bidLaborId: z.string().uuid().optional(),
         }),
       )
       .optional(),
@@ -862,6 +863,18 @@ export const getJobNotesSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
   }),
+  query: z.object({
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 1))
+      .pipe(z.number().int().positive()),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 10))
+      .pipe(z.number().int().positive().max(100)),
+  }).optional(),
 });
 
 export const createJobNoteSchema = z.object({
@@ -906,6 +919,10 @@ export const deleteJobNoteSchema = z.object({
 export const getJobHistorySchema = z.object({
   params: z.object({
     jobId: uuidSchema,
+  }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
   }),
 });
 
@@ -1260,5 +1277,65 @@ export const getJobInvoiceKPIsSchema = z.object({
 export const getJobLaborCostTrackingSchema = z.object({
   params: z.object({
     jobId: z.string().uuid("Job ID must be a valid UUID"),
+  }),
+});
+
+// ============================
+// Job Logs Validations
+// ============================
+
+export const getJobLogsSchema = z.object({
+  params: z.object({ jobId: uuidSchema }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+  }),
+});
+
+export const createJobLogSchema = z.object({
+  params: z.object({ jobId: uuidSchema }),
+  body: z.object({
+    workDate: z.string().date("Invalid date format. Must be YYYY-MM-DD"),
+    summary: z.string().min(1, "Summary is required"),
+    hoursWorked: z.number().positive().optional(),
+    completionPercentage: z.number().int().min(0).max(100).optional(),
+    issues: z.string().optional(),
+    nextSteps: z.string().optional(),
+  }),
+});
+
+export const getJobLogByIdSchema = z.object({
+  params: z.object({ jobId: uuidSchema, logId: uuidSchema }),
+});
+
+export const updateJobLogSchema = z.object({
+  params: z.object({ jobId: uuidSchema, logId: uuidSchema }),
+  body: z.object({
+    workDate: z.string().date().optional(),
+    summary: z.string().min(1).optional(),
+    hoursWorked: z.number().positive().optional(),
+    completionPercentage: z.number().int().min(0).max(100).optional(),
+    issues: z.string().optional(),
+    nextSteps: z.string().optional(),
+  }),
+});
+
+export const deleteJobLogSchema = z.object({
+  params: z.object({ jobId: uuidSchema, logId: uuidSchema }),
+});
+
+export const addJobLogMediaSchema = z.object({
+  params: z.object({ jobId: uuidSchema, logId: uuidSchema }),
+});
+
+export const deleteJobLogMediaSchema = z.object({
+  params: z.object({ jobId: uuidSchema, logId: uuidSchema, mediaId: uuidSchema }),
+});
+
+export const getPropertyJobLogsSchema = z.object({
+  params: z.object({ propertyId: uuidSchema }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
   }),
 });

@@ -56,6 +56,7 @@ import {
   createBidDocumentsHandler,
   getBidDocumentsHandler,
   getBidDocumentByIdHandler,
+  previewBidDocumentHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
   getBidDocumentTagsHandler,
@@ -69,6 +70,7 @@ import {
   createBidMediaHandler,
   getBidMediaHandler,
   getBidMediaByIdHandler,
+  previewBidMediaHandler,
   updateBidMediaHandler,
   deleteBidMediaHandler,
   downloadBidQuotePDF,
@@ -84,6 +86,7 @@ import {
   getBidDesignBuildFilesHandler,
   createBidDesignBuildFilesHandler,
   deleteBidDesignBuildFileHandler,
+  getBidVersionInfoHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -142,10 +145,12 @@ import {
   getBidHistorySchema,
   getBidWithAllDataSchema,
   getRelatedBidsSchema,
+  getBidVersionInfoSchema,
   getBidKPIsSchema,
   createBidDocumentsSchema,
   getBidDocumentsSchema,
   getBidDocumentByIdSchema,
+  previewBidDocumentSchema,
   updateBidDocumentSchema,
   deleteBidDocumentSchema,
   getBidDocumentTagsSchema,
@@ -159,6 +164,7 @@ import {
   createBidMediaSchema,
   getBidMediaSchema,
   getBidMediaByIdSchema,
+  previewBidMediaSchema,
   updateBidMediaSchema,
   deleteBidMediaSchema,
   downloadBidQuotePDFSchema,
@@ -182,6 +188,43 @@ const uploadBidDocuments = multer({
     cb(null, true);
   },
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
+
+// Combined multer for create bid: documents (5MB, any type) + media (50MB, images/video/audio)
+const uploadBidDocumentsAndMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB ceiling — per-field enforcement done in fileFilter
+    files: 30, // up to 20 documents + 10 media
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname.startsWith("media_")) {
+      const allowedMediaTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+        "audio/mpeg",
+        "audio/wav",
+        "audio/ogg",
+      ];
+      if (allowedMediaTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(
+          new Error(
+            `Invalid media type: ${file.mimetype}. Only images, videos, and audio files are allowed for media_* fields.`,
+          ),
+        );
+      }
+    } else {
+      // document_* and anything else: accept all types
+      cb(null, true);
+    }
+  },
+}).any();
 
 // Configure multer for bid media uploads (images, videos, audio)
 const uploadBidMedia = multer({
@@ -304,7 +347,7 @@ router
   )
   .post(
     authorizeFeature("bids", "create"),
-    uploadBidDocuments,
+    uploadBidDocumentsAndMedia,
     handleMulterError,
     parseFormData,
     validate(createBidSchema),
@@ -341,6 +384,15 @@ router
     authorizeAnyFeature("bids", ["view", "view_bids"]),
     validate(getBidWithAllDataSchema),
     getBidWithAllDataHandler,
+  );
+
+// Get version info for a bid (used by Create Bid modal to auto-compute next version)
+router
+  .route("/bids/:bidId/version-info")
+  .get(
+    authorizeAnyFeature("bids", ["view", "view_bids"]),
+    validate(getBidVersionInfoSchema),
+    getBidVersionInfoHandler,
   );
 
 // Get all bids for the same organization (related bids)
@@ -565,6 +617,12 @@ router
   )
   .delete(validate(deleteBidDocumentSchema), deleteBidDocumentHandler);
 
+router.get(
+  "/bids/:bidId/documents/:documentId/preview",
+  validate(previewBidDocumentSchema),
+  previewBidDocumentHandler,
+);
+
 // Document tags: list tags for a document; link tag (by id or create by name)
 router
   .route("/bids/:bidId/documents/:documentId/tags")
@@ -612,6 +670,12 @@ router
     updateBidMediaHandler,
   )
   .delete(validate(deleteBidMediaSchema), deleteBidMediaHandler);
+
+router.get(
+  "/bids/:bidId/media/:mediaId/preview",
+  validate(previewBidMediaSchema),
+  previewBidMediaHandler,
+);
 
 // Quote PDF routes
 router.get(

@@ -292,11 +292,12 @@ export const properties = org.table(
     city: varchar("city", { length: 100 }).notNull(),
     state: varchar("state", { length: 50 }).notNull(),
     zipCode: varchar("zip_code", { length: 20 }).notNull(),
-    country: varchar("country", { length: 100 }).default("USA"),
+    country: varchar("country", { length: 100 }).notNull().default("USA"),
 
     // Property Details
     squareFootage: numeric("square_footage", { precision: 10, scale: 2 }),
     numberOfFloors: integer("number_of_floors"),
+    numberOfUnits: integer("number_of_units"),
     yearBuilt: integer("year_built"),
 
     // Access Information

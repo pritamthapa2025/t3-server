@@ -2488,6 +2488,54 @@ export const updateVehicleDocumentHandler = async (
   }
 };
 
+/**
+ * Return a preview URL for a vehicle document (the stored filePath is a direct URL).
+ * GET /org/fleet/vehicles/:vehicleId/documents/:id/preview
+ */
+export const previewVehicleDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = asSingleString(req.params.id);
+    const vehicleIdParam = asSingleString(req.params.vehicleId);
+    const doc = await getVehicleDocumentById(id!);
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found",
+      });
+    }
+    if (vehicleIdParam && doc.vehicleId !== vehicleIdParam) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle document not found for this vehicle",
+      });
+    }
+    if (!(await checkVehicleAssignedAccess(req, res, doc.vehicleId))) return;
+    const previewUrl = doc.filePath;
+    if (!previewUrl) {
+      return res
+        .status(404)
+        .json({ success: false, message: "File URL not available" });
+    }
+    return res.status(200).json({
+      success: true,
+      data: {
+        previewUrl,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        fileSize: doc.fileSize,
+      },
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching vehicle document preview", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
 export const deleteVehicleDocumentHandler = async (
   req: Request,
   res: Response,

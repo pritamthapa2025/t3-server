@@ -713,6 +713,7 @@ export const createProperty = async (data: {
   country?: string;
   squareFootage?: number;
   numberOfFloors?: number;
+  numberOfUnits?: number;
   yearBuilt?: number;
   accessInstructions?: string;
   gateCode?: string;
@@ -741,6 +742,7 @@ export const createProperty = async (data: {
       country: data.country || "USA",
       squareFootage: data.squareFootage ? data.squareFootage.toString() : null,
       numberOfFloors: data.numberOfFloors || null,
+      numberOfUnits: data.numberOfUnits ?? null,
       yearBuilt: data.yearBuilt || null,
       accessInstructions: data.accessInstructions || null,
       gateCode: data.gateCode || null,

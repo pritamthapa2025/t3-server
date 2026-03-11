@@ -44,6 +44,7 @@ import {
   getClientSettingsHandler,
   updateClientSettingsHandler,
   bulkDeleteClientsHandler,
+  getClientJobsHandler,
 } from "../../controllers/ClientController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeFeature } from "../../middleware/featureAuthorize.js";
@@ -417,5 +418,10 @@ router.post(
   validate(bulkDeleteUuidSchema),
   bulkDeleteClientsHandler,
 );
+
+// Client Jobs
+router
+  .route("/clients/:id/jobs")
+  .get(viewClients, validate(getClientByIdSchema), getClientJobsHandler);
 
 export default router;

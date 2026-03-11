@@ -16,6 +16,7 @@ import {
   createServiceHistoryHandler,
   getPropertyKPIsHandler,
 } from "../../controllers/PropertyController.js";
+import { getPropertyJobLogsHandler } from "../../controllers/JobController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import {
@@ -33,6 +34,7 @@ import {
   createPropertyDocumentSchema,
   createServiceHistorySchema,
 } from "../../validations/property.validations.js";
+import { getPropertyJobLogsSchema } from "../../validations/job.validations.js";
 
 const router: IRouter = Router();
 
@@ -148,5 +150,10 @@ router
 router
   .route("/properties/:propertyId/service-history")
   .post(validate(createServiceHistorySchema), createServiceHistoryHandler);
+
+// Property field log history (read-only — all job logs across all jobs at this property)
+router
+  .route("/properties/:propertyId/job-logs")
+  .get(validate(getPropertyJobLogsSchema), getPropertyJobLogsHandler);
 
 export default router;

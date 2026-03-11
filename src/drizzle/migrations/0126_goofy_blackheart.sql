@@ -1,0 +1,1 @@
+ALTER TABLE "org"."properties" ADD COLUMN "number_of_units" integer;

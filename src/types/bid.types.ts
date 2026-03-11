@@ -245,7 +245,6 @@ export interface BidNote {
   organizationId: string;
   note: string;
   createdBy: string;
-  isInternal?: boolean;
   isDeleted?: boolean;
   createdAt: Date;
   updatedAt: Date;

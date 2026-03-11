@@ -281,6 +281,10 @@ export const inventoryItems = org.table(
     }),
     averageCost: numeric("average_cost", { precision: 15, scale: 2 }), // Moving average
     sellingPrice: numeric("selling_price", { precision: 15, scale: 2 }), // For billing
+    defaultMarkupPercentage: numeric("default_markup_percentage", {
+      precision: 8,
+      scale: 4,
+    }), // Default markup % applied when used in bids
 
     // Stock Levels
     quantityOnHand: numeric("quantity_on_hand", { precision: 10, scale: 2 })

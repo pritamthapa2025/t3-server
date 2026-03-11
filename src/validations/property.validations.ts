@@ -47,6 +47,7 @@ export const createPropertySchema = z.object({
       .trim(),
     country: z
       .string()
+      .min(1, "Country is required and cannot be empty")
       .max(100, "Country is too long (maximum 100 characters)")
       .default("USA"),
     squareFootage: z.string().optional(), // Numeric as string for precision
@@ -54,6 +55,11 @@ export const createPropertySchema = z.object({
       .number()
       .int()
       .min(1, "Must be at least 1 floor")
+      .optional(),
+    numberOfUnits: z
+      .number()
+      .int()
+      .min(0, "Number of units cannot be negative")
       .optional(),
     yearBuilt: z
       .number()
@@ -134,6 +140,11 @@ export const updatePropertySchema = z.object({
       .number()
       .int("Number of floors must be a whole number")
       .min(1, "Property must have at least 1 floor")
+      .optional(),
+    numberOfUnits: z
+      .number()
+      .int("Number of units must be a whole number")
+      .min(0, "Number of units cannot be negative")
       .optional(),
     yearBuilt: z
       .number()

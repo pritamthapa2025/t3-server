@@ -15,18 +15,19 @@ const INVENTORY_FINANCIAL_FIELDS = [
   "lastPurchasePrice",
   "averageCost",
   "sellingPrice",
+  "defaultMarkupPercentage",
 ] as const;
 
 function stripFinancialFields<T extends Record<string, unknown>>(
   item: T,
-): Omit<T, "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice"> {
+): Omit<T, "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice" | "defaultMarkupPercentage"> {
   const result = { ...item };
   for (const field of INVENTORY_FINANCIAL_FIELDS) {
     delete result[field];
   }
   return result as Omit<
     T,
-    "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice"
+    "unitCost" | "lastPurchasePrice" | "averageCost" | "sellingPrice" | "defaultMarkupPercentage"
   >;
 }
 

@@ -46,6 +46,7 @@ import {
   getVehicleDocumentsHandler,
   getVehicleDocumentByIdHandler,
   getVehicleDocumentPresignedUrlHandler,
+  previewVehicleDocumentHandler,
   createVehicleDocumentHandler,
   updateVehicleDocumentHandler,
   deleteVehicleDocumentHandler,
@@ -103,6 +104,7 @@ import {
   getVehicleDocumentsByVehicleQuerySchema,
   getVehicleDocumentByVehicleByIdSchema,
   getVehicleDocumentPresignedUrlSchema,
+  previewVehicleDocumentSchema,
   createVehicleDocumentByVehicleSchema,
   updateVehicleDocumentByVehicleSchema,
   deleteVehicleDocumentByVehicleSchema,
@@ -578,6 +580,14 @@ router
     validate(createVehicleDocumentByVehicleSchema),
     createVehicleDocumentHandler,
   );
+
+// Preview a specific vehicle document (returns previewUrl)
+router.get(
+  "/vehicles/:vehicleId/documents/:id/preview",
+  viewFleet,
+  validate(previewVehicleDocumentSchema),
+  previewVehicleDocumentHandler,
+);
 
 router
   .route("/vehicles/:vehicleId/documents/:id")

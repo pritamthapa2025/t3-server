@@ -16,6 +16,7 @@ const bidStatusEnum = z.enum(
     "draft",
     "in_progress",
     "pending",
+    "needs_review",
     "submitted",
     "accepted",
     "won",
@@ -26,7 +27,7 @@ const bidStatusEnum = z.enum(
   ],
   {
     message:
-      "Status must be one of: draft, in_progress, pending, submitted, accepted, won, rejected, lost, expired, or cancelled",
+      "Status must be one of: draft, in_progress, pending, needs_review, submitted, accepted, won, rejected, lost, expired, or cancelled",
   },
 );
 
@@ -76,11 +77,21 @@ export const getBidsQuerySchema = z.object({
           .positive("Limit must be a positive number")
           .max(100, "Maximum 100 items per page"),
       ),
-    status: bidStatusEnum.optional(),
+    status: z
+      .union([bidStatusEnum, z.array(bidStatusEnum)])
+      .optional()
+      .transform((val) =>
+        val === undefined ? undefined : Array.isArray(val) ? val : [val],
+      ),
     jobType: bidJobTypeEnum.optional(),
     priority: bidPriorityEnum.optional(),
     assignedTo: uuidSchema.optional(),
     search: z.string().optional(),
+    sortBy: z
+      .enum(["newest", "oldest", "value_high", "value_low"], {
+        message: "sortBy must be one of: newest, oldest, value_high, value_low",
+      })
+      .optional(),
   }),
 });
 
@@ -91,6 +102,12 @@ export const getBidByIdSchema = z.object({
 });
 
 export const getRelatedBidsSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+});
+
+export const getBidVersionInfoSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
@@ -108,6 +125,8 @@ export const createBidSchema = z.object({
       organizationId: uuidSchema, // Required: Client organization ID (not T3)
       primaryContactId: uuidSchema.optional().nullable(),
       propertyId: uuidSchema.optional().nullable(),
+      parentBidId: uuidSchema.optional().nullable(),
+      rootBidId: uuidSchema.optional().nullable(),
       jobType: bidJobTypeEnum,
       status: bidStatusEnum.optional().default("draft"),
       priority: bidPriorityEnum.optional().default("medium"),
@@ -323,7 +342,14 @@ export const createBidSchema = z.object({
       surveyData: z
         .object({
           // New survey bid fields
-          surveyType: z.enum(["new-installation", "existing-assessment", "energy-audit", "feasibility-study"]).optional(),
+          surveyType: z
+            .enum([
+              "new-installation",
+              "existing-assessment",
+              "energy-audit",
+              "feasibility-study",
+            ])
+            .optional(),
           numberOfBuildings: z.number().int().positive().optional(),
           expectedUnitsToSurvey: z.number().int().positive().optional(),
           buildingNumbers: z.string().optional(), // JSON array
@@ -335,7 +361,9 @@ export const createBidSchema = z.object({
           schedulingConstraints: z.string().optional(),
           technicianId: z.number().int().positive().optional().nullable(),
           // Pricing
-          pricingModel: z.enum(["flat_fee", "per_unit", "time_materials"]).optional(),
+          pricingModel: z
+            .enum(["flat_fee", "per_unit", "time_materials"])
+            .optional(),
           flatSurveyFee: z.string().optional(),
           pricePerUnit: z.string().optional(),
           estimatedHours: z.string().optional(),
@@ -343,7 +371,10 @@ export const createBidSchema = z.object({
           estimatedExpenses: z.string().optional(),
           totalSurveyFee: z.string().optional(),
           // Survey metadata
-          surveyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          surveyDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
           surveyBy: z.string().max(255).optional(),
           surveyNotes: z.string().optional(),
           accessRequirements: z.string().optional(),
@@ -371,8 +402,14 @@ export const createBidSchema = z.object({
           voltagePhase: z.string().optional(),
           overallCondition: z.string().optional(),
           siteConditions: z.string().optional(),
-          dateOfSurvey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-          timeOfSurvey: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+          dateOfSurvey: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          timeOfSurvey: z
+            .string()
+            .regex(/^\d{2}:\d{2}:\d{2}$/)
+            .optional(),
         })
         .optional(),
 
@@ -411,15 +448,48 @@ export const createBidSchema = z.object({
       serviceData: z
         .object({
           // Bid-creation fields
-          serviceType: z.enum(["emergency_repair", "scheduled_repair", "diagnostic", "installation", "other"]).or(z.literal("")).optional(),
-          equipmentType: z.enum(["rooftop_unit", "split_system", "boiler", "chiller", "air_handler", "other"]).or(z.literal("")).optional(),
-          issueCategory: z.enum(["cooling", "heating", "ventilation", "controls", "electrical", "plumbing", "other"]).or(z.literal("")).optional(),
+          serviceType: z
+            .enum([
+              "emergency_repair",
+              "scheduled_repair",
+              "diagnostic",
+              "installation",
+              "other",
+            ])
+            .or(z.literal(""))
+            .optional(),
+          equipmentType: z
+            .enum([
+              "rooftop_unit",
+              "split_system",
+              "boiler",
+              "chiller",
+              "air_handler",
+              "other",
+            ])
+            .or(z.literal(""))
+            .optional(),
+          issueCategory: z
+            .enum([
+              "cooling",
+              "heating",
+              "ventilation",
+              "controls",
+              "electrical",
+              "plumbing",
+              "other",
+            ])
+            .or(z.literal(""))
+            .optional(),
           reportedIssue: z.string().optional(),
           preliminaryAssessment: z.string().optional(),
           estimatedWorkScope: z.string().optional(),
           leadTechnicianId: z.number().int().positive().optional().nullable(),
           helperTechnicianId: z.number().int().positive().optional().nullable(),
-          pricingModel: z.enum(["time_materials", "flat_rate", "diagnostic_repair"]).or(z.literal("")).optional(),
+          pricingModel: z
+            .enum(["time_materials", "flat_rate", "diagnostic_repair"])
+            .or(z.literal(""))
+            .optional(),
           numberOfTechs: z.number().int().positive().optional(),
           laborHours: z.string().optional(),
           laborRate: z.string().optional(),
@@ -431,7 +501,12 @@ export const createBidSchema = z.object({
           estimatedRepairCost: z.string().optional(),
           pricingNotes: z.string().optional(),
           // Execution-phase fields
-          serviceCallTechnician: z.number().int().positive().optional().nullable(),
+          serviceCallTechnician: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .nullable(),
           timeIn: z.string().max(50).optional().nullable(),
           timeOut: z.string().max(50).optional().nullable(),
           serviceDescription: z.string().optional().nullable(),
@@ -448,7 +523,10 @@ export const createBidSchema = z.object({
       // Preventative Maintenance specific data
       preventativeMaintenanceData: z
         .object({
-          pmType: z.enum(["new_pm_bid", "existing_pm_renewal"]).optional().nullable(),
+          pmType: z
+            .enum(["new_pm_bid", "existing_pm_renewal"])
+            .optional()
+            .nullable(),
           previousPmJobId: z.string().max(100).optional().nullable(),
           maintenanceFrequency: z
             .enum(["quarterly", "semi_annual", "annual"])
@@ -466,7 +544,10 @@ export const createBidSchema = z.object({
           specialRequirements: z.string().optional().nullable(),
           clientPmRequirements: z.string().optional().nullable(),
           // Pricing
-          pricingModel: z.enum(["per_unit", "flat_rate", "annual_contract"]).optional().nullable(),
+          pricingModel: z
+            .enum(["per_unit", "flat_rate", "annual_contract"])
+            .optional()
+            .nullable(),
           pricePerUnit: z.string().optional().nullable(),
           flatRatePerVisit: z.string().optional().nullable(),
           annualContractValue: z.string().optional().nullable(),
@@ -475,7 +556,10 @@ export const createBidSchema = z.object({
           includeCoilCleaning: z.boolean().optional(),
           coilCleaningCost: z.string().optional().nullable(),
           emergencyServiceRate: z.string().optional().nullable(),
-          paymentSchedule: z.enum(["annual", "per_visit", "quarterly"]).optional().nullable(),
+          paymentSchedule: z
+            .enum(["annual", "per_visit", "quarterly"])
+            .optional()
+            .nullable(),
           pricingNotes: z.string().optional().nullable(),
         })
         .optional(),
@@ -502,6 +586,9 @@ export const updateBidSchema = z.object({
     priority: bidPriorityEnum.optional(),
     primaryContactId: uuidSchema.optional().nullable(),
     propertyId: uuidSchema.optional().nullable(),
+    parentBidId: uuidSchema.optional().nullable(),
+    rootBidId: uuidSchema.optional().nullable(),
+    versionNumber: z.number().int().positive().optional(),
     projectName: z
       .string()
       .max(255, "Project name is too long (maximum 255 characters)")
@@ -605,10 +692,19 @@ export const updateBidSchema = z.object({
     // Lifecycle / post-decision fields (update only)
     finalBidAmount: z.string().optional(),
     actualCost: z.string().optional(),
-    submittedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    decisionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    submittedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    decisionDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     convertedToJobId: uuidSchema.optional().nullable(),
-    conversionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    conversionDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     lostReason: z.string().optional(),
     rejectionReason: z.string().optional(),
 
@@ -726,7 +822,14 @@ export const updateBidSchema = z.object({
     // Survey specific data
     surveyData: z
       .object({
-        surveyType: z.enum(["new-installation", "existing-assessment", "energy-audit", "feasibility-study"]).optional(),
+        surveyType: z
+          .enum([
+            "new-installation",
+            "existing-assessment",
+            "energy-audit",
+            "feasibility-study",
+          ])
+          .optional(),
         numberOfBuildings: z.number().int().positive().optional(),
         expectedUnitsToSurvey: z.number().int().positive().optional(),
         buildingNumbers: z.string().optional(),
@@ -737,14 +840,19 @@ export const updateBidSchema = z.object({
         includeRecommendations: z.boolean().optional(),
         schedulingConstraints: z.string().optional(),
         technicianId: z.number().int().positive().optional().nullable(),
-        pricingModel: z.enum(["flat_fee", "per_unit", "time_materials"]).optional(),
+        pricingModel: z
+          .enum(["flat_fee", "per_unit", "time_materials"])
+          .optional(),
         flatSurveyFee: z.string().optional(),
         pricePerUnit: z.string().optional(),
         estimatedHours: z.string().optional(),
         hourlyRate: z.string().optional(),
         estimatedExpenses: z.string().optional(),
         totalSurveyFee: z.string().optional(),
-        surveyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        surveyDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
         surveyBy: z.string().max(255).optional(),
         surveyNotes: z.string().optional(),
         accessRequirements: z.string().optional(),
@@ -771,8 +879,14 @@ export const updateBidSchema = z.object({
         voltagePhase: z.string().optional(),
         overallCondition: z.string().optional(),
         siteConditions: z.string().optional(),
-        dateOfSurvey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        timeOfSurvey: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+        dateOfSurvey: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        timeOfSurvey: z
+          .string()
+          .regex(/^\d{2}:\d{2}:\d{2}$/)
+          .optional(),
       })
       .optional(),
 
@@ -810,15 +924,48 @@ export const updateBidSchema = z.object({
     // Service specific data
     serviceData: z
       .object({
-        serviceType: z.enum(["emergency_repair", "scheduled_repair", "diagnostic", "installation", "other"]).or(z.literal("")).optional(),
-        equipmentType: z.enum(["rooftop_unit", "split_system", "boiler", "chiller", "air_handler", "other"]).or(z.literal("")).optional(),
-        issueCategory: z.enum(["cooling", "heating", "ventilation", "controls", "electrical", "plumbing", "other"]).or(z.literal("")).optional(),
+        serviceType: z
+          .enum([
+            "emergency_repair",
+            "scheduled_repair",
+            "diagnostic",
+            "installation",
+            "other",
+          ])
+          .or(z.literal(""))
+          .optional(),
+        equipmentType: z
+          .enum([
+            "rooftop_unit",
+            "split_system",
+            "boiler",
+            "chiller",
+            "air_handler",
+            "other",
+          ])
+          .or(z.literal(""))
+          .optional(),
+        issueCategory: z
+          .enum([
+            "cooling",
+            "heating",
+            "ventilation",
+            "controls",
+            "electrical",
+            "plumbing",
+            "other",
+          ])
+          .or(z.literal(""))
+          .optional(),
         reportedIssue: z.string().optional(),
         preliminaryAssessment: z.string().optional(),
         estimatedWorkScope: z.string().optional(),
         leadTechnicianId: z.number().int().positive().optional().nullable(),
         helperTechnicianId: z.number().int().positive().optional().nullable(),
-        pricingModel: z.enum(["time_materials", "flat_rate", "diagnostic_repair"]).or(z.literal("")).optional(),
+        pricingModel: z
+          .enum(["time_materials", "flat_rate", "diagnostic_repair"])
+          .or(z.literal(""))
+          .optional(),
         numberOfTechs: z.number().int().positive().optional(),
         laborHours: z.string().optional(),
         laborRate: z.string().optional(),
@@ -830,7 +977,12 @@ export const updateBidSchema = z.object({
         estimatedRepairCost: z.string().optional(),
         pricingNotes: z.string().optional(),
         // Execution-phase fields
-        serviceCallTechnician: z.number().int().positive().optional().nullable(),
+        serviceCallTechnician: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .nullable(),
         timeIn: z.string().max(50).optional().nullable(),
         timeOut: z.string().max(50).optional().nullable(),
         serviceDescription: z.string().optional().nullable(),
@@ -847,7 +999,10 @@ export const updateBidSchema = z.object({
     // Preventative Maintenance specific data
     preventativeMaintenanceData: z
       .object({
-        pmType: z.enum(["new_pm_bid", "existing_pm_renewal"]).optional().nullable(),
+        pmType: z
+          .enum(["new_pm_bid", "existing_pm_renewal"])
+          .optional()
+          .nullable(),
         previousPmJobId: z.string().max(100).optional().nullable(),
         maintenanceFrequency: z
           .enum(["quarterly", "semi_annual", "annual"])
@@ -864,7 +1019,10 @@ export const updateBidSchema = z.object({
         serviceScope: z.string().optional().nullable(),
         specialRequirements: z.string().optional().nullable(),
         clientPmRequirements: z.string().optional().nullable(),
-        pricingModel: z.enum(["per_unit", "flat_rate", "annual_contract"]).optional().nullable(),
+        pricingModel: z
+          .enum(["per_unit", "flat_rate", "annual_contract"])
+          .optional()
+          .nullable(),
         pricePerUnit: z.string().optional().nullable(),
         flatRatePerVisit: z.string().optional().nullable(),
         annualContractValue: z.string().optional().nullable(),
@@ -873,7 +1031,10 @@ export const updateBidSchema = z.object({
         includeCoilCleaning: z.boolean().optional(),
         coilCleaningCost: z.string().optional().nullable(),
         emergencyServiceRate: z.string().optional().nullable(),
-        paymentSchedule: z.enum(["annual", "per_visit", "quarterly"]).optional().nullable(),
+        paymentSchedule: z
+          .enum(["annual", "per_visit", "quarterly"])
+          .optional()
+          .nullable(),
         pricingNotes: z.string().optional().nullable(),
       })
       .optional(),
@@ -1090,7 +1251,10 @@ export const createBidLaborSchema = z.object({
       .positive("Position ID must be a positive number")
       .optional()
       .nullable(),
-    customRole: z.string().max(255, "Custom role is too long (maximum 255 characters)").optional(),
+    customRole: z
+      .string()
+      .max(255, "Custom role is too long (maximum 255 characters)")
+      .optional(),
     days: z
       .number()
       .int("Days must be a whole number")
@@ -1116,7 +1280,10 @@ export const updateBidLaborSchema = z.object({
       .positive("Position ID must be a positive number")
       .optional()
       .nullable(),
-    customRole: z.string().max(255, "Custom role is too long (maximum 255 characters)").optional(),
+    customRole: z
+      .string()
+      .max(255, "Custom role is too long (maximum 255 characters)")
+      .optional(),
     days: z
       .number()
       .int("Days must be a whole number")
@@ -1377,7 +1544,14 @@ export const updateBidSurveyDataSchema = z.object({
   }),
   body: z.object({
     // New survey bid fields
-    surveyType: z.enum(["new-installation", "existing-assessment", "energy-audit", "feasibility-study"]).optional(),
+    surveyType: z
+      .enum([
+        "new-installation",
+        "existing-assessment",
+        "energy-audit",
+        "feasibility-study",
+      ])
+      .optional(),
     numberOfBuildings: z.number().int().positive().optional(),
     expectedUnitsToSurvey: z.number().int().positive().optional(),
     buildingNumbers: z.string().optional(),
@@ -1395,7 +1569,10 @@ export const updateBidSurveyDataSchema = z.object({
     hourlyRate: z.string().optional(),
     estimatedExpenses: z.string().optional(),
     totalSurveyFee: z.string().optional(),
-    surveyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    surveyDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     surveyBy: z.string().max(255).optional(),
     surveyNotes: z.string().optional(),
     accessRequirements: z.string().optional(),
@@ -1423,8 +1600,14 @@ export const updateBidSurveyDataSchema = z.object({
     voltagePhase: z.string().max(50).optional(),
     overallCondition: z.string().max(100).optional(),
     siteConditions: z.string().optional(),
-    dateOfSurvey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    timeOfSurvey: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+    dateOfSurvey: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    timeOfSurvey: z
+      .string()
+      .regex(/^\d{2}:\d{2}:\d{2}$/)
+      .optional(),
   }),
 });
 
@@ -1433,10 +1616,16 @@ export const updateBidPlanSpecDataSchema = z.object({
     bidId: uuidSchema,
   }),
   body: z.object({
-    plansReceivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    plansReceivedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     planRevision: z.string().max(100).optional(),
     planReviewNotes: z.string().optional(),
-    specificationsReceivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    specificationsReceivedDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     specificationRevision: z.string().max(100).optional(),
     specificationReviewNotes: z.string().optional(),
     complianceRequirements: z.string().optional(),
@@ -1476,7 +1665,9 @@ export const updateBidDesignBuildDataSchema = z.object({
     clientApprovalRequired: z.boolean().optional(),
     approvalMilestones: z.string().optional(),
     designRevisionLimit: z.number().int().min(0).optional(),
-    designFeeBasis: z.enum(["fixed", "hourly", "percentage", "lump_sum"]).optional(),
+    designFeeBasis: z
+      .enum(["fixed", "hourly", "percentage", "lump_sum"])
+      .optional(),
     designPrice: z.string().optional(),
     designCost: z.string().optional(),
     buildSpecifications: z.string().optional(),
@@ -1495,15 +1686,48 @@ export const updateBidServiceDataSchema = z.object({
   }),
   body: z.object({
     // Bid-creation fields
-    serviceType: z.enum(["emergency_repair", "scheduled_repair", "diagnostic", "installation", "other"]).or(z.literal("")).optional(),
-    equipmentType: z.enum(["rooftop_unit", "split_system", "boiler", "chiller", "air_handler", "other"]).or(z.literal("")).optional(),
-    issueCategory: z.enum(["cooling", "heating", "ventilation", "controls", "electrical", "plumbing", "other"]).or(z.literal("")).optional(),
+    serviceType: z
+      .enum([
+        "emergency_repair",
+        "scheduled_repair",
+        "diagnostic",
+        "installation",
+        "other",
+      ])
+      .or(z.literal(""))
+      .optional(),
+    equipmentType: z
+      .enum([
+        "rooftop_unit",
+        "split_system",
+        "boiler",
+        "chiller",
+        "air_handler",
+        "other",
+      ])
+      .or(z.literal(""))
+      .optional(),
+    issueCategory: z
+      .enum([
+        "cooling",
+        "heating",
+        "ventilation",
+        "controls",
+        "electrical",
+        "plumbing",
+        "other",
+      ])
+      .or(z.literal(""))
+      .optional(),
     reportedIssue: z.string().optional(),
     preliminaryAssessment: z.string().optional(),
     estimatedWorkScope: z.string().optional(),
     leadTechnicianId: z.number().int().positive().optional().nullable(),
     helperTechnicianId: z.number().int().positive().optional().nullable(),
-    pricingModel: z.enum(["time_materials", "flat_rate", "diagnostic_repair"]).or(z.literal("")).optional(),
+    pricingModel: z
+      .enum(["time_materials", "flat_rate", "diagnostic_repair"])
+      .or(z.literal(""))
+      .optional(),
     numberOfTechs: z.number().int().positive().optional(),
     laborHours: z.string().optional(),
     laborRate: z.string().optional(),
@@ -1558,7 +1782,10 @@ export const updateBidPreventativeMaintenanceDataSchema = z.object({
     specialRequirements: z.string().optional().nullable(),
     clientPmRequirements: z.string().optional().nullable(),
     // Pricing fields
-    pricingModel: z.enum(["per_unit", "flat_rate", "annual_contract"]).optional().nullable(),
+    pricingModel: z
+      .enum(["per_unit", "flat_rate", "annual_contract"])
+      .optional()
+      .nullable(),
     pricePerUnit: z.string().optional().nullable(),
     flatRatePerVisit: z.string().optional().nullable(),
     annualContractValue: z.string().optional().nullable(),
@@ -1567,7 +1794,10 @@ export const updateBidPreventativeMaintenanceDataSchema = z.object({
     includeCoilCleaning: z.boolean().optional(),
     coilCleaningCost: z.string().optional().nullable(),
     emergencyServiceRate: z.string().optional().nullable(),
-    paymentSchedule: z.enum(["annual", "per_visit", "quarterly"]).optional().nullable(),
+    paymentSchedule: z
+      .enum(["annual", "per_visit", "quarterly"])
+      .optional()
+      .nullable(),
     pricingNotes: z.string().optional().nullable(),
   }),
 });
@@ -1657,6 +1887,18 @@ export const getBidNotesSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
+  query: z.object({
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 1))
+      .pipe(z.number().int().positive()),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 10))
+      .pipe(z.number().int().positive().max(100)),
+  }).optional(),
 });
 
 export const createBidNoteSchema = z.object({
@@ -1668,7 +1910,6 @@ export const createBidNoteSchema = z.object({
       .string()
       .min(1, "Note content is required and cannot be empty")
       .trim(),
-    isInternal: z.boolean().optional().default(true),
   }),
 });
 
@@ -1679,7 +1920,6 @@ export const updateBidNoteSchema = z.object({
   }),
   body: z.object({
     note: z.string().min(1, "Note content cannot be empty").trim().optional(),
-    isInternal: z.boolean().optional(),
   }),
 });
 
@@ -1697,6 +1937,10 @@ export const deleteBidNoteSchema = z.object({
 export const getBidHistorySchema = z.object({
   params: z.object({
     bidId: uuidSchema,
+  }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
   }),
 });
 
@@ -1740,6 +1984,31 @@ export const getBidDocumentsSchema = z.object({
                 .filter(Boolean);
           return arr.length ? arr : undefined;
         }),
+      // Filter by file type: pdf | word | excel
+      fileType: z
+        .enum(["pdf", "word", "excel"], {
+          message: "fileType must be one of: pdf, word, excel",
+        })
+        .optional(),
+      // Filter by date range
+      dateRange: z
+        .enum(["today", "this_week", "this_month", "this_year"], {
+          message:
+            "dateRange must be one of: today, this_week, this_month, this_year",
+        })
+        .optional(),
+      // Sort field
+      sortBy: z
+        .enum(["date", "name", "size"], {
+          message: "sortBy must be one of: date, name, size",
+        })
+        .optional(),
+      // Sort direction
+      sortOrder: z
+        .enum(["asc", "desc"], {
+          message: "sortOrder must be one of: asc, desc",
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -1820,6 +2089,13 @@ export const getBidDocumentByIdSchema = z.object({
   }),
 });
 
+export const previewBidDocumentSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    documentId: uuidSchema,
+  }),
+});
+
 export const updateBidDocumentSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
@@ -1863,9 +2139,41 @@ export const getBidMediaSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
+  query: z
+    .object({
+      mediaType: z
+        .enum(["photo", "video", "audio"], {
+          message: "mediaType must be one of: photo, video, audio",
+        })
+        .optional(),
+      dateRange: z
+        .enum(["today", "this_week", "this_month", "this_year"], {
+          message:
+            "dateRange must be one of: today, this_week, this_month, this_year",
+        })
+        .optional(),
+      sortBy: z
+        .enum(["date", "name", "size"], {
+          message: "sortBy must be one of: date, name, size",
+        })
+        .optional(),
+      sortOrder: z
+        .enum(["asc", "desc"], {
+          message: "sortOrder must be one of: asc, desc",
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export const getBidMediaByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    mediaId: uuidSchema,
+  }),
+});
+
+export const previewBidMediaSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
     mediaId: uuidSchema,

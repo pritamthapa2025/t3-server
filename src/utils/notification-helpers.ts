@@ -686,10 +686,25 @@ export function generateNotificationMessage(
 
       // ── Dispatch ─────────────────────────────────────────────────────
       case "technician_assigned_to_dispatch": {
-        const scheduledTime = eventData.scheduledTime || eventData.scheduledDate || null;
-        const location = eventData.location || eventData.siteAddress || null;
-        message = `You have been assigned to a new dispatch — "${name}".${scheduledTime ? ` Scheduled: ${scheduledTime}.` : ""}${location ? ` Location: ${location}.` : ""} Please review the dispatch details and prepare before heading out.`;
-        shortMessage = `New dispatch assignment: ${name}`;
+        // Full details are passed via message/shortMessage from the service.
+        // This fallback is used only when no pre-built message is provided.
+        const jobNumber = eventData.jobNumber ?? eventData.entityId ?? "";
+        const dispatchTitle = name;
+        const date = eventData.date ?? eventData.scheduledDate ?? "";
+        const startTime = eventData.startTime ?? eventData.scheduledTime ?? "";
+        const endTime = eventData.endTime ?? "";
+        const techList = Array.isArray(eventData.assignedTechNames)
+          ? eventData.assignedTechNames.join(", ")
+          : "";
+        const location = eventData.location ?? eventData.siteAddress ?? "";
+        message =
+          `You have been assigned to ${dispatchTitle}${jobNumber ? ` (${jobNumber})` : ""}` +
+          `${date ? ` on ${date}` : ""}` +
+          `${startTime ? ` from ${startTime}` : ""}${endTime ? ` to ${endTime}` : ""}.` +
+          `${techList ? ` Assigned techs: ${techList}.` : ""}` +
+          `${location ? ` Location: ${location}.` : ""}` +
+          ` Please review the dispatch details and prepare before heading out.`;
+        shortMessage = `New dispatch assignment: ${dispatchTitle}${jobNumber ? ` (${jobNumber})` : ""}`;
         break;
       }
 

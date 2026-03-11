@@ -76,6 +76,13 @@ import {
   createJobDesignBuildNoteHandler,
   updateJobDesignBuildNoteHandler,
   deleteJobDesignBuildNoteHandler,
+  getJobLogsHandler,
+  createJobLogHandler,
+  getJobLogByIdHandler,
+  updateJobLogHandler,
+  deleteJobLogHandler,
+  addJobLogMediaHandler,
+  deleteJobLogMediaHandler,
   getJobExpensesHandler,
   getJobExpenseByIdHandler,
   createJobExpenseHandler,
@@ -166,6 +173,13 @@ import {
   getJobWithAllDataSchema,
   getJobInvoiceKPIsSchema,
   getJobLaborCostTrackingSchema,
+  getJobLogsSchema,
+  createJobLogSchema,
+  getJobLogByIdSchema,
+  updateJobLogSchema,
+  deleteJobLogSchema,
+  addJobLogMediaSchema,
+  deleteJobLogMediaSchema,
 } from "../../validations/job.validations.js";
 import { bulkDeleteUuidSchema } from "../../validations/bulk-delete.validations.js";
 
@@ -791,5 +805,44 @@ router
     updateJobDesignBuildNoteHandler,
   )
   .delete(editJob, deleteJobDesignBuildNoteHandler);
+
+// ============================
+// Field Log Routes
+// ============================
+
+const uploadLogMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed for log media"));
+    }
+    cb(null, true);
+  },
+});
+
+router
+  .route("/jobs/:jobId/logs")
+  .get(viewJobs, validate(getJobLogsSchema), getJobLogsHandler)
+  .post(viewJobs, validate(createJobLogSchema), createJobLogHandler);
+
+router
+  .route("/jobs/:jobId/logs/:logId")
+  .get(viewJobs, validate(getJobLogByIdSchema), getJobLogByIdHandler)
+  .put(viewJobs, validate(updateJobLogSchema), updateJobLogHandler)
+  .delete(editJob, validate(deleteJobLogSchema), deleteJobLogHandler);
+
+router
+  .route("/jobs/:jobId/logs/:logId/media")
+  .post(viewJobs, (req, res, next) => {
+    uploadLogMedia.array("media", 10)(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      next();
+    });
+  }, validate(addJobLogMediaSchema), addJobLogMediaHandler);
+
+router
+  .route("/jobs/:jobId/logs/:logId/media/:mediaId")
+  .delete(editJob, validate(deleteJobLogMediaSchema), deleteJobLogMediaHandler);
 
 export default router;

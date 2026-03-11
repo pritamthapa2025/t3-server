@@ -1,0 +1,1 @@
+ALTER TYPE "public"."bid_status_enum" ADD VALUE 'needs_review' BEFORE 'submitted';

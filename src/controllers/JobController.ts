@@ -125,6 +125,14 @@ import {
   createJobDesignBuildNote,
   updateJobDesignBuildNote,
   deleteJobDesignBuildNote,
+  getJobLogs,
+  getJobLogById,
+  createJobLog,
+  updateJobLog,
+  deleteJobLog,
+  addJobLogMedia,
+  deleteJobLogMedia,
+  getPropertyJobLogs,
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
@@ -305,7 +313,6 @@ export const createJobHandler = async (req: Request, res: Response) => {
     // Create history entry using bid's organization
     await createJobHistoryEntry({
       jobId: job.id,
-      organizationId: bid.organizationId,
       action: "job_created",
       description: `Job "${job.name}" was created`,
       createdBy: createdBy,
@@ -847,13 +854,14 @@ export const updateJobHandler = async (req: Request, res: Response) => {
 
     // Create history entries for changed job fields
     for (const [key, value] of Object.entries(jobFields)) {
-      const oldValue = (originalJob as any)[key];
-      if (oldValue !== value) {
+      const oldVal = (originalJob as any)[key];
+      if (oldVal !== value) {
         await createJobHistoryEntry({
           jobId: id!,
-          organizationId: originalJob.organizationId,
           action: `field_updated_${key}`,
           description: `Field "${key}" was updated`,
+          ...(oldVal != null && { oldValue: String(oldVal) }),
+          ...(value != null && { newValue: String(value) }),
           createdBy: performedBy,
         });
       }
@@ -863,7 +871,6 @@ export const updateJobHandler = async (req: Request, res: Response) => {
     if (Object.keys(updatedRecords).length > 0) {
       await createJobHistoryEntry({
         jobId: id!,
-        organizationId: originalJob.organizationId,
         action: "bid_data_updated",
         description: "Associated bid data was updated",
         createdBy: performedBy,
@@ -997,7 +1004,6 @@ export const addJobTeamMemberHandler = async (req: Request, res: Response) => {
     if (!job) {
       return res.status(404).json({ success: false, message: "Job not found" });
     }
-    const clientOrgId = job.organizationId;
 
     const memberData = {
       ...req.body,
@@ -1016,7 +1022,6 @@ export const addJobTeamMemberHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "team_member_added",
       description: "Team member was added",
       createdBy: performedBy,
@@ -1159,7 +1164,6 @@ export const updateJobFinancialSummaryHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "financial_summary_updated",
       description: "Financial summary was updated",
       createdBy: performedBy,
@@ -1350,7 +1354,6 @@ export const createJobMaterialHandler = async (req: Request, res: Response) => {
     // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: job.organizationId,
       action: "material_added",
       description: `Material "${material.description}" was added`,
       createdBy: userId,
@@ -1400,7 +1403,6 @@ export const updateJobMaterialHandler = async (req: Request, res: Response) => {
     // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: job.organizationId,
       action: "material_updated",
       description: `Material "${material.description}" was updated`,
       createdBy: userId,
@@ -1457,7 +1459,6 @@ export const deleteJobMaterialHandler = async (req: Request, res: Response) => {
     // Create history entry using job's organizationId
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: job.organizationId,
       action: "material_deleted",
       description: `Material "${existingMaterial?.description || "Unknown"}" was deleted`,
       createdBy: userId,
@@ -1582,7 +1583,6 @@ export const createJobLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "labor_added",
       description: `Labor entry was added`,
       createdBy: performedBy,
@@ -1650,7 +1650,6 @@ export const updateJobLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "labor_updated",
       description: `Labor entry was updated`,
       createdBy: performedBy,
@@ -1699,7 +1698,6 @@ export const deleteJobLaborHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "labor_deleted",
       description: `Labor entry was deleted`,
       createdBy: performedBy,
@@ -1823,7 +1821,6 @@ export const createJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "travel_added",
       description: "Travel entry was added",
       createdBy: performedBy,
@@ -1877,7 +1874,6 @@ export const updateJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "travel_updated",
       description: "Travel entry was updated",
       createdBy: performedBy,
@@ -1926,7 +1922,6 @@ export const deleteJobTravelHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "travel_deleted",
       description: "Travel entry was deleted",
       createdBy: performedBy,
@@ -2080,7 +2075,6 @@ export const createJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "timeline_event_added",
       description: `Timeline event "${event.event}" was added`,
       createdBy: performedBy,
@@ -2174,7 +2168,6 @@ export const updateJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "timeline_event_updated",
       description: `Timeline event "${event?.event || "Unknown"}" was updated`,
       createdBy: performedBy,
@@ -2226,7 +2219,6 @@ export const deleteJobTimelineEventHandler = async (
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "timeline_event_deleted",
       description: `Timeline event was deleted`,
       createdBy: performedBy,
@@ -2260,19 +2252,16 @@ export const getJobNotesHandler = async (req: Request, res: Response) => {
 
     if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
-    const notes = await getJobNotes(jobId!);
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
 
-    if (notes === null) {
-      return res.status(404).json({
-        success: false,
-        message: "Job not found",
-      });
-    }
+    const result = await getJobNotes(jobId!, page, limit);
 
     logger.info("Job notes fetched successfully");
     return res.status(200).json({
       success: true,
-      data: notes,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -2317,7 +2306,6 @@ export const createJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "note_added",
       description: "Note was added to job",
       createdBy: performedBy,
@@ -2400,7 +2388,6 @@ export const updateJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "note_updated",
       description: "Note was updated",
       createdBy: performedBy,
@@ -2449,7 +2436,6 @@ export const deleteJobNoteHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "note_deleted",
       description: "Note was deleted",
       createdBy: performedBy,
@@ -2484,14 +2470,16 @@ export const getJobHistoryHandler = async (req: Request, res: Response) => {
     if (!job) {
       return res.status(404).json({ success: false, message: "Job not found" });
     }
-    const clientOrgId = job.organizationId;
 
-    const history = await getJobHistory(jobId!, clientOrgId);
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    const result = await getJobHistory(jobId!, page, limit);
 
     logger.info("Job history fetched successfully");
     return res.status(200).json({
       success: true,
-      data: history,
+      data: result,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -2564,12 +2552,11 @@ export const createJobTaskHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { task, organizationId } = result;
+    const { task } = result;
 
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
       action: "task_added",
       description: `Task "${task.taskName}" was added`,
       createdBy: performedBy,
@@ -2659,7 +2646,6 @@ export const updateJobTaskHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "task_updated",
       description: `Task updated`,
       createdBy: performedBy,
@@ -2715,7 +2701,6 @@ export const deleteJobTaskHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "task_deleted",
       description: `Task deleted`,
       createdBy: performedBy,
@@ -3235,12 +3220,11 @@ export const createJobExpenseHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const { expense, organizationId } = result;
+    const { expense } = result;
 
-    // Create history entry (organizationId from job's bid, not on expense row)
+    // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId,
       action: "expense_added",
       description: `Expense "${expense.expenseType}" was added`,
       createdBy: performedBy,
@@ -3314,7 +3298,6 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "expense_updated",
       description: `Expense was updated`,
       createdBy: performedBy,
@@ -3363,7 +3346,6 @@ export const deleteJobExpenseHandler = async (req: Request, res: Response) => {
     // Create history entry
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: clientOrgId,
       action: "expense_deleted",
       description: `Expense deleted`,
       createdBy: performedBy,
@@ -3513,12 +3495,8 @@ export const createJobDocumentsHandler = async (
       });
     }
 
-    // Create history entry using job's organizationId
-    const { createJobHistoryEntry } =
-      await import("../services/job.service.js");
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: job.organizationId,
       action: "document_added",
       description: `${uploadedDocuments.length} document(s) were added`,
       createdBy: userId,
@@ -3731,12 +3709,8 @@ export const deleteJobDocumentHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Create history entry using job's organizationId
-    const { createJobHistoryEntry } =
-      await import("../services/job.service.js");
     await createJobHistoryEntry({
       jobId: jobId!,
-      organizationId: job.organizationId,
       action: "document_deleted",
       description: `Document "${existingDocument.fileName}" was deleted`,
       createdBy: userId,
@@ -4504,6 +4478,192 @@ export const createJobDesignBuildNoteHandler = async (
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ============================
+// JOB LOG HANDLERS
+// ============================
+
+export const getJobLogsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const result = await getJobLogs(jobId!, page, limit);
+
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Job log error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createJobLogHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
+    const log = await createJobLog({ ...req.body, jobId: jobId!, submittedBy: userId });
+    if (!log) {
+      return res.status(500).json({ success: false, message: "Failed to create log" });
+    }
+
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "field_log_submitted",
+      description: `Field log submitted for ${req.body.workDate}`,
+      createdBy: userId,
+    });
+
+    return res.status(201).json({ success: true, data: log, message: "Field log submitted successfully" });
+  } catch (error) {
+    logger.logApiError("Job log error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getJobLogByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "logId"])) return;
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const log = await getJobLogById(asSingleString(req.params.logId)!);
+    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    return res.status(200).json({ success: true, data: log });
+  } catch (error) {
+    logger.logApiError("Job log error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateJobLogHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "logId"])) return;
+    const logId = asSingleString(req.params.logId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const log = await updateJobLog(logId!, req.body);
+    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    return res.status(200).json({ success: true, data: log });
+  } catch (error) {
+    logger.logApiError("Job log error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobLogHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "logId"])) return;
+    const logId = asSingleString(req.params.logId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const log = await deleteJobLog(logId!);
+    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    return res.status(200).json({ success: true, message: "Field log deleted" });
+  } catch (error) {
+    logger.logApiError("Job log error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const addJobLogMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "logId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+    const logId = asSingleString(req.params.logId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: "No files uploaded" });
+    }
+
+    const captions: string[] = Array.isArray(req.body.captions)
+      ? req.body.captions
+      : req.body.captions
+        ? [req.body.captions]
+        : [];
+
+    const entries = await Promise.all(
+      files.map(async (file, idx) => {
+        const { filePath, url } = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          `job-logs/${jobId}`,
+        );
+        return {
+          jobLogId: logId!,
+          jobId: jobId!,
+          fileUrl: url,
+          filePath,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          ...(captions[idx] != null ? { caption: captions[idx] } : {}),
+          uploadedBy: userId,
+        };
+      }),
+    );
+
+    const media = await addJobLogMedia(entries);
+    return res.status(201).json({ success: true, data: media, message: "Media uploaded successfully" });
+  } catch (error) {
+    logger.logApiError("Job log media error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteJobLogMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "logId", "mediaId"])) return;
+    const mediaId = asSingleString(req.params.mediaId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const media = await deleteJobLogMedia(mediaId!);
+    if (!media) return res.status(404).json({ success: false, message: "Media not found" });
+    return res.status(200).json({ success: true, message: "Media deleted" });
+  } catch (error) {
+    logger.logApiError("Job log media error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getPropertyJobLogsHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["propertyId"])) return;
+    const propertyId = asSingleString(req.params.propertyId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const result = await getPropertyJobLogs(propertyId!, page, limit);
+
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Property job logs error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 

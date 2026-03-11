@@ -1307,6 +1307,10 @@ export const getVehicleDocumentByVehicleByIdSchema = z.object({
   params: z.object({ vehicleId: uuidSchema, id: uuidSchema }),
 });
 
+export const previewVehicleDocumentSchema = z.object({
+  params: z.object({ vehicleId: uuidSchema, id: uuidSchema }),
+});
+
 export const getVehicleDocumentPresignedUrlSchema = z.object({
   params: z.object({ vehicleId: uuidSchema }),
   body: z.object({

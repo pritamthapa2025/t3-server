@@ -6,6 +6,7 @@ import {
   updatePosition,
   deletePosition,
   getPositionsByDepartment,
+  getPositionsGrouped,
 } from "../services/position.service.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -230,6 +231,26 @@ export const deletePositionHandler = async (req: Request, res: Response) => {
   } catch (error) {
     logger.logApiError("Error deleting position", error, req);
     return res.status(500).send("Internal server error");
+  }
+};
+
+export const getPositionsGroupedHandler = async (req: Request, res: Response) => {
+  try {
+    const page  = parseInt(req.query.page  as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 5;
+    const search = req.query.search as string | undefined;
+
+    const result = await getPositionsGrouped(page, limit, search);
+
+    logger.info("Grouped positions fetched successfully");
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching grouped positions", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 

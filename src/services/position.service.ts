@@ -1,4 +1,4 @@
-import { count, eq, and, or, ilike } from "drizzle-orm";
+import { count, eq, and, or, ilike, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { positions } from "../drizzle/schema/org.schema.js";
 import * as SettingsService from "./settings.service.js";
@@ -142,6 +142,104 @@ export const deletePosition = async (id: number) => {
     .where(and(eq(positions.id, id), eq(positions.isDeleted, false)))
     .returning();
   return position || null;
+};
+
+export const getPositionsGrouped = async (
+  page: number,
+  limit: number,
+  search?: string,
+) => {
+  const offset = (page - 1) * limit;
+  const searchFilter = search ? `%${search.toLowerCase()}%` : null;
+
+  // Build grouped result using raw SQL for JSON_AGG support
+  const rows = await db.execute(sql`
+    WITH dept_groups AS (
+      -- Departments with their active positions
+      SELECT
+        d.id            AS department_id,
+        d.name          AS department_name,
+        COUNT(p.id)     AS position_count,
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id',      p.id,
+              'name',    p.name,
+              'payRate', p.pay_rate,
+              'payType', p.pay_type
+            ) ORDER BY p.name ASC
+          ) FILTER (WHERE p.id IS NOT NULL),
+          '[]'::json
+        ) AS positions
+      FROM org.departments d
+      LEFT JOIN org.positions p
+        ON  p.department_id = d.id
+        AND p.is_deleted    = false
+        AND p.is_active     = true
+        ${searchFilter ? sql`AND LOWER(p.name) LIKE ${searchFilter}` : sql``}
+      WHERE d.is_deleted = false
+      GROUP BY d.id, d.name
+
+      UNION ALL
+
+      -- Positions with no department
+      SELECT
+        NULL              AS department_id,
+        'No Department'   AS department_name,
+        COUNT(p.id)       AS position_count,
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id',      p.id,
+              'name',    p.name,
+              'payRate', p.pay_rate,
+              'payType', p.pay_type
+            ) ORDER BY p.name ASC
+          ) FILTER (WHERE p.id IS NOT NULL),
+          '[]'::json
+        ) AS positions
+      FROM org.positions p
+      WHERE p.department_id IS NULL
+        AND p.is_deleted    = false
+        AND p.is_active     = true
+        ${searchFilter ? sql`AND LOWER(p.name) LIKE ${searchFilter}` : sql``}
+      HAVING COUNT(p.id) > 0
+    ),
+    total_count AS (
+      SELECT COUNT(*) AS total FROM dept_groups
+    )
+    SELECT
+      dg.department_id,
+      dg.department_name,
+      dg.position_count,
+      dg.positions,
+      tc.total AS total_departments
+    FROM dept_groups dg, total_count tc
+    ORDER BY
+      CASE WHEN dg.department_id IS NULL THEN 1 ELSE 0 END,
+      dg.department_name ASC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const data = (rows.rows ?? rows) as any[];
+  const total = data.length > 0 ? parseInt(data[0].total_departments ?? "0", 10) : 0;
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data: data.map((row) => ({
+      departmentId: row.department_id ?? null,
+      departmentName: row.department_name,
+      positionCount: parseInt(row.position_count ?? "0", 10),
+      positions: typeof row.positions === "string" ? JSON.parse(row.positions) : (row.positions ?? []),
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
 };
 
 export const getPositionsByDepartment = async (departmentId: number) => {

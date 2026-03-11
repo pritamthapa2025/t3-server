@@ -10,6 +10,7 @@ import {
   max,
   lte,
   inArray,
+  getTableColumns,
 } from "drizzle-orm";
 import { logger } from "../utils/logger.js";
 import { alias } from "drizzle-orm/pg-core";
@@ -25,6 +26,10 @@ import {
   jobPMInspections,
   jobPlanSpecRecords,
   jobDesignBuildNotes,
+  jobHistory,
+  jobNotes,
+  jobLogs,
+  jobLogMedia,
 } from "../drizzle/schema/jobs.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import {
@@ -41,6 +46,7 @@ import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import {
   bidsTable,
   bidFinancialBreakdown,
+  bidLabor,
 } from "../drizzle/schema/bids.schema.js";
 import { properties, clientContacts } from "../drizzle/schema/client.schema.js";
 import { getDefaultExpenseCategory } from "./expense.service.js";
@@ -71,10 +77,6 @@ import {
   updateBidTimelineEvent,
   deleteBidTimelineEvent,
   getBidNotes,
-  getBidNoteById,
-  createBidNote,
-  updateBidNote,
-  deleteBidNote,
   getBidHistory,
   createBidHistoryEntry,
   getBidDocuments,
@@ -231,6 +233,103 @@ export const getJobs = async (
   };
 };
 
+// ── Jobs by Client Organization ──────────────────────────────────────────────
+export const getJobsByOrganizationId = async (
+  organizationId: string,
+  offset: number,
+  limit: number,
+  filters?: {
+    status?: string;
+    search?: string;
+  },
+) => {
+  let whereCondition = and(
+    eq(jobs.isDeleted, false),
+    eq(bidsTable.organizationId, organizationId),
+  );
+
+  if (filters?.status) {
+    whereCondition = and(whereCondition, eq(jobs.status, filters.status as any));
+  }
+
+  if (filters?.search) {
+    whereCondition = and(
+      whereCondition,
+      or(
+        ilike(jobs.jobNumber, `%${filters.search}%`),
+        ilike(jobs.description, `%${filters.search}%`),
+      ),
+    );
+  }
+
+  const jobsData = await db
+    .select({
+      job: jobs,
+      bid: bidsTable,
+      totalPrice: bidFinancialBreakdown.totalPrice,
+      actualTotalPrice: bidFinancialBreakdown.actualTotalPrice,
+      createdByName: users.fullName,
+      organizationName: organizations.name,
+      organizationCity: organizations.city,
+      organizationState: organizations.state,
+    })
+    .from(jobs)
+    .innerJoin(
+      bidsTable,
+      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+    )
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
+    .leftJoin(users, eq(jobs.createdBy, users.id))
+    .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
+    .where(whereCondition)
+    .orderBy(desc(jobs.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const totalCountResult = await db
+    .select({ count: count() })
+    .from(jobs)
+    .innerJoin(
+      bidsTable,
+      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+    )
+    .where(whereCondition);
+
+  const totalCount = totalCountResult[0]?.count || 0;
+
+  const jobsList = jobsData.map((item) => ({
+    ...item.job,
+    priority: item.bid.priority,
+    name: item.bid.projectName,
+    organizationId: item.bid.organizationId,
+    totalPrice: item.totalPrice ?? null,
+    contractValue: item.actualTotalPrice ?? null,
+    createdByName: item.createdByName ?? null,
+    organizationName: item.organizationName ?? null,
+    organizationLocation:
+      item.organizationCity && item.organizationState
+        ? `${item.organizationCity}, ${item.organizationState}`
+        : (item.organizationCity ?? item.organizationState ?? null),
+  }));
+
+  return {
+    jobs: jobsList,
+    totalCount,
+    pagination: {
+      offset,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+      page: Math.floor(offset / limit) + 1,
+    },
+  };
+};
+
 export const getJobById = async (
   id: string,
   options?: GetJobsFilterOptions,
@@ -328,6 +427,7 @@ export const createJob = async (data: {
   assignedTeamMembers?: Array<{
     employeeId: number;
     positionId?: number;
+    bidLaborId?: string;
   }>;
   createdBy: string;
 }) => {
@@ -385,7 +485,6 @@ export const createJob = async (data: {
   // Create history entry for bid status change to "won"
   await createBidHistoryEntry({
     bidId: data.bidId,
-    organizationId: bid.organizationId,
     action: "status_changed",
     oldValue: bid.currentStatus,
     newValue: "won",
@@ -445,6 +544,36 @@ export const createJob = async (data: {
         }),
       ),
     );
+
+    // Write the assigned employee back to the bidLabor entry so travel entries
+    // can be enriched with vehicle data later via bidLabor.assignedEmployeeId
+    // Wrapped in try-catch in case the migration hasn't been applied yet
+    logger.info(
+      `[createJob] assignedTeamMembers received: ${JSON.stringify(data.assignedTeamMembers)}`,
+    );
+    const membersWithLaborId = data.assignedTeamMembers.filter(
+      (m) => m.bidLaborId,
+    );
+    logger.info(
+      `[createJob] membersWithLaborId count: ${membersWithLaborId.length}`,
+    );
+    if (membersWithLaborId.length > 0) {
+      try {
+        await Promise.all(
+          membersWithLaborId.map((member) =>
+            db
+              .update(bidLabor)
+              .set({ assignedEmployeeId: member.employeeId })
+              .where(eq(bidLabor.id, member.bidLaborId!)),
+          ),
+        );
+      } catch (err) {
+        logger.warn(
+          "Skipped writing assignedEmployeeId to bidLabor (migration not yet applied): " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
   }
 
   // Fire job_assigned for primary technician and supervisors (fire-and-forget)
@@ -1306,8 +1435,8 @@ export const getJobWithAllData = async (jobId: string) => {
     getBidLabor(jobData.bidId),
     getBidOperatingExpenses(jobData.bidId, jobData.organizationId),
     getBidTimeline(jobData.bidId),
-    getBidNotes(jobData.bidId),
-    getBidHistory(jobData.bidId),
+    getBidNotes(jobData.bidId).then((r) => r.data),
+    getBidHistory(jobData.bidId).then((r) => r.data),
     getOrganizationById(jobData.organizationId),
     getBidSurveyData(jobData.bidId, jobData.organizationId),
     getBidPlanSpecData(jobData.bidId, jobData.organizationId),
@@ -1319,7 +1448,66 @@ export const getJobWithAllData = async (jobId: string) => {
   // Get travel for each labor entry
   const travelPromises = labor.map((laborEntry) => getBidTravel(laborEntry.id));
   const travelArrays = await Promise.all(travelPromises);
-  const travel = travelArrays.flat();
+  const rawTravel = travelArrays.flat();
+
+  // Enrich each travel entry with vehicle data via bidLabor.assignedEmployeeId
+  // Wrapped in try-catch so jobs still load if the migration hasn't been applied yet
+  let travel: (typeof rawTravel[number] & { vehicle?: unknown })[] = rawTravel;
+  if (rawTravel.length > 0) {
+    try {
+      const bidLaborIds = [
+        ...new Set(rawTravel.map((t) => t.bidLaborId)),
+      ].filter(Boolean);
+
+      if (bidLaborIds.length > 0) {
+        const laborRows = await db
+          .select({
+            id: bidLabor.id,
+            assignedEmployeeId: bidLabor.assignedEmployeeId,
+          })
+          .from(bidLabor)
+          .where(inArray(bidLabor.id, bidLaborIds));
+
+        const laborEmpMap = new Map<string, number | null>(
+          laborRows.map((r) => [r.id, r.assignedEmployeeId]),
+        );
+
+        const employeeIds = [...laborEmpMap.values()].filter(
+          (id): id is number => id != null,
+        );
+
+        const vehicleRows =
+          employeeIds.length > 0
+            ? await db
+                .select()
+                .from(vehicles)
+                .where(
+                  and(
+                    inArray(vehicles.assignedToEmployeeId, employeeIds),
+                    eq(vehicles.isDeleted, false),
+                  ),
+                )
+            : [];
+
+        const empVehicleMap = new Map(
+          vehicleRows.map((v) => [v.assignedToEmployeeId, v]),
+        );
+
+        travel = rawTravel.map((t) => {
+          const empId = laborEmpMap.get(t.bidLaborId) ?? null;
+          const vehicle =
+            empId != null ? (empVehicleMap.get(empId) ?? null) : null;
+          return { ...t, vehicle };
+        });
+      }
+    } catch (err) {
+      // Migration for assigned_employee_id not yet applied — skip enrichment
+      logger.warn(
+        "Vehicle enrichment skipped (assigned_employee_id column not found): " +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    }
+  }
 
   // Get bid to include priority and all necessary fields for editing
   const [bid] = await db
@@ -2278,64 +2466,52 @@ export const deleteJobTimelineEvent = async (
 };
 
 // ============================
-// Job Notes Operations (Placeholder)
+// Job Notes Operations
 // ============================
 
-export const getJobNotes = async (jobId: string) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
+const createdByJobNoteUser = alias(users, "created_by_job_note_user");
+
+export const getJobNotes = async (jobId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
+    .from(jobNotes)
+    .where(and(eq(jobNotes.jobId, jobId), eq(jobNotes.isDeleted, false)));
+  const total = countResult[0]?.total ?? 0;
+
+  const notes = await db
     .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
+      ...getTableColumns(jobNotes),
+      createdByName: createdByJobNoteUser.fullName,
     })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
+    .from(jobNotes)
+    .leftJoin(createdByJobNoteUser, eq(jobNotes.createdBy, createdByJobNoteUser.id))
+    .where(and(eq(jobNotes.jobId, jobId), eq(jobNotes.isDeleted, false)))
+    .orderBy(desc(jobNotes.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  if (!jobData) {
-    return null;
-  }
-
-  // Get notes from the bid
-  const notes = await getBidNotes(jobData.bidId);
-
-  return notes;
+  return {
+    data: notes.map(({ createdByName, ...note }) => ({
+      ...note,
+      createdByName: createdByName ?? null,
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 };
 
 export const createJobNote = async (data: {
   jobId: string;
-  organizationId: string;
   note: string;
-  isInternal?: boolean;
   createdBy: string;
 }) => {
-  // Get job with bid info to retrieve the bidId
-  const [jobData] = await db
-    .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
-    })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)));
-
-  if (!jobData) {
-    return null;
-  }
-
-  // Create note in the bid
-  const note = await createBidNote({
-    bidId: jobData.bidId,
-    note: data.note,
-    ...(data.isInternal !== undefined && { isInternal: data.isInternal }),
-    createdBy: data.createdBy,
-  });
+  const [note] = await db.insert(jobNotes).values(data).returning();
 
   // Fire job_site_notes_added notification (fire-and-forget)
   if (note) {
@@ -2372,164 +2548,112 @@ export const createJobNote = async (data: {
   return note;
 };
 
-export const getJobNoteById = async (jobId: string, noteId: string) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
+export const getJobNoteById = async (_jobId: string, noteId: string) => {
+  const [row] = await db
     .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
+      ...getTableColumns(jobNotes),
+      createdByName: createdByJobNoteUser.fullName,
     })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
-
-  if (!jobData) {
-    return null;
-  }
-
-  // Get the note from the bid
-  const note = await getBidNoteById(noteId);
-
-  return note;
+    .from(jobNotes)
+    .leftJoin(createdByJobNoteUser, eq(jobNotes.createdBy, createdByJobNoteUser.id))
+    .where(and(eq(jobNotes.id, noteId), eq(jobNotes.isDeleted, false)));
+  if (!row) return null;
+  const { createdByName, ...note } = row;
+  return { ...note, createdByName: createdByName ?? null };
 };
 
 export const updateJobNote = async (
   id: string,
-  jobId: string,
-  organizationId: string,
+  _jobId: string,
+  _organizationId: string,
   data: {
     note: string;
-    isInternal?: boolean;
   },
 ) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
-    .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
-    })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
-
-  if (!jobData) {
-    return null;
-  }
-
-  // Update note using bid service
-  const note = await updateBidNote(id, data);
-
-  return note;
+  const [note] = await db
+    .update(jobNotes)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(jobNotes.id, id), eq(jobNotes.isDeleted, false)))
+    .returning();
+  return note ?? null;
 };
 
 export const deleteJobNote = async (
   id: string,
-  jobId: string,
+  _jobId: string,
   _organizationId: string,
 ) => {
-  // Get job with bid info to retrieve the bid's organizationId
-  const [jobData] = await db
-    .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
-    })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
-
-  if (!jobData) {
-    return null;
-  }
-
-  // Delete note using bid service
-  const note = await deleteBidNote(id);
-
-  return note;
+  const [note] = await db
+    .update(jobNotes)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(jobNotes.id, id), eq(jobNotes.isDeleted, false)))
+    .returning();
+  return note ?? null;
 };
 
 // ============================
 // Job History Operations (Placeholder)
 // ============================
 
-export const getJobHistory = async (jobId: string, _organizationId: string) => {
-  // Get job with bid info to retrieve the bidId
-  const [jobData] = await db
+export const getJobHistory = async (jobId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
+    .from(jobHistory)
+    .where(eq(jobHistory.jobId, jobId));
+  const total = countResult[0]?.total ?? 0;
+
+  const data = await db
     .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
+      id: jobHistory.id,
+      jobId: jobHistory.jobId,
+      action: jobHistory.action,
+      oldValue: jobHistory.oldValue,
+      newValue: jobHistory.newValue,
+      description: jobHistory.description,
+      performedBy: jobHistory.performedBy,
+      createdAt: jobHistory.createdAt,
+      userName: users.fullName,
+      userId: users.id,
     })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(
-      and(
-        eq(jobs.id, jobId),
-        eq(jobs.isDeleted, false),
-        eq(bidsTable.isDeleted, false),
-      ),
-    );
+    .from(jobHistory)
+    .leftJoin(users, eq(jobHistory.performedBy, users.id))
+    .where(eq(jobHistory.jobId, jobId))
+    .orderBy(desc(jobHistory.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  if (!jobData) {
-    return [];
-  }
-
-  // Get history from the bid
-  const history = await getBidHistory(jobData.bidId);
-
-  return history;
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 export const createJobHistoryEntry = async (data: {
   jobId: string;
-  organizationId: string;
   action: string;
-  description: string;
+  description?: string;
+  oldValue?: string;
+  newValue?: string;
   createdBy: string;
 }) => {
-  // Get job with bid info to retrieve the bidId and client org
-  // organizationId in data is the job's client org (from bid), set by controller
-  const [jobData] = await db
-    .select({
-      bidId: jobs.bidId,
-      organizationId: bidsTable.organizationId,
+  const [historyEntry] = await db
+    .insert(jobHistory)
+    .values({
+      jobId: data.jobId,
+      action: data.action,
+      description: data.description,
+      oldValue: data.oldValue,
+      newValue: data.newValue,
+      performedBy: data.createdBy,
     })
-    .from(jobs)
-    .innerJoin(
-      bidsTable,
-      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
-    )
-    .where(
-      and(
-        eq(jobs.id, data.jobId),
-        eq(jobs.isDeleted, false),
-        eq(bidsTable.isDeleted, false),
-      ),
-    );
-
-  if (!jobData) {
-    return null;
-  }
-
-  // Create history entry in the bid
-  const historyEntry = await createBidHistoryEntry({
-    bidId: jobData.bidId,
-    organizationId: jobData.organizationId,
-    action: data.action,
-    description: data.description,
-    performedBy: data.createdBy,
-  });
-
+    .returning();
   return historyEntry;
 };
 
@@ -4366,4 +4490,234 @@ export const bulkDeleteJobs = async (ids: string[], deletedBy: string) => {
     .where(and(inArray(jobs.id, ids), eq(jobs.isDeleted, false)))
     .returning({ id: jobs.id });
   return { deleted: result.length, skipped: ids.length - result.length };
+};
+
+// ============================
+// JOB LOGS
+// ============================
+
+const submittedByJobLogUser = alias(users, "submitted_by_job_log_user");
+
+export const getJobLogs = async (jobId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
+    .from(jobLogs)
+    .where(and(eq(jobLogs.jobId, jobId), eq(jobLogs.isDeleted, false)));
+  const total = countResult[0]?.total ?? 0;
+
+  const logs = await db
+    .select({
+      ...getTableColumns(jobLogs),
+      submittedByName: submittedByJobLogUser.fullName,
+    })
+    .from(jobLogs)
+    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .where(and(eq(jobLogs.jobId, jobId), eq(jobLogs.isDeleted, false)))
+    .orderBy(desc(jobLogs.workDate), desc(jobLogs.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Fetch media for all logs in this page
+  const logIds = logs.map((l) => l.id);
+  const media =
+    logIds.length > 0
+      ? await db
+          .select()
+          .from(jobLogMedia)
+          .where(inArray(jobLogMedia.jobLogId, logIds))
+          .orderBy(asc(jobLogMedia.createdAt))
+      : [];
+
+  const mediaByLogId = media.reduce<Record<string, typeof media>>(
+    (acc, m) => {
+      (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
+      return acc;
+    },
+    {},
+  );
+
+  return {
+    data: logs.map(({ submittedByName, ...log }) => ({
+      ...log,
+      submittedByName: submittedByName ?? null,
+      media: mediaByLogId[log.id] || [],
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+};
+
+export const getJobLogById = async (logId: string) => {
+  const [row] = await db
+    .select({
+      ...getTableColumns(jobLogs),
+      submittedByName: submittedByJobLogUser.fullName,
+    })
+    .from(jobLogs)
+    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .where(and(eq(jobLogs.id, logId), eq(jobLogs.isDeleted, false)));
+  if (!row) return null;
+
+  const media = await db
+    .select()
+    .from(jobLogMedia)
+    .where(eq(jobLogMedia.jobLogId, logId))
+    .orderBy(asc(jobLogMedia.createdAt));
+
+  const { submittedByName, ...log } = row;
+  return { ...log, submittedByName: submittedByName ?? null, media };
+};
+
+export const createJobLog = async (data: {
+  jobId: string;
+  workDate: string;
+  summary: string;
+  hoursWorked?: number;
+  completionPercentage?: number;
+  issues?: string;
+  nextSteps?: string;
+  submittedBy: string;
+}) => {
+  const [log] = await db
+    .insert(jobLogs)
+    .values({
+      ...data,
+      hoursWorked: data.hoursWorked != null ? String(data.hoursWorked) : undefined,
+    })
+    .returning();
+  return log;
+};
+
+export const updateJobLog = async (
+  logId: string,
+  data: {
+    workDate?: string;
+    summary?: string;
+    hoursWorked?: number;
+    completionPercentage?: number;
+    issues?: string;
+    nextSteps?: string;
+  },
+) => {
+  const [log] = await db
+    .update(jobLogs)
+    .set({
+      ...data,
+      hoursWorked: data.hoursWorked != null ? String(data.hoursWorked) : undefined,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(jobLogs.id, logId), eq(jobLogs.isDeleted, false)))
+    .returning();
+  return log ?? null;
+};
+
+export const deleteJobLog = async (logId: string) => {
+  const [log] = await db
+    .update(jobLogs)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(and(eq(jobLogs.id, logId), eq(jobLogs.isDeleted, false)))
+    .returning();
+  return log ?? null;
+};
+
+export const addJobLogMedia = async (entries: {
+  jobLogId: string;
+  jobId: string;
+  fileUrl: string;
+  filePath: string;
+  fileName?: string;
+  fileType?: string;
+  caption?: string;
+  uploadedBy: string;
+}[]) => {
+  if (entries.length === 0) return [];
+  return db.insert(jobLogMedia).values(entries).returning();
+};
+
+export const deleteJobLogMedia = async (mediaId: string) => {
+  const [media] = await db
+    .delete(jobLogMedia)
+    .where(eq(jobLogMedia.id, mediaId))
+    .returning();
+  return media ?? null;
+};
+
+export const getPropertyJobLogs = async (propertyId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  // Count via join: job_logs → jobs → bids → property_id
+  const countResult = await db
+    .select({ total: count() })
+    .from(jobLogs)
+    .innerJoin(jobs, eq(jobLogs.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(
+        eq(bidsTable.propertyId, propertyId),
+        eq(jobLogs.isDeleted, false),
+        eq(jobs.isDeleted, false),
+      ),
+    );
+  const total = countResult[0]?.total ?? 0;
+
+  const logs = await db
+    .select({
+      ...getTableColumns(jobLogs),
+      submittedByName: submittedByJobLogUser.fullName,
+      jobNumber: jobs.jobNumber,
+      jobName: bidsTable.projectName,
+      jobStatus: jobs.status,
+    })
+    .from(jobLogs)
+    .innerJoin(jobs, eq(jobLogs.jobId, jobs.id))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .where(
+      and(
+        eq(bidsTable.propertyId, propertyId),
+        eq(jobLogs.isDeleted, false),
+        eq(jobs.isDeleted, false),
+      ),
+    )
+    .orderBy(desc(jobLogs.workDate), desc(jobLogs.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const logIds = logs.map((l) => l.id);
+  const media =
+    logIds.length > 0
+      ? await db
+          .select()
+          .from(jobLogMedia)
+          .where(inArray(jobLogMedia.jobLogId, logIds))
+          .orderBy(asc(jobLogMedia.createdAt))
+      : [];
+
+  const mediaByLogId = media.reduce<Record<string, typeof media>>(
+    (acc, m) => {
+      (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
+      return acc;
+    },
+    {},
+  );
+
+  return {
+    data: logs.map(({ submittedByName, ...log }) => ({
+      ...log,
+      submittedByName: submittedByName ?? null,
+      media: mediaByLogId[log.id] || [],
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 };

@@ -55,6 +55,7 @@ import {
   properties,
 } from "../drizzle/schema/client.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { getTableColumns } from "drizzle-orm";
 import { getOrganizationById } from "./client.service.js";
 import { getOperatingExpenseDefaults } from "./settings.service.js";
 
@@ -168,11 +169,12 @@ export const getBids = async (
   offset: number,
   limit: number,
   filters?: {
-    status?: string;
+    status?: string[];
     jobType?: string;
     priority?: string;
     assignedTo?: string;
     search?: string;
+    sortBy?: "newest" | "oldest" | "value_high" | "value_low";
   },
   options?: GetBidsFilterOptions,
 ) => {
@@ -187,8 +189,8 @@ export const getBids = async (
     whereConditions.push(eq(bidsTable.organizationId, organizationId));
   }
 
-  if (filters?.status) {
-    whereConditions.push(eq(bidsTable.status, filters.status as any));
+  if (filters?.status && filters.status.length > 0) {
+    whereConditions.push(inArray(bidsTable.status, filters.status as any[]));
   }
   if (filters?.jobType) {
     whereConditions.push(eq(bidsTable.jobType, filters.jobType as any));
@@ -274,7 +276,15 @@ export const getBids = async (
     .where(whereCondition)
     .limit(limit)
     .offset(offset)
-    .orderBy(desc(bidsTable.createdAt));
+    .orderBy(
+      filters?.sortBy === "oldest"
+        ? asc(bidsTable.createdAt)
+        : filters?.sortBy === "value_high"
+          ? sql`${bidFinancialBreakdown.actualTotalPrice} DESC NULLS LAST`
+          : filters?.sortBy === "value_low"
+            ? sql`${bidFinancialBreakdown.actualTotalPrice} ASC NULLS LAST`
+            : desc(bidsTable.createdAt),
+    );
 
   const totalCount = await db
     .select({ count: count() })
@@ -339,41 +349,63 @@ export const getBids = async (
   };
 };
 
-/** Minimal bid fields for list/display (related bids) */
-const RELATED_BID_DISPLAY_FIELDS = [
-  "id",
-  "bidNumber",
-  "status",
-  "priority",
-  "projectName",
-  "organizationId",
-  "bidAmount",
-  "jobType",
-  "createdAt",
-  "createdByName",
-  "assignedToName",
-  "expiresIn",
-] as const;
-
 /**
- * Get all bids for the same organization as the given bid (related bids).
- * Uses the bid's organizationId and returns minimal data for display.
+ * Get all version bids in the same family tree as the given bid.
+ * Traverses rootBidId to find the family root, then returns every bid
+ * whose id = root OR whose rootBidId = root, sorted by versionNumber asc.
  */
 export const getRelatedBids = async (bidId: string) => {
-  const bid = await getBidByIdSimple(bidId);
-  if (!bid) return null;
-  const result = await getBids(bid.organizationId, 0, 500);
-  const minimalData = result.data.map((b) => {
-    const minimal: Record<string, unknown> = {};
-    for (const key of RELATED_BID_DISPLAY_FIELDS) {
-      if (key in b) minimal[key] = (b as Record<string, unknown>)[key];
-    }
-    return minimal;
-  });
+  // Resolve the given bid's own rootBidId and versionNumber
+  const [current] = await db
+    .select({
+      id: bidsTable.id,
+      rootBidId: bidsTable.rootBidId,
+      versionNumber: bidsTable.versionNumber,
+    })
+    .from(bidsTable)
+    .where(eq(bidsTable.id, bidId))
+    .limit(1);
+
+  if (!current) return null;
+
+  // The root of this family tree is either the stored rootBidId
+  // (for child bids) or the bid itself (for the root/V1 bid).
+  const familyRootId = current.rootBidId ?? current.id;
+
+  // Fetch every member of the family: the root + all children
+  const versions = await db
+    .select({
+      id: bidsTable.id,
+      bidNumber: bidsTable.bidNumber,
+      status: bidsTable.status,
+      priority: bidsTable.priority,
+      projectName: bidsTable.projectName,
+      jobType: bidsTable.jobType,
+      createdAt: bidsTable.createdAt,
+      versionNumber: bidsTable.versionNumber,
+      rootBidId: bidsTable.rootBidId,
+      parentBidId: bidsTable.parentBidId,
+      organizationId: bidsTable.organizationId,
+      assignedTo: bidsTable.assignedTo,
+      createdByUser: createdByUser.fullName,
+    })
+    .from(bidsTable)
+    .leftJoin(createdByUser, eq(bidsTable.createdBy, createdByUser.id))
+    .where(
+      and(
+        eq(bidsTable.isDeleted, false),
+        or(
+          eq(bidsTable.id, familyRootId),
+          eq(bidsTable.rootBidId, familyRootId),
+        ),
+      ),
+    )
+    .orderBy(asc(bidsTable.versionNumber));
+
   return {
-    data: minimalData,
-    total: result.total,
-    pagination: result.pagination,
+    data: versions,
+    familyRootId,
+    total: versions.length,
   };
 };
 
@@ -458,6 +490,99 @@ export const getBidByIdSimple = async (id: string) => {
   };
 };
 
+/**
+ * Walk up the parentBidId chain to find the root bid, then calculate the
+ * next sequential versionNumber for a new child bid.
+ *
+ * Strategy:
+ *  1. Walk up via parentBidId until we reach a bid with no parent — that is
+ *     the "root" (the original V1 bid of the family).
+ *  2. Query MAX(version_number) across every bid that shares the same root
+ *     (i.e. root_bid_id = rootId OR id = rootId).
+ *  3. next version = MAX + 1.
+ *
+ * Because root_bid_id is indexed, step 2 is a single fast indexed query even
+ * for very large families.
+ */
+export const resolveVersionTree = async (
+  parentBidId: string,
+): Promise<{ rootBidId: string; nextVersionNumber: number }> => {
+  // Walk up to find the root (the bid that has no parentBidId)
+  let currentId = parentBidId;
+  let rootId = parentBidId;
+
+  for (let depth = 0; depth < 50; depth++) {
+    const [row] = await db
+      .select({ id: bidsTable.id, parentBidId: bidsTable.parentBidId })
+      .from(bidsTable)
+      .where(eq(bidsTable.id, currentId))
+      .limit(1);
+
+    if (!row) break;
+    if (!row.parentBidId) {
+      rootId = row.id;
+      break;
+    }
+    rootId = row.id;
+    currentId = row.parentBidId;
+  }
+
+  // MAX versionNumber across the entire family tree
+  const [maxRow] = await db
+    .select({ maxVersion: max(bidsTable.versionNumber) })
+    .from(bidsTable)
+    .where(
+      or(
+        eq(bidsTable.rootBidId, rootId),
+        eq(bidsTable.id, rootId),
+      ),
+    );
+
+  const maxVersion = maxRow?.maxVersion ?? 1;
+  return { rootBidId: rootId, nextVersionNumber: Number(maxVersion) + 1 };
+};
+
+/**
+ * Return version-info for a given bid: its project name, organization name,
+ * its own version, and the next available version in its family tree.
+ * Used by the frontend "Parent Bid" dropdown to auto-populate the version badge.
+ */
+export const getBidVersionInfo = async (bidId: string) => {
+  const [bid] = await db
+    .select({
+      id: bidsTable.id,
+      projectName: bidsTable.projectName,
+      organizationId: bidsTable.organizationId,
+      parentBidId: bidsTable.parentBidId,
+      versionNumber: bidsTable.versionNumber,
+    })
+    .from(bidsTable)
+    .where(and(eq(bidsTable.id, bidId), eq(bidsTable.isDeleted, false)))
+    .limit(1);
+
+  if (!bid) return null;
+
+  // Get organization name
+  const [org] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, bid.organizationId))
+    .limit(1);
+
+  // Resolve next version for a new child of this bid
+  const { nextVersionNumber } = await resolveVersionTree(bidId);
+
+  return {
+    bidId: bid.id,
+    projectName: bid.projectName,
+    organizationName: org?.name ?? null,
+    currentVersion: `V${bid.versionNumber}`,
+    currentVersionNumber: bid.versionNumber,
+    nextVersionNumber,
+    nextVersion: `V${nextVersionNumber}`,
+  };
+};
+
 export const createBid = async (data: {
   organizationId: string;
   primaryContactId?: string | null;
@@ -500,6 +625,7 @@ export const createBid = async (data: {
   marked?: string;
   convertToJob?: boolean;
   createdBy: string;
+  parentBidId?: string | null;
   // New fields
   industryClassification?: string;
   scheduledDateTime?: string;
@@ -569,6 +695,16 @@ export const createBid = async (data: {
 
   const endDateVal = toDateOrUndefined(data.endDate);
 
+  // Resolve versioning when a parent is provided
+  let resolvedVersionNumber = 1;
+  let resolvedRootBidId: string | undefined;
+
+  if (data.parentBidId) {
+    const tree = await resolveVersionTree(data.parentBidId);
+    resolvedRootBidId = tree.rootBidId;
+    resolvedVersionNumber = tree.nextVersionNumber;
+  }
+
   // Insert bid - no retry logic needed since bidNumber is guaranteed unique
   const result = await db
     .insert(bidsTable)
@@ -578,6 +714,9 @@ export const createBid = async (data: {
       organizationId: data.organizationId,
       primaryContactId: data.primaryContactId ?? undefined,
       propertyId: data.propertyId ?? undefined,
+      parentBidId: data.parentBidId ?? undefined,
+      rootBidId: resolvedRootBidId,
+      versionNumber: resolvedVersionNumber,
       createdBy: data.createdBy,
       status: (data.status as any) || "draft",
       priority: (data.priority as any) || "medium",
@@ -757,6 +896,9 @@ export const updateBid = async (
     qtyNumber: string;
     marked: string;
     convertToJob: boolean;
+    parentBidId: string | null;
+    rootBidId: string | null;
+    versionNumber: number;
     // New fields
     industryClassification: string;
     scheduledDateTime: string;
@@ -2852,28 +2994,59 @@ export const deleteBidTimelineEvent = async (id: string) => {
 // Notes Operations
 // ============================
 
-export const getBidNotes = async (bidId: string) => {
-  const notes = await db
-    .select()
+export const getBidNotes = async (bidId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
     .from(bidNotes)
+    .where(and(eq(bidNotes.bidId, bidId), eq(bidNotes.isDeleted, false)));
+  const total = countResult[0]?.total ?? 0;
+
+  const notes = await db
+    .select({
+      ...getTableColumns(bidNotes),
+      createdByName: createdByUser.fullName,
+    })
+    .from(bidNotes)
+    .leftJoin(createdByUser, eq(bidNotes.createdBy, createdByUser.id))
     .where(and(eq(bidNotes.bidId, bidId), eq(bidNotes.isDeleted, false)))
-    .orderBy(desc(bidNotes.createdAt));
-  return notes;
+    .orderBy(desc(bidNotes.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return {
+    data: notes.map(({ createdByName, ...note }) => ({
+      ...note,
+      createdByName: createdByName ?? null,
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 };
 
 export const getBidNoteById = async (noteId: string) => {
-  const [note] = await db
-    .select()
+  const [row] = await db
+    .select({
+      ...getTableColumns(bidNotes),
+      createdByName: createdByUser.fullName,
+    })
     .from(bidNotes)
+    .leftJoin(createdByUser, eq(bidNotes.createdBy, createdByUser.id))
     .where(and(eq(bidNotes.id, noteId), eq(bidNotes.isDeleted, false)));
-  return note || null;
+  if (!row) return null;
+  const { createdByName, ...note } = row;
+  return { ...note, createdByName: createdByName ?? null };
 };
 
 export const createBidNote = async (data: {
   bidId: string;
   note: string;
   createdBy: string;
-  isInternal?: boolean;
 }) => {
   const [note] = await db.insert(bidNotes).values(data).returning();
   return note;
@@ -2883,7 +3056,6 @@ export const updateBidNote = async (
   id: string,
   data: {
     note: string;
-    isInternal?: boolean;
   },
 ) => {
   const [note] = await db
@@ -2913,18 +3085,48 @@ export const deleteBidNote = async (id: string) => {
 // History Operations (Read-only)
 // ============================
 
-export const getBidHistory = async (bidId: string) => {
-  const history = await db
-    .select()
+export const getBidHistory = async (bidId: string, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
     .from(bidHistory)
+    .where(eq(bidHistory.bidId, bidId));
+  const total = countResult[0]?.total ?? 0;
+
+  const data = await db
+    .select({
+      id: bidHistory.id,
+      bidId: bidHistory.bidId,
+      action: bidHistory.action,
+      oldValue: bidHistory.oldValue,
+      newValue: bidHistory.newValue,
+      description: bidHistory.description,
+      performedBy: bidHistory.performedBy,
+      createdAt: bidHistory.createdAt,
+      userName: users.fullName,
+      userId: users.id,
+    })
+    .from(bidHistory)
+    .leftJoin(users, eq(bidHistory.performedBy, users.id))
     .where(eq(bidHistory.bidId, bidId))
-    .orderBy(desc(bidHistory.createdAt));
-  return history;
+    .orderBy(desc(bidHistory.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 export const createBidHistoryEntry = async (data: {
   bidId: string;
-  organizationId: string;
   action: string;
   oldValue?: string;
   newValue?: string;
@@ -3096,8 +3298,8 @@ export const getBidWithAllData = async (id: string) => {
     getBidServiceData(id, organizationId),
     getBidPreventativeMaintenanceData(id, organizationId),
     getBidTimeline(id),
-    getBidNotes(id),
-    getBidHistory(id),
+    getBidNotes(id).then((r) => r.data),
+    getBidHistory(id).then((r) => r.data),
     getOrganizationById(organizationId),
     getBidOperatingExpenses(id, organizationId),
     getBidDocuments(id),
@@ -3140,15 +3342,75 @@ export const getBidWithAllData = async (id: string) => {
 
 export const getBidDocuments = async (
   bidId: string,
-  options?: { tagIds?: string[] },
+  options?: {
+    tagIds?: string[];
+    fileType?: "pdf" | "word" | "excel";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
 ) => {
   const tagIds = options?.tagIds?.filter(Boolean);
   const hasTagFilter = (tagIds?.length ?? 0) > 0;
 
-  const baseConditions = and(
+  // Build base conditions
+  const conditions: any[] = [
     eq(bidDocuments.bidId, bidId),
     eq(bidDocuments.isDeleted, false),
-  );
+  ];
+
+  // File type filter — map UI labels to MIME type prefixes/patterns
+  if (options?.fileType) {
+    const mimeMap: Record<string, string[]> = {
+      pdf: ["application/pdf"],
+      word: [
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ],
+      excel: [
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
+    };
+    const mimeTypes = mimeMap[options.fileType] ?? [];
+    if (mimeTypes.length === 1) {
+      conditions.push(eq(bidDocuments.fileType, mimeTypes[0]!));
+    } else if (mimeTypes.length > 1) {
+      conditions.push(inArray(bidDocuments.fileType, mimeTypes));
+    }
+  }
+
+  // Date range filter on createdAt
+  if (options?.dateRange) {
+    const now = new Date();
+    let from: Date;
+    if (options.dateRange === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (options.dateRange === "this_week") {
+      const day = now.getDay();
+      from = new Date(now);
+      from.setDate(now.getDate() - day);
+      from.setHours(0, 0, 0, 0);
+    } else if (options.dateRange === "this_month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      // this_year
+      from = new Date(now.getFullYear(), 0, 1);
+    }
+    conditions.push(sql`${bidDocuments.createdAt} >= ${from.toISOString()}`);
+  }
+
+  const baseConditions = and(...conditions);
+
+  // Build ORDER BY
+  const sortField =
+    options?.sortBy === "name"
+      ? bidDocuments.fileName
+      : options?.sortBy === "size"
+        ? bidDocuments.fileSize
+        : bidDocuments.createdAt;
+  const orderBy =
+    options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
 
   let documentsResult: {
     document: typeof bidDocuments.$inferSelect;
@@ -3168,7 +3430,7 @@ export const getBidDocuments = async (
       )
       .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
       .where(and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)))
-      .orderBy(desc(bidDocuments.createdAt));
+      .orderBy(orderBy);
     // Dedupe by document id (same doc can appear once per matching tag)
     const seen = new Set<string>();
     documentsResult = withTagLinks.filter((row) => {
@@ -3185,7 +3447,7 @@ export const getBidDocuments = async (
       .from(bidDocuments)
       .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
       .where(baseConditions)
-      .orderBy(desc(bidDocuments.createdAt));
+      .orderBy(orderBy);
   }
 
   const documentIds = documentsResult.map((r) => r.document.id);
@@ -3548,7 +3810,50 @@ export const unlinkDocumentTag = async (
 // Bid Media Operations
 // ============================
 
-export const getBidMedia = async (bidId: string) => {
+export const getBidMedia = async (
+  bidId: string,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const conditions: any[] = [
+    eq(bidMedia.bidId, bidId),
+    eq(bidMedia.isDeleted, false),
+  ];
+
+  if (options?.mediaType) {
+    conditions.push(eq(bidMedia.mediaType, options.mediaType));
+  }
+
+  if (options?.dateRange) {
+    const now = new Date();
+    let from: Date;
+    if (options.dateRange === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (options.dateRange === "this_week") {
+      from = new Date(now);
+      from.setDate(now.getDate() - now.getDay());
+      from.setHours(0, 0, 0, 0);
+    } else if (options.dateRange === "this_month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      from = new Date(now.getFullYear(), 0, 1);
+    }
+    conditions.push(sql`${bidMedia.createdAt} >= ${from.toISOString()}`);
+  }
+
+  const sortField =
+    options?.sortBy === "name"
+      ? bidMedia.fileName
+      : options?.sortBy === "size"
+        ? bidMedia.fileSize
+        : bidMedia.createdAt;
+  const orderBy =
+    options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
+
   const mediaResult = await db
     .select({
       media: bidMedia,
@@ -3556,8 +3861,8 @@ export const getBidMedia = async (bidId: string) => {
     })
     .from(bidMedia)
     .leftJoin(users, eq(bidMedia.uploadedBy, users.id))
-    .where(and(eq(bidMedia.bidId, bidId), eq(bidMedia.isDeleted, false)))
-    .orderBy(desc(bidMedia.createdAt));
+    .where(and(...conditions))
+    .orderBy(orderBy);
 
   return mediaResult.map((item) => ({
     ...item.media,
@@ -3848,7 +4153,6 @@ export const expireExpiredBids = async (): Promise<{
       if (systemUserId) {
         await createBidHistoryEntry({
           bidId: bid.id,
-          organizationId: bid.organizationId,
           action: "status_changed",
           oldValue: bid.status,
           newValue: "expired",

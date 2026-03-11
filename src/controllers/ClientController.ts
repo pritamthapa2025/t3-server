@@ -65,6 +65,7 @@ import {
   updateClientSettings,
   bulkDeleteClients,
 } from "../services/client.service.js";
+import { getJobsByOrganizationId } from "../services/job.service.js";
 import {
   uploadToSpaces,
   deleteFromSpaces,
@@ -2674,5 +2675,52 @@ export const bulkDeleteClientsHandler = async (req: Request, res: Response) => {
   } catch (error) {
     logger.logApiError("Bulk delete clients error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Client Jobs
+// ===========================================================================
+
+export const getClientJobsHandler = async (req: Request, res: Response) => {
+  try {
+    const id = asSingleString(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Client ID is required" });
+    }
+
+    const page = Math.max(1, parseInt(asSingleString(req.query.page as string) || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(asSingleString(req.query.limit as string) || "10", 10)));
+    const offset = (page - 1) * limit;
+    const status = asSingleString(req.query.status as string) || undefined;
+    const search = asSingleString(req.query.search as string) || undefined;
+
+    // Verify client exists before querying
+    const client = await getClientById(id);
+    if (!client) {
+      return res.status(404).json({ success: false, message: "Client not found" });
+    }
+
+    const result = await getJobsByOrganizationId(id, offset, limit, {
+      ...(status !== undefined && { status }),
+      ...(search !== undefined && { search }),
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.jobs,
+      total: result.totalCount,
+      pagination: {
+        ...result.pagination,
+        page,
+      },
+    });
+  } catch (error: any) {
+    logger.logApiError("Error fetching client jobs", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch client jobs",
+      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };

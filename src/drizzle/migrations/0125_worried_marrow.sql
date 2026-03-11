@@ -1,0 +1,1 @@
+ALTER TABLE "org"."inventory_items" ADD COLUMN "default_markup_percentage" numeric(8, 4);

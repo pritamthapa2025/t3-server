@@ -144,6 +144,7 @@ export const bidStatusEnum = pgEnum("bid_status_enum", [
   "draft",
   "in_progress",
   "pending",
+  "needs_review",
   "submitted",
   "accepted",
   "won",

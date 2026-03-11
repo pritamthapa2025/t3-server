@@ -11,6 +11,8 @@ import {
   departments,
   positions,
 } from "../drizzle/schema/org.schema.js";
+import { NotificationService } from "./notification.service.js";
+import { logger } from "../utils/logger.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
@@ -223,6 +225,108 @@ const parseAsUTC = (val: string | Date): Date => {
   return new Date(val + "Z");
 };
 
+// ─────────────────────────────────────────────────────────────
+// Notification helper: fire "technician_assigned_to_dispatch"
+// for each newly assigned technician.
+// ─────────────────────────────────────────────────────────────
+async function fireDispatchAssignmentNotifications(
+  taskId: string,
+  technicianIds: number[],
+  triggeredByUserId?: string,
+): Promise<void> {
+  if (!technicianIds.length) return;
+
+  try {
+    // 1. Load the dispatch task (title, startTime, endTime, description, jobId)
+    const task = await getDispatchTaskById(taskId);
+    if (!task) return;
+
+    // 2. Load the related job (jobNumber)
+    const [jobRow] = await db
+      .select({ jobNumber: jobs.jobNumber })
+      .from(jobs)
+      .where(eq(jobs.id, task.jobId))
+      .limit(1);
+    const jobNumber = jobRow?.jobNumber ?? task.jobId;
+
+    // 3. Resolve employee names + user UUIDs for the assigned technicians
+    const empRows = await db
+      .select({
+        id: employees.id,
+        userId: employees.userId,
+        fullName: users.fullName,
+      })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(inArray(employees.id, technicianIds));
+
+    const assignedTechnicianUserIds = empRows
+      .map((e) => e.userId)
+      .filter((id): id is string => !!id);
+
+    const assignedTechNames = empRows
+      .map((e) => e.fullName ?? `Technician #${e.id}`)
+      .filter(Boolean);
+
+    if (!assignedTechnicianUserIds.length) return;
+
+    // 4. Format date and times (stored in UTC, display as-is)
+    const startDate = new Date(task.startTime);
+    const endDate = new Date(task.endTime);
+    const formatDate = (d: Date) =>
+      d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    const formatTime = (d: Date) =>
+      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+    const dateStr = formatDate(startDate);
+    const startTimeStr = formatTime(startDate);
+    const endTimeStr = formatTime(endDate);
+
+    // 5. Build additionalNotes JSON (parsed by frontend notification-detail-modal)
+    const additionalNotes = JSON.stringify({
+      jobNumber,
+      dispatchTitle: task.title,
+      date: dateStr,
+      startTime: startTimeStr,
+      endTime: endTimeStr,
+      assignedTechs: assignedTechNames,
+      tasks: [task.title],
+      description: task.description ?? "",
+    });
+
+    // 6. Build the full message string
+    const techList = assignedTechNames.join(", ");
+    const message =
+      `You have been assigned to ${task.title} (${jobNumber}) ` +
+      `on ${dateStr} from ${startTimeStr} to ${endTimeStr}. ` +
+      `Assigned techs: ${techList}. ` +
+      (task.description ? `Description: ${task.description}` : "");
+    const shortMessage = `New dispatch assignment: ${task.title} (${jobNumber})`;
+
+    const notificationService = new NotificationService();
+    await notificationService.triggerNotification({
+      type: "technician_assigned_to_dispatch",
+      category: "dispatch",
+      priority: "high",
+      ...(triggeredByUserId ? { triggeredBy: triggeredByUserId } : {}),
+      data: {
+        entityType: "Job",
+        entityId: jobNumber,
+        entityName: task.title,
+        title: "New Dispatch Assignment",
+        message,
+        shortMessage,
+        actionUrl: `/dashboard/jobs/${task.jobId}`,
+        notes: additionalNotes,
+        assignedTechnicianIds: assignedTechnicianUserIds,
+      },
+    });
+  } catch (err) {
+    // Notification failure must never break the dispatch creation
+    logger.error("Failed to fire dispatch assignment notifications:", err);
+  }
+}
+
 // Create Dispatch Task
 export const createDispatchTask = async (data: CreateDispatchTaskData) => {
   const start = parseAsUTC(data.startTime);
@@ -260,6 +364,15 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
       taskId: inserted.id,
       technicianId,
     });
+  }
+
+  // Fire "New Dispatch Assignment" notifications to each assigned technician
+  if (technicianIds.length > 0) {
+    void fireDispatchAssignmentNotifications(
+      inserted.id,
+      technicianIds,
+      (data as any).createdBy,
+    );
   }
 
   return await getDispatchTaskById(inserted.id);
@@ -302,6 +415,21 @@ export const updateDispatchTask = async (
 
   // If technicianIds provided, replace assignments: soft-delete existing, create new
   if (data.technicianIds !== undefined) {
+    // Track which techs were already assigned so we only notify NEW additions
+    const existingAssignments = await db
+      .select({ technicianId: dispatchAssignments.technicianId })
+      .from(dispatchAssignments)
+      .where(
+        and(
+          eq(dispatchAssignments.taskId, id),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      );
+    const existingTechIds = new Set(
+      existingAssignments.map((a) => a.technicianId).filter((t): t is number => t != null),
+    );
+    const newlyAddedTechIds = data.technicianIds.filter((tid) => !existingTechIds.has(tid));
+
     await db
       .update(dispatchAssignments)
       .set({ isDeleted: true, updatedAt: new Date() })
@@ -313,6 +441,11 @@ export const updateDispatchTask = async (
       );
     for (const technicianId of data.technicianIds) {
       await createDispatchAssignment({ taskId: id, technicianId });
+    }
+
+    // Notify only techs that were just added
+    if (newlyAddedTechIds.length > 0) {
+      void fireDispatchAssignmentNotifications(id, newlyAddedTechIds);
     }
   }
 

@@ -1,0 +1,1 @@
+ALTER TABLE "org"."properties" ALTER COLUMN "country" SET NOT NULL;

@@ -17,7 +17,6 @@ import {
 import { users } from "./auth.schema.js";
 import { employees, positions } from "./org.schema.js";
 import { bidsTable } from "./bids.schema.js";
-
 // Import enums from centralized location
 import { jobStatusEnum, jobTaskStatusEnum } from "../enums/org.enums.js";
 import { expenseCategoryEnum } from "../enums/expenses.enums.js";
@@ -133,9 +132,34 @@ export const jobTeamMembers = org.table(
 
 // jobDocuments REMOVED - use bidDocuments via job.bidId
 
-// jobNotes REMOVED - use bidNotes via job.bidId
+/**
+ * Job Notes Table
+ * Dedicated notes for jobs (separate from bid notes)
+ */
+export const jobNotes = org.table(
+  "job_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
 
-// jobHistory REMOVED - use bidHistory via job.bidId
+    note: text("note").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_job_notes_job_id").on(table.jobId),
+    index("idx_job_notes_created_by").on(table.createdBy),
+  ],
+);
+
+// jobHistory - dedicated table below
 
 /**
  * Job Tasks Table
@@ -622,5 +646,103 @@ export const jobSurveys = org.table(
     index("idx_job_surveys_technician").on(table.technicianId),
     index("idx_job_surveys_status").on(table.status),
     index("idx_job_surveys_is_deleted").on(table.isDeleted),
+  ],
+);
+
+/**
+ * Job History Table
+ * Dedicated audit trail for job-specific changes (post job creation)
+ */
+export const jobHistory = org.table(
+  "job_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+
+    action: varchar("action", { length: 100 }).notNull(),
+    oldValue: text("old_value"),
+    newValue: text("new_value"),
+    description: text("description"),
+    performedBy: uuid("performed_by")
+      .notNull()
+      .references(() => users.id),
+
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_job_history_job_id").on(table.jobId),
+    index("idx_job_history_performed_by").on(table.performedBy),
+    index("idx_job_history_created_at").on(table.createdAt),
+    index("idx_job_history_action").on(table.action),
+  ],
+);
+
+/**
+ * Job Logs Table
+ * Daily field reports submitted by technicians after each job visit
+ */
+export const jobLogs = org.table(
+  "job_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+
+    workDate: date("work_date").notNull(),
+    summary: text("summary").notNull(),
+    hoursWorked: numeric("hours_worked", { precision: 5, scale: 2 }),
+    completionPercentage: integer("completion_percentage"),
+    issues: text("issues"),
+    nextSteps: text("next_steps"),
+
+    submittedBy: uuid("submitted_by")
+      .notNull()
+      .references(() => users.id),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_job_logs_job_id").on(table.jobId),
+    index("idx_job_logs_submitted_by").on(table.submittedBy),
+    index("idx_job_logs_work_date").on(table.workDate),
+  ],
+);
+
+/**
+ * Job Log Media Table
+ * Photos attached to individual job log entries
+ */
+export const jobLogMedia = org.table(
+  "job_log_media",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobLogId: uuid("job_log_id")
+      .notNull()
+      .references(() => jobLogs.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+
+    fileUrl: varchar("file_url", { length: 500 }).notNull(),
+    filePath: varchar("file_path", { length: 500 }).notNull(),
+    fileName: varchar("file_name", { length: 255 }),
+    fileType: varchar("file_type", { length: 50 }),
+    caption: varchar("caption", { length: 255 }),
+
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_job_log_media_job_log_id").on(table.jobLogId),
+    index("idx_job_log_media_job_id").on(table.jobId),
+    index("idx_job_log_media_uploaded_by").on(table.uploadedBy),
   ],
 );

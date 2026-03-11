@@ -1,5 +1,22 @@
 import { z } from "zod";
 
+// Get positions grouped by department — query validation
+export const getPositionsGroupedSchema = z.object({
+  query: z.object({
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 1))
+      .pipe(z.number().int().positive("Page must be a positive number")),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 5))
+      .pipe(z.number().int().positive("Limit must be a positive number").max(50, "Maximum 50 departments per page")),
+    search: z.string().optional(),
+  }),
+});
+
 // Get positions query validation
 export const getPositionsQuerySchema = z.object({
   query: z.object({

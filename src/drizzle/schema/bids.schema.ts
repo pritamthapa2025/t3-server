@@ -37,6 +37,9 @@ export const bidsTable: any = org.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     bidNumber: varchar("bid_number", { length: 100 }).notNull(),
+    parentBidId: uuid("parent_bid_id").references(() => bidsTable.id),
+    rootBidId: uuid("root_bid_id").references(() => bidsTable.id),
+    versionNumber: integer("version_number").notNull().default(1),
 
     // Basic Information
     jobType: bidJobTypeEnum("job_type").notNull(),
@@ -94,7 +97,9 @@ export const bidsTable: any = org.table(
     // Additional Project Fields
     industryClassification: varchar("industry_classification", { length: 255 }),
     scheduledDateTime: timestamp("scheduled_date_time"),
-    termsTemplateSelection: varchar("terms_template_selection", { length: 100 }),
+    termsTemplateSelection: varchar("terms_template_selection", {
+      length: 100,
+    }),
     siteContactName: varchar("site_contact_name", { length: 255 }),
     siteContactPhone: varchar("site_contact_phone", { length: 50 }),
     accessInstructions: text("access_instructions"),
@@ -258,7 +263,10 @@ export const bidMaterials = org.table(
     actualUnitCost: numeric("actual_unit_cost", { precision: 15, scale: 2 }),
     actualMarkup: numeric("actual_markup", { precision: 5, scale: 2 }),
     actualTotalCost: numeric("actual_total_cost", { precision: 15, scale: 2 }),
-    actualTotalPrice: numeric("actual_total_price", { precision: 15, scale: 2 }),
+    actualTotalPrice: numeric("actual_total_price", {
+      precision: 15,
+      scale: 2,
+    }),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -316,6 +324,11 @@ export const bidLabor = org.table(
       scale: 2,
     }),
 
+    // Assigned employee when bid is converted to a job (set at conversion time)
+    assignedEmployeeId: integer("assigned_employee_id").references(
+      () => employees.id,
+    ),
+
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
@@ -323,6 +336,7 @@ export const bidLabor = org.table(
   (table) => [
     index("idx_bid_labor_bid_id").on(table.bidId),
     index("idx_bid_labor_position_id").on(table.positionId),
+    index("idx_bid_labor_assigned_employee_id").on(table.assignedEmployeeId),
   ],
 );
 
@@ -453,10 +467,10 @@ export const bidOperatingExpenses = org.table(
       precision: 15,
       scale: 2,
     }).default("0"),
-    actualCalculatedOperatingCost: numeric(
-      "actual_calculated_operating_cost",
-      { precision: 15, scale: 2 },
-    ).default("0"),
+    actualCalculatedOperatingCost: numeric("actual_calculated_operating_cost", {
+      precision: 15,
+      scale: 2,
+    }).default("0"),
     actualInflationAdjustedOperatingCost: numeric(
       "actual_inflation_adjusted_operating_cost",
       { precision: 15, scale: 2 },
@@ -531,8 +545,12 @@ export const bidSurveyData = org.table("bid_survey_data", {
   expectedUnitsToSurvey: integer("expected_units_to_survey"),
   buildingNumbers: text("building_numbers"), // JSON array
   unitTypes: text("unit_types"), // JSON array: RTU, AHU, Chiller, Boiler, Split System, Exhaust Fan, Other
-  includePhotoDocumentation: boolean("include_photo_documentation").default(false),
-  includePerformanceTesting: boolean("include_performance_testing").default(false),
+  includePhotoDocumentation: boolean("include_photo_documentation").default(
+    false,
+  ),
+  includePerformanceTesting: boolean("include_performance_testing").default(
+    false,
+  ),
   includeEnergyAnalysis: boolean("include_energy_analysis").default(false),
   includeRecommendations: boolean("include_recommendations").default(false),
   schedulingConstraints: text("scheduling_constraints"),
@@ -675,7 +693,10 @@ export const bidServiceData = org.table(
     serviceMarkup: numeric("service_markup", { precision: 5, scale: 2 }),
     flatRatePrice: numeric("flat_rate_price", { precision: 15, scale: 2 }),
     diagnosticFee: numeric("diagnostic_fee", { precision: 15, scale: 2 }),
-    estimatedRepairCost: numeric("estimated_repair_cost", { precision: 15, scale: 2 }),
+    estimatedRepairCost: numeric("estimated_repair_cost", {
+      precision: 15,
+      scale: 2,
+    }),
     pricingNotes: text("pricing_notes"),
 
     // Execution-phase fields (populated post-bid during job)
@@ -754,13 +775,30 @@ export const bidPreventativeMaintenanceData = org.table(
     // Pricing
     pricingModel: varchar("pricing_model", { length: 50 }), // per_unit, flat_rate, annual_contract
     pricePerUnit: numeric("price_per_unit", { precision: 15, scale: 2 }),
-    flatRatePerVisit: numeric("flat_rate_per_visit", { precision: 15, scale: 2 }),
-    annualContractValue: numeric("annual_contract_value", { precision: 15, scale: 2 }),
-    includeFilterReplacement: boolean("include_filter_replacement").default(false),
-    filterReplacementCost: numeric("filter_replacement_cost", { precision: 15, scale: 2 }),
+    flatRatePerVisit: numeric("flat_rate_per_visit", {
+      precision: 15,
+      scale: 2,
+    }),
+    annualContractValue: numeric("annual_contract_value", {
+      precision: 15,
+      scale: 2,
+    }),
+    includeFilterReplacement: boolean("include_filter_replacement").default(
+      false,
+    ),
+    filterReplacementCost: numeric("filter_replacement_cost", {
+      precision: 15,
+      scale: 2,
+    }),
     includeCoilCleaning: boolean("include_coil_cleaning").default(false),
-    coilCleaningCost: numeric("coil_cleaning_cost", { precision: 15, scale: 2 }),
-    emergencyServiceRate: numeric("emergency_service_rate", { precision: 15, scale: 2 }),
+    coilCleaningCost: numeric("coil_cleaning_cost", {
+      precision: 15,
+      scale: 2,
+    }),
+    emergencyServiceRate: numeric("emergency_service_rate", {
+      precision: 15,
+      scale: 2,
+    }),
     paymentSchedule: varchar("payment_schedule", { length: 50 }), // annual, per_visit, quarterly
     pricingNotes: text("pricing_notes"),
 
@@ -768,9 +806,7 @@ export const bidPreventativeMaintenanceData = org.table(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => [
-    index("idx_bid_pm_data_bid_id").on(table.bidId),
-  ],
+  (table) => [index("idx_bid_pm_data_bid_id").on(table.bidId)],
 );
 
 /**
@@ -1012,7 +1048,6 @@ export const bidNotes = org.table(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
-    isInternal: boolean("is_internal").default(true),
 
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
@@ -1021,7 +1056,6 @@ export const bidNotes = org.table(
   (table) => [
     index("idx_bid_notes_bid_id").on(table.bidId),
     index("idx_bid_notes_created_by").on(table.createdBy),
-    index("idx_bid_notes_internal").on(table.isInternal),
   ],
 );
 
@@ -1033,9 +1067,6 @@ export const bidHistory = org.table(
   "bid_history",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id),
     bidId: uuid("bid_id")
       .notNull()
       .references(() => bidsTable.id, { onDelete: "cascade" }),
@@ -1051,7 +1082,6 @@ export const bidHistory = org.table(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("idx_bid_history_org").on(table.organizationId),
     index("idx_bid_history_bid_id").on(table.bidId),
     index("idx_bid_history_performed_by").on(table.performedBy),
     index("idx_bid_history_created_at").on(table.createdAt),

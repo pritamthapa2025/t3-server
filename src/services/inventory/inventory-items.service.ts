@@ -189,6 +189,7 @@ export const createInventoryItem = async (data: any, _userId: string) => {
       unitOfMeasureId: data.unitOfMeasureId,
       unitCost: data.unitCost || "0",
       sellingPrice: data.sellingPrice,
+      defaultMarkupPercentage: data.defaultMarkupPercentage,
       quantityOnHand: data.quantityOnHand || "0",
       quantityAllocated: "0",
       quantityAvailable: data.quantityOnHand || "0",
@@ -252,6 +253,8 @@ export const updateInventoryItem = async (
   if (data.unitCost !== undefined) updateData.unitCost = data.unitCost;
   if (data.sellingPrice !== undefined)
     updateData.sellingPrice = data.sellingPrice;
+  if (data.defaultMarkupPercentage !== undefined)
+    updateData.defaultMarkupPercentage = data.defaultMarkupPercentage;
   if (data.reorderLevel !== undefined)
     updateData.reorderLevel = data.reorderLevel;
   if (data.reorderQuantity !== undefined)
