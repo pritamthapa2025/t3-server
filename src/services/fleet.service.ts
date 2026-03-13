@@ -1,4 +1,4 @@
-import { db } from "../config/db.js";
+﻿import { db } from "../config/db.js";
 import {
   vehicles,
   maintenanceRecords,
@@ -335,9 +335,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
   if (data.fuelLevel) insertData.fuelLevel = data.fuelLevel;
   if (data.purchaseDate)
     insertData.purchaseDate =
-      data.purchaseDate instanceof Date
-        ? data.purchaseDate.toISOString().split("T")[0]
-        : data.purchaseDate;
+      data.purchaseDate;
   if (data.purchaseCost) insertData.purchaseCost = data.purchaseCost;
   if (data.dealer) insertData.dealer = data.dealer;
   if (data.monthlyPayment) insertData.monthlyPayment = data.monthlyPayment;
@@ -351,9 +349,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
     insertData.insuranceCoverage = data.insuranceCoverage;
   if (data.insuranceExpiration)
     insertData.insuranceExpiration =
-      data.insuranceExpiration instanceof Date
-        ? data.insuranceExpiration.toISOString().split("T")[0]
-        : data.insuranceExpiration;
+      data.insuranceExpiration;
   if (data.insuranceAnnualPremium)
     insertData.insuranceAnnualPremium = data.insuranceAnnualPremium;
   if (data.registrationState)
@@ -362,9 +358,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
     insertData.registrationNumber = data.registrationNumber;
   if (data.registrationExpiration)
     insertData.registrationExpiration =
-      data.registrationExpiration instanceof Date
-        ? data.registrationExpiration.toISOString().split("T")[0]
-        : data.registrationExpiration;
+      data.registrationExpiration;
   if (data.mileageRate) insertData.mileageRate = data.mileageRate;
   if (data.vehicleDayRate) insertData.vehicleDayRate = data.vehicleDayRate;
   if (data.mpg) insertData.mpg = data.mpg;
@@ -404,33 +398,23 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
   if (data.fuelLevel !== undefined) updateData.fuelLevel = data.fuelLevel;
   if (data.lastService !== undefined)
     updateData.lastService =
-      data.lastService instanceof Date
-        ? data.lastService.toISOString().split("T")[0]
-        : data.lastService;
+      data.lastService;
   if (data.nextService !== undefined)
     updateData.nextService =
-      data.nextService instanceof Date
-        ? data.nextService.toISOString().split("T")[0]
-        : data.nextService;
+      data.nextService;
   if (data.nextServiceDue !== undefined)
     updateData.nextServiceDue =
-      data.nextServiceDue instanceof Date
-        ? data.nextServiceDue.toISOString().split("T")[0]
-        : data.nextServiceDue;
+      data.nextServiceDue;
   if (data.nextServiceDays !== undefined)
     updateData.nextServiceDays = data.nextServiceDays;
   if (data.nextInspectionDue !== undefined)
     updateData.nextInspectionDue =
-      data.nextInspectionDue instanceof Date
-        ? data.nextInspectionDue.toISOString().split("T")[0]
-        : data.nextInspectionDue;
+      data.nextInspectionDue;
   if (data.nextInspectionDays !== undefined)
     updateData.nextInspectionDays = data.nextInspectionDays;
   if (data.purchaseDate !== undefined)
     updateData.purchaseDate =
-      data.purchaseDate instanceof Date
-        ? data.purchaseDate.toISOString().split("T")[0]
-        : data.purchaseDate;
+      data.purchaseDate;
   if (data.purchaseCost !== undefined)
     updateData.purchaseCost = data.purchaseCost;
   if (data.dealer !== undefined) updateData.dealer = data.dealer;
@@ -447,9 +431,7 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
     updateData.insuranceCoverage = data.insuranceCoverage;
   if (data.insuranceExpiration !== undefined)
     updateData.insuranceExpiration =
-      data.insuranceExpiration instanceof Date
-        ? data.insuranceExpiration.toISOString().split("T")[0]
-        : data.insuranceExpiration;
+      data.insuranceExpiration;
   if (data.insuranceAnnualPremium !== undefined)
     updateData.insuranceAnnualPremium = data.insuranceAnnualPremium;
   if (data.registrationState !== undefined)
@@ -458,9 +440,7 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
     updateData.registrationNumber = data.registrationNumber;
   if (data.registrationExpiration !== undefined)
     updateData.registrationExpiration =
-      data.registrationExpiration instanceof Date
-        ? data.registrationExpiration.toISOString().split("T")[0]
-        : data.registrationExpiration;
+      data.registrationExpiration;
   if (data.mileageRate !== undefined) updateData.mileageRate = data.mileageRate;
   if (data.vehicleDayRate !== undefined)
     updateData.vehicleDayRate = data.vehicleDayRate;
@@ -530,7 +510,8 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
   if (data.assignedToEmployeeId !== undefined && updatedVehicle) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "driver_reassigned",
           category: "fleet",
@@ -538,13 +519,19 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
           data: {
             entityType: "Vehicle",
             entityId: id,
-            entityName: updatedVehicle.licensePlate || updatedVehicle.vehicleId || id,
+            entityName:
+              updatedVehicle.licensePlate || updatedVehicle.vehicleId || id,
             licensePlate: updatedVehicle.licensePlate,
-            ...(data.assignedToEmployeeId != null ? { driverId: String(data.assignedToEmployeeId) } : {}),
+            ...(data.assignedToEmployeeId != null
+              ? { driverId: String(data.assignedToEmployeeId) }
+              : {}),
           },
         });
       } catch (err) {
-        console.error("[Notification] driver_reassigned notification failed:", err);
+        console.error(
+          "[Notification] driver_reassigned notification failed:",
+          err,
+        );
       }
     })();
   }
@@ -558,14 +545,72 @@ export const deleteVehicle = async (id: string, deletedBy?: string) => {
 
   // Cascade soft-delete all vehicle child records (in parallel)
   await Promise.all([
-    db.update(maintenanceRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(maintenanceRecords.vehicleId, id), eq(maintenanceRecords.isDeleted, false))),
-    db.update(repairRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(repairRecords.vehicleId, id), eq(repairRecords.isDeleted, false))),
-    db.update(safetyInspections).set({ isDeleted: true, updatedAt: now }).where(and(eq(safetyInspections.vehicleId, id), eq(safetyInspections.isDeleted, false))),
-    db.update(fuelRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(fuelRecords.vehicleId, id), eq(fuelRecords.isDeleted, false))),
-    db.update(checkInOutRecords).set({ isDeleted: true, updatedAt: now }).where(and(eq(checkInOutRecords.vehicleId, id), eq(checkInOutRecords.isDeleted, false))),
-    db.update(vehicleMedia).set({ isDeleted: true, updatedAt: now }).where(and(eq(vehicleMedia.vehicleId, id), eq(vehicleMedia.isDeleted, false))),
-    db.update(vehicleDocuments).set({ isDeleted: true, updatedAt: now }).where(and(eq(vehicleDocuments.vehicleId, id), eq(vehicleDocuments.isDeleted, false))),
-    db.update(assignmentHistory).set({ isDeleted: true, updatedAt: now }).where(and(eq(assignmentHistory.vehicleId, id), eq(assignmentHistory.isDeleted, false))),
+    db
+      .update(maintenanceRecords)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(maintenanceRecords.vehicleId, id),
+          eq(maintenanceRecords.isDeleted, false),
+        ),
+      ),
+    db
+      .update(repairRecords)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(repairRecords.vehicleId, id),
+          eq(repairRecords.isDeleted, false),
+        ),
+      ),
+    db
+      .update(safetyInspections)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(safetyInspections.vehicleId, id),
+          eq(safetyInspections.isDeleted, false),
+        ),
+      ),
+    db
+      .update(fuelRecords)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(eq(fuelRecords.vehicleId, id), eq(fuelRecords.isDeleted, false)),
+      ),
+    db
+      .update(checkInOutRecords)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(checkInOutRecords.vehicleId, id),
+          eq(checkInOutRecords.isDeleted, false),
+        ),
+      ),
+    db
+      .update(vehicleMedia)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(eq(vehicleMedia.vehicleId, id), eq(vehicleMedia.isDeleted, false)),
+      ),
+    db
+      .update(vehicleDocuments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(vehicleDocuments.vehicleId, id),
+          eq(vehicleDocuments.isDeleted, false),
+        ),
+      ),
+    db
+      .update(assignmentHistory)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(assignmentHistory.vehicleId, id),
+          eq(assignmentHistory.isDeleted, false),
+        ),
+      ),
   ]);
 
   const result = await db
@@ -976,19 +1021,14 @@ export const createMaintenanceRecord = async (
     description: data.description,
     status: data.status || "scheduled",
     cost: data.cost || "0",
-    date:
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date,
+    date: data.date,
   };
 
   if (data.priority) insertData.priority = data.priority;
   if (data.mileage) insertData.mileage = data.mileage;
   if (data.scheduledDate)
     insertData.scheduledDate =
-      data.scheduledDate instanceof Date
-        ? data.scheduledDate.toISOString().split("T")[0]
-        : data.scheduledDate;
+      data.scheduledDate;
   if (data.estimatedDuration)
     insertData.estimatedDuration = data.estimatedDuration;
   if (data.vendor) insertData.vendor = data.vendor;
@@ -1026,16 +1066,11 @@ export const updateMaintenanceRecord = async (
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.cost !== undefined) updateData.cost = data.cost;
   if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date;
+    updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.scheduledDate !== undefined)
     updateData.scheduledDate =
-      data.scheduledDate instanceof Date
-        ? data.scheduledDate.toISOString().split("T")[0]
-        : data.scheduledDate;
+      data.scheduledDate;
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.vendor !== undefined) updateData.vendor = data.vendor;
@@ -1205,19 +1240,14 @@ export const createRepairRecord = async (data: CreateRepairRecordData) => {
     description: data.description,
     status: data.status || "scheduled",
     cost: data.cost || "0",
-    date:
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date,
+    date: data.date,
   };
 
   if (data.priority) insertData.priority = data.priority;
   if (data.mileage) insertData.mileage = data.mileage;
   if (data.scheduledDate)
     insertData.scheduledDate =
-      data.scheduledDate instanceof Date
-        ? data.scheduledDate.toISOString().split("T")[0]
-        : data.scheduledDate;
+      data.scheduledDate;
   if (data.estimatedDuration)
     insertData.estimatedDuration = data.estimatedDuration;
   if (data.reportedBy) insertData.reportedBy = data.reportedBy;
@@ -1256,16 +1286,11 @@ export const updateRepairRecord = async (
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.cost !== undefined) updateData.cost = data.cost;
   if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date;
+    updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.scheduledDate !== undefined)
     updateData.scheduledDate =
-      data.scheduledDate instanceof Date
-        ? data.scheduledDate.toISOString().split("T")[0]
-        : data.scheduledDate;
+      data.scheduledDate;
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.reportedBy !== undefined) updateData.reportedBy = data.reportedBy;
@@ -1419,10 +1444,7 @@ export const createSafetyInspection = async (
 ) => {
   const insertData: any = {
     vehicleId: data.vehicleId,
-    date:
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date,
+    date: data.date,
     overallStatus: data.overallStatus,
     isTeamMember: data.isTeamMember,
   };
@@ -1463,14 +1485,22 @@ export const createSafetyInspection = async (
       try {
         // Look up the vehicle to get its human-readable vehicleId and license plate
         const [vehicleRow] = await db
-          .select({ vehicleId: vehicles.vehicleId, make: vehicles.make, model: vehicles.model, licensePlate: vehicles.licensePlate })
+          .select({
+            vehicleId: vehicles.vehicleId,
+            make: vehicles.make,
+            model: vehicles.model,
+            licensePlate: vehicles.licensePlate,
+          })
           .from(vehicles)
-          .where(and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)))
+          .where(
+            and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)),
+          )
           .limit(1);
         const entityName = vehicleRow
           ? `${vehicleRow.make} ${vehicleRow.model} (${vehicleRow.vehicleId})`
           : data.vehicleId;
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "safety_inspection_failed",
           category: "fleet",
@@ -1483,7 +1513,10 @@ export const createSafetyInspection = async (
           },
         });
       } catch (err) {
-        console.error("[Notification] safety_inspection_failed notification failed:", err);
+        console.error(
+          "[Notification] safety_inspection_failed notification failed:",
+          err,
+        );
       }
     })();
   }
@@ -1501,10 +1534,7 @@ export const updateSafetyInspection = async (
   };
 
   if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date;
+    updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.performedBy !== undefined) updateData.performedBy = data.performedBy;
   if (data.overallStatus !== undefined)
@@ -1694,10 +1724,7 @@ export const getFuelRecordById = async (id: string) => {
 export const createFuelRecord = async (data: CreateFuelRecordData) => {
   const insertData: any = {
     vehicleId: data.vehicleId,
-    date:
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date,
+    date: data.date,
     odometer: data.odometer,
     gallons: data.gallons,
     cost: data.cost,
@@ -1727,10 +1754,7 @@ export const updateFuelRecord = async (
   };
 
   if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date;
+    updateData.date = data.date;
   if (data.odometer !== undefined) updateData.odometer = data.odometer;
   if (data.gallons !== undefined) updateData.gallons = data.gallons;
   if (data.cost !== undefined) updateData.cost = data.cost;
@@ -1979,10 +2003,7 @@ export const createCheckInOutRecord = async (
   const insertData: any = {
     vehicleId: data.vehicleId,
     type: data.type,
-    date:
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date,
+    date: data.date,
     time: data.time,
     timestamp: data.timestamp,
   };
@@ -2020,15 +2041,25 @@ export const createCheckInOutRecord = async (
     try {
       // Look up the vehicle to get its human-readable vehicleId and license plate
       const [vehicleRow] = await db
-        .select({ vehicleId: vehicles.vehicleId, make: vehicles.make, model: vehicles.model, licensePlate: vehicles.licensePlate })
+        .select({
+          vehicleId: vehicles.vehicleId,
+          make: vehicles.make,
+          model: vehicles.model,
+          licensePlate: vehicles.licensePlate,
+        })
         .from(vehicles)
-        .where(and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)))
+        .where(
+          and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)),
+        )
         .limit(1);
       const entityName = vehicleRow
         ? `${vehicleRow.make} ${vehicleRow.model} (${vehicleRow.vehicleId})`
         : data.vehicleId;
       const { NotificationService } = await import("./notification.service.js");
-      const eventType = data.type === "check_out" ? "vehicle_checked_out" : "vehicle_checked_in";
+      const eventType =
+        data.type === "check_out"
+          ? "vehicle_checked_out"
+          : "vehicle_checked_in";
       await new NotificationService().triggerNotification({
         type: eventType,
         category: "fleet",
@@ -2041,7 +2072,10 @@ export const createCheckInOutRecord = async (
         },
       });
     } catch (err) {
-      console.error("[Notification] vehicle check-in/out notification failed:", err);
+      console.error(
+        "[Notification] vehicle check-in/out notification failed:",
+        err,
+      );
     }
   })();
 
@@ -2060,10 +2094,7 @@ export const updateCheckInOutRecord = async (
   if (data.vehicleId !== undefined) updateData.vehicleId = data.vehicleId;
   if (data.type !== undefined) updateData.type = data.type;
   if (data.date !== undefined)
-    updateData.date =
-      data.date instanceof Date
-        ? data.date.toISOString().split("T")[0]
-        : data.date;
+    updateData.date = data.date;
   if (data.time !== undefined) updateData.time = data.time;
   if (data.timestamp !== undefined) updateData.timestamp = data.timestamp;
   if (data.odometer !== undefined) updateData.odometer = data.odometer;

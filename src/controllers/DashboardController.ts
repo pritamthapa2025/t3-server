@@ -316,3 +316,41 @@ export const deleteRevenueTarget = async (req: Request, res: Response) => {
     return errorResponse(res, error.message, 500);
   }
 };
+
+/**
+ * Get active jobs for the logged-in technician (jobs with dispatch assignments).
+ * Technician-only endpoint — managers/executives use the standard active-jobs endpoint.
+ * GET /api/org/dashboard/my-active-jobs
+ */
+export const getMyActiveJobs = async (req: Request, res: Response) => {
+  try {
+    const employeeId = req.user?.employeeId;
+    if (!employeeId) {
+      return errorResponse(res, "Employee profile not found for this user", 404);
+    }
+    const stats = await DashboardService.getMyActiveJobs(employeeId);
+    return successResponse(res, stats, "My active jobs retrieved");
+  } catch (error: any) {
+    console.error("My active jobs error:", error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Get today's dispatch schedule for the logged-in employee (technician's "My Schedule").
+ * Managers/Executives may also call this — the frontend decides whether to render it.
+ * GET /api/org/dashboard/my-schedule
+ */
+export const getMySchedule = async (req: Request, res: Response) => {
+  try {
+    const employeeId = req.user?.employeeId;
+    if (!employeeId) {
+      return errorResponse(res, "Employee profile not found for this user", 404);
+    }
+    const schedule = await DashboardService.getMySchedule(employeeId);
+    return successResponse(res, schedule, "My schedule retrieved");
+  } catch (error: any) {
+    console.error("My schedule error:", error);
+    return errorResponse(res, error.message, 500);
+  }
+};

@@ -16,6 +16,7 @@ import {
   createTimesheetWithClockData,
   getTimesheetKPIs,
   bulkDeleteTimesheets,
+  getClockStatus,
 } from "../services/timesheet.service.js";
 import {
   syncPayrollFromApprovedTimesheet,
@@ -798,6 +799,33 @@ export const bulkDeleteTimesheetsHandler = async (req: Request, res: Response) =
     });
   } catch (error) {
     logger.logApiError("Bulk delete timesheets error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Clock Status
+// ===========================================================================
+
+export const getClockStatusHandler = async (req: Request, res: Response) => {
+  try {
+    const employeeId = req.user?.employeeId;
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee information not found. Please ensure you are logged in as an employee.",
+      });
+    }
+
+    const status = await getClockStatus(employeeId);
+
+    logger.info(`Clock status fetched for employee ${employeeId}: ${status.status}`);
+    return res.status(200).json({
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    logger.logApiError("Get clock status error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

@@ -54,8 +54,8 @@ export const createDispatchTaskSchema = z.object({
     status: z
       .enum(["pending", "assigned", "in_progress", "completed", "cancelled"])
       .optional(),
-    startTime: z.string().transform((str) => new Date(str)),
-    endTime: z.string().transform((str) => new Date(str)),
+    startTime: z.string(),
+    endTime: z.string(),
     estimatedDuration: z.number().int().positive().optional(),
     linkedJobTaskIds: z.array(uuidSchema).optional(),
     technicianIds: z.array(z.number().int().positive()).optional(),
@@ -79,14 +79,8 @@ export const updateDispatchTaskSchema = z.object({
     status: z
       .enum(["pending", "assigned", "in_progress", "completed", "cancelled"])
       .optional(),
-    startTime: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
-    endTime: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
     estimatedDuration: z.number().int().positive().optional(),
     linkedJobTaskIds: z.array(uuidSchema).optional(),
     technicianIds: z.array(z.number().int().positive()).optional(),
@@ -136,14 +130,8 @@ export const createDispatchAssignmentSchema = z.object({
     taskId: uuidSchema,
     technicianId: z.number().int().positive(),
     status: z.enum(["pending", "started", "completed"]).optional(),
-    clockIn: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
-    clockOut: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    clockIn: z.string().optional(),
+    clockOut: z.string().optional(),
     actualDuration: z.number().int().positive().optional(),
     role: z.string().max(50).optional(),
   }),
@@ -157,14 +145,8 @@ export const updateDispatchAssignmentSchema = z.object({
     taskId: uuidSchema.optional(),
     technicianId: z.number().int().positive().optional(),
     status: z.enum(["pending", "started", "completed"]).optional(),
-    clockIn: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
-    clockOut: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    clockIn: z.string().optional(),
+    clockOut: z.string().optional(),
     actualDuration: z.number().int().positive().optional(),
     role: z.string().max(50).optional(),
   }),
@@ -226,7 +208,14 @@ export const getEmployeesWithAssignedTasksQuerySchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 10))
       .pipe(z.number().int().positive().max(100)),
     status: z
-      .enum(["available", "on_leave", "in_field", "terminated", "suspended", "active"])
+      .enum([
+        "available",
+        "on_leave",
+        "in_field",
+        "terminated",
+        "suspended",
+        "active",
+      ])
       .optional(),
   }),
 });

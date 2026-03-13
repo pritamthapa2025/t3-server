@@ -9,8 +9,8 @@ export interface DispatchTask {
   taskType: "service" | "pm" | "install" | "emergency" | "survey";
   priority: "low" | "medium" | "high" | "emergency";
   status: "pending" | "assigned" | "in_progress" | "completed" | "cancelled";
-  startTime: Date;
-  endTime: Date;
+  startTime: string;
+  endTime: string;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
   notes?: string;
@@ -31,8 +31,8 @@ export interface CreateDispatchTaskData {
   taskType: "service" | "pm" | "install" | "emergency" | "survey";
   priority?: "low" | "medium" | "high" | "emergency";
   status?: "pending" | "assigned" | "in_progress" | "completed" | "cancelled";
-  startTime: Date;
-  endTime: Date;
+  startTime: string;
+  endTime: string;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
   /** Create dispatch_assignments for these employee IDs */
@@ -49,8 +49,8 @@ export interface UpdateDispatchTaskData {
   taskType?: "service" | "pm" | "install" | "emergency" | "survey";
   priority?: "low" | "medium" | "high" | "emergency";
   status?: "pending" | "assigned" | "in_progress" | "completed" | "cancelled";
-  startTime?: Date;
-  endTime?: Date;
+  startTime?: string;
+  endTime?: string;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
   /** Replace task assignments with these employee IDs (creates dispatch_assignments) */
@@ -65,8 +65,8 @@ export interface DispatchAssignment {
   taskId: string;
   technicianId: number;
   status: "pending" | "started" | "completed";
-  clockIn?: Date;
-  clockOut?: Date;
+  clockIn?: string;
+  clockOut?: string;
   actualDuration?: number;
   role?: string;
   isDeleted: boolean;
@@ -78,8 +78,8 @@ export interface CreateDispatchAssignmentData {
   taskId: string;
   technicianId: number;
   status?: "pending" | "started" | "completed";
-  clockIn?: Date;
-  clockOut?: Date;
+  clockIn?: string;
+  clockOut?: string;
   actualDuration?: number;
   role?: string;
 }
@@ -88,8 +88,8 @@ export interface UpdateDispatchAssignmentData {
   taskId?: string;
   technicianId?: number;
   status?: "pending" | "started" | "completed";
-  clockIn?: Date;
-  clockOut?: Date;
+  clockIn?: string;
+  clockOut?: string;
   actualDuration?: number;
   role?: string;
 }

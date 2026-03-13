@@ -1003,7 +1003,7 @@ export const markInvoiceAsPaid = async (
     .update(invoices)
     .set({
       status: "paid",
-      paidDate: paidDateStr ? new Date(paidDateStr) : null,
+      paidDate: paidDateStr ? new Date(paidDateStr + "T00:00:00Z") : null,
       amountPaid: totalAmount,
       balanceDue: "0",
       updatedAt: new Date(),
@@ -1151,9 +1151,8 @@ export const getInvoiceKPIs = async (
     whereConditions.push(eq(invoices.status, options.status as any));
   }
 
-  // Get current date for overdue calculation
+  // Get current UTC date string for overdue calculation
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   // Get all KPIs in parallel
   const [summary, overdueResult] = await Promise.all([

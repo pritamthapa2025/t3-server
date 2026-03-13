@@ -73,6 +73,20 @@ router.get(
   DashboardController.getPriorityJobs,
 );
 
+// Technician's personal schedule for today — also available for managers/executives
+router.get(
+  "/my-schedule",
+  authenticate,
+  DashboardController.getMySchedule,
+);
+
+// Technician's own active jobs (via dispatch assignments) — technician-only
+router.get(
+  "/my-active-jobs",
+  authenticate,
+  DashboardController.getMyActiveJobs,
+);
+
 // ─── Revenue Targets / Goals (create/update/delete: Executive only) ───────────
 
 router

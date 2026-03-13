@@ -62,13 +62,7 @@ export const createUserSchema = z.object({
       .string()
       .max(20, "ZIP code is too long (maximum 20 characters)")
       .optional(),
-    dateOfBirth: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15)",
-      })
-      .optional(),
+    dateOfBirth: z.string().optional(),
     emergencyContactName: z
       .string()
       .max(150, "Emergency contact name is too long (maximum 150 characters)")
@@ -123,13 +117,7 @@ export const updateUserSchema = z.object({
         .string()
         .max(20, "ZIP code is too long (maximum 20 characters)")
         .optional(),
-      dateOfBirth: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message: "Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15)",
-        })
-        .optional(),
+      dateOfBirth: z.string().optional(),
       emergencyContactName: z
         .string()
         .max(150, "Emergency contact name is too long (maximum 150 characters)")

@@ -504,7 +504,7 @@ export const prepareInvoiceDataForPDF = (
     void: "void",
   };
 
-  const invoiceDateStr = new Date(invoice.invoiceDate).toLocaleDateString();
+  const invoiceDateStr = fmtDate(invoice.invoiceDate);
   const billingCity = invoice.billingCity || client.city || "";
   const billingState = invoice.billingState || client.state || "";
   const billingZip = invoice.billingZipCode || client.zipCode || "";
@@ -525,7 +525,7 @@ export const prepareInvoiceDataForPDF = (
     // Invoice Details
     invoiceNumber: invoice.invoiceNumber,
     invoiceDate: invoiceDateStr,
-    dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+    dueDate: fmtDate(invoice.dueDate),
     status: invoice.status?.toUpperCase() || "DRAFT",
     statusClass: statusClassMap[invoice.status] || "draft",
 
@@ -636,7 +636,7 @@ export const prepareInvoiceDataForPDF = (
     termsAndConditions: invoice.termsAndConditions,
 
     // Meta
-    generatedDate: new Date().toLocaleDateString(),
+    generatedDate: fmtDate(new Date()),
   };
 };
 
@@ -747,11 +747,17 @@ function buildChecklistHtml(items: string[]): string {
   );
 }
 
-/** Format a date string/Date to a readable string, returning fallback if empty */
+/** Format a date string/Date to a readable string, returning fallback if empty.
+ *  Parses YYYY-MM-DD directly to avoid any timezone conversion. */
+const PDF_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 function fmtDate(d: string | Date | null | undefined, fallback = "—"): string {
   if (!d) return fallback;
   try {
-    return new Date(d).toLocaleDateString();
+    const str = d instanceof Date ? d.toISOString() : String(d);
+    const datePart = str.split("T")[0] ?? str;
+    const [year, month, day] = datePart.split("-").map(Number);
+    if (!year || !month || !day) return fallback;
+    return `${PDF_MONTHS[month - 1]} ${day}, ${year}`;
   } catch {
     return fallback;
   }
@@ -1219,7 +1225,7 @@ export const prepareQuoteDataForPDF = (
   const hasCustomExclusions = Boolean(customExclusions);
 
   return {
-    date: createdDate.toLocaleDateString(),
+    date: fmtDate(createdDate),
     quoteNumber: bid.bidNumber,
     pmRepName: bid.assignedToName ?? bid.createdByName ?? "—",
     officeAddress:
@@ -1240,7 +1246,7 @@ export const prepareQuoteDataForPDF = (
     operatingExpensesCost,
     hasOperatingExpenses,
     totalAmount,
-    expirationDate: endDate ? endDate.toLocaleDateString() : "—",
+    expirationDate: endDate ? fmtDate(endDate) : "—",
 
     // Type discriminators
     isGeneral: jobType === "general",

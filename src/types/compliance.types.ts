@@ -17,9 +17,9 @@ export interface ComplianceCase {
   title: string;
   description: string;
   notes?: string;
-  openedOn: Date;
-  dueDate?: Date;
-  resolvedDate?: Date;
+  openedOn: string;
+  dueDate?: string;
+  resolvedDate?: string;
   reportedBy?: string;
   assignedTo?: string;
   resolvedBy?: string;
@@ -28,7 +28,7 @@ export interface ComplianceCase {
   preventiveAction?: string;
   // Disciplinary Action fields
   disciplinaryAction?: string; // "verbal_warning", "written_warning", "suspension", "termination"
-  actionDate?: Date;
+  actionDate?: string;
   actionNotes?: string;
   performanceImpact?: number; // -5.0 to -10.0 points
   attachments?: string[];
@@ -58,8 +58,8 @@ export interface CreateComplianceCaseData {
   title: string;
   description: string;
   notes?: string;
-  openedOn: Date;
-  dueDate?: Date;
+  openedOn: string;
+  dueDate?: string;
   reportedBy?: string;
   assignedTo?: string;
   impactLevel?: "low_risk" | "medium_risk" | "high_risk";
@@ -67,7 +67,7 @@ export interface CreateComplianceCaseData {
   preventiveAction?: string;
   // Disciplinary Action fields
   disciplinaryAction?: string; // "verbal_warning", "written_warning", "suspension", "termination"
-  actionDate?: Date;
+  actionDate?: string;
   actionNotes?: string;
   performanceImpact?: number; // -5.0 to -10.0 points
   attachments?: string[];
@@ -91,8 +91,8 @@ export interface UpdateComplianceCaseData {
   title?: string;
   description?: string;
   notes?: string;
-  dueDate?: Date;
-  resolvedDate?: Date;
+  dueDate?: string;
+  resolvedDate?: string;
   assignedTo?: string;
   resolvedBy?: string;
   impactLevel?: "low_risk" | "medium_risk" | "high_risk";
@@ -100,7 +100,7 @@ export interface UpdateComplianceCaseData {
   preventiveAction?: string;
   // Disciplinary Action fields
   disciplinaryAction?: string;
-  actionDate?: Date;
+  actionDate?: string;
   actionNotes?: string;
   performanceImpact?: number;
   attachments?: string[];

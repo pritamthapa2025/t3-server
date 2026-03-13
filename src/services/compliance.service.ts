@@ -416,9 +416,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
     title: data.title,
     description: data.description,
     openedOn:
-      data.openedOn instanceof Date
-        ? data.openedOn.toISOString().split("T")[0]
-        : data.openedOn,
+      data.openedOn,
   };
 
   // Only include organizationId if it's a valid client UUID
@@ -430,9 +428,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   if (data.notes) insertData.notes = data.notes;
   if (data.dueDate)
     insertData.dueDate =
-      data.dueDate instanceof Date
-        ? data.dueDate.toISOString().split("T")[0]
-        : data.dueDate;
+      data.dueDate;
   if (data.reportedBy) insertData.reportedBy = data.reportedBy;
   if (data.assignedTo) insertData.assignedTo = data.assignedTo;
   if (data.impactLevel) insertData.impactLevel = data.impactLevel;
@@ -445,9 +441,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
     insertData.disciplinaryAction = data.disciplinaryAction;
   if (data.actionDate)
     insertData.actionDate =
-      data.actionDate instanceof Date
-        ? data.actionDate.toISOString().split("T")[0]
-        : data.actionDate;
+      data.actionDate;
   if (data.actionNotes) insertData.actionNotes = data.actionNotes;
   if (data.performanceImpact !== undefined)
     insertData.performanceImpact = data.performanceImpact.toString();
@@ -520,21 +514,15 @@ export const updateComplianceCase = async (
   // Handle date conversions
   if (data.dueDate) {
     updateData.dueDate =
-      data.dueDate instanceof Date
-        ? data.dueDate.toISOString().split("T")[0]
-        : data.dueDate;
+      data.dueDate;
   }
   if (data.resolvedDate) {
     updateData.resolvedDate =
-      data.resolvedDate instanceof Date
-        ? data.resolvedDate.toISOString().split("T")[0]
-        : data.resolvedDate;
+      data.resolvedDate;
   }
   if (data.actionDate) {
     updateData.actionDate =
-      data.actionDate instanceof Date
-        ? data.actionDate.toISOString().split("T")[0]
-        : data.actionDate;
+      data.actionDate;
   }
 
   // Handle performance impact conversion
@@ -597,7 +585,7 @@ export const updateCaseStatus = async (
     updateData.resolvedDate =
       resolvedDate instanceof Date
         ? resolvedDate.toISOString().split("T")[0]
-        : resolvedDate;
+        : String(resolvedDate);
 
   const result = await db
     .update(employeeComplianceCases)

@@ -907,16 +907,11 @@ export const updatePropertyEquipment = async (
     updatedAt: new Date(),
   };
 
-  // Convert date strings to Date objects if provided
   if (data.installDate) {
-    updateData.installDate = new Date(data.installDate)
-      .toISOString()
-      .split("T")[0];
+    updateData.installDate = data.installDate;
   }
   if (data.warrantyExpiration) {
-    updateData.warrantyExpiration = new Date(data.warrantyExpiration)
-      .toISOString()
-      .split("T")[0];
+    updateData.warrantyExpiration = data.warrantyExpiration;
   }
 
   const [equipment] = await db

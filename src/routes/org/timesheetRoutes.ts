@@ -14,6 +14,7 @@ import {
   createTimesheetWithClockDataHandler,
   getTimesheetKPIsHandler,
   bulkDeleteTimesheetsHandler,
+  getClockStatusHandler,
 } from "../../controllers/TimesheetController.js";
 import { authenticate } from "../../middleware/auth.js";
 import {
@@ -92,13 +93,16 @@ router
     getTimesheetKPIsHandler,
   );
 
-// All roles can clock in/out
+// All roles can clock in/out and check their status
 router
   .route("/timesheets/clock-in")
   .post(createEntry, validate(clockInSchema), clockInHandler);
 router
   .route("/timesheets/clock-out")
   .post(createEntry, validate(clockOutSchema), clockOutHandler);
+router
+  .route("/timesheets/clock-status")
+  .get(viewOwn, getClockStatusHandler);
 
 router
   .route("/timesheets/clock")

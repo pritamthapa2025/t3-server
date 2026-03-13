@@ -1,4 +1,4 @@
-import { count, eq, and, desc, sql, gte, lte, or, inArray, ilike } from "drizzle-orm";
+﻿import { count, eq, and, desc, sql, gte, lte, or, inArray, ilike } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -85,11 +85,11 @@ function dateRangeConditions(
 }
 
 export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
-  // Date conditions for jobs (createdAt - timestamp)
+  // jobs.createdAt is a timestamp() column — must receive Date objects, not strings
   const jobDateConditions = dateRangeConditions(
     filters,
     jobs.createdAt,
-    (s) => new Date(s),
+    (s) => new Date(s + "T00:00:00Z"),
   );
 
   // 1. Total Revenue - sum of invoices in date range
@@ -266,8 +266,9 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
   // 11. Revenue Growth - (current - previous period) / previous * 100 when date range provided
   let revenueGrowth: number | null = null;
   if (filters?.startDate && filters?.endDate) {
-    const start = new Date(filters.startDate);
-    const end = new Date(filters.endDate);
+    // Use UTC Date objects only for the arithmetic of computing the previous period
+    const start = new Date(filters.startDate + "T00:00:00Z");
+    const end = new Date(filters.endDate + "T23:59:59Z");
     const periodMs = end.getTime() - start.getTime();
     const prevEnd = new Date(start.getTime() - 1);
     const prevStart = new Date(prevEnd.getTime() - periodMs);
@@ -422,10 +423,10 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
 export const getJobPerformanceData = async (filters?: DateRangeFilter) => {
   const dateConditions = [];
   if (filters?.startDate) {
-    dateConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    dateConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    dateConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    dateConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
 
   const jobStats = await db
@@ -1220,9 +1221,9 @@ export const getAttendanceReport = async (
 
   // Calculate working days in period for absence calculation
   const startDate = filters?.startDate
-    ? new Date(filters.startDate)
+    ? filters.startDate as any
     : new Date();
-  const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
+  const endDate = filters?.endDate ? filters.endDate as any : new Date();
   const workingDays = Math.ceil(
     (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
   );
@@ -1600,10 +1601,10 @@ export const getTechnicianQualityReport = async (
 
   const jobConditions = [eq(jobs.isDeleted, false)];
   if (filters?.startDate) {
-    jobConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    jobConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    jobConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    jobConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
   if (organizationId) {
     jobConditions.push(eq(bidsTable.organizationId, organizationId));
@@ -1685,10 +1686,10 @@ export const getTechnicianProfitContribution = async (
     eq(jobs.isDeleted, false),
   ];
   if (filters?.startDate) {
-    jobJoinConditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    jobJoinConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    jobJoinConditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    jobJoinConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
 
   // Start from technicians so we return all of them with revenue/cost (0 or summed)
@@ -1740,10 +1741,10 @@ export const getJobStatusSummary = async (
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
   if (filters?.jobType) {
     conditions.push(eq(bidsTable.jobType, filters.jobType));
@@ -1799,10 +1800,10 @@ export const getJobProfitability = async (
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
   if (filters?.jobType) {
     conditions.push(eq(bidsTable.jobType, filters.jobType));
@@ -1976,10 +1977,10 @@ export const getJobTimeline = async (
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate)));
+    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate)));
+    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
   }
   if (filters?.status) {
     conditions.push(eq(jobs.status, filters.status));

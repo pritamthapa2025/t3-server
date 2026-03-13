@@ -181,13 +181,8 @@ export const createTimesheet = async (data: {
   overtimeHours?: string;
   notes?: string;
 }) => {
-  // Convert sheetDate to YYYY-MM-DD string format for date column
-  const sheetDateStr =
-    data.sheetDate instanceof Date
-      ? data.sheetDate.toISOString().split("T")[0]!
-      : typeof data.sheetDate === "string"
-        ? data.sheetDate
-        : new Date(data.sheetDate).toISOString().split("T")[0]!;
+  // Extract YYYY-MM-DD from the sheetDate string (no Date object needed)
+  const sheetDateStr = String(data.sheetDate).split("T")[0]!;
 
   // Store clockIn and clockOut as time strings directly (HH:MM format)
   const clockInTime = data.clockIn; // Already in HH:MM format
@@ -406,15 +401,13 @@ export const deleteTimesheet = async (id: number, deletedBy: string) => {
 
 export const clockIn = async (data: {
   employeeId: number;
-  clockInDate: Date;
+  clockInDate: string;
   clockInTime: string;
   jobIds?: string[];
   notes?: string;
 }) => {
-  // Get today's date for the sheet
-  const sheetDate = new Date(data.clockInDate);
-  sheetDate.setHours(0, 0, 0, 0); // Set to start of day
-  const sheetDateStr = sheetDate.toISOString().split("T")[0];
+  // Extract YYYY-MM-DD from the clockInDate string directly (no timezone conversion)
+  const sheetDateStr = String(data.clockInDate).split("T")[0];
 
   // Store clockIn time as string directly (HH:MM format)
   const clockInTime = data.clockInTime;
@@ -459,16 +452,14 @@ export const clockIn = async (data: {
 
 export const clockOut = async (data: {
   employeeId: number;
-  clockOutDate: Date;
+  clockOutDate: string;
   clockOutTime: string;
   jobIds?: string[];
   notes?: string;
   breakMinutes?: number;
 }) => {
-  // Get today's date for the sheet
-  const sheetDate = new Date(data.clockOutDate);
-  sheetDate.setHours(0, 0, 0, 0); // Set to start of day
-  const sheetDateStr = sheetDate.toISOString().split("T")[0];
+  // Extract YYYY-MM-DD from the clockOutDate string directly (no timezone conversion)
+  const sheetDateStr = String(data.clockOutDate).split("T")[0];
 
   // Store clockOut time as string directly (HH:MM format)
   const clockOutTimeStr = data.clockOutTime;
@@ -534,7 +525,7 @@ export const clockOut = async (data: {
 
 export const createTimesheetWithClockData = async (data: {
   employeeId: number;
-  clockInDate: Date;
+  clockInDate: string;
   clockInTime: string;
   clockOutDate?: Date;
   clockOutTime?: string;
@@ -640,13 +631,13 @@ export const getWeeklyTimesheetsByEmployee = async (
   page: number = 1,
   limit: number = 10,
 ) => {
-  // Calculate week end date (6 days after start)
-  const startDate = new Date(weekStartDate);
-  const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6);
-
-  const startDateStr = startDate.toISOString().split("T")[0];
-  const endDateStr = endDate.toISOString().split("T")[0];
+  // Calculate week end date using UTC arithmetic to avoid local-TZ shift
+  const startDateStr = weekStartDate; // Already YYYY-MM-DD
+  const weekStartUTC = new Date(weekStartDate + "T00:00:00Z");
+  const weekEndUTC = new Date(weekStartUTC);
+  weekEndUTC.setUTCDate(weekStartUTC.getUTCDate() + 6);
+  const endDateStr = weekEndUTC.toISOString().split("T")[0];
+  // weekStartUTC used for weekDays loop below
 
   const offset = (page - 1) * limit;
 
@@ -796,15 +787,14 @@ export const getWeeklyTimesheetsByEmployee = async (
   }
 
   // Create days of the week array
+  const DAY_NAMES = ["sun","mon","tue","wed","thu","fri","sat"];
   const weekDays: Array<{ date: string; dayName: string }> = [];
   for (let i = 0; i < 7; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
+    const date = new Date(weekStartUTC);
+    date.setUTCDate(weekStartUTC.getUTCDate() + i);
     weekDays.push({
       date: date.toISOString().split("T")[0]!,
-      dayName: date
-        .toLocaleDateString("en-US", { weekday: "short" })
-        .toLowerCase(),
+      dayName: DAY_NAMES[date.getUTCDay()]!,
     });
   }
 
@@ -1564,13 +1554,12 @@ export const rejectTimesheet = async (
 };
 
 export const getTimesheetKPIs = async (weekStartDate: string) => {
-  // Calculate week end date (6 days after start)
-  const startDate = new Date(weekStartDate);
-  const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6);
-
-  const startDateStr = startDate.toISOString().split("T")[0];
-  const endDateStr = endDate.toISOString().split("T")[0];
+  // Calculate week end date using UTC arithmetic to avoid local-TZ shift
+  const startDateStr = weekStartDate;
+  const kpiStartUTC = new Date(weekStartDate + "T00:00:00Z");
+  const kpiEndUTC = new Date(kpiStartUTC);
+  kpiEndUTC.setUTCDate(kpiStartUTC.getUTCDate() + 6);
+  const endDateStr = kpiEndUTC.toISOString().split("T")[0];
 
   // 1. Technicians: Total active employees vs employees with timesheets
   const [totalEmployeesResult] = await db
@@ -1699,4 +1688,46 @@ export const bulkDeleteTimesheets = async (
     .where(and(inArray(timesheets.id, ids), eq(timesheets.isDeleted, false)))
     .returning({ id: timesheets.id });
   return { deleted: result.length, skipped: ids.length - result.length };
+};
+
+// ===========================================================================
+// Clock Status
+// ===========================================================================
+
+/**
+ * Returns today's clock status for a given employee.
+ * status:
+ *   "not_clocked_in"  – no timesheet entry for today
+ *   "clocked_in"      – entry exists with clockIn but no clockOut
+ *   "clocked_out"     – entry exists with both clockIn and clockOut
+ */
+export const getClockStatus = async (employeeId: number) => {
+  const today = new Date().toISOString().split("T")[0]!; // YYYY-MM-DD
+
+  const [entry] = await db
+    .select({
+      id: timesheets.id,
+      clockIn: timesheets.clockIn,
+      clockOut: timesheets.clockOut,
+      sheetDate: timesheets.sheetDate,
+    })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        eq(timesheets.sheetDate, today),
+        eq(timesheets.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (!entry) {
+    return { status: "not_clocked_in" as const, clockIn: null, clockOut: null, sheetDate: today };
+  }
+
+  if (entry.clockIn && !entry.clockOut) {
+    return { status: "clocked_in" as const, clockIn: entry.clockIn, clockOut: null, sheetDate: today };
+  }
+
+  return { status: "clocked_out" as const, clockIn: entry.clockIn, clockOut: entry.clockOut, sheetDate: today };
 };

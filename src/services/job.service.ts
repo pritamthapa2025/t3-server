@@ -506,12 +506,8 @@ export const createJob = async (data: {
       serviceType: data.serviceType,
       bidId: data.bidId,
       description: data.description,
-      scheduledStartDate: new Date(data.scheduledStartDate)
-        .toISOString()
-        .split("T")[0],
-      scheduledEndDate: new Date(data.scheduledEndDate)
-        .toISOString()
-        .split("T")[0],
+      scheduledStartDate: data.scheduledStartDate,
+      scheduledEndDate: data.scheduledEndDate,
       siteAddress: data.siteAddress,
       siteContactName: data.siteContactName,
       siteContactPhone: data.siteContactPhone,
@@ -593,14 +589,12 @@ export const createJob = async (data: {
       const clientName = orgData?.name || null;
 
       // Build structured job details for the email info card
-      const formatDate = (d: string | null | undefined) =>
-        d
-          ? new Date(d).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })
-          : null;
+      const LONG_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const formatDate = (d: string | null | undefined) => {
+        if (!d) return null;
+        const [year, month, day] = String(d).split("T")[0]!.split("-").map(Number);
+        return `${LONG_MONTHS[(month ?? 1) - 1]} ${day}, ${year}`;
+      };
 
       const startDateFormatted =
         formatDate(data.scheduledStartDate) || data.scheduledStartDate;
@@ -831,18 +825,10 @@ export const updateJob = async (
     .update(jobs)
     .set({
       ...jobUpdateData,
-      scheduledStartDate: jobUpdateData.scheduledStartDate
-        ? new Date(jobUpdateData.scheduledStartDate).toISOString().split("T")[0]
-        : undefined,
-      scheduledEndDate: jobUpdateData.scheduledEndDate
-        ? new Date(jobUpdateData.scheduledEndDate).toISOString().split("T")[0]
-        : undefined,
-      actualStartDate: jobUpdateData.actualStartDate
-        ? new Date(jobUpdateData.actualStartDate).toISOString().split("T")[0]
-        : undefined,
-      actualEndDate: jobUpdateData.actualEndDate
-        ? new Date(jobUpdateData.actualEndDate).toISOString().split("T")[0]
-        : undefined,
+      scheduledStartDate: jobUpdateData.scheduledStartDate ?? undefined,
+      scheduledEndDate: jobUpdateData.scheduledEndDate ?? undefined,
+      actualStartDate: jobUpdateData.actualStartDate ?? undefined,
+      actualEndDate: jobUpdateData.actualEndDate ?? undefined,
       updatedAt: new Date(),
     })
     .where(and(eq(jobs.id, id), eq(jobs.isDeleted, false)))
@@ -1178,14 +1164,12 @@ export const addJobTeamMember = async (data: {
         clientName = orgData?.name || null;
       }
 
-      const formatDate = (d: string | null | undefined) =>
-        d
-          ? new Date(d).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })
-          : null;
+      const LONG_MONTHS_2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const formatDate = (d: string | null | undefined) => {
+        if (!d) return null;
+        const [year, month, day] = String(d).split("T")[0]!.split("-").map(Number);
+        return `${LONG_MONTHS_2[(month ?? 1) - 1]} ${day}, ${year}`;
+      };
 
       const startDateFormatted =
         formatDate(jobBid?.scheduledStartDate) ||
@@ -1373,7 +1357,7 @@ export const getJobFinancialSummaryFields = (
   const remaining = contractVal - costForRemaining;
 
   const startDate: string | null = job.createdAt
-    ? (new Date(job.createdAt).toISOString().split("T")[0] ?? null)
+    ? (String(job.createdAt).split("T")[0] ?? null)
     : null;
   const rawEndDate = job.actualEndDate ?? job.scheduledEndDate;
   const endDate: string | null = rawEndDate != null ? rawEndDate : null;
@@ -4288,14 +4272,30 @@ async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
     .limit(1);
   const employeeId = emp?.id ?? null;
 
-  const assignedOrTeamCondition =
-    employeeId === null
-      ? eq(bidsTable.assignedTo, options.userId)
-      : or(
-          eq(bidsTable.assignedTo, options.userId),
-          sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
-        );
-  return and(base, assignedOrTeamCondition);
+  // Team member on the job
+  const teamMemberExistsClause = employeeId !== null
+    ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`
+    : null;
+
+  // Dispatched to any task on the job (covers ad-hoc coverage)
+  const dispatchedExistsClause = employeeId !== null
+    ? sql`EXISTS (
+        SELECT 1 FROM org.dispatch_assignments da
+        JOIN org.dispatch_tasks dt ON da.task_id = dt.id
+        WHERE dt.job_id = ${jobs.id}
+          AND da.technician_id = ${employeeId}
+          AND da.is_deleted = false
+          AND dt.is_deleted = false
+      )`
+    : null;
+
+  const conditions = [
+    eq(bidsTable.assignedTo, options.userId),
+    ...(teamMemberExistsClause ? [teamMemberExistsClause] : []),
+    ...(dispatchedExistsClause ? [dispatchedExistsClause] : []),
+  ];
+
+  return and(base, or(...conditions));
 }
 
 export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
@@ -4305,18 +4305,19 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     eq(bidsTable.isDeleted, false),
   );
 
-  // Active jobs (status: in_progress)
+  // Active jobs: planned + scheduled + in_progress + on_hold (non-terminal statuses — matches dashboard)
+  const activeStatusCondition = inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]);
   const activeJobsQ = db
     .select({ count: count() })
     .from(jobs)
     .innerJoin(bidsTable, joinBids)
-    .where(and(baseCondition, eq(jobs.status, "in_progress")));
+    .where(and(baseCondition, activeStatusCondition));
   const [activeJobsRow] = options
     ? await activeJobsQ
     : await db
         .select({ count: count() })
         .from(jobs)
-        .where(and(eq(jobs.isDeleted, false), eq(jobs.status, "in_progress")));
+        .where(and(eq(jobs.isDeleted, false), activeStatusCondition));
 
   // Pending invoices (count invoices where status is pending or sent), scoped to accessible jobs when options set
   let pendingInvoicesRow: { count: number } | undefined;

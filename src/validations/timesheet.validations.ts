@@ -101,13 +101,7 @@ export const createTimesheetSchema = z.object({
       .number()
       .int("Employee ID must be a whole number")
       .positive("Employee ID is required and must be a positive number"),
-    sheetDate: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message:
-          "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-      }),
+    sheetDate: z.string(),
     clockIn: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
       message:
         "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
@@ -163,14 +157,7 @@ export const updateTimesheetSchema = z.object({
         .int("Employee ID must be a whole number")
         .positive("Employee ID must be a positive number")
         .optional(),
-      sheetDate: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message:
-            "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        })
-        .optional(),
+      sheetDate: z.string().optional(),
       clockIn: z
         .string()
         .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
@@ -241,13 +228,7 @@ export const clockInSchema = z.object({
       .number()
       .int("Employee ID must be a whole number")
       .positive("Employee ID is required and must be a positive number"),
-    clockInDate: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message:
-          "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-      }),
+    clockInDate: z.string(),
     clockInTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
       message:
         "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
@@ -264,13 +245,7 @@ export const clockOutSchema = z.object({
       .number()
       .int("Employee ID must be a whole number")
       .positive("Employee ID is required and must be a positive number"),
-    clockOutDate: z
-      .union([z.string(), z.date()])
-      .transform((val) => (typeof val === "string" ? new Date(val) : val))
-      .refine((val) => !isNaN(val.getTime()), {
-        message:
-          "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-      }),
+    clockOutDate: z.string(),
     clockOutTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
       message:
         "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
@@ -499,25 +474,12 @@ export const createTimesheetWithClockDataSchema = z.object({
         .number()
         .int("Employee ID must be a whole number")
         .positive("Employee ID is required and must be a positive number"),
-      clockInDate: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message:
-            "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        }),
+      clockInDate: z.string(),
       clockInTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
         message:
           "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
       }),
-      clockOutDate: z
-        .union([z.string(), z.date()])
-        .transform((val) => (typeof val === "string" ? new Date(val) : val))
-        .refine((val) => !isNaN(val.getTime()), {
-          message:
-            "Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        })
-        .optional(),
+      clockOutDate: z.string().optional(),
       clockOutTime: z
         .string()
         .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {

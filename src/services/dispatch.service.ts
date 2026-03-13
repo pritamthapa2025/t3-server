@@ -39,6 +39,15 @@ import type {
 // DISPATCH TASKS SERVICE
 // ============================
 
+/**
+ * Wraps a naive datetime string ("YYYY-MM-DDTHH:mm:ss") for Drizzle's PgTimestamp columns.
+ * Appending "Z" makes JS treat it as UTC, so Drizzle's .toISOString() round-trips
+ * the same literal digits. PostgreSQL's TIMESTAMP WITHOUT TIME ZONE then strips the
+ * offset and stores/compares exactly what the user typed — no timezone shift.
+ */
+const naiveDT = (s: string): Date =>
+  new Date(s.endsWith("Z") ? s : `${s}Z`);
+
 // Alias for joining users table
 const createdByUser = alias(users, "created_by_user");
 
@@ -82,8 +91,8 @@ export const getDispatchTasks = async (
     ...(status ? [eq(dispatchTasks.status, status as any)] : []),
     ...(taskType ? [eq(dispatchTasks.taskType, taskType as any)] : []),
     ...(priority ? [eq(dispatchTasks.priority, priority as any)] : []),
-    ...(startDate ? [gte(dispatchTasks.startTime, new Date(startDate))] : []),
-    ...(endDate ? [lte(dispatchTasks.endTime, new Date(endDate))] : []),
+    ...(startDate ? [gte(dispatchTasks.startTime, naiveDT(`${startDate}T00:00:00`))] : []),
+    ...(endDate ? [lte(dispatchTasks.endTime, naiveDT(`${endDate}T23:59:59`))] : []),
   ];
 
   // Add search conditions
@@ -217,12 +226,25 @@ export const getDispatchTaskById = async (id: string) => {
   };
 };
 
-// Parse a datetime string treating it as UTC (append Z if no offset present).
-// This ensures "2026-02-23T09:00:00" is stored as 09:00, not shifted by server TZ.
-const parseAsUTC = (val: string | Date): Date => {
-  if (val instanceof Date) return val;
-  if (val.endsWith("Z") || val.includes("+") || val.includes("-", 10)) return new Date(val);
-  return new Date(val + "Z");
+// Format a raw datetime string (no Date object) for display in notifications.
+// Parses "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS" without any timezone conversion.
+const parseRawDTParts = (raw: string) => {
+  const normalized = String(raw).replace(" ", "T");
+  const [datePart = "", timePart = ""] = normalized.split("T");
+  const [year = 0, month = 0, day = 0] = datePart.split("-").map(Number);
+  const [hours = 0, minutes = 0] = timePart.split(":").map(Number);
+  return { year, month, day, hours, minutes };
+};
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const formatRawDateStr = (raw: string): string => {
+  const { year, month, day } = parseRawDTParts(raw);
+  return `${MONTHS_SHORT[month - 1] ?? ""} ${day}, ${year}`;
+};
+const formatRawTimeStr = (raw: string): string => {
+  const { hours, minutes } = parseRawDTParts(raw);
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+  return `${displayHour}:${String(minutes).padStart(2, "0")} ${period}`;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -270,17 +292,10 @@ async function fireDispatchAssignmentNotifications(
 
     if (!assignedTechnicianUserIds.length) return;
 
-    // 4. Format date and times (stored in UTC, display as-is)
-    const startDate = new Date(task.startTime);
-    const endDate = new Date(task.endTime);
-    const formatDate = (d: Date) =>
-      d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-    const formatTime = (d: Date) =>
-      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-
-    const dateStr = formatDate(startDate);
-    const startTimeStr = formatTime(startDate);
-    const endTimeStr = formatTime(endDate);
+    // 4. Format date and times directly from raw strings (no timezone conversion)
+    const dateStr = formatRawDateStr(String(task.startTime));
+    const startTimeStr = formatRawTimeStr(String(task.startTime));
+    const endTimeStr = formatRawTimeStr(String(task.endTime));
 
     // 5. Build additionalNotes JSON (parsed by frontend notification-detail-modal)
     const additionalNotes = JSON.stringify({
@@ -329,19 +344,16 @@ async function fireDispatchAssignmentNotifications(
 
 // Create Dispatch Task
 export const createDispatchTask = async (data: CreateDispatchTaskData) => {
-  const start = parseAsUTC(data.startTime);
-  const end = parseAsUTC(data.endTime);
-
   const insertData: any = {
     jobId: data.jobId,
     title: data.title,
     taskType: data.taskType,
     priority: data.priority || "medium",
     status: data.status || "pending",
-    startTime: start,
-    endTime: end,
-    // Set date (date-only) derived from startTime
-    date: start.toISOString().slice(0, 10),
+    startTime: naiveDT(data.startTime),
+    endTime: naiveDT(data.endTime),
+    // Derive date-only from the startTime string directly
+    date: String(data.startTime).split("T")[0],
   };
 
   if (data.description) insertData.description = data.description;
@@ -393,10 +405,8 @@ export const updateDispatchTask = async (
   if (data.taskType !== undefined) updateData.taskType = data.taskType;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.status !== undefined) updateData.status = data.status;
-  if (data.startTime !== undefined)
-    updateData.startTime = parseAsUTC(data.startTime);
-  if (data.endTime !== undefined)
-    updateData.endTime = parseAsUTC(data.endTime);
+  if (data.startTime !== undefined) updateData.startTime = naiveDT(data.startTime);
+  if (data.endTime !== undefined) updateData.endTime = naiveDT(data.endTime);
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.linkedJobTaskIds !== undefined)
@@ -426,9 +436,13 @@ export const updateDispatchTask = async (
         ),
       );
     const existingTechIds = new Set(
-      existingAssignments.map((a) => a.technicianId).filter((t): t is number => t != null),
+      existingAssignments
+        .map((a) => a.technicianId)
+        .filter((t): t is number => t != null),
     );
-    const newlyAddedTechIds = data.technicianIds.filter((tid) => !existingTechIds.has(tid));
+    const newlyAddedTechIds = data.technicianIds.filter(
+      (tid) => !existingTechIds.has(tid),
+    );
 
     await db
       .update(dispatchAssignments)
@@ -458,10 +472,17 @@ export const deleteDispatchTask = async (id: string, deletedBy: string) => {
 
   // 1. Soft-delete all assignments for this task + nullify vehicle currentDispatchTaskId (in parallel)
   await Promise.all([
-    db.update(dispatchAssignments)
+    db
+      .update(dispatchAssignments)
       .set({ isDeleted: true, updatedAt: now })
-      .where(and(eq(dispatchAssignments.taskId, id), eq(dispatchAssignments.isDeleted, false))),
-    db.update(vehicles)
+      .where(
+        and(
+          eq(dispatchAssignments.taskId, id),
+          eq(dispatchAssignments.isDeleted, false),
+        ),
+      ),
+    db
+      .update(vehicles)
       .set({ currentDispatchTaskId: null, updatedAt: now })
       .where(eq(vehicles.currentDispatchTaskId, id)),
   ]);
@@ -622,7 +643,10 @@ export const createDispatchAssignment = async (
         },
       });
     } catch (err) {
-      console.error("[Notification] technician_assigned_to_dispatch failed:", err);
+      console.error(
+        "[Notification] technician_assigned_to_dispatch failed:",
+        err,
+      );
     }
   })();
 
@@ -636,9 +660,17 @@ export const updateDispatchAssignment = async (
 ) => {
   // Get current assignment before update to detect technician reassignment
   const [existing] = await db
-    .select({ technicianId: dispatchAssignments.technicianId, taskId: dispatchAssignments.taskId })
+    .select({
+      technicianId: dispatchAssignments.technicianId,
+      taskId: dispatchAssignments.taskId,
+    })
     .from(dispatchAssignments)
-    .where(and(eq(dispatchAssignments.id, id), eq(dispatchAssignments.isDeleted, false)))
+    .where(
+      and(
+        eq(dispatchAssignments.id, id),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   const updateData: any = {
@@ -666,7 +698,12 @@ export const updateDispatchAssignment = async (
   const updated = result[0] || null;
 
   // Fire dispatch_reassigned notification when technician changes (fire-and-forget)
-  if (updated && existing && data.technicianId !== undefined && existing.technicianId !== data.technicianId) {
+  if (
+    updated &&
+    existing &&
+    data.technicianId !== undefined &&
+    existing.technicianId !== data.technicianId
+  ) {
     void (async () => {
       try {
         const taskId = existing.taskId;
@@ -682,15 +719,19 @@ export const updateDispatchAssignment = async (
           .where(eq(employees.id, data.technicianId!))
           .limit(1);
 
-        const oldEmpData = existing.technicianId !== null
-          ? (await db
-              .select({ userId: employees.userId })
-              .from(employees)
-              .where(eq(employees.id, existing.technicianId))
-              .limit(1))[0]
-          : undefined;
+        const oldEmpData =
+          existing.technicianId !== null
+            ? (
+                await db
+                  .select({ userId: employees.userId })
+                  .from(employees)
+                  .where(eq(employees.id, existing.technicianId))
+                  .limit(1)
+              )[0]
+            : undefined;
 
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         const svc = new NotificationService();
         const entityName = taskData?.title || `Dispatch Task #${taskId}`;
 
@@ -786,27 +827,15 @@ export const getAssignmentsByTechnicianId = async (
 
   // Filter by specific date (takes priority over date range)
   if (filters?.date) {
-    const dateObj = new Date(filters.date);
-    const startOfDay = new Date(dateObj);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(dateObj);
-    endOfDay.setHours(23, 59, 59, 999);
-    conditions.push(gte(dispatchTasks.startTime, startOfDay));
-    conditions.push(lte(dispatchTasks.startTime, endOfDay));
+    conditions.push(gte(dispatchTasks.startTime, naiveDT(`${filters.date}T00:00:00`)));
+    conditions.push(lte(dispatchTasks.startTime, naiveDT(`${filters.date}T23:59:59`)));
   } else {
     // Filter by date range using task startTime (only if specific date is not provided)
     if (filters?.startDate) {
-      // Get assignments where task startTime is on or after startDate
-      const startDateObj = new Date(filters.startDate);
-      startDateObj.setHours(0, 0, 0, 0); // Start of day
-      conditions.push(gte(dispatchTasks.startTime, startDateObj));
+      conditions.push(gte(dispatchTasks.startTime, naiveDT(`${filters.startDate}T00:00:00`)));
     }
-
     if (filters?.endDate) {
-      // Get assignments where task startTime is on or before endDate
-      const endDateObj = new Date(filters.endDate);
-      endDateObj.setHours(23, 59, 59, 999); // End of day
-      conditions.push(lte(dispatchTasks.startTime, endDateObj));
+      conditions.push(lte(dispatchTasks.startTime, naiveDT(`${filters.endDate}T23:59:59`)));
     }
   }
 
@@ -1103,11 +1132,10 @@ export const getDispatchKPIs = async () => {
       ),
     );
 
-  // Completed today (status: completed and endTime is today)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Completed today (status: completed and endTime is today) — UTC-safe naive boundaries
+  const _todayStr = new Date().toISOString().split("T")[0];
+  const today = naiveDT(`${_todayStr}T00:00:00`);
+  const tomorrow = naiveDT(`${_todayStr}T23:59:59`);
 
   const [completedTodayRow] = await db
     .select({ count: count() })
@@ -1175,7 +1203,9 @@ export const bulkDeleteDispatchTasks = async (
   const result = await db
     .update(dispatchTasks)
     .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
-    .where(and(inArray(dispatchTasks.id, ids), eq(dispatchTasks.isDeleted, false)))
+    .where(
+      and(inArray(dispatchTasks.id, ids), eq(dispatchTasks.isDeleted, false)),
+    )
     .returning({ id: dispatchTasks.id });
   return { deleted: result.length, skipped: ids.length - result.length };
 };

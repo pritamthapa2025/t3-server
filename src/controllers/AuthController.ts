@@ -1054,8 +1054,6 @@ export const logoutHandler = async (req: Request, res: Response) => {
       }
     }
 
-    res.clearCookie("device_token");
-
     logger.info("User logged out successfully");
     return res.status(200).json({
       success: true,

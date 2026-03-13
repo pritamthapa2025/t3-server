@@ -352,7 +352,9 @@ export const deleteDispatchTaskHandler = async (
 
     const userId = req.user?.id;
     if (!userId) {
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
     }
 
     const deletedTask = await deleteDispatchTask(id, userId);
@@ -441,7 +443,8 @@ export const getDispatchAssignmentByIdHandler = async (
       });
     }
 
-    if (!(await checkDispatchTaskAssignedAccess(req, res, assignment.taskId))) return;
+    if (!(await checkDispatchTaskAssignedAccess(req, res, assignment.taskId)))
+      return;
 
     logger.info(`Dispatch assignment ${id} fetched successfully`);
     return res.status(200).json({
@@ -691,8 +694,10 @@ export const getEmployeesWithAssignedTasksHandler = async (
     let onlyForEmployeeId: number | undefined;
     const userId = req.user?.id;
     if (userId) {
-      const { getDataFilterConditions } = await import("../services/featurePermission.service.js");
-      const { getEmployeeByUserId } = await import("../services/auth.service.js");
+      const { getDataFilterConditions } =
+        await import("../services/featurePermission.service.js");
+      const { getEmployeeByUserId } =
+        await import("../services/auth.service.js");
       const dataFilters = await getDataFilterConditions(userId, "dispatch");
       if (dataFilters.assignedOnly) {
         const employee = await getEmployeeByUserId(userId);
@@ -751,11 +756,16 @@ export const getDispatchKPIsHandler = async (req: Request, res: Response) => {
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteDispatchTasksHandler = async (req: Request, res: Response) => {
+export const bulkDeleteDispatchTasksHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await bulkDeleteDispatchTasks(ids, userId);
@@ -768,6 +778,8 @@ export const bulkDeleteDispatchTasksHandler = async (req: Request, res: Response
     });
   } catch (error) {
     logger.logApiError("Bulk delete dispatch tasks error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

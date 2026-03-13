@@ -976,10 +976,10 @@ export const updateBid = async (
       accessInstructions: data.accessInstructions,
       finalBidAmount: data.finalBidAmount,
       actualCost: data.actualCost,
-      submittedDate: data.submittedDate ? new Date(data.submittedDate).toISOString().split("T")[0] : undefined,
-      decisionDate: data.decisionDate ? new Date(data.decisionDate).toISOString().split("T")[0] : undefined,
+      submittedDate: data.submittedDate ?? undefined,
+      decisionDate: data.decisionDate ?? undefined,
       convertedToJobId: data.convertedToJobId ?? undefined,
-      conversionDate: data.conversionDate ? new Date(data.conversionDate).toISOString().split("T")[0] : undefined,
+      conversionDate: data.conversionDate ?? undefined,
       lostReason: data.lostReason,
       rejectionReason: data.rejectionReason,
       updatedAt: new Date(),
@@ -2624,7 +2624,7 @@ export const updateBidPlanSpecData = async (
   const toDateOrUndefined = (dateStr?: string): string | undefined => {
     if (!dateStr || dateStr.trim() === "") return undefined;
     try {
-      return new Date(dateStr).toISOString().split("T")[0];
+      return String(dateStr).split("T")[0];
     } catch {
       return undefined;
     }
@@ -2708,7 +2708,7 @@ export const updateBidDesignBuildData = async (
   const toDateOrUndefined = (dateStr?: string): string | undefined => {
     if (!dateStr || dateStr.trim() === "") return undefined;
     try {
-      return new Date(dateStr).toISOString().split("T")[0];
+      return String(dateStr).split("T")[0];
     } catch {
       return undefined;
     }

@@ -1,6 +1,6 @@
 import { db } from "../config/db.js";
 import { jobs, jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
-import { dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
+import { dispatchTasks, dispatchAssignments } from "../drizzle/schema/dispatch.schema.js";
 import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { employees, revenueTargets } from "../drizzle/schema/org.schema.js";
@@ -66,22 +66,16 @@ export const getRevenueStats = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
 ) => {
-  const today = new Date();
-  const rangeStart = dateRange
-    ? new Date(dateRange.startDate + "T00:00:00.000")
+  const rangeStart: Date = dateRange
+    ? new Date(dateRange.startDate + "T00:00:00Z")
     : (() => {
         const d = new Date();
-        d.setMonth(d.getMonth() - 6);
-        d.setHours(0, 0, 0, 0);
+        d.setUTCMonth(d.getUTCMonth() - 6);
         return d;
       })();
-  const rangeEnd = dateRange
-    ? new Date(dateRange.endDate + "T23:59:59.999")
-    : (() => {
-        const d = new Date(today);
-        d.setHours(23, 59, 59, 999);
-        return d;
-      })();
+  const rangeEnd: Date = dateRange
+    ? new Date(dateRange.endDate + "T23:59:59Z")
+    : new Date();
 
   let invoiceJobIdFilter: ReturnType<typeof inArray> | undefined;
   if (organizationId) {
@@ -145,22 +139,16 @@ export const getRevenueStats = async (
     );
 
   // "Current" month = last month in range (rangeEnd's month); previous = month before
-  const currentMonthNum = rangeEnd.getMonth() + 1; // JS months are 0-indexed
-  const currentYear = rangeEnd.getFullYear();
+  const currentMonthNum = rangeEnd.getUTCMonth() + 1; // UTC months are 0-indexed
+  const currentYear = rangeEnd.getUTCFullYear();
 
-  const firstDayOfCurrentMonth = new Date(currentYear, rangeEnd.getMonth(), 1);
+  const firstDayOfCurrentMonth = new Date(Date.UTC(currentYear, rangeEnd.getUTCMonth(), 1));
   const lastDayOfCurrentMonth = new Date(
-    currentYear,
-    rangeEnd.getMonth() + 1,
-    0,
-    23, 59, 59, 999,
+    Date.UTC(currentYear, rangeEnd.getUTCMonth() + 1, 0, 23, 59, 59, 999),
   );
-  const firstDayOfPrevMonth = new Date(currentYear, rangeEnd.getMonth() - 1, 1);
+  const firstDayOfPrevMonth = new Date(Date.UTC(currentYear, rangeEnd.getUTCMonth() - 1, 1));
   const lastDayOfPrevMonth = new Date(
-    currentYear,
-    rangeEnd.getMonth(),
-    0,
-    23, 59, 59, 999,
+    Date.UTC(currentYear, rangeEnd.getUTCMonth(), 0, 23, 59, 59, 999),
   );
 
   const [currentMonthRevenue, previousMonthRevenue] = await Promise.all([
@@ -191,7 +179,7 @@ export const getRevenueStats = async (
   ]);
 
   // Fetch revenue targets for all years covered by the queried range
-  const startYear = rangeStart.getFullYear();
+  const startYear = rangeStart.getUTCFullYear();
   const endYear = currentYear;
   const targetRows = await db
     .select({
@@ -288,8 +276,11 @@ export const getActiveJobsStats = async (
   dateRange?: DateRangeFilter,
   options?: { assignedToEmployeeId?: number; assignedToUserId?: string },
 ) => {
-  const today = new Date();
-  const rangeEnd = dateRange ? new Date(dateRange.endDate) : today;
+  const rangeEnd = dateRange ? dateRange.endDate : new Date().toISOString().split("T")[0];
+  // Parse year/month from YYYY-MM-DD string for date arithmetic
+  const [_ey, _em] = String(rangeEnd).split("-").map(Number);
+  const endYear = _ey ?? new Date().getUTCFullYear();
+  const endMonth = _em ?? (new Date().getUTCMonth() + 1); // 1-indexed
 
   const bidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
@@ -372,16 +363,8 @@ export const getActiveJobsStats = async (
 
   const activeJobsCount = await activeCountQuery;
 
-  const firstDayOfPrevMonth = new Date(
-    rangeEnd.getFullYear(),
-    rangeEnd.getMonth() - 1,
-    1,
-  );
-  const lastDayOfPrevMonth = new Date(
-    rangeEnd.getFullYear(),
-    rangeEnd.getMonth(),
-    0,
-  );
+  const firstDayOfPrevMonth = new Date(Date.UTC(endYear, endMonth - 2, 1));
+  const lastDayOfPrevMonth = new Date(Date.UTC(endYear, endMonth - 1, 0));
 
   let lastMonthQuery = db
     .select({ count: count(jobs.id) })
@@ -534,19 +517,20 @@ export const getTodaysDispatch = async (
       jobNumber: jobs.jobNumber,
       dispatchDate: sql<string>`(${dispatchTasks.startTime})::date`,
     })
-    .from(jobTeamMembers)
-    .innerJoin(employees, eq(jobTeamMembers.employeeId, employees.id))
-    .innerJoin(users, eq(employees.userId, users.id))
-    .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .from(dispatchAssignments)
     .innerJoin(
       dispatchTasks,
       and(
-        eq(dispatchTasks.jobId, jobs.id),
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
         eq(dispatchTasks.isDeleted, false),
         sql`(${dispatchTasks.startTime})::date = ${dispatchDate}::date`,
       ),
     )
+    // Only include employees who are explicitly assigned to the task
+    .innerJoin(employees, and(eq(dispatchAssignments.technicianId, employees.id), eq(employees.isDeleted, false)))
+    .innerJoin(users, eq(employees.userId, users.id))
+    .innerJoin(jobs, and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)))
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     // LEFT JOIN timesheets to check if the employee has clocked in today
     .leftJoin(
       timesheets,
@@ -559,9 +543,7 @@ export const getTodaysDispatch = async (
     .where(
       and(
         ...(dispatchBidOrgFilter ? [dispatchBidOrgFilter] : []),
-        eq(jobTeamMembers.isActive, true),
-        eq(employees.isDeleted, false),
-        eq(jobs.isDeleted, false),
+        eq(dispatchAssignments.isDeleted, false),
       ),
     )
     .orderBy(employees.id, sql`CASE WHEN ${timesheets.id} IS NOT NULL THEN 0 ELSE 1 END`);
@@ -591,8 +573,8 @@ export const getActiveBidsStats = async (
 
   const createdAtFilter = dateRange
     ? and(
-        gte(bidsTable.createdAt, new Date(dateRange.startDate)),
-        lte(bidsTable.createdAt, new Date(dateRange.endDate)),
+        gte(bidsTable.createdAt, new Date(dateRange.startDate + "T00:00:00Z")),
+        lte(bidsTable.createdAt, new Date(dateRange.endDate + "T23:59:59Z")),
       )
     : undefined;
 
@@ -679,8 +661,11 @@ export const getPerformanceOverview = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
 ) => {
-  const today = new Date();
-  const rangeEnd = dateRange ? new Date(dateRange.endDate) : today;
+  const rangeEnd = dateRange ? dateRange.endDate : new Date().toISOString().split("T")[0];
+  // Parse year/month from YYYY-MM-DD string for date arithmetic
+  const [_pey, _pem] = String(rangeEnd).split("-").map(Number);
+  const endYear = _pey ?? new Date().getUTCFullYear();
+  const endMonth = _pem ?? (new Date().getUTCMonth() + 1); // 1-indexed
   const perfBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
@@ -702,8 +687,8 @@ export const getPerformanceOverview = async (
 
   const completedJobDateFilter = dateRange
     ? and(
-        gte(jobs.actualEndDate, new Date(dateRange.startDate)),
-        lte(jobs.actualEndDate, new Date(dateRange.endDate)),
+        gte(jobs.actualEndDate, dateRange.startDate as any),
+        lte(jobs.actualEndDate, dateRange.endDate as any),
       )
     : undefined;
 
@@ -743,8 +728,8 @@ export const getPerformanceOverview = async (
 
   const bidDateFilter = dateRange
     ? and(
-        gte(bidsTable.createdAt, new Date(dateRange.startDate)),
-        lte(bidsTable.createdAt, new Date(dateRange.endDate)),
+        gte(bidsTable.createdAt, new Date(dateRange.startDate + "T00:00:00Z")),
+        lte(bidsTable.createdAt, new Date(dateRange.endDate + "T23:59:59Z")),
       )
     : undefined;
 
@@ -775,11 +760,7 @@ export const getPerformanceOverview = async (
   const won = Number(wonBids[0]?.count || 0);
   const bidWinRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-  const firstDayOfMonth = new Date(
-    rangeEnd.getFullYear(),
-    rangeEnd.getMonth(),
-    1,
-  );
+  const firstDayOfMonth = new Date(Date.UTC(endYear, endMonth - 1, 1));
   const currentMonthRevenue = await db
     .select({ total: sum(invoices.totalAmount) })
     .from(invoices)
@@ -794,8 +775,8 @@ export const getPerformanceOverview = async (
 
   const currentRevenue = Number(currentMonthRevenue[0]?.total || 0);
 
-  const currentMonthNum = rangeEnd.getMonth() + 1;
-  const currentYear = rangeEnd.getFullYear();
+  const currentMonthNum = endMonth;
+  const currentYear = endYear;
   const [targetRow] = await db
     .select({ targetAmount: revenueTargets.targetAmount })
     .from(revenueTargets)
@@ -1031,4 +1012,172 @@ export const deleteRevenueTarget = async (id: string, deletedBy?: string) => {
     .where(eq(revenueTargets.id, id));
 
   return { id };
+};
+
+// ===========================================================================
+// My Schedule (Technician — today's dispatch assignments for the logged-in employee)
+// ===========================================================================
+
+/**
+ * Returns all dispatch tasks assigned to a specific employee for today.
+ * Used for the "My Schedule" widget — technicians see their own schedule.
+ * Managers/Executives can also call this endpoint (e.g. to inspect a technician's day).
+ */
+export const getMySchedule = async (employeeId: number) => {
+  const today = new Date().toISOString().split("T")[0]!;
+
+  const rows = await db
+    .select({
+      taskId: dispatchTasks.id,
+      title: dispatchTasks.title,
+      taskType: dispatchTasks.taskType,
+      status: dispatchTasks.status,
+      priority: dispatchTasks.priority,
+      startTime: dispatchTasks.startTime,
+      endTime: dispatchTasks.endTime,
+      notes: dispatchTasks.notes,
+      jobId: jobs.id,
+      jobNumber: jobs.jobNumber,
+      jobDescription: jobs.description,
+      siteAddress: jobs.siteAddress,
+      assignmentStatus: dispatchAssignments.status,
+      role: dispatchAssignments.role,
+      // clock-in check: is the employee clocked in today?
+      isClockedIn: sql<boolean>`${timesheets.id} IS NOT NULL`,
+    })
+    .from(dispatchAssignments)
+    .innerJoin(
+      dispatchTasks,
+      and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchTasks.isDeleted, false),
+        sql`(${dispatchTasks.startTime})::date = ${today}::date`,
+      ),
+    )
+    .innerJoin(jobs, and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)))
+    .leftJoin(
+      timesheets,
+      and(
+        eq(timesheets.employeeId, employeeId),
+        sql`${timesheets.sheetDate} = ${today}::date`,
+        eq(timesheets.isDeleted, false),
+      ),
+    )
+    .where(
+      and(
+        eq(dispatchAssignments.technicianId, employeeId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .orderBy(dispatchTasks.startTime);
+
+  return { data: rows, date: today, count: rows.length };
+};
+
+// ===========================================================================
+// My Active Jobs (Technician — jobs the logged-in employee has dispatch assignments on)
+// ===========================================================================
+
+const ACTIVE_JOB_STATUSES = ["planned", "scheduled", "in_progress", "on_hold"] as const;
+const STATUS_LABELS: Record<string, string> = {
+  planned: "Planned",
+  scheduled: "Scheduled",
+  in_progress: "In progress",
+  on_hold: "On hold",
+};
+
+/**
+ * Returns active jobs (planned/scheduled/in_progress/on_hold) where the technician is either:
+ *  1. A job team member (permanent assignment), OR
+ *  2. Has a dispatch assignment on the job (ad-hoc, e.g. covering for a sick colleague)
+ *
+ * Technician-only — managers/executives use the regular getActiveJobsStats endpoint.
+ */
+export const getMyActiveJobs = async (employeeId: number) => {
+  // Job IDs via team membership
+  const teamMemberJobIds = db
+    .selectDistinct({ jobId: jobTeamMembers.jobId })
+    .from(jobTeamMembers)
+    .where(
+      and(
+        eq(jobTeamMembers.employeeId, employeeId),
+        eq(jobTeamMembers.isActive, true),
+      ),
+    );
+
+  // Job IDs via dispatch assignments (may or may not be a team member)
+  const dispatchJobIds = db
+    .selectDistinct({ jobId: dispatchTasks.jobId })
+    .from(dispatchAssignments)
+    .innerJoin(
+      dispatchTasks,
+      and(eq(dispatchAssignments.taskId, dispatchTasks.id), eq(dispatchTasks.isDeleted, false)),
+    )
+    .where(
+      and(
+        eq(dispatchAssignments.technicianId, employeeId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    );
+
+  // Combined filter: team member OR dispatch-assigned
+  const myJobsCondition = sql`${jobs.id} IN (${teamMemberJobIds}) OR ${jobs.id} IN (${dispatchJobIds})`;
+
+  // Job list + status breakdown in one query
+  const jobRows = await db
+    .selectDistinct({
+      id: jobs.id,
+      jobNumber: jobs.jobNumber,
+      description: jobs.description,
+      status: jobs.status,
+      siteAddress: jobs.siteAddress,
+      createdAt: jobs.createdAt,
+    })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        inArray(jobs.status, [...ACTIVE_JOB_STATUSES]),
+        myJobsCondition,
+      ),
+    )
+    .orderBy(jobs.createdAt);
+
+  // Derive breakdown from the fetched list (no extra DB round-trip)
+  const countByStatus = new Map<string, number>();
+  for (const j of jobRows) {
+    const s = String(j.status ?? "").toLowerCase();
+    countByStatus.set(s, (countByStatus.get(s) ?? 0) + 1);
+  }
+
+  const chartData = ACTIVE_JOB_STATUSES.map((s) => ({
+    label: STATUS_LABELS[s] ?? s,
+    jobs: countByStatus.get(s) ?? 0,
+  }));
+
+  const currentActiveJobs = jobRows.length;
+
+  // Previous month count for growth %
+  const firstOfPrevMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1));
+  const lastOfPrevMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 0));
+
+  const [prevRow] = await db
+    .select({ cnt: count(jobs.id) })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.isDeleted, false),
+        inArray(jobs.status, [...ACTIVE_JOB_STATUSES]),
+        gte(jobs.createdAt, firstOfPrevMonth),
+        lte(jobs.createdAt, lastOfPrevMonth),
+        myJobsCondition,
+      ),
+    );
+
+  const prevCount = Number(prevRow?.cnt || 0);
+  const growthPercentage = prevCount > 0
+    ? Math.round(((currentActiveJobs - prevCount) / prevCount) * 100)
+    : 0;
+
+  return { currentActiveJobs, growthPercentage, chartData, jobs: jobRows };
 };

@@ -868,13 +868,13 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
 
 /** Get Monday and Sunday of the week containing the given date (ISO week Mon–Sun). */
 function getWeekStartEnd(date: Date): { startDate: string; endDate: string } {
-  const d = new Date(date);
-  const day = d.getDay(); // 0 Sun, 1 Mon, ... 6 Sat
+  // Use UTC methods throughout to avoid local-TZ shift
+  const day = date.getUTCDay(); // 0 Sun, 1 Mon, ... 6 Sat
   const daysFromMonday = day === 0 ? 6 : day - 1;
-  const start = new Date(d);
-  start.setDate(d.getDate() - daysFromMonday);
+  const start = new Date(date);
+  start.setUTCDate(date.getUTCDate() - daysFromMonday);
   const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  end.setUTCDate(start.getUTCDate() + 6);
   return {
     startDate: start.toISOString().split("T")[0]!,
     endDate: end.toISOString().split("T")[0]!,
@@ -884,18 +884,18 @@ function getWeekStartEnd(date: Date): { startDate: string; endDate: string } {
 /** Get ISO week number (1–53) for a date. */
 function getISOWeekNumber(date: Date): number {
   const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-  const yearStart = new Date(d.getFullYear(), 0, 1);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
 /** Calendar month start (YYYY-MM-01) and end (last day of month). */
 function getMonthStartEnd(date: Date): { startDate: string; endDate: string } {
-  const y = date.getFullYear();
-  const m = date.getMonth();
-  const start = new Date(y, m, 1);
-  const end = new Date(y, m + 1, 0);
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const start = new Date(Date.UTC(y, m, 1));
+  const end = new Date(Date.UTC(y, m + 1, 0));
   return {
     startDate: start.toISOString().split("T")[0]!,
     endDate: end.toISOString().split("T")[0]!,

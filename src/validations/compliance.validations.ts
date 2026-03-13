@@ -79,11 +79,8 @@ export const createComplianceCaseSchema = z.object({
     title: z.string().min(1).max(255),
     description: z.string().min(1),
     notes: z.string().optional(),
-    openedOn: z.string().transform((str) => new Date(str)),
-    dueDate: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    openedOn: z.string(),
+    dueDate: z.string().optional(),
     reportedBy: z.string().uuid().optional(),
     assignedTo: z.string().uuid().optional(),
     impactLevel: z.enum(["low_risk", "medium_risk", "high_risk"]).optional(),
@@ -137,14 +134,8 @@ export const updateComplianceCaseSchema = z.object({
     title: z.string().min(1).max(255).optional(),
     description: z.string().min(1).optional(),
     notes: z.string().optional(),
-    dueDate: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
-    resolvedDate: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    dueDate: z.string().optional(),
+    resolvedDate: z.string().optional(),
     assignedTo: z.string().uuid().optional(),
     resolvedBy: z.string().uuid().optional(),
     impactLevel: z.enum(["low_risk", "medium_risk", "high_risk"]).optional(),
@@ -195,10 +186,7 @@ export const updateCaseStatusSchema = z.object({
     ]),
     notes: z.string().optional(),
     resolvedBy: z.string().uuid().optional(),
-    resolvedDate: z
-      .string()
-      .transform((str) => new Date(str))
-      .optional(),
+    resolvedDate: z.string().optional(),
   }),
 });
 

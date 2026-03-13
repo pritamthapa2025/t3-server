@@ -17,13 +17,13 @@ export interface Vehicle {
   currentDispatchTaskId?: string;
   mileage: string;
   fuelLevel?: string;
-  lastService?: Date;
-  nextService?: Date;
-  nextServiceDue?: Date;
+  lastService?: string;
+  nextService?: string;
+  nextServiceDue?: string;
   nextServiceDays?: number;
-  nextInspectionDue?: Date;
+  nextInspectionDue?: string;
   nextInspectionDays?: number;
-  purchaseDate?: Date;
+  purchaseDate?: string;
   purchaseCost?: string;
   dealer?: string;
   monthlyPayment?: string;
@@ -32,11 +32,11 @@ export interface Vehicle {
   insuranceProvider?: string;
   insurancePolicyNumber?: string;
   insuranceCoverage?: string;
-  insuranceExpiration?: Date;
+  insuranceExpiration?: string;
   insuranceAnnualPremium?: string;
   registrationState?: string;
   registrationNumber?: string;
-  registrationExpiration?: Date;
+  registrationExpiration?: string;
   mileageRate?: string;
   vehicleDayRate?: string;
   mpg?: string;
@@ -67,7 +67,7 @@ export interface CreateVehicleData {
   assignedToEmployeeId?: number;
   mileage?: string;
   fuelLevel?: string;
-  purchaseDate?: Date;
+  purchaseDate?: string;
   purchaseCost?: string;
   dealer?: string;
   monthlyPayment?: string;
@@ -76,11 +76,11 @@ export interface CreateVehicleData {
   insuranceProvider?: string;
   insurancePolicyNumber?: string;
   insuranceCoverage?: string;
-  insuranceExpiration?: Date;
+  insuranceExpiration?: string;
   insuranceAnnualPremium?: string;
   registrationState?: string;
   registrationNumber?: string;
-  registrationExpiration?: Date;
+  registrationExpiration?: string;
   mileageRate?: string;
   vehicleDayRate?: string;
   mpg?: string;
@@ -102,13 +102,13 @@ export interface UpdateVehicleData {
   currentDispatchTaskId?: string;
   mileage?: string;
   fuelLevel?: string;
-  lastService?: Date;
-  nextService?: Date;
-  nextServiceDue?: Date;
+  lastService?: string;
+  nextService?: string;
+  nextServiceDue?: string;
   nextServiceDays?: number;
-  nextInspectionDue?: Date;
+  nextInspectionDue?: string;
   nextInspectionDays?: number;
-  purchaseDate?: Date;
+  purchaseDate?: string;
   purchaseCost?: string;
   dealer?: string;
   monthlyPayment?: string;
@@ -117,11 +117,11 @@ export interface UpdateVehicleData {
   insuranceProvider?: string;
   insurancePolicyNumber?: string;
   insuranceCoverage?: string;
-  insuranceExpiration?: Date;
+  insuranceExpiration?: string;
   insuranceAnnualPremium?: string;
   registrationState?: string;
   registrationNumber?: string;
-  registrationExpiration?: Date;
+  registrationExpiration?: string;
   mileageRate?: string;
   vehicleDayRate?: string;
   mpg?: string;
@@ -176,9 +176,9 @@ export interface MaintenanceRecord {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost: string;
-  date: Date;
+  date: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   vendor?: string;
   performedBy?: string;
@@ -186,10 +186,10 @@ export interface MaintenanceRecord {
   assignedToEmployeeId?: number;
   needsApproval?: boolean;
   approvedBy?: string;
-  approvedDate?: Date;
+  approvedDate?: string;
   approvalComments?: string;
   rejectedBy?: string;
-  rejectedDate?: Date;
+  rejectedDate?: string;
   rejectionReason?: string;
   note?: string;
   createdBy?: string;
@@ -213,9 +213,9 @@ export interface CreateMaintenanceRecordData {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost?: string;
-  date: Date;
+  date: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   vendor?: string;
   performedBy?: string;
@@ -239,19 +239,19 @@ export interface UpdateMaintenanceRecordData {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost?: string;
-  date?: Date;
+  date?: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   vendor?: string;
   performedBy?: string;
   assignedToEmployeeId?: number;
   needsApproval?: boolean;
   approvedBy?: string;
-  approvedDate?: Date;
+  approvedDate?: string;
   approvalComments?: string;
   rejectedBy?: string;
-  rejectedDate?: Date;
+  rejectedDate?: string;
   rejectionReason?: string;
   note?: string;
 }
@@ -273,9 +273,9 @@ export interface RepairRecord {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost: string;
-  date: Date;
+  date: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   reportedBy?: string;
   vendor?: string;
@@ -285,10 +285,10 @@ export interface RepairRecord {
   linkedInspectionId?: string;
   needsApproval?: boolean;
   approvedBy?: string;
-  approvedDate?: Date;
+  approvedDate?: string;
   approvalComments?: string;
   rejectedBy?: string;
-  rejectedDate?: Date;
+  rejectedDate?: string;
   rejectionReason?: string;
   notes?: string;
   createdBy?: string;
@@ -312,9 +312,9 @@ export interface CreateRepairRecordData {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost?: string;
-  date: Date;
+  date: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   reportedBy?: string;
   vendor?: string;
@@ -340,9 +340,9 @@ export interface UpdateRepairRecordData {
     | "rejected";
   priority?: "low" | "medium" | "high" | "critical";
   cost?: string;
-  date?: Date;
+  date?: string;
   mileage?: string;
-  scheduledDate?: Date;
+  scheduledDate?: string;
   estimatedDuration?: string;
   reportedBy?: string;
   vendor?: string;
@@ -351,10 +351,10 @@ export interface UpdateRepairRecordData {
   linkedInspectionId?: string;
   needsApproval?: boolean;
   approvedBy?: string;
-  approvedDate?: Date;
+  approvedDate?: string;
   approvalComments?: string;
   rejectedBy?: string;
-  rejectedDate?: Date;
+  rejectedDate?: string;
   rejectionReason?: string;
   notes?: string;
 }
@@ -363,7 +363,7 @@ export interface UpdateRepairRecordData {
 export interface SafetyInspection {
   id: string;
   vehicleId: string;
-  date: Date;
+  date: string;
   mileage?: string;
   performedBy?: string; // Nullable - only used when isTeamMember = false
   overallStatus:
@@ -386,7 +386,7 @@ export interface SafetyInspection {
 
 export interface CreateSafetyInspectionData {
   vehicleId: string;
-  date: Date;
+  date: string;
   mileage?: string;
   performedBy?: string; // Optional when isTeamMember is true
   overallStatus:
@@ -405,7 +405,7 @@ export interface CreateSafetyInspectionData {
 }
 
 export interface UpdateSafetyInspectionData {
-  date?: Date;
+  date?: string;
   mileage?: string;
   performedBy?: string;
   overallStatus?:
@@ -447,7 +447,7 @@ export interface CreateSafetyInspectionItemData {
 export interface FuelRecord {
   id: string;
   vehicleId: string;
-  date: Date;
+  date: string;
   odometer: string;
   gallons: string;
   cost: string;
@@ -463,7 +463,7 @@ export interface FuelRecord {
 
 export interface CreateFuelRecordData {
   vehicleId: string;
-  date: Date;
+  date: string;
   odometer: string;
   gallons: string;
   cost: string;
@@ -475,7 +475,7 @@ export interface CreateFuelRecordData {
 }
 
 export interface UpdateFuelRecordData {
-  date?: Date;
+  date?: string;
   odometer?: string;
   gallons?: string;
   cost?: string;
@@ -490,9 +490,9 @@ export interface CheckInOutRecord {
   id: string;
   vehicleId: string;
   type: "check_in" | "check_out";
-  date: Date;
+  date: string;
   time: string;
-  timestamp: Date;
+  timestamp: string;
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;
@@ -506,9 +506,9 @@ export interface CheckInOutRecord {
 export interface CreateCheckInOutRecordData {
   vehicleId: string;
   type: "check_in" | "check_out";
-  date: Date;
+  date: string;
   time: string;
-  timestamp: Date;
+  timestamp: string;
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;
@@ -519,9 +519,9 @@ export interface CreateCheckInOutRecordData {
 export interface UpdateCheckInOutRecordData {
   vehicleId?: string;
   type?: "check_in" | "check_out";
-  date?: Date;
+  date?: string;
   time?: string;
-  timestamp?: Date;
+  timestamp?: string;
   odometer?: string;
   fuelLevel?: string;
   jobId?: string;

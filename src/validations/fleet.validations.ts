@@ -87,7 +87,6 @@ export const createVehicleSchema = z.object({
     fuelLevel: z.string().optional(),
     purchaseDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     purchaseCost: z.string().optional(),
     dealer: z.string().max(255).optional(),
@@ -99,14 +98,12 @@ export const createVehicleSchema = z.object({
     insuranceCoverage: z.string().max(100).optional(),
     insuranceExpiration: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     insuranceAnnualPremium: z.string().optional(),
     registrationState: z.string().max(50).optional(),
     registrationNumber: z.string().max(100).optional(),
     registrationExpiration: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileageRate: z.string().optional(),
     vehicleDayRate: z.string().optional(),
@@ -136,25 +133,20 @@ export const updateVehicleSchema = z.object({
     fuelLevel: z.string().optional(),
     lastService: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     nextService: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     nextServiceDue: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     nextServiceDays: z.number().int().optional(),
     nextInspectionDue: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     nextInspectionDays: z.number().int().optional(),
     purchaseDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     purchaseCost: z.string().optional(),
     dealer: z.string().max(255).optional(),
@@ -166,14 +158,12 @@ export const updateVehicleSchema = z.object({
     insuranceCoverage: z.string().max(100).optional(),
     insuranceExpiration: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     insuranceAnnualPremium: z.string().optional(),
     registrationState: z.string().max(50).optional(),
     registrationNumber: z.string().max(100).optional(),
     registrationExpiration: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileageRate: z.string().optional(),
     vehicleDayRate: z.string().optional(),
@@ -254,11 +244,10 @@ export const createMaintenanceRecordSchema = z.object({
       .optional(),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
     cost: z.string().optional(),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     vendor: z.string().max(255).optional(),
@@ -292,12 +281,10 @@ export const updateMaintenanceRecordSchema = z.object({
     cost: z.string().optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     vendor: z.string().max(255).optional(),
@@ -307,13 +294,11 @@ export const updateMaintenanceRecordSchema = z.object({
     approvedBy: uuidSchema.optional(),
     approvedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     approvalComments: z.string().optional(),
     rejectedBy: uuidSchema.optional(),
     rejectedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     rejectionReason: z.string().optional(),
     note: z.string().optional(),
@@ -378,11 +363,10 @@ export const createMaintenanceRecordByVehicleSchema = z.object({
       .optional(),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
     cost: z.string().optional(),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     vendor: z.string().max(255).optional(),
@@ -418,12 +402,10 @@ export const updateMaintenanceRecordByVehicleSchema = z.object({
     cost: z.string().optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     vendor: z.string().max(255).optional(),
@@ -433,13 +415,11 @@ export const updateMaintenanceRecordByVehicleSchema = z.object({
     approvedBy: uuidSchema.optional(),
     approvedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     approvalComments: z.string().optional(),
     rejectedBy: uuidSchema.optional(),
     rejectedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     rejectionReason: z.string().optional(),
     note: z.string().optional(),
@@ -511,11 +491,10 @@ export const createRepairRecordSchema = z.object({
       .optional(),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
     cost: z.string().optional(),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     reportedBy: z.string().max(255).optional(),
@@ -551,12 +530,10 @@ export const updateRepairRecordSchema = z.object({
     cost: z.string().optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     reportedBy: z.string().max(255).optional(),
@@ -568,13 +545,11 @@ export const updateRepairRecordSchema = z.object({
     approvedBy: uuidSchema.optional(),
     approvedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     approvalComments: z.string().optional(),
     rejectedBy: uuidSchema.optional(),
     rejectedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     rejectionReason: z.string().optional(),
     notes: z.string().optional(),
@@ -639,11 +614,10 @@ export const createRepairRecordByVehicleSchema = z.object({
       .optional(),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
     cost: z.string().optional(),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     reportedBy: z.string().max(255).optional(),
@@ -681,12 +655,10 @@ export const updateRepairRecordByVehicleSchema = z.object({
     cost: z.string().optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     scheduledDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     estimatedDuration: z.string().max(50).optional(),
     reportedBy: z.string().max(255).optional(),
@@ -698,13 +670,11 @@ export const updateRepairRecordByVehicleSchema = z.object({
     approvedBy: uuidSchema.optional(),
     approvedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     approvalComments: z.string().optional(),
     rejectedBy: uuidSchema.optional(),
     rejectedDate: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     rejectionReason: z.string().optional(),
     notes: z.string().optional(),
@@ -751,7 +721,7 @@ export const createSafetyInspectionSchema = z.object({
   body: z
     .object({
       vehicleId: uuidSchema,
-      date: z.string().transform((str) => new Date(str)),
+      date: z.string(),
       mileage: z.string().max(50).optional(),
       performedBy: z.string().min(1).max(255).optional(),
       overallStatus: z.enum([
@@ -794,7 +764,6 @@ export const updateSafetyInspectionSchema = z.object({
   body: z.object({
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     performedBy: z.string().min(1).max(255).optional(),
@@ -842,7 +811,7 @@ export const createSafetyInspectionByVehicleSchema = z.object({
   params: z.object({ vehicleId: uuidSchema }),
   body: z
     .object({
-      date: z.string().transform((str) => new Date(str)),
+      date: z.string(),
       mileage: z.string().max(50).optional(),
       performedBy: z.string().min(1).max(255).optional(),
       overallStatus: z.enum([
@@ -887,7 +856,6 @@ export const updateSafetyInspectionByVehicleSchema = z.object({
   body: z.object({
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     mileage: z.string().max(50).optional(),
     performedBy: z.string().min(1).max(255).optional(),
@@ -974,7 +942,7 @@ export const getFuelRecordByIdSchema = z.object({
 export const createFuelRecordSchema = z.object({
   body: z.object({
     vehicleId: uuidSchema,
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     odometer: z.string().min(1),
     gallons: z.string().min(1),
     cost: z.string().min(1),
@@ -992,7 +960,6 @@ export const updateFuelRecordSchema = z.object({
   body: z.object({
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     odometer: z.string().optional(),
     gallons: z.string().optional(),
@@ -1033,7 +1000,7 @@ export const getFuelRecordsByVehicleQuerySchema = z.object({
 export const createFuelRecordByVehicleSchema = z.object({
   params: z.object({ vehicleId: uuidSchema }),
   body: z.object({
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     odometer: z.string().min(1),
     gallons: z.string().min(1),
     cost: z.string().min(1),
@@ -1053,7 +1020,6 @@ export const updateFuelRecordByVehicleSchema = z.object({
   body: z.object({
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     odometer: z.string().optional(),
     gallons: z.string().optional(),
@@ -1102,9 +1068,9 @@ export const createCheckInOutRecordSchema = z.object({
   body: z.object({
     vehicleId: uuidSchema,
     type: z.enum(["check_in", "check_out"]),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     time: z.string().min(1),
-    timestamp: z.string().transform((str) => new Date(str)),
+    timestamp: z.string(),
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
@@ -1121,12 +1087,10 @@ export const updateCheckInOutRecordSchema = z.object({
     type: z.enum(["check_in", "check_out"]).optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     time: z.string().optional(),
     timestamp: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
@@ -1165,9 +1129,9 @@ export const createCheckInOutRecordByVehicleSchema = z.object({
   params: z.object({ vehicleId: uuidSchema }),
   body: z.object({
     type: z.enum(["check_in", "check_out"]),
-    date: z.string().transform((str) => new Date(str)),
+    date: z.string(),
     time: z.string().min(1),
-    timestamp: z.string().transform((str) => new Date(str)),
+    timestamp: z.string(),
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
     jobId: uuidSchema.optional(),
@@ -1185,12 +1149,10 @@ export const updateCheckInOutRecordByVehicleSchema = z.object({
     type: z.enum(["check_in", "check_out"]).optional(),
     date: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     time: z.string().optional(),
     timestamp: z
       .string()
-      .transform((str) => new Date(str))
       .optional(),
     odometer: z.string().optional(),
     fuelLevel: z.string().optional(),
