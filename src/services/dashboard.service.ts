@@ -1,13 +1,30 @@
 import { db } from "../config/db.js";
 import { jobs, jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
-import { dispatchTasks, dispatchAssignments } from "../drizzle/schema/dispatch.schema.js";
-import { bidsTable, bidFinancialBreakdown } from "../drizzle/schema/bids.schema.js";
+import {
+  dispatchTasks,
+  dispatchAssignments,
+} from "../drizzle/schema/dispatch.schema.js";
+import {
+  bidsTable,
+  bidFinancialBreakdown,
+} from "../drizzle/schema/bids.schema.js";
 import { invoices } from "../drizzle/schema/invoicing.schema.js";
 import { employees, revenueTargets } from "../drizzle/schema/org.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
-import { eq, and, or, sql, gte, lte, desc, count, sum, inArray } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  sql,
+  gte,
+  lte,
+  desc,
+  count,
+  sum,
+  inArray,
+} from "drizzle-orm";
 
 /** Optional date range filter (YYYY-MM-DD), same pattern as reports API */
 export type DateRangeFilter = { startDate: string; endDate: string };
@@ -142,11 +159,15 @@ export const getRevenueStats = async (
   const currentMonthNum = rangeEnd.getUTCMonth() + 1; // UTC months are 0-indexed
   const currentYear = rangeEnd.getUTCFullYear();
 
-  const firstDayOfCurrentMonth = new Date(Date.UTC(currentYear, rangeEnd.getUTCMonth(), 1));
+  const firstDayOfCurrentMonth = new Date(
+    Date.UTC(currentYear, rangeEnd.getUTCMonth(), 1),
+  );
   const lastDayOfCurrentMonth = new Date(
     Date.UTC(currentYear, rangeEnd.getUTCMonth() + 1, 0, 23, 59, 59, 999),
   );
-  const firstDayOfPrevMonth = new Date(Date.UTC(currentYear, rangeEnd.getUTCMonth() - 1, 1));
+  const firstDayOfPrevMonth = new Date(
+    Date.UTC(currentYear, rangeEnd.getUTCMonth() - 1, 1),
+  );
   const lastDayOfPrevMonth = new Date(
     Date.UTC(currentYear, rangeEnd.getUTCMonth(), 0, 23, 59, 59, 999),
   );
@@ -219,7 +240,8 @@ export const getRevenueStats = async (
       .filter((t) => {
         // Only include target months that fall within the queried date range
         if (t.year < rangeStartYear || t.year > rangeEndYear) return false;
-        if (t.year === rangeStartYear && t.month < rangeStartMonth) return false;
+        if (t.year === rangeStartYear && t.month < rangeStartMonth)
+          return false;
         if (t.year === rangeEndYear && t.month > rangeEndMonth) return false;
         return true;
       })
@@ -233,7 +255,20 @@ export const getRevenueStats = async (
     return ay !== by ? ay - by : am - bm;
   });
 
-  const SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const SHORT_MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
 
   const chartData = sortedKeys.map((key) => {
     const revenueItem = revenueMap.get(key);
@@ -256,7 +291,8 @@ export const getRevenueStats = async (
   const total = chartData.reduce((acc, d) => acc + d.revenue, 0);
 
   // Current-month target (used by the summary card)
-  const currentMonthTarget = targetMap.get(`${currentYear}-${currentMonthNum}`) ?? 0;
+  const currentMonthTarget =
+    targetMap.get(`${currentYear}-${currentMonthNum}`) ?? 0;
 
   return {
     currentMonthTotal: currentTotal,
@@ -276,11 +312,13 @@ export const getActiveJobsStats = async (
   dateRange?: DateRangeFilter,
   options?: { assignedToEmployeeId?: number; assignedToUserId?: string },
 ) => {
-  const rangeEnd = dateRange ? dateRange.endDate : new Date().toISOString().split("T")[0];
+  const rangeEnd = dateRange
+    ? dateRange.endDate
+    : new Date().toISOString().split("T")[0];
   // Parse year/month from YYYY-MM-DD string for date arithmetic
   const [_ey, _em] = String(rangeEnd).split("-").map(Number);
   const endYear = _ey ?? new Date().getUTCFullYear();
-  const endMonth = _em ?? (new Date().getUTCMonth() + 1); // 1-indexed
+  const endMonth = _em ?? new Date().getUTCMonth() + 1; // 1-indexed
 
   const bidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
@@ -307,14 +345,21 @@ export const getActiveJobsStats = async (
       ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${assignedToEmployeeId} AND jtm.is_active = true)`
       : null;
   const bidAssignedCondition =
-    assignedToUserId != null ? eq(bidsTable.assignedTo, assignedToUserId) : null;
+    assignedToUserId != null
+      ? eq(bidsTable.assignedTo, assignedToUserId)
+      : null;
   const technicianCondition =
     teamMemberCondition && bidAssignedCondition
       ? or(teamMemberCondition, bidAssignedCondition)
-      : teamMemberCondition ?? bidAssignedCondition ?? undefined;
+      : (teamMemberCondition ?? bidAssignedCondition ?? undefined);
 
   /** Breakdown by status so chart bars sum to currentActiveJobs */
-  const statusOrder = ["planned", "scheduled", "in_progress", "on_hold"] as const;
+  const statusOrder = [
+    "planned",
+    "scheduled",
+    "in_progress",
+    "on_hold",
+  ] as const;
   const statusBreakdownQuery = db
     .select({
       status: jobs.status,
@@ -334,7 +379,9 @@ export const getActiveJobsStats = async (
   const statusBreakdownRows = await statusBreakdownQuery;
   const countByStatus = new Map<string, number>(
     statusBreakdownRows.map((r) => [
-      String(r.status ?? "").toLowerCase().replace(/\s+/g, "_"),
+      String(r.status ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, "_"),
       Number(r.count || 0),
     ]),
   );
@@ -527,9 +574,18 @@ export const getTodaysDispatch = async (
       ),
     )
     // Only include employees who are explicitly assigned to the task
-    .innerJoin(employees, and(eq(dispatchAssignments.technicianId, employees.id), eq(employees.isDeleted, false)))
+    .innerJoin(
+      employees,
+      and(
+        eq(dispatchAssignments.technicianId, employees.id),
+        eq(employees.isDeleted, false),
+      ),
+    )
     .innerJoin(users, eq(employees.userId, users.id))
-    .innerJoin(jobs, and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)))
+    .innerJoin(
+      jobs,
+      and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)),
+    )
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     // LEFT JOIN timesheets to check if the employee has clocked in today
     .leftJoin(
@@ -546,7 +602,10 @@ export const getTodaysDispatch = async (
         eq(dispatchAssignments.isDeleted, false),
       ),
     )
-    .orderBy(employees.id, sql`CASE WHEN ${timesheets.id} IS NOT NULL THEN 0 ELSE 1 END`);
+    .orderBy(
+      employees.id,
+      sql`CASE WHEN ${timesheets.id} IS NOT NULL THEN 0 ELSE 1 END`,
+    );
 
   const activeCount = dispatch.filter((d) => d.status === "active").length;
   const inactiveCount = dispatch.filter((d) => d.status === "inactive").length;
@@ -661,11 +720,13 @@ export const getPerformanceOverview = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
 ) => {
-  const rangeEnd = dateRange ? dateRange.endDate : new Date().toISOString().split("T")[0];
+  const rangeEnd = dateRange
+    ? dateRange.endDate
+    : new Date().toISOString().split("T")[0];
   // Parse year/month from YYYY-MM-DD string for date arithmetic
   const [_pey, _pem] = String(rangeEnd).split("-").map(Number);
   const endYear = _pey ?? new Date().getUTCFullYear();
-  const endMonth = _pem ?? (new Date().getUTCMonth() + 1); // 1-indexed
+  const endMonth = _pem ?? new Date().getUTCMonth() + 1; // 1-indexed
   const perfBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
@@ -813,7 +874,11 @@ export const getPerformanceOverview = async (
  */
 export const getPriorityJobs = async (
   organizationId?: string,
-  options: { limit?: number; search?: string; assignedToEmployeeId?: number } = {},
+  options: {
+    limit?: number;
+    search?: string;
+    assignedToEmployeeId?: number;
+  } = {},
   dateRange?: DateRangeFilter,
 ) => {
   const { limit = 10, search, assignedToEmployeeId } = options;
@@ -937,7 +1002,11 @@ export const getRevenueTargetById = async (id: string) => {
   if (!row) return null;
 
   const { createdByName, updatedByName, ...rest } = row;
-  return { ...rest, createdByName: createdByName ?? null, updatedByName: updatedByName ?? null };
+  return {
+    ...rest,
+    createdByName: createdByName ?? null,
+    updatedByName: updatedByName ?? null,
+  };
 };
 
 export const listRevenueTargets = async (year?: number) => {
@@ -978,7 +1047,10 @@ export const createRevenueTarget = async (input: CreateRevenueTargetInput) => {
   return getRevenueTargetById(result[0].id);
 };
 
-export const updateRevenueTarget = async (id: string, input: UpdateRevenueTargetInput) => {
+export const updateRevenueTarget = async (
+  id: string,
+  input: UpdateRevenueTargetInput,
+) => {
   const existing = await getRevenueTargetById(id);
   if (!existing) return null;
 
@@ -987,7 +1059,9 @@ export const updateRevenueTarget = async (id: string, input: UpdateRevenueTarget
     .set({
       ...(input.month !== undefined && { month: input.month }),
       ...(input.year !== undefined && { year: input.year }),
-      ...(input.targetAmount !== undefined && { targetAmount: String(input.targetAmount) }),
+      ...(input.targetAmount !== undefined && {
+        targetAmount: String(input.targetAmount),
+      }),
       ...(input.label !== undefined && { label: input.label }),
       ...(input.notes !== undefined && { notes: input.notes }),
       updatedBy: input.updatedBy,
@@ -1054,7 +1128,10 @@ export const getMySchedule = async (employeeId: number) => {
         sql`(${dispatchTasks.startTime})::date = ${today}::date`,
       ),
     )
-    .innerJoin(jobs, and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)))
+    .innerJoin(
+      jobs,
+      and(eq(dispatchTasks.jobId, jobs.id), eq(jobs.isDeleted, false)),
+    )
     .leftJoin(
       timesheets,
       and(
@@ -1078,7 +1155,12 @@ export const getMySchedule = async (employeeId: number) => {
 // My Active Jobs (Technician — jobs the logged-in employee has dispatch assignments on)
 // ===========================================================================
 
-const ACTIVE_JOB_STATUSES = ["planned", "scheduled", "in_progress", "on_hold"] as const;
+const ACTIVE_JOB_STATUSES = [
+  "planned",
+  "scheduled",
+  "in_progress",
+  "on_hold",
+] as const;
 const STATUS_LABELS: Record<string, string> = {
   planned: "Planned",
   scheduled: "Scheduled",
@@ -1111,7 +1193,10 @@ export const getMyActiveJobs = async (employeeId: number) => {
     .from(dispatchAssignments)
     .innerJoin(
       dispatchTasks,
-      and(eq(dispatchAssignments.taskId, dispatchTasks.id), eq(dispatchTasks.isDeleted, false)),
+      and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchTasks.isDeleted, false),
+      ),
     )
     .where(
       and(
@@ -1158,8 +1243,12 @@ export const getMyActiveJobs = async (employeeId: number) => {
   const currentActiveJobs = jobRows.length;
 
   // Previous month count for growth %
-  const firstOfPrevMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1));
-  const lastOfPrevMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 0));
+  const firstOfPrevMonth = new Date(
+    Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1),
+  );
+  const lastOfPrevMonth = new Date(
+    Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 0),
+  );
 
   const [prevRow] = await db
     .select({ cnt: count(jobs.id) })
@@ -1175,9 +1264,10 @@ export const getMyActiveJobs = async (employeeId: number) => {
     );
 
   const prevCount = Number(prevRow?.cnt || 0);
-  const growthPercentage = prevCount > 0
-    ? Math.round(((currentActiveJobs - prevCount) / prevCount) * 100)
-    : 0;
+  const growthPercentage =
+    prevCount > 0
+      ? Math.round(((currentActiveJobs - prevCount) / prevCount) * 100)
+      : 0;
 
   return { currentActiveJobs, growthPercentage, chartData, jobs: jobRows };
 };
