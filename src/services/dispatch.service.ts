@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema/org.schema.js";
 import { NotificationService } from "./notification.service.js";
 import { logger } from "../utils/logger.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
   eq,
@@ -23,6 +24,7 @@ import {
   gte,
   lte,
   like,
+  ilike,
   or,
   inArray,
   getTableColumns,
@@ -45,8 +47,7 @@ import type {
  * the same literal digits. PostgreSQL's TIMESTAMP WITHOUT TIME ZONE then strips the
  * offset and stores/compares exactly what the user typed — no timezone shift.
  */
-const naiveDT = (s: string): Date =>
-  new Date(s.endsWith("Z") ? s : `${s}Z`);
+const naiveDT = (s: string): Date => new Date(s.endsWith("Z") ? s : `${s}Z`);
 
 // Alias for joining users table
 const createdByUser = alias(users, "created_by_user");
@@ -91,8 +92,12 @@ export const getDispatchTasks = async (
     ...(status ? [eq(dispatchTasks.status, status as any)] : []),
     ...(taskType ? [eq(dispatchTasks.taskType, taskType as any)] : []),
     ...(priority ? [eq(dispatchTasks.priority, priority as any)] : []),
-    ...(startDate ? [gte(dispatchTasks.startTime, naiveDT(`${startDate}T00:00:00`))] : []),
-    ...(endDate ? [lte(dispatchTasks.endTime, naiveDT(`${endDate}T23:59:59`))] : []),
+    ...(startDate
+      ? [gte(dispatchTasks.startTime, naiveDT(`${startDate}T00:00:00`))]
+      : []),
+    ...(endDate
+      ? [lte(dispatchTasks.endTime, naiveDT(`${endDate}T23:59:59`))]
+      : []),
   ];
 
   // Add search conditions
@@ -235,7 +240,20 @@ const parseRawDTParts = (raw: string) => {
   const [hours = 0, minutes = 0] = timePart.split(":").map(Number);
   return { year, month, day, hours, minutes };
 };
-const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const formatRawDateStr = (raw: string): string => {
   const { year, month, day } = parseRawDTParts(raw);
   return `${MONTHS_SHORT[month - 1] ?? ""} ${day}, ${year}`;
@@ -394,7 +412,18 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
 export const updateDispatchTask = async (
   id: string,
   data: UpdateDispatchTaskData,
+  clientUpdatedAt?: string,
 ) => {
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: dispatchTasks.updatedAt })
+      .from(dispatchTasks)
+      .where(and(eq(dispatchTasks.id, id), eq(dispatchTasks.isDeleted, false)))
+      .limit(1);
+    if (!current) return null;
+    if (isStale(current.updatedAt, clientUpdatedAt)) return STALE_DATA;
+  }
+
   const updateData: any = {
     updatedAt: new Date(),
   };
@@ -405,7 +434,8 @@ export const updateDispatchTask = async (
   if (data.taskType !== undefined) updateData.taskType = data.taskType;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.status !== undefined) updateData.status = data.status;
-  if (data.startTime !== undefined) updateData.startTime = naiveDT(data.startTime);
+  if (data.startTime !== undefined)
+    updateData.startTime = naiveDT(data.startTime);
   if (data.endTime !== undefined) updateData.endTime = naiveDT(data.endTime);
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
@@ -657,12 +687,14 @@ export const createDispatchAssignment = async (
 export const updateDispatchAssignment = async (
   id: string,
   data: UpdateDispatchAssignmentData,
+  clientUpdatedAt?: string,
 ) => {
   // Get current assignment before update to detect technician reassignment
   const [existing] = await db
     .select({
       technicianId: dispatchAssignments.technicianId,
       taskId: dispatchAssignments.taskId,
+      updatedAt: dispatchAssignments.updatedAt,
     })
     .from(dispatchAssignments)
     .where(
@@ -672,6 +704,9 @@ export const updateDispatchAssignment = async (
       ),
     )
     .limit(1);
+
+  if (!existing) return null;
+  if (isStale(existing.updatedAt, clientUpdatedAt)) return STALE_DATA;
 
   const updateData: any = {
     updatedAt: new Date(),
@@ -827,15 +862,23 @@ export const getAssignmentsByTechnicianId = async (
 
   // Filter by specific date (takes priority over date range)
   if (filters?.date) {
-    conditions.push(gte(dispatchTasks.startTime, naiveDT(`${filters.date}T00:00:00`)));
-    conditions.push(lte(dispatchTasks.startTime, naiveDT(`${filters.date}T23:59:59`)));
+    conditions.push(
+      gte(dispatchTasks.startTime, naiveDT(`${filters.date}T00:00:00`)),
+    );
+    conditions.push(
+      lte(dispatchTasks.startTime, naiveDT(`${filters.date}T23:59:59`)),
+    );
   } else {
     // Filter by date range using task startTime (only if specific date is not provided)
     if (filters?.startDate) {
-      conditions.push(gte(dispatchTasks.startTime, naiveDT(`${filters.startDate}T00:00:00`)));
+      conditions.push(
+        gte(dispatchTasks.startTime, naiveDT(`${filters.startDate}T00:00:00`)),
+      );
     }
     if (filters?.endDate) {
-      conditions.push(lte(dispatchTasks.startTime, naiveDT(`${filters.endDate}T23:59:59`)));
+      conditions.push(
+        lte(dispatchTasks.startTime, naiveDT(`${filters.endDate}T23:59:59`)),
+      );
     }
   }
 
@@ -969,11 +1012,16 @@ export const getAvailableEmployeesForDispatch = async (
 export const getEmployeesWithAssignedTasks = async (
   offset: number,
   limit: number,
-  filters?: { status?: string; onlyForEmployeeId?: number },
+  filters?: { status?: string; onlyForEmployeeId?: number; search?: string },
 ) => {
   const employeeConditions = [eq(employees.isDeleted, false)];
   if (filters?.onlyForEmployeeId != null) {
     employeeConditions.push(eq(employees.id, filters.onlyForEmployeeId));
+  }
+  if (filters?.search) {
+    employeeConditions.push(
+      ilike(users.fullName, `%${filters.search}%`),
+    );
   }
   if (filters?.status) {
     if (filters.status === "active") {
@@ -988,6 +1036,7 @@ export const getEmployeesWithAssignedTasks = async (
   const totalResult = await db
     .select({ count: count() })
     .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
     .where(and(...employeeConditions));
 
   const total = totalResult[0]?.count || 0;
@@ -1208,4 +1257,80 @@ export const bulkDeleteDispatchTasks = async (
     )
     .returning({ id: dispatchTasks.id });
   return { deleted: result.length, skipped: ids.length - result.length };
+};
+
+// ===========================================================================
+// Log Hours for Assignment
+// ===========================================================================
+
+export const logHoursForAssignment = async (
+  assignmentId: string,
+  data: {
+    actualStartTime: string;
+    actualEndTime: string;
+    actualHours: number;
+    logNotes?: string;
+  },
+  loggedBy: string,
+) => {
+  const [existing] = await db
+    .select({ id: dispatchAssignments.id })
+    .from(dispatchAssignments)
+    .where(
+      and(
+        eq(dispatchAssignments.id, assignmentId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) return null;
+
+  const [updated] = await db
+    .update(dispatchAssignments)
+    .set({
+      actualStartTime: naiveDT(data.actualStartTime),
+      actualEndTime: naiveDT(data.actualEndTime),
+      actualHours: String(data.actualHours),
+      logNotes: data.logNotes ?? null,
+      loggedAt: new Date(),
+      loggedBy,
+      updatedAt: new Date(),
+    })
+    .where(eq(dispatchAssignments.id, assignmentId))
+    .returning();
+
+  return updated ?? null;
+};
+
+// Get all assignments for a task, enriched with technician name
+export const getAssignmentLoggedHours = async (taskId: string) => {
+  const rows = await db
+    .select({
+      id: dispatchAssignments.id,
+      taskId: dispatchAssignments.taskId,
+      technicianId: dispatchAssignments.technicianId,
+      status: dispatchAssignments.status,
+      role: dispatchAssignments.role,
+      actualStartTime: dispatchAssignments.actualStartTime,
+      actualEndTime: dispatchAssignments.actualEndTime,
+      actualHours: dispatchAssignments.actualHours,
+      logNotes: dispatchAssignments.logNotes,
+      loggedAt: dispatchAssignments.loggedAt,
+      loggedBy: dispatchAssignments.loggedBy,
+      technicianName: users.fullName,
+      employeeIdStr: employees.employeeId,
+    })
+    .from(dispatchAssignments)
+    .leftJoin(employees, eq(dispatchAssignments.technicianId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(
+      and(
+        eq(dispatchAssignments.taskId, taskId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .orderBy(asc(dispatchAssignments.createdAt));
+
+  return rows;
 };

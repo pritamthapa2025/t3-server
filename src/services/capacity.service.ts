@@ -874,6 +874,7 @@ export const getTeamAssignments = async () => {
       ? await db
           .select({
             reportsTo: employees.reportsTo,
+            departmentId: employees.departmentId,
             employeeName: users.fullName,
             employeeId: employees.employeeId,
           })
@@ -906,18 +907,61 @@ export const getTeamAssignments = async () => {
     {} as Record<string, Array<{ name: string; employeeId: string }>>,
   );
 
+  // Get department IDs for departments where reportsTo yielded no employees
+  const deptIdsWithNoEmployees = departmentsWithLeads
+    .filter((dept) => !dept.teamLeadId || !employeesMap[dept.teamLeadId]?.length)
+    .map((dept) => dept.departmentId);
+
+  // Fallback: fetch employees by departmentId for departments with no reportsTo matches
+  const deptEmployeesByDeptId: Record<number, Array<{ name: string; employeeId: string }>> = {};
+  if (deptIdsWithNoEmployees.length > 0) {
+    const deptEmployees = await db
+      .select({
+        departmentId: employees.departmentId,
+        employeeName: users.fullName,
+        employeeId: employees.employeeId,
+      })
+      .from(employees)
+      .innerJoin(users, eq(employees.userId, users.id))
+      .where(
+        and(
+          inArray(employees.departmentId, deptIdsWithNoEmployees),
+          eq(employees.isDeleted, false),
+        ),
+      )
+      .orderBy(users.fullName);
+
+    for (const emp of deptEmployees) {
+      if (emp.departmentId == null) continue;
+      const deptId = emp.departmentId;
+      if (!deptEmployeesByDeptId[deptId]) {
+        deptEmployeesByDeptId[deptId] = [];
+      }
+      deptEmployeesByDeptId[deptId].push({
+        name: emp.employeeName || "Unknown",
+        employeeId: emp.employeeId || "",
+      });
+    }
+  }
+
   // Combine all data into simplified structure
-  return departmentsWithLeads.map((dept) => ({
-    departmentName: dept.departmentName,
-    location: dept.location || "Not specified",
-    teamLead: dept.teamLeadId
-      ? {
-          role: roleMap[dept.teamLeadId] || "No role assigned",
-          name: dept.teamLeadName || "Unassigned",
-          email: dept.teamLeadEmail || "",
-          phone: dept.teamLeadPhone || "",
-        }
-      : null,
-    employees: dept.teamLeadId ? employeesMap[dept.teamLeadId] || [] : [],
-  }));
+  return departmentsWithLeads.map((dept) => {
+    const byReportsTo = dept.teamLeadId ? employeesMap[dept.teamLeadId] || [] : [];
+    const byDept = deptEmployeesByDeptId[dept.departmentId] || [];
+    // Merge and deduplicate by employeeId
+    const merged = byReportsTo.length > 0 ? byReportsTo : byDept;
+    return {
+      departmentName: dept.departmentName,
+      location: dept.location || "Not specified",
+      teamLead: dept.teamLeadId
+        ? {
+            role: roleMap[dept.teamLeadId] || "No role assigned",
+            name: dept.teamLeadName || "Unassigned",
+            email: dept.teamLeadEmail || "",
+            phone: dept.teamLeadPhone || "",
+          }
+        : null,
+      employees: merged,
+    };
+  });
 };

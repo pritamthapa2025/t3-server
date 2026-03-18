@@ -17,6 +17,8 @@ import {
   getEmployeesWithAssignedTasksHandler,
   getDispatchKPIsHandler,
   bulkDeleteDispatchTasksHandler,
+  logHoursHandler,
+  getTaskLoggedHoursHandler,
 } from "../../controllers/DispatchController.js";
 import { authenticate } from "../../middleware/auth.js";
 import {
@@ -166,6 +168,13 @@ router.get(
   getAssignmentsByTaskIdHandler,
 );
 
+// Logged hours per task (all assignments with their log data)
+router.get(
+  "/tasks/:taskId/logged-hours",
+  viewDispatch,
+  getTaskLoggedHoursHandler,
+);
+
 // ============================
 // Dispatch Assignments Routes
 // ============================
@@ -202,6 +211,13 @@ router
     validate(deleteDispatchAssignmentSchema),
     deleteDispatchAssignmentHandler,
   );
+
+// Log hours for an assignment — Technicians can log their own; Managers/Executives can log any
+router.post(
+  "/assignments/:id/log-hours",
+  authorizeAnyFeature("dispatch", ["view_own", "confirm_dispatch", "edit_dispatch", "view_all"]),
+  logHoursHandler,
+);
 
 // Technician's own assignments — all can view their own
 router.get(

@@ -773,6 +773,12 @@ export const getDepartmentById = async (id: number) => {
       totalPositions: deptPositions.length,
       positions: positionPayBands,
     },
+    members: deptEmployees.map((e) => ({
+      id: e.employee.id,
+      name: e.user?.fullName || "Unknown",
+      position: e.position?.name || "No Position",
+      status: e.employee.status,
+    })),
   };
 };
 
@@ -1007,6 +1013,18 @@ export const updateDepartment = async (
 };
 
 export const deleteDepartment = async (id: number, deletedBy?: string) => {
+  // Block deletion if the department has active employees (not terminated/deleted)
+  const [activeCount] = await db
+    .select({ count: count() })
+    .from(employees)
+    .where(and(eq(employees.departmentId, id), eq(employees.isDeleted, false)));
+
+  if (activeCount && activeCount.count > 0) {
+    throw new Error(
+      `Cannot delete department: it has ${activeCount.count} active employee(s). Reassign or terminate them first.`,
+    );
+  }
+
   const now = new Date();
   const [department] = await db
     .update(departments)

@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 // UUID validation helper
-const uuidSchema = z.string().uuid({ message: "Invalid ID format - must be a valid UUID" });
+const uuidSchema = z
+  .string()
+  .uuid({ message: "Invalid ID format - must be a valid UUID" });
 
 // Get users query validation
 export const getUsersQuerySchema = z.object({
@@ -71,7 +73,8 @@ export const createUserSchema = z.object({
       .string()
       .optional()
       .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
-        message: "Please provide a valid emergency contact phone number (e.g., +1234567890)",
+        message:
+          "Please provide a valid emergency contact phone number (e.g., +1234567890)",
       }),
   }),
 });
@@ -126,30 +129,27 @@ export const updateUserSchema = z.object({
         .string()
         .optional()
         .refine((val) => !val || val === "" || /^\+?[1-9]\d{1,14}$/.test(val), {
-          message: "Please provide a valid emergency contact phone number (e.g., +1234567890)",
+          message:
+            "Please provide a valid emergency contact phone number (e.g., +1234567890)",
         }),
       isActive: z
         .union([z.boolean(), z.string()])
         .transform((val) =>
-          typeof val === "string"
-            ? val === "true" || val === "1"
-            : val
+          typeof val === "string" ? val === "true" || val === "1" : val,
         )
         .pipe(z.boolean())
         .optional(),
       isVerified: z
         .union([z.boolean(), z.string()])
         .transform((val) =>
-          typeof val === "string"
-            ? val === "true" || val === "1"
-            : val
+          typeof val === "string" ? val === "true" || val === "1" : val,
         )
         .pipe(z.boolean())
         .optional(),
       profilePicture: z
         .union([
           z.string().url("Profile picture must be a valid URL").max(500),
-          z.null()
+          z.null(),
         ])
         .optional(),
     })
@@ -169,8 +169,9 @@ export const updateUserSchema = z.object({
         data.isVerified !== undefined ||
         data.profilePicture !== undefined,
       {
-        message: "At least one field must be provided to update the user profile",
-      }
+        message:
+          "At least one field must be provided to update the user profile",
+      },
     ),
 });
 

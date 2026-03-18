@@ -33,7 +33,9 @@ export const generateTransactionNumber = async (): Promise<string> => {
     return `${prefix}0001`;
   }
 
-  const lastNumber = parseInt(lastTransaction[0]!.transactionNumber.split("-").pop() || "0");
+  const lastNumber = parseInt(
+    lastTransaction[0]!.transactionNumber.split("-").pop() || "0",
+  );
   const nextNumber = (lastNumber + 1).toString().padStart(4, "0");
   return `${prefix}${nextNumber}`;
 };
@@ -47,14 +49,14 @@ export const updateItemQuantitiesAfterTransaction = async (
   tx: any, // Transaction context from db.transaction()
   itemId: string,
   transactionType: string,
-  quantity: string
+  quantity: string,
 ) => {
   // 🔒 LOCK ROW: Read with FOR UPDATE to prevent concurrent modifications
   const item = await tx
     .select()
     .from(inventoryItems)
     .where(eq(inventoryItems.id, itemId))
-    .for('update') // ← ROW-LEVEL LOCK: Critical for preventing race conditions
+    .for("update") // ← ROW-LEVEL LOCK: Critical for preventing race conditions
     .limit(1);
 
   if (item.length === 0) throw new Error("Item not found");
@@ -86,7 +88,7 @@ export const updateItemQuantitiesAfterTransaction = async (
   const newStatus = calculateStockStatus(
     newQuantityOnHand.toString(),
     currentItem.reorderLevel,
-    currentItem.quantityOnOrder
+    currentItem.quantityOnOrder,
   );
 
   // Prepare update data
@@ -140,8 +142,8 @@ export const checkAndCreateAlert = async (itemId: string) => {
       .where(
         and(
           eq(inventoryStockAlerts.itemId, itemId),
-          eq(inventoryStockAlerts.isResolved, false)
-        )
+          eq(inventoryStockAlerts.isResolved, false),
+        ),
       )
       .limit(1);
 
@@ -153,7 +155,7 @@ export const checkAndCreateAlert = async (itemId: string) => {
         currentQuantity: currentItem.quantityOnHand,
         thresholdQuantity: currentItem.reorderLevel,
         message:
-            qtyOnHand === 0
+          qtyOnHand === 0
             ? `Item ${currentItem.name} is out of stock`
             : `Item ${currentItem.name} is below reorder level (${qtyOnHand} <= ${reorderLevel})`,
         isAcknowledged: false,
@@ -163,8 +165,10 @@ export const checkAndCreateAlert = async (itemId: string) => {
       // Fire low_stock_warning or out_of_stock notification (fire-and-forget)
       void (async () => {
         try {
-          const { NotificationService } = await import("../notification.service.js");
-          const eventType = qtyOnHand === 0 ? "out_of_stock" : "low_stock_warning";
+          const { NotificationService } =
+            await import("../notification.service.js");
+          const eventType =
+            qtyOnHand === 0 ? "out_of_stock" : "low_stock_warning";
           await new NotificationService().triggerNotification({
             type: eventType,
             category: "inventory",
@@ -199,28 +203,46 @@ export const getTransactions = async (
     endDate?: string;
     jobId?: string;
     bidId?: string;
-  }
+  },
 ) => {
   let whereCondition: any = undefined;
 
   if (filters?.itemId) {
-    whereCondition = whereCondition 
+    whereCondition = whereCondition
       ? and(whereCondition, eq(inventoryTransactions.itemId, filters.itemId))!
       : eq(inventoryTransactions.itemId, filters.itemId);
   }
   if (filters?.transactionType) {
     whereCondition = whereCondition
-      ? and(whereCondition, eq(inventoryTransactions.transactionType, filters.transactionType as any))!
-      : eq(inventoryTransactions.transactionType, filters.transactionType as any);
+      ? and(
+          whereCondition,
+          eq(
+            inventoryTransactions.transactionType,
+            filters.transactionType as any,
+          ),
+        )!
+      : eq(
+          inventoryTransactions.transactionType,
+          filters.transactionType as any,
+        );
   }
   if (filters?.startDate) {
     whereCondition = whereCondition
-      ? and(whereCondition, gte(inventoryTransactions.transactionDate, new Date(filters.startDate)))!
+      ? and(
+          whereCondition,
+          gte(
+            inventoryTransactions.transactionDate,
+            new Date(filters.startDate),
+          ),
+        )!
       : gte(inventoryTransactions.transactionDate, new Date(filters.startDate));
   }
   if (filters?.endDate) {
     whereCondition = whereCondition
-      ? and(whereCondition, lte(inventoryTransactions.transactionDate, new Date(filters.endDate)))!
+      ? and(
+          whereCondition,
+          lte(inventoryTransactions.transactionDate, new Date(filters.endDate)),
+        )!
       : lte(inventoryTransactions.transactionDate, new Date(filters.endDate));
   }
   if (filters?.jobId) {
@@ -244,8 +266,14 @@ export const getTransactions = async (
       bid: bidsTable,
     })
     .from(inventoryTransactions)
-    .leftJoin(inventoryItems, eq(inventoryTransactions.itemId, inventoryItems.id))
-    .leftJoin(inventoryLocations, eq(inventoryTransactions.locationId, inventoryLocations.id))
+    .leftJoin(
+      inventoryItems,
+      eq(inventoryTransactions.itemId, inventoryItems.id),
+    )
+    .leftJoin(
+      inventoryLocations,
+      eq(inventoryTransactions.locationId, inventoryLocations.id),
+    )
     .leftJoin(users, eq(inventoryTransactions.performedBy, users.id))
     .leftJoin(jobs, eq(inventoryTransactions.jobId, jobs.id))
     .leftJoin(bidsTable, eq(inventoryTransactions.bidId, bidsTable.id))
@@ -264,11 +292,21 @@ export const getTransactions = async (
   return {
     data: result.map((r) => ({
       ...r.transaction,
-      item: r.item ? { id: r.item.id, name: r.item.name, itemCode: r.item.itemCode } : null,
-      location: r.location ? { id: r.location.id, name: r.location.name } : null,
-      performedByUser: r.user ? { id: r.user.id, fullName: r.user.fullName } : null,
-      job: r.job ? { id: r.job.id, name: r.job.name, jobNumber: r.job.jobNumber } : null,
-      bid: r.bid ? { id: r.bid.id, title: r.bid.title, bidNumber: r.bid.bidNumber } : null,
+      item: r.item
+        ? { id: r.item.id, name: r.item.name, itemCode: r.item.itemCode }
+        : null,
+      location: r.location
+        ? { id: r.location.id, name: r.location.name }
+        : null,
+      performedByUser: r.user
+        ? { id: r.user.id, fullName: r.user.fullName }
+        : null,
+      job: r.job
+        ? { id: r.job.id, name: r.job.name, jobNumber: r.job.jobNumber }
+        : null,
+      bid: r.bid
+        ? { id: r.bid.id, title: r.bid.title, bidNumber: r.bid.bidNumber }
+        : null,
     })),
     total,
     pagination: {
@@ -291,7 +329,7 @@ export const createTransaction = async (data: any, userId: string) => {
       .select()
       .from(inventoryItems)
       .where(eq(inventoryItems.id, data.itemId))
-      .for('update') // ← CRITICAL: Lock this row until transaction commits
+      .for("update") // ← CRITICAL: Lock this row until transaction commits
       .limit(1);
 
     if (item.length === 0) throw new Error("Item not found");
@@ -299,7 +337,9 @@ export const createTransaction = async (data: any, userId: string) => {
     // Calculate total cost
     let totalCost = null;
     if (data.unitCost) {
-      totalCost = (parseFloat(data.quantity) * parseFloat(data.unitCost)).toString();
+      totalCost = (
+        parseFloat(data.quantity) * parseFloat(data.unitCost)
+      ).toString();
     }
 
     // Create transaction record
@@ -332,7 +372,7 @@ export const createTransaction = async (data: any, userId: string) => {
       tx, // ← Pass transaction context to maintain locks
       data.itemId,
       data.transactionType,
-      data.quantity
+      data.quantity,
     );
 
     // Update transaction with balance
@@ -345,27 +385,45 @@ export const createTransaction = async (data: any, userId: string) => {
   }); // ← Transaction commits here, releasing all locks
 };
 
-export const getItemTransactions = async (itemId: string) => {
-  const result = await db
-    .select({
-      transaction: inventoryTransactions,
-      user: users,
-      job: jobs,
-      bid: bidsTable,
-    })
-    .from(inventoryTransactions)
-    .leftJoin(users, eq(inventoryTransactions.performedBy, users.id))
-    .leftJoin(jobs, eq(inventoryTransactions.jobId, jobs.id))
-    .leftJoin(bidsTable, eq(inventoryTransactions.bidId, bidsTable.id))
-    .where(eq(inventoryTransactions.itemId, itemId))
-    .orderBy(desc(inventoryTransactions.transactionDate))
-    .limit(50);
+export const getItemTransactions = async (
+  itemId: string,
+  params?: { page?: number; limit?: number },
+) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
 
-  return result.map((r) => ({
-    ...r.transaction,
-    performedByUser: r.user,
-    job: r.job,
-    bid: r.bid,
-  }));
+  const [totalResult, result] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(inventoryTransactions)
+      .where(eq(inventoryTransactions.itemId, itemId)),
+    db
+      .select({
+        transaction: inventoryTransactions,
+        user: users,
+        job: jobs,
+        bid: bidsTable,
+      })
+      .from(inventoryTransactions)
+      .leftJoin(users, eq(inventoryTransactions.performedBy, users.id))
+      .leftJoin(jobs, eq(inventoryTransactions.jobId, jobs.id))
+      .leftJoin(bidsTable, eq(inventoryTransactions.bidId, bidsTable.id))
+      .where(eq(inventoryTransactions.itemId, itemId))
+      .orderBy(desc(inventoryTransactions.transactionDate))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return {
+    data: result.map((r) => ({
+      ...r.transaction,
+      performedByUser: r.user,
+      job: r.job,
+      bid: r.bid,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
+  };
 };
-

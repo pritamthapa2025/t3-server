@@ -93,3 +93,10 @@ export interface UpdateDispatchAssignmentData {
   actualDuration?: number;
   role?: string;
 }
+
+export interface LogHoursData {
+  actualStartTime: string; // ISO datetime
+  actualEndTime: string;   // ISO datetime
+  actualHours: number;     // computed or manual override
+  logNotes?: string;
+}

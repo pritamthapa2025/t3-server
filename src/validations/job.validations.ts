@@ -14,7 +14,6 @@ const numericStringSchema = z.string().regex(/^\d+(\.\d+)?$/, {
 
 const jobStatusEnum = z.enum(
   [
-    "planned",
     "scheduled",
     "in_progress",
     "on_hold",
@@ -25,7 +24,7 @@ const jobStatusEnum = z.enum(
   ],
   {
     message:
-      "Status must be one of: planned, scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed",
+      "Status must be one of: scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed",
   },
 );
 
@@ -62,10 +61,25 @@ export const getJobsQuerySchema = z.object({
           .positive("Limit must be a positive number")
           .max(100, "Maximum 100 items per page"),
       ),
-    status: jobStatusEnum.optional(),
+    // Accepts a single status or a comma-separated list (e.g. "scheduled,in_progress,on_hold")
+    status: z
+      .string()
+      .refine(
+        (val) =>
+          val
+            .split(",")
+            .map((s) => s.trim())
+            .every((s) => jobStatusEnum.options.includes(s as any)),
+        {
+          message:
+            "Status must be one of: scheduled, in_progress, on_hold, completed, cancelled, invoiced, or closed",
+        },
+      )
+      .optional(),
     jobType: z.string().max(100).optional(),
     priority: jobPriorityEnum.optional(),
     search: z.string().optional(),
+    propertyId: z.string().uuid().optional(),
   }),
 });
 
@@ -77,7 +91,7 @@ export const getJobByIdSchema = z.object({
 
 export const createJobSchema = z.object({
   body: z.object({
-    status: jobStatusEnum.optional().default("planned"),
+    status: jobStatusEnum.optional().default("scheduled"),
     priority: jobPriorityEnum.optional(), // Updates the associated bid's priority
     jobType: z.string().max(100).optional(),
     serviceType: z.string().max(100).optional(),
@@ -1120,17 +1134,24 @@ export const deleteJobSurveySchema = z.object({
 // Expenses Validations
 // ============================
 
-/** Job expense types (matches UI: Materials, Equipment, Transportation, Permits, Subcontractor, Utilities, Tools, Safety Equipment, Other) */
+/** Job expense types — 5 canonical categories + legacy values for backward compat */
 export const JOB_EXPENSE_TYPES = [
   "materials",
+  "labor",
   "equipment",
+  "travel",
+  "other",
+  // legacy — kept for backward compatibility with existing records
   "transportation",
   "permits",
   "subcontractor",
   "utilities",
   "tools",
   "safety_equipment",
-  "other",
+  "job_material",
+  "job_labor",
+  "job_travel",
+  "job_service",
 ] as const;
 
 const jobExpenseTypeSchemaRaw = z.enum(JOB_EXPENSE_TYPES, {

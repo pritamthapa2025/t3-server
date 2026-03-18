@@ -1,4 +1,5 @@
-﻿import { db } from "../config/db.js";
+import { db } from "../config/db.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import {
   vehicles,
   maintenanceRecords,
@@ -24,7 +25,7 @@ import {
   sql,
   gte,
   lte,
-  like,
+  ilike,
   or,
   isNotNull,
   getTableColumns,
@@ -95,11 +96,11 @@ export const getVehicles = async (
   if (search) {
     conditions.push(
       or(
-        like(vehicles.vehicleId, `%${search}%`),
-        like(vehicles.make, `%${search}%`),
-        like(vehicles.model, `%${search}%`),
-        like(vehicles.licensePlate, `%${search}%`),
-        like(vehicles.vin, `%${search}%`),
+        ilike(vehicles.vehicleId, `%${search}%`),
+        ilike(vehicles.make, `%${search}%`),
+        ilike(vehicles.model, `%${search}%`),
+        ilike(vehicles.licensePlate, `%${search}%`),
+        ilike(vehicles.vin, `%${search}%`),
       )!,
     );
   }
@@ -333,9 +334,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
   if (data.assignedToEmployeeId)
     insertData.assignedToEmployeeId = data.assignedToEmployeeId;
   if (data.fuelLevel) insertData.fuelLevel = data.fuelLevel;
-  if (data.purchaseDate)
-    insertData.purchaseDate =
-      data.purchaseDate;
+  if (data.purchaseDate) insertData.purchaseDate = data.purchaseDate;
   if (data.purchaseCost) insertData.purchaseCost = data.purchaseCost;
   if (data.dealer) insertData.dealer = data.dealer;
   if (data.monthlyPayment) insertData.monthlyPayment = data.monthlyPayment;
@@ -348,8 +347,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
   if (data.insuranceCoverage)
     insertData.insuranceCoverage = data.insuranceCoverage;
   if (data.insuranceExpiration)
-    insertData.insuranceExpiration =
-      data.insuranceExpiration;
+    insertData.insuranceExpiration = data.insuranceExpiration;
   if (data.insuranceAnnualPremium)
     insertData.insuranceAnnualPremium = data.insuranceAnnualPremium;
   if (data.registrationState)
@@ -357,8 +355,7 @@ export const createVehicle = async (data: CreateVehicleData) => {
   if (data.registrationNumber)
     insertData.registrationNumber = data.registrationNumber;
   if (data.registrationExpiration)
-    insertData.registrationExpiration =
-      data.registrationExpiration;
+    insertData.registrationExpiration = data.registrationExpiration;
   if (data.mileageRate) insertData.mileageRate = data.mileageRate;
   if (data.vehicleDayRate) insertData.vehicleDayRate = data.vehicleDayRate;
   if (data.mpg) insertData.mpg = data.mpg;
@@ -373,7 +370,21 @@ export const createVehicle = async (data: CreateVehicleData) => {
 };
 
 // Update Vehicle
-export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
+export const updateVehicle = async (
+  id: string,
+  data: UpdateVehicleData,
+  clientUpdatedAt?: string,
+) => {
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: vehicles.updatedAt })
+      .from(vehicles)
+      .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)))
+      .limit(1);
+    if (!current) return null;
+    if (isStale(current.updatedAt, clientUpdatedAt)) return STALE_DATA;
+  }
+
   const updateData: any = {
     updatedAt: new Date(),
   };
@@ -396,25 +407,18 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
     updateData.currentDispatchTaskId = data.currentDispatchTaskId;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.fuelLevel !== undefined) updateData.fuelLevel = data.fuelLevel;
-  if (data.lastService !== undefined)
-    updateData.lastService =
-      data.lastService;
-  if (data.nextService !== undefined)
-    updateData.nextService =
-      data.nextService;
+  if (data.lastService !== undefined) updateData.lastService = data.lastService;
+  if (data.nextService !== undefined) updateData.nextService = data.nextService;
   if (data.nextServiceDue !== undefined)
-    updateData.nextServiceDue =
-      data.nextServiceDue;
+    updateData.nextServiceDue = data.nextServiceDue;
   if (data.nextServiceDays !== undefined)
     updateData.nextServiceDays = data.nextServiceDays;
   if (data.nextInspectionDue !== undefined)
-    updateData.nextInspectionDue =
-      data.nextInspectionDue;
+    updateData.nextInspectionDue = data.nextInspectionDue;
   if (data.nextInspectionDays !== undefined)
     updateData.nextInspectionDays = data.nextInspectionDays;
   if (data.purchaseDate !== undefined)
-    updateData.purchaseDate =
-      data.purchaseDate;
+    updateData.purchaseDate = data.purchaseDate;
   if (data.purchaseCost !== undefined)
     updateData.purchaseCost = data.purchaseCost;
   if (data.dealer !== undefined) updateData.dealer = data.dealer;
@@ -430,8 +434,7 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
   if (data.insuranceCoverage !== undefined)
     updateData.insuranceCoverage = data.insuranceCoverage;
   if (data.insuranceExpiration !== undefined)
-    updateData.insuranceExpiration =
-      data.insuranceExpiration;
+    updateData.insuranceExpiration = data.insuranceExpiration;
   if (data.insuranceAnnualPremium !== undefined)
     updateData.insuranceAnnualPremium = data.insuranceAnnualPremium;
   if (data.registrationState !== undefined)
@@ -439,8 +442,7 @@ export const updateVehicle = async (id: string, data: UpdateVehicleData) => {
   if (data.registrationNumber !== undefined)
     updateData.registrationNumber = data.registrationNumber;
   if (data.registrationExpiration !== undefined)
-    updateData.registrationExpiration =
-      data.registrationExpiration;
+    updateData.registrationExpiration = data.registrationExpiration;
   if (data.mileageRate !== undefined) updateData.mileageRate = data.mileageRate;
   if (data.vehicleDayRate !== undefined)
     updateData.vehicleDayRate = data.vehicleDayRate;
@@ -934,16 +936,37 @@ export const getMaintenanceRecords = async (
 
   const total = totalResult[0]?.count || 0;
 
-  const records = await db
-    .select()
+  const listMaintApprovedByUser = alias(users, "list_maint_approved_by_user");
+  const listMaintRejectedByUser = alias(users, "list_maint_rejected_by_user");
+
+  const rows = await db
+    .select({
+      ...getTableColumns(maintenanceRecords),
+      approvedByName: listMaintApprovedByUser.fullName,
+      rejectedByName: listMaintRejectedByUser.fullName,
+    })
     .from(maintenanceRecords)
+    .leftJoin(
+      listMaintApprovedByUser,
+      eq(maintenanceRecords.approvedBy, listMaintApprovedByUser.id),
+    )
+    .leftJoin(
+      listMaintRejectedByUser,
+      eq(maintenanceRecords.rejectedBy, listMaintRejectedByUser.id),
+    )
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
+  const data = rows.map(({ approvedByName, rejectedByName, ...rec }) => ({
+    ...rec,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
+    performedByName: rec.performedBy ?? null,
+  }));
   return {
-    data: records,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -1026,9 +1049,7 @@ export const createMaintenanceRecord = async (
 
   if (data.priority) insertData.priority = data.priority;
   if (data.mileage) insertData.mileage = data.mileage;
-  if (data.scheduledDate)
-    insertData.scheduledDate =
-      data.scheduledDate;
+  if (data.scheduledDate) insertData.scheduledDate = data.scheduledDate;
   if (data.estimatedDuration)
     insertData.estimatedDuration = data.estimatedDuration;
   if (data.vendor) insertData.vendor = data.vendor;
@@ -1065,12 +1086,10 @@ export const updateMaintenanceRecord = async (
   if (data.status !== undefined) updateData.status = data.status;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.cost !== undefined) updateData.cost = data.cost;
-  if (data.date !== undefined)
-    updateData.date = data.date;
+  if (data.date !== undefined) updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.scheduledDate !== undefined)
-    updateData.scheduledDate =
-      data.scheduledDate;
+    updateData.scheduledDate = data.scheduledDate;
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.vendor !== undefined) updateData.vendor = data.vendor;
@@ -1174,17 +1193,47 @@ export const getRepairRecords = async (
     .where(and(...conditions));
 
   const total = totalResult[0]?.count || 0;
+  const listRepairApprovedByUser = alias(users, "list_repair_approved_by_user");
+  const listRepairRejectedByUser = alias(users, "list_repair_rejected_by_user");
+  const listRepairReportedByUser = alias(users, "list_repair_reported_by_user");
 
-  const records = await db
-    .select()
+  const rows = await db
+    .select({
+      ...getTableColumns(repairRecords),
+      approvedByName: listRepairApprovedByUser.fullName,
+      rejectedByName: listRepairRejectedByUser.fullName,
+      resolvedReportedByName: listRepairReportedByUser.fullName,
+    })
     .from(repairRecords)
+    .leftJoin(
+      listRepairApprovedByUser,
+      eq(repairRecords.approvedBy, listRepairApprovedByUser.id),
+    )
+    .leftJoin(
+      listRepairRejectedByUser,
+      eq(repairRecords.rejectedBy, listRepairRejectedByUser.id),
+    )
+    .leftJoin(
+      listRepairReportedByUser,
+      // reported_by is varchar; cast uuid to text for comparison (handles legacy name strings gracefully)
+      sql`${repairRecords.reportedBy} = ${listRepairReportedByUser.id}::text`,
+    )
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 
+  const data = rows.map(({ approvedByName, rejectedByName, resolvedReportedByName, ...rec }) => ({
+    ...rec,
+    approvedByName: approvedByName ?? null,
+    rejectedByName: rejectedByName ?? null,
+    // reportedByName: resolved from UUID if stored as user ID, fallback to raw string
+    reportedByName: resolvedReportedByName ?? rec.reportedBy ?? null,
+    performedByName: rec.performedBy ?? null,
+  }));
+
   return {
-    data: records,
+    data,
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -1194,8 +1243,9 @@ export const getRepairRecords = async (
   };
 };
 
-// Get Repair Record by ID (with createdByName, approvedByName, rejectedByName, assignedToEmployeeName)
+// Get Repair Record by ID (with createdByName, approvedByName, rejectedByName, assignedToEmployeeName, reportedByName)
 export const getRepairRecordById = async (id: string) => {
+  const reportedByUser = alias(users, "reported_by_user");
   const [row] = await db
     .select({
       ...getTableColumns(repairRecords),
@@ -1203,11 +1253,16 @@ export const getRepairRecordById = async (id: string) => {
       approvedByName: approvedByUser.fullName,
       rejectedByName: rejectedByUser.fullName,
       assignedToEmployeeName: assignedToUser.fullName,
+      resolvedReportedByName: reportedByUser.fullName,
     })
     .from(repairRecords)
     .leftJoin(createdByUser, eq(repairRecords.createdBy, createdByUser.id))
     .leftJoin(approvedByUser, eq(repairRecords.approvedBy, approvedByUser.id))
     .leftJoin(rejectedByUser, eq(repairRecords.rejectedBy, rejectedByUser.id))
+    .leftJoin(
+      reportedByUser,
+      sql`${repairRecords.reportedBy} = ${reportedByUser.id}::text`,
+    )
     .leftJoin(employees, eq(repairRecords.assignedToEmployeeId, employees.id))
     .leftJoin(assignedToUser, eq(employees.userId, assignedToUser.id))
     .where(and(eq(repairRecords.id, id), eq(repairRecords.isDeleted, false)));
@@ -1219,6 +1274,7 @@ export const getRepairRecordById = async (id: string) => {
     approvedByName,
     rejectedByName,
     assignedToEmployeeName,
+    resolvedReportedByName,
     ...record
   } = row;
   return {
@@ -1227,8 +1283,8 @@ export const getRepairRecordById = async (id: string) => {
     approvedByName: approvedByName ?? null,
     rejectedByName: rejectedByName ?? null,
     assignedToEmployeeName: assignedToEmployeeName ?? null,
-    // reportedBy is free-text; expose as reportedByName for consistency
-    reportedByName: record.reportedBy ?? null,
+    // reportedByName: resolved from UUID FK if available, fallback to raw string for legacy data
+    reportedByName: resolvedReportedByName ?? record.reportedBy ?? null,
   };
 };
 
@@ -1245,9 +1301,7 @@ export const createRepairRecord = async (data: CreateRepairRecordData) => {
 
   if (data.priority) insertData.priority = data.priority;
   if (data.mileage) insertData.mileage = data.mileage;
-  if (data.scheduledDate)
-    insertData.scheduledDate =
-      data.scheduledDate;
+  if (data.scheduledDate) insertData.scheduledDate = data.scheduledDate;
   if (data.estimatedDuration)
     insertData.estimatedDuration = data.estimatedDuration;
   if (data.reportedBy) insertData.reportedBy = data.reportedBy;
@@ -1285,12 +1339,10 @@ export const updateRepairRecord = async (
   if (data.status !== undefined) updateData.status = data.status;
   if (data.priority !== undefined) updateData.priority = data.priority;
   if (data.cost !== undefined) updateData.cost = data.cost;
-  if (data.date !== undefined)
-    updateData.date = data.date;
+  if (data.date !== undefined) updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.scheduledDate !== undefined)
-    updateData.scheduledDate =
-      data.scheduledDate;
+    updateData.scheduledDate = data.scheduledDate;
   if (data.estimatedDuration !== undefined)
     updateData.estimatedDuration = data.estimatedDuration;
   if (data.reportedBy !== undefined) updateData.reportedBy = data.reportedBy;
@@ -1533,8 +1585,7 @@ export const updateSafetyInspection = async (
     updatedAt: new Date(),
   };
 
-  if (data.date !== undefined)
-    updateData.date = data.date;
+  if (data.date !== undefined) updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
   if (data.performedBy !== undefined) updateData.performedBy = data.performedBy;
   if (data.overallStatus !== undefined)
@@ -1589,22 +1640,33 @@ export const deleteSafetyInspection = async (id: string) => {
 // ============================
 
 // Get Safety Inspection Items by Inspection ID
-export const getSafetyInspectionItems = async (inspectionId: string) => {
-  const items = await db
-    .select()
-    .from(safetyInspectionItems)
-    .where(
-      and(
-        eq(safetyInspectionItems.inspectionId, inspectionId),
-        eq(safetyInspectionItems.isDeleted, false),
-      ),
-    )
-    .orderBy(
-      asc(safetyInspectionItems.category),
-      asc(safetyInspectionItems.item),
-    );
+export const getSafetyInspectionItems = async (
+  inspectionId: string,
+  params?: { page?: number; limit?: number },
+) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 200;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(safetyInspectionItems.inspectionId, inspectionId),
+    eq(safetyInspectionItems.isDeleted, false),
+  );
 
-  return items;
+  const [totalResult, items] = await Promise.all([
+    db.select({ count: count() }).from(safetyInspectionItems).where(condition),
+    db
+      .select()
+      .from(safetyInspectionItems)
+      .where(condition)
+      .orderBy(
+        asc(safetyInspectionItems.category),
+        asc(safetyInspectionItems.item),
+      )
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data: items, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
 // Create Safety Inspection Item
@@ -1753,8 +1815,7 @@ export const updateFuelRecord = async (
     updatedAt: new Date(),
   };
 
-  if (data.date !== undefined)
-    updateData.date = data.date;
+  if (data.date !== undefined) updateData.date = data.date;
   if (data.odometer !== undefined) updateData.odometer = data.odometer;
   if (data.gallons !== undefined) updateData.gallons = data.gallons;
   if (data.cost !== undefined) updateData.cost = data.cost;
@@ -2093,8 +2154,7 @@ export const updateCheckInOutRecord = async (
 
   if (data.vehicleId !== undefined) updateData.vehicleId = data.vehicleId;
   if (data.type !== undefined) updateData.type = data.type;
-  if (data.date !== undefined)
-    updateData.date = data.date;
+  if (data.date !== undefined) updateData.date = data.date;
   if (data.time !== undefined) updateData.time = data.time;
   if (data.timestamp !== undefined) updateData.timestamp = data.timestamp;
   if (data.odometer !== undefined) updateData.odometer = data.odometer;

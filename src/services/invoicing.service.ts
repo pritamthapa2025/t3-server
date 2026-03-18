@@ -24,6 +24,7 @@ import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 
 // ============================
 // Helper Functions
@@ -108,7 +109,7 @@ const generatePaymentNumber = async (
 /**
  * Recalculate invoice totals
  */
-const recalculateInvoiceTotals = async (invoiceId: string) => {
+export const recalculateInvoiceTotals = async (invoiceId: string) => {
   const lineItems = await db
     .select()
     .from(invoiceLineItems)
@@ -165,10 +166,7 @@ const recalculateInvoiceTotals = async (invoiceId: string) => {
     })
     .from(payments)
     .where(
-      and(
-        eq(payments.invoiceId, invoiceId),
-        eq(payments.isDeleted, false),
-      ),
+      and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)),
     );
 
   const amountPaid = parseFloat(paymentsResult[0]?.totalPaid || "0");
@@ -251,6 +249,27 @@ export const getInvoices = async (
   const page = options?.page || 1;
   const limit = Math.min(options?.limit || 10, 100);
   const offset = (page - 1) * limit;
+
+  // Auto-mark overdue invoices on every list fetch (no cron needed)
+  const today = new Date().toISOString().split("T")[0];
+  await db
+    .update(invoices)
+    .set({ status: "overdue" as any })
+    .where(
+      and(
+        eq(invoices.isDeleted, false),
+        lte(invoices.dueDate, today),
+        // Only affect sent/viewed/partial invoices
+        or(
+          eq(invoices.status, "sent" as any),
+          eq(invoices.status, "viewed" as any),
+          eq(invoices.status, "partial" as any),
+        ),
+      ),
+    )
+    .catch(() => {
+      /* non-fatal */
+    });
 
   let whereConditions: any[] = [eq(invoices.isDeleted, false)];
 
@@ -350,7 +369,8 @@ export const getInvoices = async (
 
   // Extract invoices from wrapped result
   const invoicesList = invoicesResult.map((item) => {
-    const { createdByName, approvedByName, organizationName, ...invoice } = item.invoice;
+    const { createdByName, approvedByName, organizationName, ...invoice } =
+      item.invoice;
     return {
       ...invoice,
       createdByName: createdByName ?? null,
@@ -552,7 +572,7 @@ export const createInvoice = async (data: {
   totalAmount?: string;
   amountPaid?: string;
   balanceDue?: string;
-  
+
   notes?: string;
   termsAndConditions?: string;
   internalNotes?: string;
@@ -585,7 +605,7 @@ export const createInvoice = async (data: {
   }>;
   createdBy: string;
 }) => {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     let organizationId = data.organizationId;
     let clientId = data.clientId;
     let finalJobId = data.jobId;
@@ -662,7 +682,7 @@ export const createInvoice = async (data: {
         dueDate: data.dueDate,
         paymentTerms: data.paymentTerms || null,
         paymentTermsDays: data.paymentTermsDays || null,
-        
+
         // All financial and linked IDs from body (no auto-calculation)
         lineItemSubTotal: data.lineItemSubTotal || "0",
         poSubTotal: data.poSubTotal || "0",
@@ -680,7 +700,7 @@ export const createInvoice = async (data: {
         isTravel: data.isTravel ?? false,
         isOperatingExpense: data.isOperatingExpense ?? false,
         isMaterial: data.isMaterial ?? false,
-        
+
         notes: data.notes || null,
         termsAndConditions: data.termsAndConditions || null,
         internalNotes: data.internalNotes || null,
@@ -722,10 +742,17 @@ export const createInvoice = async (data: {
       });
     }
 
-    // No auto-calculation: all data is passed from body
-
     return { invoiceId: invoice.id, organizationId };
   });
+
+  // Recalculate totals from stored line items to ensure consistency
+  try {
+    await recalculateInvoiceTotals(result.invoiceId);
+  } catch {
+    /* best-effort, non-fatal */
+  }
+
+  return result;
 };
 
 /**
@@ -736,11 +763,14 @@ export const updateInvoice = async (
   organizationId: string,
   data: any,
   _updatedBy: string,
+  clientUpdatedAt?: string,
 ) => {
   const invoice = await getInvoiceById(invoiceId, organizationId);
   if (!invoice) {
     throw new Error("Invoice not found");
   }
+
+  if (isStale(invoice.updatedAt, clientUpdatedAt)) return STALE_DATA;
 
   const updateData: any = { updatedAt: new Date() };
   Object.keys(data).forEach((key) => {
@@ -764,7 +794,8 @@ export const updateInvoice = async (
   if (data.status === "sent") {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "invoice_sent",
           category: "financial",
@@ -775,7 +806,9 @@ export const updateInvoice = async (
             entityId: invoiceId,
             entityName: invoice?.invoiceNumber || `Invoice #${invoiceId}`,
             clientId: organizationId,
-            ...(invoice?.totalAmount ? { amount: parseFloat(String(invoice.totalAmount)) } : {}),
+            ...(invoice?.totalAmount
+              ? { amount: parseFloat(String(invoice.totalAmount)) }
+              : {}),
           },
         });
       } catch (err) {
@@ -888,7 +921,8 @@ export const updateInvoiceLineItem = async (
     updatePayload.title = data.description.slice(0, 255) || existing.title;
     updatePayload.description = data.description;
   }
-  if (data.istitledisabled !== undefined) updatePayload.istitledisabled = data.istitledisabled;
+  if (data.istitledisabled !== undefined)
+    updatePayload.istitledisabled = data.istitledisabled;
   if (data.itemType !== undefined) updatePayload.itemType = data.itemType;
   if (data.notes !== undefined) updatePayload.notes = data.notes;
   if (data.sortOrder !== undefined) updatePayload.sortOrder = data.sortOrder;
@@ -960,8 +994,24 @@ export const deleteInvoice = async (
 
   // Cascade soft-delete line items and documents (in parallel)
   await Promise.all([
-    db.update(invoiceLineItems).set({ isDeleted: true, updatedAt: now }).where(and(eq(invoiceLineItems.invoiceId, invoiceId), eq(invoiceLineItems.isDeleted, false))),
-    db.update(invoiceDocuments).set({ isDeleted: true }).where(and(eq(invoiceDocuments.invoiceId, invoiceId), eq(invoiceDocuments.isDeleted, false))),
+    db
+      .update(invoiceLineItems)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(invoiceLineItems.invoiceId, invoiceId),
+          eq(invoiceLineItems.isDeleted, false),
+        ),
+      ),
+    db
+      .update(invoiceDocuments)
+      .set({ isDeleted: true })
+      .where(
+        and(
+          eq(invoiceDocuments.invoiceId, invoiceId),
+          eq(invoiceDocuments.isDeleted, false),
+        ),
+      ),
   ]);
 
   await db
@@ -1096,9 +1146,15 @@ export const getInvoiceKPIs = async (
     startDate?: string;
     endDate?: string;
     status?: string;
+    jobId?: string;
   },
 ) => {
   let whereConditions: any[] = [eq(invoices.isDeleted, false)];
+
+  // Filter by a specific jobId if provided (for job invoicing tab KPIs)
+  if (options.jobId) {
+    whereConditions.push(eq(invoices.jobId, options.jobId));
+  }
 
   // Filter by organizationId if provided
   if (organizationId) {
@@ -1327,7 +1383,9 @@ export const getPaymentsByInvoice = async (
     })
     .from(payments)
     .leftJoin(createdByUser, eq(payments.createdBy, createdByUser.id))
-    .where(and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)))
+    .where(
+      and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)),
+    )
     .orderBy(desc(payments.paymentDate));
 
   return paymentsResult.map((p) => ({
@@ -1364,39 +1422,38 @@ export const createPaymentForInvoice = async (
       throw new Error("Invoice not found");
     }
 
-    if (!invoice.jobId) {
-      throw new Error("Invoice must be associated with a job to create payment");
+    // Attempt to resolve organization from job → bid chain (not mandatory)
+    if (invoice.jobId) {
+      const [job] = await tx
+        .select({ bidId: jobs.bidId })
+        .from(jobs)
+        .where(eq(jobs.id, invoice.jobId))
+        .limit(1);
+
+      if (job?.bidId) {
+        const [bid] = await tx
+          .select({ organizationId: bidsTable.organizationId })
+          .from(bidsTable)
+          .where(eq(bidsTable.id, job.bidId))
+          .limit(1);
+
+        if (bid?.organizationId) {
+          if (organizationId && bid.organizationId !== organizationId) {
+            throw new Error("Organization mismatch");
+          }
+          resolvedOrgId = bid.organizationId;
+        }
+      }
     }
 
-    // Get organizationId from job's bid
-    const [job] = await tx
-      .select({ bidId: jobs.bidId })
-      .from(jobs)
-      .where(eq(jobs.id, invoice.jobId))
-      .limit(1);
-
-    if (!job?.bidId) {
-      throw new Error("Job must have a valid bid to create payment");
+    // Fall back to provided organizationId
+    if (!resolvedOrgId && organizationId) {
+      resolvedOrgId = organizationId;
     }
 
-    const [bid] = await tx
-      .select({ organizationId: bidsTable.organizationId })
-      .from(bidsTable)
-      .where(eq(bidsTable.id, job.bidId))
-      .limit(1);
-
-    if (!bid?.organizationId) {
-      throw new Error("Cannot determine organizationId. Bid must have a valid organizationId.");
-    }
-
-    // Verify organization matches if provided
-    if (organizationId && bid.organizationId !== organizationId) {
-      throw new Error("Organization mismatch");
-    }
-
-    resolvedOrgId = bid.organizationId;
-
-    const paymentNumber = await generatePaymentNumber(bid.organizationId);
+    const paymentNumber = await generatePaymentNumber(
+      resolvedOrgId || invoiceId,
+    );
 
     // Create payment
     const [payment] = await tx
@@ -1423,7 +1480,10 @@ export const createPaymentForInvoice = async (
   void (async () => {
     try {
       const [invoiceData] = await db
-        .select({ status: invoices.status, invoiceNumber: invoices.invoiceNumber })
+        .select({
+          status: invoices.status,
+          invoiceNumber: invoices.invoiceNumber,
+        })
         .from(invoices)
         .where(eq(invoices.id, invoiceId))
         .limit(1);
@@ -1447,7 +1507,10 @@ export const createPaymentForInvoice = async (
         },
       });
     } catch (err) {
-      console.error("[Notification] payment_received notification failed:", err);
+      console.error(
+        "[Notification] payment_received notification failed:",
+        err,
+      );
     }
   })();
 
@@ -1529,7 +1592,11 @@ export const updatePaymentForInvoice = async (
   }>,
 ) => {
   // Verify payment exists and belongs to invoice
-  const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+  const payment = await getPaymentByIdForInvoice(
+    paymentId,
+    invoiceId,
+    organizationId,
+  );
 
   if (!payment) {
     return null;
@@ -1538,8 +1605,10 @@ export const updatePaymentForInvoice = async (
   const updateData: any = { updatedAt: new Date() };
   if (data.amount !== undefined) updateData.amount = data.amount;
   if (data.paymentDate !== undefined) updateData.paymentDate = data.paymentDate;
-  if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
-  if (data.referenceNumber !== undefined) updateData.referenceNumber = data.referenceNumber;
+  if (data.paymentMethod !== undefined)
+    updateData.paymentMethod = data.paymentMethod;
+  if (data.referenceNumber !== undefined)
+    updateData.referenceNumber = data.referenceNumber;
   if (data.notes !== undefined) updateData.notes = data.notes;
 
   const [updated] = await db
@@ -1565,7 +1634,11 @@ export const deletePaymentForInvoice = async (
   organizationId: string | undefined,
 ) => {
   // Verify payment exists and belongs to invoice
-  const payment = await getPaymentByIdForInvoice(paymentId, invoiceId, organizationId);
+  const payment = await getPaymentByIdForInvoice(
+    paymentId,
+    invoiceId,
+    organizationId,
+  );
 
   if (!payment) {
     return null;

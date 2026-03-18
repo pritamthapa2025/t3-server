@@ -23,7 +23,7 @@ import { users } from "../../drizzle/schema/auth.schema.js";
 export const calculateStockStatus = (
   quantityOnHand: string,
   reorderLevel: string,
-  quantityOnOrder: string
+  quantityOnOrder: string,
 ): "in_stock" | "low_stock" | "out_of_stock" | "on_order" => {
   const qtyOnHand = parseFloat(quantityOnHand);
   const reorder = parseFloat(reorderLevel);
@@ -51,7 +51,7 @@ export const getInventoryItems = async (
     search?: string;
     sortBy?: string;
     sortOrder?: string;
-  }
+  },
 ) => {
   const conditions = [eq(inventoryItems.isDeleted, false)];
 
@@ -72,8 +72,8 @@ export const getInventoryItems = async (
       or(
         ilike(inventoryItems.name, `%${filters.search}%`),
         ilike(inventoryItems.itemCode, `%${filters.search}%`),
-        ilike(inventoryItems.description, `%${filters.search}%`)
-      )!
+        ilike(inventoryItems.description, `%${filters.search}%`),
+      )!,
     );
   }
 
@@ -91,19 +91,19 @@ export const getInventoryItems = async (
     .from(inventoryItems)
     .leftJoin(
       inventoryCategories,
-      eq(inventoryItems.categoryId, inventoryCategories.id)
+      eq(inventoryItems.categoryId, inventoryCategories.id),
     )
     .leftJoin(
       inventorySuppliers,
-      eq(inventoryItems.primarySupplierId, inventorySuppliers.id)
+      eq(inventoryItems.primarySupplierId, inventorySuppliers.id),
     )
     .leftJoin(
       inventoryLocations,
-      eq(inventoryItems.primaryLocationId, inventoryLocations.id)
+      eq(inventoryItems.primaryLocationId, inventoryLocations.id),
     )
     .leftJoin(
       inventoryUnitsOfMeasure,
-      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id)
+      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id),
     )
     .where(whereCondition)
     .limit(limit)
@@ -111,7 +111,7 @@ export const getInventoryItems = async (
     .orderBy(
       filters?.sortOrder === "desc"
         ? desc(inventoryItems.name)
-        : asc(inventoryItems.name)
+        : asc(inventoryItems.name),
     );
 
   const totalCount = await db
@@ -149,19 +149,19 @@ export const getInventoryItemById = async (id: string) => {
     .from(inventoryItems)
     .leftJoin(
       inventoryCategories,
-      eq(inventoryItems.categoryId, inventoryCategories.id)
+      eq(inventoryItems.categoryId, inventoryCategories.id),
     )
     .leftJoin(
       inventorySuppliers,
-      eq(inventoryItems.primarySupplierId, inventorySuppliers.id)
+      eq(inventoryItems.primarySupplierId, inventorySuppliers.id),
     )
     .leftJoin(
       inventoryLocations,
-      eq(inventoryItems.primaryLocationId, inventoryLocations.id)
+      eq(inventoryItems.primaryLocationId, inventoryLocations.id),
     )
     .leftJoin(
       inventoryUnitsOfMeasure,
-      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id)
+      eq(inventoryItems.unitOfMeasureId, inventoryUnitsOfMeasure.id),
     )
     .where(and(eq(inventoryItems.id, id), eq(inventoryItems.isDeleted, false)))
     .limit(1);
@@ -214,7 +214,7 @@ export const createInventoryItem = async (data: any, _userId: string) => {
       status: calculateStockStatus(
         data.quantityOnHand || "0",
         data.reorderLevel || "0",
-        "0"
+        "0",
       ),
       notes: data.notes,
       isDeleted: false,
@@ -227,7 +227,7 @@ export const createInventoryItem = async (data: any, _userId: string) => {
 export const updateInventoryItem = async (
   id: string,
   data: any,
-  _userId: string
+  _userId: string,
 ) => {
   const existingItem = await db
     .select()
@@ -289,7 +289,7 @@ export const updateInventoryItem = async (
     updateData.status = calculateStockStatus(
       qtyOnHand,
       data.reorderLevel,
-      qtyOnOrder
+      qtyOnOrder,
     );
   }
 
@@ -315,11 +315,24 @@ export const deleteInventoryItem = async (id: string, deletedBy?: string) => {
 
   // Cascade child records + nullify transaction itemId (preserve audit trail)
   await Promise.all([
-    db.update(inventoryAllocations).set({ isDeleted: true, updatedAt: now }).where(and(eq(inventoryAllocations.itemId, id), eq(inventoryAllocations.isDeleted, false))),
+    db
+      .update(inventoryAllocations)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(inventoryAllocations.itemId, id),
+          eq(inventoryAllocations.isDeleted, false),
+        ),
+      ),
     // inventoryItemLocations has no isDeleted — hard-delete them (they're meaningless without the item)
-    db.delete(inventoryItemLocations).where(eq(inventoryItemLocations.itemId, id)),
+    db
+      .delete(inventoryItemLocations)
+      .where(eq(inventoryItemLocations.itemId, id)),
     // Nullify itemId on transactions — preserves financial audit trail but clears the FK
-    db.update(inventoryTransactions).set({ itemId: null }).where(eq(inventoryTransactions.itemId, id)),
+    db
+      .update(inventoryTransactions)
+      .set({ itemId: null })
+      .where(eq(inventoryTransactions.itemId, id)),
   ]);
 
   const [deletedItem] = await db
@@ -338,22 +351,41 @@ export const deleteInventoryItem = async (id: string, deletedBy?: string) => {
   return deletedItem;
 };
 
-export const getItemHistory = async (itemId: string) => {
-  const result = await db
-    .select({
-      history: inventoryItemHistory,
-      user: users,
-    })
-    .from(inventoryItemHistory)
-    .leftJoin(users, eq(inventoryItemHistory.performedBy, users.id))
-    .where(eq(inventoryItemHistory.itemId, itemId))
-    .orderBy(desc(inventoryItemHistory.createdAt))
-    .limit(100);
+export const getItemHistory = async (
+  itemId: string,
+  params?: { page?: number; limit?: number },
+) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
 
-  return result.map((r) => ({
-    ...r.history,
-    performedByUser: r.user,
-  }));
+  const [totalResult, result] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(inventoryItemHistory)
+      .where(eq(inventoryItemHistory.itemId, itemId)),
+    db
+      .select({
+        history: inventoryItemHistory,
+        user: users,
+      })
+      .from(inventoryItemHistory)
+      .leftJoin(users, eq(inventoryItemHistory.performedBy, users.id))
+      .where(eq(inventoryItemHistory.itemId, itemId))
+      .orderBy(desc(inventoryItemHistory.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return {
+    data: result.map((r) => ({
+      ...r.history,
+      performedByUser: r.user,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
+  };
 };
 
 // ===========================================================================
@@ -367,15 +399,30 @@ export const bulkDeleteInventoryItems = async (
   const now = new Date();
 
   await Promise.all([
-    db.update(inventoryAllocations).set({ isDeleted: true, updatedAt: now }).where(and(inArray(inventoryAllocations.itemId, ids), eq(inventoryAllocations.isDeleted, false))),
-    db.delete(inventoryItemLocations).where(inArray(inventoryItemLocations.itemId, ids)),
-    db.update(inventoryTransactions).set({ itemId: null }).where(inArray(inventoryTransactions.itemId, ids)),
+    db
+      .update(inventoryAllocations)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          inArray(inventoryAllocations.itemId, ids),
+          eq(inventoryAllocations.isDeleted, false),
+        ),
+      ),
+    db
+      .delete(inventoryItemLocations)
+      .where(inArray(inventoryItemLocations.itemId, ids)),
+    db
+      .update(inventoryTransactions)
+      .set({ itemId: null })
+      .where(inArray(inventoryTransactions.itemId, ids)),
   ]);
 
   const result = await db
     .update(inventoryItems)
     .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
-    .where(and(inArray(inventoryItems.id, ids), eq(inventoryItems.isDeleted, false)))
+    .where(
+      and(inArray(inventoryItems.id, ids), eq(inventoryItems.isDeleted, false)),
+    )
     .returning({ id: inventoryItems.id });
   return { deleted: result.length, skipped: ids.length - result.length };
 };

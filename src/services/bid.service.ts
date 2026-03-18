@@ -56,6 +56,7 @@ import {
 } from "../drizzle/schema/client.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { getTableColumns } from "drizzle-orm";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { getOrganizationById } from "./client.service.js";
 import { getOperatingExpenseDefaults } from "./settings.service.js";
 
@@ -178,6 +179,11 @@ export const getBids = async (
   },
   options?: GetBidsFilterOptions,
 ) => {
+  // Auto-expire bids whose end date has passed (non-fatal)
+  expireExpiredBids().catch(() => {
+    /* best-effort */
+  });
+
   // Build where conditions array - organizationId is optional
   const whereConditions = [
     eq(bidsTable.isDeleted, false),
@@ -233,6 +239,29 @@ export const getBids = async (
       // totalPrice and actualTotalPrice from bid_financial_breakdown
       totalPrice: bidFinancialBreakdown.totalPrice,
       actualTotalPrice: bidFinancialBreakdown.actualTotalPrice,
+      // Job-type specific pricing fields — used to derive effectiveBidAmount
+      // when actualTotalPrice is 0 (existing bids before financial backfill)
+      surveyTotalSurveyFee: bidSurveyData.totalSurveyFee,
+      surveyPricingModel: bidSurveyData.pricingModel,
+      surveyFlatSurveyFee: bidSurveyData.flatSurveyFee,
+      surveyEstimatedHours: bidSurveyData.estimatedHours,
+      surveyHourlyRate: bidSurveyData.hourlyRate,
+      surveyEstimatedExpenses: bidSurveyData.estimatedExpenses,
+      servicePricingModel: bidServiceData.pricingModel,
+      serviceLaborHours: bidServiceData.laborHours,
+      serviceLaborRate: bidServiceData.laborRate,
+      serviceMaterialsCost: bidServiceData.materialsCost,
+      serviceTravelCost: bidServiceData.travelCost,
+      serviceMarkup: bidServiceData.serviceMarkup,
+      serviceFlatRatePrice: bidServiceData.flatRatePrice,
+      serviceDiagnosticFee: bidServiceData.diagnosticFee,
+      serviceEstimatedRepairCost: bidServiceData.estimatedRepairCost,
+      pmPricingModel: bidPreventativeMaintenanceData.pricingModel,
+      pmPricePerUnit: bidPreventativeMaintenanceData.pricePerUnit,
+      pmNumberOfUnits: bidPreventativeMaintenanceData.numberOfUnits,
+      pmFlatRatePerVisit: bidPreventativeMaintenanceData.flatRatePerVisit,
+      pmAnnualContractValue: bidPreventativeMaintenanceData.annualContractValue,
+      dbDesignPrice: bidDesignBuildData.designPrice,
       // Minimal primary contact (only when primaryContactId is set)
       contactId: clientContacts.id,
       contactFullName: clientContacts.fullName,
@@ -259,6 +288,13 @@ export const getBids = async (
         eq(bidFinancialBreakdown.isDeleted, false),
       ),
     )
+    .leftJoin(bidSurveyData, eq(bidsTable.id, bidSurveyData.bidId))
+    .leftJoin(bidServiceData, eq(bidsTable.id, bidServiceData.bidId))
+    .leftJoin(
+      bidPreventativeMaintenanceData,
+      eq(bidsTable.id, bidPreventativeMaintenanceData.bidId),
+    )
+    .leftJoin(bidDesignBuildData, eq(bidsTable.id, bidDesignBuildData.bidId))
     .leftJoin(
       clientContacts,
       and(
@@ -317,9 +353,56 @@ export const getBids = async (
             zipCode: item.propZipCode,
           }
         : null;
+
+    // Derive effective bid amount: prefer stored actualTotalPrice; when that
+    // is zero/null (old bids before financial backfill), compute on-the-fly
+    // from the job-type-specific pricing data joined above.
+    const n = (v: unknown): number => parseFloat(String(v ?? "0")) || 0;
+    const storedTotal = n(item.actualTotalPrice);
+    let effectiveBidAmount: string | null = item.actualTotalPrice ?? null;
+    if (storedTotal === 0) {
+      const jobType = item.bid.jobType;
+      let derived = 0;
+      if (jobType === "survey") {
+        derived = n(item.surveyTotalSurveyFee);
+        if (derived === 0) {
+          if (item.surveyPricingModel === "flat_fee")
+            derived = n(item.surveyFlatSurveyFee);
+          else if (item.surveyPricingModel === "time_materials")
+            derived =
+              n(item.surveyEstimatedHours) * n(item.surveyHourlyRate) +
+              n(item.surveyEstimatedExpenses);
+        }
+      } else if (jobType === "service") {
+        if (item.servicePricingModel === "flat_rate")
+          derived = n(item.serviceFlatRatePrice);
+        else if (item.servicePricingModel === "diagnostic_repair")
+          derived =
+            n(item.serviceDiagnosticFee) + n(item.serviceEstimatedRepairCost);
+        else {
+          const base =
+            n(item.serviceLaborHours) * n(item.serviceLaborRate) +
+            n(item.serviceMaterialsCost) +
+            n(item.serviceTravelCost);
+          derived = base * (1 + n(item.serviceMarkup) / 100);
+        }
+      } else if (jobType === "preventative_maintenance") {
+        if (item.pmPricingModel === "flat_rate")
+          derived = n(item.pmFlatRatePerVisit);
+        else if (item.pmPricingModel === "annual_contract")
+          derived = n(item.pmAnnualContractValue);
+        else
+          derived =
+            n(item.pmPricePerUnit) * Math.max(n(item.pmNumberOfUnits), 1);
+      } else if (jobType === "design_build") {
+        derived = n(item.dbDesignPrice);
+      }
+      if (derived > 0) effectiveBidAmount = derived.toFixed(2);
+    }
+
     return {
       ...item.bid,
-      bidAmount: item.actualTotalPrice ?? null,
+      bidAmount: effectiveBidAmount,
       totalPrice: item.totalPrice ?? null,
       createdByName: item.createdByName ?? null,
       assignedToName: item.assignedToName ?? null,
@@ -531,12 +614,7 @@ export const resolveVersionTree = async (
   const [maxRow] = await db
     .select({ maxVersion: max(bidsTable.versionNumber) })
     .from(bidsTable)
-    .where(
-      or(
-        eq(bidsTable.rootBidId, rootId),
-        eq(bidsTable.id, rootId),
-      ),
-    );
+    .where(or(eq(bidsTable.rootBidId, rootId), eq(bidsTable.id, rootId)));
 
   const maxVersion = maxRow?.maxVersion ?? 1;
   return { rootBidId: rootId, nextVersionNumber: Number(maxVersion) + 1 };
@@ -749,7 +827,9 @@ export const createBid = async (data: {
       marked: data.marked || undefined,
       convertToJob: data.convertToJob ?? undefined,
       industryClassification: data.industryClassification || undefined,
-      scheduledDateTime: data.scheduledDateTime ? new Date(data.scheduledDateTime) : undefined,
+      scheduledDateTime: data.scheduledDateTime
+        ? new Date(data.scheduledDateTime)
+        : undefined,
       termsTemplateSelection: data.termsTemplateSelection || undefined,
       siteContactName: data.siteContactName || undefined,
       siteContactPhone: data.siteContactPhone || undefined,
@@ -915,7 +995,24 @@ export const updateBid = async (
     lostReason: string;
     rejectionReason: string;
   }>,
+  clientUpdatedAt?: string,
 ) => {
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: bidsTable.updatedAt })
+      .from(bidsTable)
+      .where(
+        and(
+          eq(bidsTable.id, id),
+          eq(bidsTable.organizationId, organizationId),
+          eq(bidsTable.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (!current) return null;
+    if (isStale(current.updatedAt, clientUpdatedAt)) return STALE_DATA;
+  }
+
   const toLocalDateString = (date: Date): string => {
     const yyyy = String(date.getFullYear());
     const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -969,7 +1066,9 @@ export const updateBid = async (
       convertToJob: data.convertToJob,
       // New fields
       industryClassification: data.industryClassification,
-      scheduledDateTime: data.scheduledDateTime ? new Date(data.scheduledDateTime) : undefined,
+      scheduledDateTime: data.scheduledDateTime
+        ? new Date(data.scheduledDateTime)
+        : undefined,
       termsTemplateSelection: data.termsTemplateSelection,
       siteContactName: data.siteContactName,
       siteContactPhone: data.siteContactPhone,
@@ -999,7 +1098,8 @@ export const updateBid = async (
   if (data.status) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         const svc = new NotificationService();
         const entityName = bid.projectName || bid.bidNumber || "Bid";
 
@@ -1353,10 +1453,13 @@ export const updateBidFinancialBreakdown = async (
 
   const totalPrice = data.totalPrice ?? existing?.totalPrice ?? "0";
   const totalCost = data.totalCost ?? existing?.totalCost ?? "0";
-  const grossProfit =
-    data.grossProfit ??
-    existing?.grossProfit ??
-    (parseFloat(totalPrice) - parseFloat(totalCost)).toFixed(2);
+  // Always derive grossProfit from totalPrice - totalCost.
+  // Client-sent grossProfit is intentionally ignored because it is frequently
+  // wrong (e.g. PM bids where the client sets it to "0" even though the
+  // contract value creates real profit over direct costs).
+  const grossProfit = (
+    parseFloat(totalPrice) - parseFloat(totalCost)
+  ).toFixed(2);
 
   const setPayload: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -1850,7 +1953,7 @@ export const recalculateAndApplyBidOperatingExpenses = async (
 
 export const getBidMaterials = async (
   bidId: string,
-  _organizationId: string,
+  _organizationId?: string,
 ) => {
   const materials = await db
     .select()
@@ -4412,7 +4515,12 @@ export const getBidPlanSpecFiles = async (bidId: string) => {
   return db
     .select()
     .from(bidPlanSpecFiles)
-    .where(and(eq(bidPlanSpecFiles.bidId, bidId), eq(bidPlanSpecFiles.isDeleted, false)))
+    .where(
+      and(
+        eq(bidPlanSpecFiles.bidId, bidId),
+        eq(bidPlanSpecFiles.isDeleted, false),
+      ),
+    )
     .orderBy(desc(bidPlanSpecFiles.createdAt));
 };
 
@@ -4434,7 +4542,12 @@ export const deleteBidPlanSpecFile = async (fileId: string) => {
   const [deleted] = await db
     .update(bidPlanSpecFiles)
     .set({ isDeleted: true, deletedAt: now })
-    .where(and(eq(bidPlanSpecFiles.id, fileId), eq(bidPlanSpecFiles.isDeleted, false)))
+    .where(
+      and(
+        eq(bidPlanSpecFiles.id, fileId),
+        eq(bidPlanSpecFiles.isDeleted, false),
+      ),
+    )
     .returning();
   return deleted ?? null;
 };
@@ -4447,7 +4560,12 @@ export const getBidDesignBuildFiles = async (bidId: string) => {
   return db
     .select()
     .from(bidDesignBuildFiles)
-    .where(and(eq(bidDesignBuildFiles.bidId, bidId), eq(bidDesignBuildFiles.isDeleted, false)))
+    .where(
+      and(
+        eq(bidDesignBuildFiles.bidId, bidId),
+        eq(bidDesignBuildFiles.isDeleted, false),
+      ),
+    )
     .orderBy(desc(bidDesignBuildFiles.createdAt));
 };
 
@@ -4468,7 +4586,12 @@ export const deleteBidDesignBuildFile = async (fileId: string) => {
   const [deleted] = await db
     .update(bidDesignBuildFiles)
     .set({ isDeleted: true, deletedAt: now })
-    .where(and(eq(bidDesignBuildFiles.id, fileId), eq(bidDesignBuildFiles.isDeleted, false)))
+    .where(
+      and(
+        eq(bidDesignBuildFiles.id, fileId),
+        eq(bidDesignBuildFiles.isDeleted, false),
+      ),
+    )
     .returning();
   return deleted ?? null;
 };

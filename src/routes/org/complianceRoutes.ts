@@ -65,10 +65,10 @@ router
   .put(editCase, validate(updateComplianceCaseSchema), updateComplianceCaseHandler)       // Executive only
   .delete(editCase, validate(deleteComplianceCaseSchema), deleteComplianceCaseHandler);   // Executive only
 
-// Case Status Update — Executive only
+// Case Status Update — Manager and Executive
 router.patch(
   "/cases/:id/status",
-  editCase,
+  authorizeAnyFeature("compliance", ["edit_incident_reports", "view_incident_reports"]),
   validate(updateCaseStatusSchema),
   updateCaseStatusHandler
 );

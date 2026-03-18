@@ -22,11 +22,19 @@ export const getEmployeesQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive().max(500)),
     search: z.string().optional(),
     status: z
       .enum(["available", "on_leave", "in_field", "terminated", "suspended"])
       .optional(),
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => {
+        if (val === undefined || val === "") return undefined;
+        return val === "true" || val === "1";
+      })
+      .pipe(z.boolean().optional()),
     departmentId: z
       .string()
       .optional()

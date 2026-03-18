@@ -97,6 +97,13 @@ router.post(
   invoiceController.sendInvoiceEmailTest,
 );
 
+// Send payment reminder (does not change status) — Manager/Executive only
+router.post(
+  "/invoices/:id/remind",
+  sendInvoice,
+  invoiceController.sendInvoiceReminder,
+);
+
 // Mark invoice as paid — Manager/Executive only
 router.post(
   "/invoices/:id/mark-paid",

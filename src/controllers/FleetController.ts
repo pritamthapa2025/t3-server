@@ -60,6 +60,7 @@ import {
   getPresignedUploadUrl,
 } from "../services/storage.service.js";
 import { logger } from "../utils/logger.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { isUserExecutive } from "../services/role.service.js";
 import { db } from "../config/db.js";
@@ -358,7 +359,7 @@ export const updateVehicleHandler = async (req: Request, res: Response) => {
       });
     }
     if (!(await checkVehicleAssignedAccess(req, res, id))) return;
-    const updateData = { ...req.body };
+    const { updatedAt: clientUpdatedAt, ...updateData } = { ...req.body };
 
     // Upload vehicle image to Digital Ocean Spaces if file provided (field: "vehicle")
     if (req.file) {
@@ -391,7 +392,11 @@ export const updateVehicleHandler = async (req: Request, res: Response) => {
       }
     }
 
-    const updatedVehicle = await updateVehicle(id, updateData);
+    const updatedVehicle = await updateVehicle(id, updateData, clientUpdatedAt);
+
+    if (updatedVehicle === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedVehicle) {
       return res.status(404).json({
@@ -928,6 +933,10 @@ export const createRepairRecordHandler = async (
       : req.body;
     const createdBy = req.user?.id;
     if (createdBy) (recordData as any).createdBy = createdBy;
+    // Auto-fill reportedBy with the authenticated user's UUID so the DB stores an ID, not a name
+    if (createdBy && !(recordData as any).reportedBy) {
+      (recordData as any).reportedBy = createdBy;
+    }
 
     const newRecord = await createRepairRecord(recordData);
 

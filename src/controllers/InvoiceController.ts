@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import * as invoicingService from "../services/invoicing.service.js";
 import { logger } from "../utils/logger.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import {
   generateAndSaveInvoicePDF,
   prepareInvoiceDataForPDF,
@@ -221,12 +222,19 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    const { updatedAt: clientUpdatedAt, ...invoiceFields } = req.body;
+
     const invoice = await invoicingService.updateInvoice(
       id,
       organizationId,
-      req.body,
+      invoiceFields,
       userId,
+      clientUpdatedAt,
     );
+
+    if (invoice === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!invoice) {
       return res.status(404).json({
@@ -1443,6 +1451,66 @@ export const sendInvoiceEmailTest = async (req: Request, res: Response) => {
 };
 
 /**
+ * Send a payment reminder without changing invoice status
+ * POST /invoices/:id/remind
+ */
+export const sendInvoiceReminder = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User authentication required" });
+    }
+
+    const id = asSingleString(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Invoice ID is required" });
+    }
+
+    const invoice = await invoicingService.getInvoiceById(id, undefined, { includeLineItems: true });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+
+    // Build and send reminder email (reuse existing send helper — mark reminder flags only)
+    const subject = req.body.subject || `Payment Reminder: Invoice ${invoice.invoiceNumber}`;
+    const message = req.body.message || `This is a friendly reminder that Invoice ${invoice.invoiceNumber} is due. Please submit payment at your earliest convenience.`;
+
+    // Attempt to send via email service if available, otherwise gracefully skip
+    try {
+      const { sendInvoiceEmail: sendEmail } = await import("../services/email.service.js");
+      const recipientEmail = req.body.email || invoice.emailSentTo;
+      if (recipientEmail) {
+        await sendEmail(recipientEmail, `<p>${message}</p>`, subject, message);
+      }
+    } catch (emailErr: any) {
+      logger.warn(`Reminder email send failed (non-fatal): ${emailErr?.message}`);
+    }
+
+    // Update reminder tracking without changing status
+    await invoicingService.updateInvoice(
+      id,
+      invoice.organizationId || undefined,
+      {
+        reminderSent: true,
+        reminderCount: (invoice.reminderCount ?? 0) + 1,
+        lastReminderDate: new Date(),
+      } as any,
+      userId,
+    );
+
+    logger.info(`Reminder sent for invoice ${id}`);
+    res.json({
+      success: true,
+      message: "Payment reminder sent",
+      data: { invoiceId: id, sentAt: new Date().toISOString() },
+    });
+  } catch (error: any) {
+    logger.logApiError("Error sending invoice reminder", error, req);
+    res.status(500).json({ success: false, message: "Failed to send reminder", error: error.message });
+  }
+};
+
+/**
  * Mark invoice as paid
  * POST /invoices/:id/mark-paid
  */
@@ -1910,10 +1978,11 @@ export const getInvoiceKPIs = async (req: Request, res: Response) => {
   try {
     // organizationId is optional - if not provided, returns KPIs for all invoices
     const organizationId = req.query.organizationId as string | undefined;
+    const jobId = req.query.jobId as string | undefined;
 
     const kpis = await invoicingService.getInvoiceKPIs(
       organizationId,
-      req.query as any,
+      { ...req.query as any, jobId },
     );
 
     logger.info("Invoice KPIs fetched successfully");
@@ -1946,6 +2015,9 @@ export const downloadInvoicePDF = async (req: Request, res: Response) => {
         message: "Invoice ID is required",
       });
     }
+
+    // Recalculate totals before PDF generation to ensure line items are correct (6.11.5)
+    await invoicingService.recalculateInvoiceTotals(id).catch(() => {/* best-effort */});
 
     // Get invoice with all related data - organizationId will be derived from invoice
     const invoice = await invoicingService.getInvoiceById(id, undefined, {

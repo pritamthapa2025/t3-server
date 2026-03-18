@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import {
   timesheets,
@@ -249,6 +250,7 @@ export const updateTimesheet = async (
     rejectedBy?: string;
     approvedBy?: string;
   },
+  clientUpdatedAt?: string,
 ) => {
   // Get existing timesheet to use sheetDate if clockIn/clockOut are provided
   const [existingTimesheet] = await db
@@ -259,6 +261,8 @@ export const updateTimesheet = async (
   if (!existingTimesheet) {
     return null;
   }
+
+  if (isStale(existingTimesheet.updatedAt, clientUpdatedAt)) return STALE_DATA;
 
   const updateData: {
     employeeId?: number;

@@ -185,7 +185,7 @@ export const getPriorityJobs = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const organizationId = req.user?.organizationId ?? undefined;
-    const { limit, search, startDate, endDate } = (req as any).query ?? {};
+    const { limit, offset, search, startDate, endDate } = (req as any).query ?? {};
     const dateRange = startDate && endDate ? { startDate, endDate } : undefined;
 
     let assignedToEmployeeId: number | undefined;
@@ -203,6 +203,7 @@ export const getPriorityJobs = async (req: Request, res: Response) => {
       organizationId,
       {
         limit: limit ? parseInt(limit as string) : 10,
+        offset: offset ? parseInt(offset as string) : 0,
         search: search as string,
         ...(assignedToEmployeeId !== undefined && { assignedToEmployeeId }),
       },

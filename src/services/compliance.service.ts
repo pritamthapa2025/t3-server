@@ -415,8 +415,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
     status: data.status || "open",
     title: data.title,
     description: data.description,
-    openedOn:
-      data.openedOn,
+    openedOn: data.openedOn,
   };
 
   // Only include organizationId if it's a valid client UUID
@@ -426,9 +425,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
 
   if (data.jobId) insertData.jobId = data.jobId;
   if (data.notes) insertData.notes = data.notes;
-  if (data.dueDate)
-    insertData.dueDate =
-      data.dueDate;
+  if (data.dueDate) insertData.dueDate = data.dueDate;
   if (data.reportedBy) insertData.reportedBy = data.reportedBy;
   if (data.assignedTo) insertData.assignedTo = data.assignedTo;
   if (data.impactLevel) insertData.impactLevel = data.impactLevel;
@@ -439,9 +436,7 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   // Disciplinary Action fields
   if (data.disciplinaryAction)
     insertData.disciplinaryAction = data.disciplinaryAction;
-  if (data.actionDate)
-    insertData.actionDate =
-      data.actionDate;
+  if (data.actionDate) insertData.actionDate = data.actionDate;
   if (data.actionNotes) insertData.actionNotes = data.actionNotes;
   if (data.performanceImpact !== undefined)
     insertData.performanceImpact = data.performanceImpact.toString();
@@ -513,16 +508,13 @@ export const updateComplianceCase = async (
 
   // Handle date conversions
   if (data.dueDate) {
-    updateData.dueDate =
-      data.dueDate;
+    updateData.dueDate = data.dueDate;
   }
   if (data.resolvedDate) {
-    updateData.resolvedDate =
-      data.resolvedDate;
+    updateData.resolvedDate = data.resolvedDate;
   }
   if (data.actionDate) {
-    updateData.actionDate =
-      data.actionDate;
+    updateData.actionDate = data.actionDate;
   }
 
   // Handle performance impact conversion
@@ -604,7 +596,8 @@ export const updateCaseStatus = async (
   if (status === "resolved" && updated) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "compliance_case_resolved",
           category: "safety",
@@ -616,7 +609,10 @@ export const updateCaseStatus = async (
           },
         });
       } catch (err) {
-        console.error("[Notification] compliance_case_resolved notification failed:", err);
+        console.error(
+          "[Notification] compliance_case_resolved notification failed:",
+          err,
+        );
       }
     })();
   }

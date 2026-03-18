@@ -115,10 +115,10 @@ export const userOrganizationTypeEnum = pgEnum("user_organization_type_enum", [
  * Current status of jobs/work orders
  */
 export const jobStatusEnum = pgEnum("job_status_enum", [
-  "planned",
   "scheduled",
   "in_progress",
   "on_hold",
+  "pending_completion",
   "completed",
   "cancelled",
   "invoiced",

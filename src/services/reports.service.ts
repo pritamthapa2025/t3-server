@@ -1,4 +1,15 @@
-﻿import { count, eq, and, desc, sql, gte, lte, or, inArray, ilike } from "drizzle-orm";
+import {
+  count,
+  eq,
+  and,
+  desc,
+  sql,
+  gte,
+  lte,
+  or,
+  inArray,
+  ilike,
+} from "drizzle-orm";
 import { db } from "../config/db.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
@@ -230,19 +241,14 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
       ? Math.min(Math.round(((completedJobs * 8) / totalHours) * 100), 100)
       : 95;
 
-  // 8. Active Jobs - jobs not yet completed (planned, scheduled, in_progress, on_hold)
+  // 8. Active Jobs - jobs not yet completed (scheduled, in_progress, on_hold)
   const activeJobsQuery = await db
     .select({ count: count() })
     .from(jobs)
     .where(
       and(
         eq(jobs.isDeleted, false),
-        inArray(jobs.status, [
-          "planned",
-          "scheduled",
-          "in_progress",
-          "on_hold",
-        ]),
+        inArray(jobs.status, ["scheduled", "in_progress", "on_hold"]),
         ...jobDateConditions,
       ),
     );
@@ -351,7 +357,10 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
     .orderBy(sql`DATE_TRUNC('month', ${invoices.invoiceDate})`);
 
   // Fetch revenue targets for the years present in the data
-  const years = monthlyData.length > 0 ? [...new Set(monthlyData.map((m) => m.yearNum))] : [];
+  const years =
+    monthlyData.length > 0
+      ? [...new Set(monthlyData.map((m) => m.yearNum))]
+      : [];
   const targetRows =
     years.length > 0
       ? await db
@@ -423,10 +432,14 @@ export const getMonthlyRevenueTrend = async (filters?: DateRangeFilter) => {
 export const getJobPerformanceData = async (filters?: DateRangeFilter) => {
   const dateConditions = [];
   if (filters?.startDate) {
-    dateConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    dateConditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    dateConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    dateConditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
 
   const jobStats = await db
@@ -1221,9 +1234,9 @@ export const getAttendanceReport = async (
 
   // Calculate working days in period for absence calculation
   const startDate = filters?.startDate
-    ? filters.startDate as any
+    ? (filters.startDate as any)
     : new Date();
-  const endDate = filters?.endDate ? filters.endDate as any : new Date();
+  const endDate = filters?.endDate ? (filters.endDate as any) : new Date();
   const workingDays = Math.ceil(
     (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
   );
@@ -1385,7 +1398,12 @@ export const getInventoryValuation = async (
 export const getStockMovementReport = async (
   _organizationId: string | undefined,
   filters?: InventoryReportFilter,
+  params?: { page?: number; limit?: number },
 ) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+
   const conditions = [eq(inventoryItems.isDeleted, false)];
 
   if (filters?.category) {
@@ -1394,22 +1412,34 @@ export const getStockMovementReport = async (
       conditions.push(eq(inventoryItems.categoryId, catId));
   }
 
-  const stockData = await db
-    .select({
-      itemName: inventoryItems.name,
-      currentStock: inventoryItems.quantityOnHand,
-    })
-    .from(inventoryItems)
-    .where(and(...conditions))
-    .limit(50);
+  const [totalResult, stockData] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(inventoryItems)
+      .where(and(...conditions)),
+    db
+      .select({
+        itemName: inventoryItems.name,
+        currentStock: inventoryItems.quantityOnHand,
+      })
+      .from(inventoryItems)
+      .where(and(...conditions))
+      .limit(limit)
+      .offset(offset),
+  ]);
 
-  return stockData.map((s) => ({
-    item: s.itemName,
-    beginning: 0, // Would need historical tracking
-    received: 0, // Would need transaction history
-    used: 0, // Would need transaction history
-    ending: parseInt(s.currentStock || "0"),
-  }));
+  return {
+    data: stockData.map((s) => ({
+      item: s.itemName,
+      beginning: 0,
+      received: 0,
+      used: 0,
+      ending: parseInt(s.currentStock || "0"),
+    })),
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
+  };
 };
 
 export const getLowStockItems = async (
@@ -1601,10 +1631,14 @@ export const getTechnicianQualityReport = async (
 
   const jobConditions = [eq(jobs.isDeleted, false)];
   if (filters?.startDate) {
-    jobConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    jobConditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    jobConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    jobConditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
   if (organizationId) {
     jobConditions.push(eq(bidsTable.organizationId, organizationId));
@@ -1686,10 +1720,14 @@ export const getTechnicianProfitContribution = async (
     eq(jobs.isDeleted, false),
   ];
   if (filters?.startDate) {
-    jobJoinConditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    jobJoinConditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    jobJoinConditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    jobJoinConditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
 
   // Start from technicians so we return all of them with revenue/cost (0 or summed)
@@ -1741,10 +1779,14 @@ export const getJobStatusSummary = async (
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    conditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    conditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
   if (filters?.jobType) {
     conditions.push(eq(bidsTable.jobType, filters.jobType));
@@ -1791,8 +1833,29 @@ export const getJobProfitability = async (
   filters?: JobReportFilter,
   opts?: GetJobProfitabilityOptions,
 ): Promise<
-  | { id: string; jobNumber: string | null; jobName: string; clientName: string | null; revenue: number; totalExpenses: number; profit: number; profitMargin: number }[]
-  | { data: { id: string; jobNumber: string | null; jobName: string; clientName: string | null; revenue: number; totalExpenses: number; profit: number; profitMargin: number }[]; total: number }
+  | {
+      id: string;
+      jobNumber: string | null;
+      jobName: string;
+      clientName: string | null;
+      revenue: number;
+      totalExpenses: number;
+      profit: number;
+      profitMargin: number;
+    }[]
+  | {
+      data: {
+        id: string;
+        jobNumber: string | null;
+        jobName: string;
+        clientName: string | null;
+        revenue: number;
+        totalExpenses: number;
+        profit: number;
+        profitMargin: number;
+      }[];
+      total: number;
+    }
 > => {
   const conditions = [
     ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
@@ -1800,10 +1863,14 @@ export const getJobProfitability = async (
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    conditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    conditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
   if (filters?.jobType) {
     conditions.push(eq(bidsTable.jobType, filters.jobType));
@@ -1818,14 +1885,17 @@ export const getJobProfitability = async (
         ilike(bidsTable.projectName, term),
         ilike(jobs.jobNumber, term),
         ilike(organizations.name, term),
-      )!
+      )!,
     );
   }
 
   const limit = opts?.limit ?? 500;
   const offset = opts?.offset ?? 0;
 
-  if (opts != null && (opts.limit != null || opts.offset != null || opts.search != null)) {
+  if (
+    opts != null &&
+    (opts.limit != null || opts.offset != null || opts.search != null)
+  ) {
     const [countResult, profitabilityData] = await Promise.all([
       db
         .select({ count: count() })
@@ -1848,7 +1918,12 @@ export const getJobProfitability = async (
         .leftJoin(invoices, eq(jobs.id, invoices.jobId))
         .leftJoin(expenses, eq(jobs.id, expenses.jobId))
         .where(and(...conditions))
-        .groupBy(jobs.id, jobs.jobNumber, bidsTable.projectName, organizations.name)
+        .groupBy(
+          jobs.id,
+          jobs.jobNumber,
+          bidsTable.projectName,
+          organizations.name,
+        )
         .limit(limit)
         .offset(offset),
     ]);
@@ -1970,17 +2045,26 @@ export const getJobCostBreakdown = async (
 export const getJobTimeline = async (
   organizationId: string | undefined,
   filters?: JobReportFilter,
+  params?: { page?: number; limit?: number },
 ) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+
   const conditions = [
     ...(organizationId ? [eq(bidsTable.organizationId, organizationId)] : []),
     eq(jobs.isDeleted, false),
   ];
 
   if (filters?.startDate) {
-    conditions.push(gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")));
+    conditions.push(
+      gte(jobs.createdAt, new Date(filters.startDate + "T00:00:00Z")),
+    );
   }
   if (filters?.endDate) {
-    conditions.push(lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")));
+    conditions.push(
+      lte(jobs.createdAt, new Date(filters.endDate + "T23:59:59Z")),
+    );
   }
   if (filters?.status) {
     conditions.push(eq(jobs.status, filters.status));
@@ -2001,48 +2085,58 @@ export const getJobTimeline = async (
     .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .where(and(...conditions))
     .orderBy(desc(jobs.createdAt))
-    .limit(50);
+    .limit(limit)
+    .offset(offset);
 
-  return timelineData.map((j) => {
-    const estimatedDuration = j.estimatedDuration || "N/A";
-    let actualDuration = "N/A";
-    let delayDays = 0;
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(jobs)
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(...conditions));
 
-    // Prefer actual dates, fall back to scheduled dates
-    const startDate = j.actualStartDate || j.scheduledStartDate;
-    const endDate = j.actualEndDate || j.scheduledEndDate;
+  return {
+    data: timelineData.map((j) => {
+      const estimatedDuration = j.estimatedDuration || "N/A";
+      let actualDuration = "N/A";
+      let delayDays = 0;
 
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const days = Math.ceil(
-        (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      actualDuration = `${days} days`;
+      const startDate = j.actualStartDate || j.scheduledStartDate;
+      const endDate = j.actualEndDate || j.scheduledEndDate;
 
-      // Calculate delay if we have estimated duration
-      if (estimatedDuration && estimatedDuration !== "N/A") {
-        const estimatedDays = parseInt(estimatedDuration.toString());
-        if (!isNaN(estimatedDays)) {
-          delayDays = days - estimatedDays;
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const days = Math.ceil(
+          (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        actualDuration = `${days} days`;
+
+        if (estimatedDuration && estimatedDuration !== "N/A") {
+          const estimatedDays = parseInt(estimatedDuration.toString());
+          if (!isNaN(estimatedDays)) {
+            delayDays = days - estimatedDays;
+          }
         }
       }
-    }
 
-    return {
-      id: j.jobId,
-      jobName: j.jobName || "Unnamed Job",
-      estimatedDuration:
-        estimatedDuration !== "N/A" ? `${estimatedDuration} days` : "N/A",
-      actualDuration,
-      scheduledStartDate: j.scheduledStartDate || "N/A",
-      actualStartDate: j.actualStartDate || "N/A",
-      scheduledEndDate: j.scheduledEndDate || "N/A",
-      actualEndDate: j.actualEndDate || "N/A",
-      delayDays,
-      status: j.status || "unknown",
-    };
-  });
+      return {
+        id: j.jobId,
+        jobName: j.jobName || "Unnamed Job",
+        estimatedDuration:
+          estimatedDuration !== "N/A" ? `${estimatedDuration} days` : "N/A",
+        actualDuration,
+        scheduledStartDate: j.scheduledStartDate || "N/A",
+        actualStartDate: j.actualStartDate || "N/A",
+        scheduledEndDate: j.scheduledEndDate || "N/A",
+        actualEndDate: j.actualEndDate || "N/A",
+        delayDays,
+        status: j.status || "unknown",
+      };
+    }),
+    total: totalResult?.count ?? 0,
+    page,
+    limit,
+  };
 };
 
 // ============================

@@ -9,6 +9,7 @@ import {
   sql,
   or,
   inArray,
+  isNull,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
@@ -141,6 +142,10 @@ export async function getExpenses(
   }
   if (filters?.sourceId) {
     whereConditions.push(eq(expenses.sourceId, filters.sourceId as string));
+  }
+  // 20.1.1 — Exclude auto-generated sourced expenses to prevent double-counting
+  if (filters?.excludeSourced === true || filters?.excludeSourced === "true") {
+    whereConditions.push(isNull(expenses.sourceId));
   }
   if (filters?.startDate) {
     whereConditions.push(
@@ -505,18 +510,30 @@ export async function logExpenseHistory(
 // Expense Receipts
 // ============================
 
-export async function getExpenseReceipts(expenseId: string) {
-  const list = await db
-    .select()
-    .from(expenseReceipts)
-    .where(
-      and(
-        eq(expenseReceipts.expenseId, expenseId),
-        eq(expenseReceipts.isDeleted, false),
-      ),
-    )
-    .orderBy(desc(expenseReceipts.createdAt));
-  return list;
+export async function getExpenseReceipts(
+  expenseId: string,
+  params?: { page?: number; limit?: number },
+) {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 200;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(expenseReceipts.expenseId, expenseId),
+    eq(expenseReceipts.isDeleted, false),
+  );
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(expenseReceipts).where(condition),
+    db
+      .select()
+      .from(expenseReceipts)
+      .where(condition)
+      .orderBy(desc(expenseReceipts.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 }
 
 export async function getExpenseReceiptById(

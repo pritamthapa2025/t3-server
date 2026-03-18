@@ -40,7 +40,7 @@ export const jobs: any = org.table(
 
     // Basic Info
     description: text("description"),
-    status: jobStatusEnum("status").notNull().default("planned"),
+    status: jobStatusEnum("status").notNull().default("scheduled"),
 
     // Job Type
     jobType: varchar("job_type", { length: 100 }), // Installation, Repair, Maintenance, etc.

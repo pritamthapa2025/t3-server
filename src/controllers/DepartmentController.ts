@@ -278,6 +278,13 @@ export const deleteDepartmentHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error deleting department", error, req);
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("Cannot delete department:")) {
+      return res.status(409).json({
+        success: false,
+        message,
+      });
+    }
     return res.status(500).json({
       success: false,
       message: "Internal server error",

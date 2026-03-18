@@ -58,7 +58,6 @@ export const getProperties = async (
           and(
             eq(jobs.isDeleted, false),
             inArray(jobs.status, [
-              "planned",
               "scheduled",
               "in_progress",
               "on_hold",
@@ -240,7 +239,6 @@ export const getProperties = async (
               eq(bidsTable.isDeleted, false),
               inArray(bidsTable.organizationId, organizationIds),
               inArray(jobs.status, [
-                "planned",
                 "scheduled",
                 "in_progress",
                 "on_hold",
@@ -394,7 +392,19 @@ export const getPropertyById = async (id: string) => {
     createdAt: baseProperty.createdAt,
     updatedAt: baseProperty.updatedAt,
   };
-  const organization = null;
+  // Get client/organization info for this property
+  let clientInfo: { id: string; name: string } | null = null;
+  if (property.organizationId) {
+    const [org] = await db
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizations)
+      .where(and(eq(organizations.id, property.organizationId), eq(organizations.isDeleted, false)))
+      .limit(1);
+    if (org) {
+      clientInfo = { id: org.id, name: org.name };
+    }
+  }
+  const organization = clientInfo;
 
   // Get job counts - jobs are now linked through bid → organization
   // Since property belongs to organization, we count jobs for the organization
@@ -423,7 +433,6 @@ export const getPropertyById = async (id: string) => {
             eq(bidsTable.organizationId, property.organizationId),
             eq(jobs.isDeleted, false),
             inArray(jobs.status, [
-              "planned",
               "scheduled",
               "in_progress",
               "on_hold",
@@ -551,16 +560,8 @@ export const getPropertyById = async (id: string) => {
       );
     }
 
-    // Extract parts from completion notes or description (simple parsing)
+    // Parts used are not reliably parseable from free-text notes; return empty array
     const partsUsed: string[] = [];
-    const notesText = job.completionNotes || job.description || "";
-    // Look for patterns like "Model XYZ-500", "x5", etc.
-    const partsMatches = notesText.match(
-      /([A-Z0-9-]+(?:\s+Model\s+[A-Z0-9-]+)?|[A-Za-z\s]+x\d+)/gi,
-    );
-    if (partsMatches) {
-      partsUsed.push(...partsMatches.slice(0, 5)); // Limit to 5 parts
-    }
 
     jobHistoryMap.set(job.id, {
       id: job.id,
@@ -678,7 +679,7 @@ export const getPropertyById = async (id: string) => {
         active: activeJobs,
       },
       lastService: lastService,
-      client: null,
+      client: clientInfo ? { id: clientInfo.id, name: clientInfo.name } : null,
     },
 
     // Property notes (from description or notes field)
@@ -814,11 +815,38 @@ export const deleteProperty = async (id: string) => {
 
   // Cascade soft-delete to child records + nullify bids.propertyId (in parallel)
   await Promise.all([
-    db.update(propertyContacts).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyContacts.propertyId, id), eq(propertyContacts.isDeleted, false))),
-    db.update(propertyEquipment).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyEquipment.propertyId, id), eq(propertyEquipment.isDeleted, false))),
-    db.update(propertyDocuments).set({ isDeleted: true, updatedAt: now }).where(and(eq(propertyDocuments.propertyId, id), eq(propertyDocuments.isDeleted, false))),
+    db
+      .update(propertyContacts)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(propertyContacts.propertyId, id),
+          eq(propertyContacts.isDeleted, false),
+        ),
+      ),
+    db
+      .update(propertyEquipment)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(propertyEquipment.propertyId, id),
+          eq(propertyEquipment.isDeleted, false),
+        ),
+      ),
+    db
+      .update(propertyDocuments)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        and(
+          eq(propertyDocuments.propertyId, id),
+          eq(propertyDocuments.isDeleted, false),
+        ),
+      ),
     // Nullify propertyId on bids (preserve bid record, just clear the property link)
-    db.update(bidsTable).set({ propertyId: null, updatedAt: now }).where(eq(bidsTable.propertyId, id)),
+    db
+      .update(bidsTable)
+      .set({ propertyId: null, updatedAt: now })
+      .where(eq(bidsTable.propertyId, id)),
   ]);
 
   const [property] = await db
@@ -859,17 +887,30 @@ export const createPropertyEquipment = async (data: {
   return equipment;
 };
 
-export const getPropertyEquipment = async (propertyId: string) => {
-  return await db
-    .select()
-    .from(propertyEquipment)
-    .where(
-      and(
-        eq(propertyEquipment.propertyId, propertyId),
-        eq(propertyEquipment.isDeleted, false),
-      ),
-    )
-    .orderBy(propertyEquipment.equipmentType, propertyEquipment.location);
+export const getPropertyEquipment = async (
+  propertyId: string,
+  params?: { page?: number; limit?: number },
+) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 200;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(propertyEquipment.propertyId, propertyId),
+    eq(propertyEquipment.isDeleted, false),
+  );
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(propertyEquipment).where(condition),
+    db
+      .select()
+      .from(propertyEquipment)
+      .where(condition)
+      .orderBy(propertyEquipment.equipmentType, propertyEquipment.location)
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
 export const getPropertyEquipmentById = async (id: string) => {
@@ -1082,7 +1123,7 @@ export const getPropertyKPIs = async () => {
               WHERE b.organization_id = p.organization_id
                 AND j.is_deleted = false
                 AND b.is_deleted = false
-                AND j.status IN ('planned', 'scheduled', 'in_progress', 'on_hold')
+                AND j.status IN ('scheduled', 'in_progress', 'on_hold')
             )
           )
       `),

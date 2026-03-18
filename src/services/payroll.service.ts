@@ -24,6 +24,7 @@ import { users } from "../drizzle/schema/auth.schema.js";
 import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { logger } from "../utils/logger.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 
 interface PayrollDashboardFilters {
   payPeriodId?: string | undefined;
@@ -409,10 +410,14 @@ export const createPayrollEntry = async (data: any) => {
   return result;
 };
 
-export const updatePayrollEntry = async (id: string, data: any) => {
-  // Check if entry is locked
+export const updatePayrollEntry = async (
+  id: string,
+  data: any,
+  clientUpdatedAt?: string,
+) => {
+  // Check if entry is locked (and fetch updatedAt for stale check in one query)
   const entry = await db
-    .select({ isLocked: payrollEntries.isLocked })
+    .select({ isLocked: payrollEntries.isLocked, updatedAt: payrollEntries.updatedAt })
     .from(payrollEntries)
     .where(eq(payrollEntries.id, id))
     .limit(1);
@@ -426,6 +431,8 @@ export const updatePayrollEntry = async (id: string, data: any) => {
     error.code = "ENTRY_LOCKED";
     throw error;
   }
+
+  if (isStale(entry[0].updatedAt, clientUpdatedAt)) return STALE_DATA;
 
   // Get old values for audit
   const oldValues = await getPayrollEntryById(id);
@@ -887,7 +894,7 @@ function getISOWeekNumber(date: Date): number {
   d.setUTCHours(0, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 /** Calendar month start (YYYY-MM-01) and end (last day of month). */
@@ -1062,7 +1069,9 @@ export const syncPayrollFromApprovedTimesheet = async (
     .limit(1);
 
   if (!row) {
-    logger.warn(`Payroll sync skipped: employee not found (timesheet ${timesheetId}, employeeId ${timesheet.employeeId})`);
+    logger.warn(
+      `Payroll sync skipped: employee not found (timesheet ${timesheetId}, employeeId ${timesheet.employeeId})`,
+    );
     return { synced: false, reason: "Employee not found" };
   }
 
@@ -1079,7 +1088,12 @@ export const syncPayrollFromApprovedTimesheet = async (
   const salaryAmount = isSalary ? parseFloat(String(row.positionPayRate)) : 0;
 
   if (isSalary) {
-    await syncSalaryPayrollForMonth(row.id, sheetDate, salaryAmount, timesheetId);
+    await syncSalaryPayrollForMonth(
+      row.id,
+      sheetDate,
+      salaryAmount,
+      timesheetId,
+    );
     return { synced: true };
   }
 
@@ -1389,8 +1403,7 @@ export const recalcPayrollForEmployeeWeek = async (
   const payType = employee.payType?.trim().toLowerCase();
   if (payType === "salary" || !employee.hourlyRate) return;
 
-  const date =
-    typeof sheetDate === "string" ? new Date(sheetDate) : sheetDate;
+  const date = typeof sheetDate === "string" ? new Date(sheetDate) : sheetDate;
   const period = await getOrCreatePayPeriodForWeek(date);
   const run = await getOrCreatePayrollRunForPeriod(period.id);
 
@@ -1484,9 +1497,7 @@ export const recalcPayrollForEmployeeWeek = async (
     await db.insert(payrollTimesheetEntries).values({
       payrollEntryId: existingEntry.id,
       timesheetId: row.id,
-      hoursIncluded: String(
-        parseFloat(String(row.totalHours ?? 0)) || 0,
-      ),
+      hoursIncluded: String(parseFloat(String(row.totalHours ?? 0)) || 0),
       overtimeHours: String(parseFloat(String(row.overtimeHours ?? 0)) || 0),
       doubleOvertimeHours: "0",
       includedInPayroll: true,

@@ -133,21 +133,32 @@ export const getAlerts = async () => {
   return result.map((r) => ({ ...r.alert, item: r.item }));
 };
 
-export const getUnresolvedAlerts = async () => {
-  const result = await db
-    .select({
-      alert: inventoryStockAlerts,
-      item: inventoryItems,
-    })
-    .from(inventoryStockAlerts)
-    .leftJoin(
-      inventoryItems,
-      eq(inventoryStockAlerts.itemId, inventoryItems.id),
-    )
-    .where(eq(inventoryStockAlerts.isResolved, false))
-    .orderBy(desc(inventoryStockAlerts.createdAt));
+export const getUnresolvedAlerts = async (params?: { page?: number; limit?: number }) => {
+  const page = Math.max(1, params?.page ?? 1);
+  const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
+  const offset = (page - 1) * limit;
 
-  return result.map((r) => ({ ...r.alert, item: r.item }));
+  const [result, countResult] = await Promise.all([
+    db
+      .select({ alert: inventoryStockAlerts, item: inventoryItems })
+      .from(inventoryStockAlerts)
+      .leftJoin(inventoryItems, eq(inventoryStockAlerts.itemId, inventoryItems.id))
+      .where(eq(inventoryStockAlerts.isResolved, false))
+      .orderBy(desc(inventoryStockAlerts.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(inventoryStockAlerts)
+      .where(eq(inventoryStockAlerts.isResolved, false)),
+  ]);
+
+  const total = countResult[0]?.count ?? 0;
+  return {
+    data: result.map((r) => ({ ...r.alert, item: r.item })),
+    total,
+    pagination: { page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 export const acknowledgeAlert = async (id: string, userId: string) => {
@@ -258,23 +269,28 @@ export const generateCountNumber = async (): Promise<string> => {
   return `${prefix}${nextNumber}`;
 };
 
-export const getCounts = async () => {
-  const result = await db
-    .select({
-      count: inventoryCounts,
-      location: inventoryLocations,
-    })
-    .from(inventoryCounts)
-    .leftJoin(
-      inventoryLocations,
-      eq(inventoryCounts.locationId, inventoryLocations.id),
-    )
-    .orderBy(desc(inventoryCounts.countDate));
+export const getCounts = async (params?: { page?: number; limit?: number }) => {
+  const page = Math.max(1, params?.page ?? 1);
+  const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
+  const offset = (page - 1) * limit;
 
-  return result.map((r) => ({
-    ...r.count,
-    location: r.location,
-  }));
+  const [result, countResult] = await Promise.all([
+    db
+      .select({ count: inventoryCounts, location: inventoryLocations })
+      .from(inventoryCounts)
+      .leftJoin(inventoryLocations, eq(inventoryCounts.locationId, inventoryLocations.id))
+      .orderBy(desc(inventoryCounts.countDate))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: sql<number>`count(*)::int` }).from(inventoryCounts),
+  ]);
+
+  const total = countResult[0]?.count ?? 0;
+  return {
+    data: result.map((r) => ({ ...r.count, location: r.location })),
+    total,
+    pagination: { page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 export const getCountById = async (id: string) => {

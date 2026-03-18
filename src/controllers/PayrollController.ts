@@ -15,6 +15,7 @@ import {
   bulkDeletePayrollRuns,
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 
 export const getPayrollDashboardHandler = async (
   req: Request,
@@ -158,7 +159,7 @@ export const updatePayrollEntryHandler = async (
 ) => {
   try {
     const id = req.params.id as string;
-    const updateData = req.body;
+    const { updatedAt: clientUpdatedAt, ...updateData } = req.body;
     const updatedBy = (req as any).user?.id;
 
     if (!id) {
@@ -168,10 +169,15 @@ export const updatePayrollEntryHandler = async (
       });
     }
 
-    const updatedPayrollEntry = await updatePayrollEntry(id, {
-      ...updateData,
-      updatedBy,
-    });
+    const updatedPayrollEntry = await updatePayrollEntry(
+      id,
+      { ...updateData, updatedBy },
+      clientUpdatedAt,
+    );
+
+    if (updatedPayrollEntry === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedPayrollEntry) {
       return res.status(404).json({

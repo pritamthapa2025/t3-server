@@ -21,7 +21,7 @@ export const getTimesheetsQuerySchema = z.object({
           .number()
           .int()
           .positive("Limit must be a positive number")
-          .max(100, "Maximum 100 items per page")
+          .max(100, "Maximum 100 items per page"),
       ),
   }),
 });
@@ -35,7 +35,7 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
         .optional()
         .transform((val) => (val ? parseInt(val, 10) : 1))
         .pipe(
-          z.number().int().positive("Page number must be a positive number")
+          z.number().int().positive("Page number must be a positive number"),
         ),
       limit: z
         .string()
@@ -46,7 +46,7 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
             .number()
             .int()
             .positive("Limit must be a positive number")
-            .max(100, "Maximum 100 items per page")
+            .max(100, "Maximum 100 items per page"),
         ),
       search: z.string().optional(),
       employeeId: z.string().optional(),
@@ -75,7 +75,7 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
       {
         message: "Start date must be before or equal to end date",
         path: ["dateFrom"],
-      }
+      },
     ),
 });
 
@@ -89,7 +89,7 @@ export const getTimesheetByIdSchema = z.object({
         z
           .number()
           .int()
-          .positive("Timesheet ID must be a valid positive number")
+          .positive("Timesheet ID must be a valid positive number"),
       ),
   }),
 });
@@ -120,7 +120,7 @@ export const createTimesheetSchema = z.object({
         z
           .number()
           .int("Break minutes must be a whole number")
-          .nonnegative("Break minutes cannot be negative")
+          .nonnegative("Break minutes cannot be negative"),
       )
       .optional(),
     totalHours: z
@@ -147,7 +147,7 @@ export const updateTimesheetSchema = z.object({
         z
           .number()
           .int()
-          .positive("Timesheet ID must be a valid positive number")
+          .positive("Timesheet ID must be a valid positive number"),
       ),
   }),
   body: z
@@ -179,7 +179,7 @@ export const updateTimesheetSchema = z.object({
           z
             .number()
             .int("Break minutes must be a whole number")
-            .nonnegative("Break minutes cannot be negative")
+            .nonnegative("Break minutes cannot be negative"),
         )
         .optional(),
       totalHours: z
@@ -217,7 +217,7 @@ export const updateTimesheetSchema = z.object({
         data.approvedBy !== undefined,
       {
         message: "At least one field must be provided to update the timesheet",
-      }
+      },
     ),
 });
 
@@ -259,7 +259,7 @@ export const clockOutSchema = z.object({
         z
           .number()
           .int("Break minutes must be a whole number")
-          .nonnegative("Break minutes cannot be negative")
+          .nonnegative("Break minutes cannot be negative"),
       )
       .optional(),
   }),
@@ -275,7 +275,7 @@ export const deleteTimesheetSchema = z.object({
         z
           .number()
           .int()
-          .positive("Timesheet ID must be a valid positive number")
+          .positive("Timesheet ID must be a valid positive number"),
       ),
   }),
 });
@@ -290,7 +290,7 @@ export const approveTimesheetSchema = z.object({
         z
           .number()
           .int()
-          .positive("Timesheet ID must be a valid positive number")
+          .positive("Timesheet ID must be a valid positive number"),
       ),
   }),
   body: z.object({
@@ -309,7 +309,7 @@ export const rejectTimesheetSchema = z.object({
         z
           .number()
           .int()
-          .positive("Timesheet ID must be a valid positive number")
+          .positive("Timesheet ID must be a valid positive number"),
       ),
   }),
   body: z.object({
@@ -335,7 +335,7 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
         {
           message:
             "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        }
+        },
       )
       .refine(
         (val) => {
@@ -343,13 +343,12 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
           // Check if it's a Monday (0 = Sunday, 1 = Monday)
           return date.getDay() === 1;
         },
-        { message: "Week start date must be a Monday (start of the work week)" }
+        {
+          message: "Week start date must be a Monday (start of the work week)",
+        },
       ),
     employeeId: z
-      .union([
-        z.string(),
-        z.array(z.string()),
-      ])
+      .union([z.string(), z.array(z.string())])
       .optional()
       .transform((val) => {
         if (!val) return undefined;
@@ -359,19 +358,24 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
         // Handle comma-separated string like "14,16" or array-like string "[14,16]"
         const str = val.toString().trim();
         // Remove brackets if present
-        const cleaned = str.replace(/^\[|\]$/g, '');
+        const cleaned = str.replace(/^\[|\]$/g, "");
         // Split by comma and parse
-        const ids = cleaned.split(',').map((id) => {
-          const trimmed = id.trim();
-          return parseInt(trimmed, 10);
-        }).filter((id) => !isNaN(id) && id > 0);
-        
+        const ids = cleaned
+          .split(",")
+          .map((id) => {
+            const trimmed = id.trim();
+            return parseInt(trimmed, 10);
+          })
+          .filter((id) => !isNaN(id) && id > 0);
+
         return ids.length > 0 ? ids : undefined;
       })
       .pipe(
         z
-          .array(z.number().int().positive("Employee ID must be a positive number"))
-          .optional()
+          .array(
+            z.number().int().positive("Employee ID must be a positive number"),
+          )
+          .optional(),
       ),
     departmentId: z
       .string()
@@ -382,7 +386,7 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
           .number()
           .int()
           .positive("Department ID must be a positive number")
-          .optional()
+          .optional(),
       ),
     status: z
       .enum(["pending", "submitted", "approved", "rejected"], {
@@ -404,7 +408,7 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
           .number()
           .int()
           .positive("Limit must be a positive number")
-          .max(100, "Maximum 100 items per page")
+          .max(100, "Maximum 100 items per page"),
       ),
   }),
 });
@@ -424,7 +428,7 @@ export const getMyTimesheetsQuerySchema = z.object({
         {
           message:
             "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        }
+        },
       )
       .refine(
         (val) => {
@@ -433,7 +437,9 @@ export const getMyTimesheetsQuerySchema = z.object({
           // Check if it's a Monday (0 = Sunday, 1 = Monday)
           return date.getDay() === 1;
         },
-        { message: "Week start date must be a Monday (start of the work week)" }
+        {
+          message: "Week start date must be a Monday (start of the work week)",
+        },
       ),
     search: z.string().optional(),
   }),
@@ -453,7 +459,7 @@ export const getTimesheetKPIsQuerySchema = z.object({
         {
           message:
             "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        }
+        },
       )
       .refine(
         (val) => {
@@ -461,7 +467,9 @@ export const getTimesheetKPIsQuerySchema = z.object({
           // Check if it's a Monday (0 = Sunday, 1 = Monday)
           return date.getDay() === 1;
         },
-        { message: "Week start date must be a Monday (start of the work week)" }
+        {
+          message: "Week start date must be a Monday (start of the work week)",
+        },
       ),
   }),
 });
@@ -496,7 +504,7 @@ export const createTimesheetWithClockDataSchema = z.object({
           z
             .number()
             .int("Break minutes must be a whole number")
-            .nonnegative("Break minutes cannot be negative")
+            .nonnegative("Break minutes cannot be negative"),
         )
         .optional(),
     })
@@ -511,6 +519,6 @@ export const createTimesheetWithClockDataSchema = z.object({
         message:
           "Both clockOutDate and clockOutTime must be provided together, or both omitted",
         path: ["clockOutTime"],
-      }
+      },
     ),
 });

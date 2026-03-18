@@ -23,6 +23,7 @@ import {
   recalcPayrollForEmployeeWeek,
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { db } from "../config/db.js";
 import { eq } from "drizzle-orm";
@@ -385,6 +386,7 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
       status,
       rejectedBy,
       approvedBy,
+      updatedAt: clientUpdatedAt,
     } = req.body;
 
     const updateData: any = {};
@@ -400,7 +402,12 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
     if (rejectedBy !== undefined) updateData.rejectedBy = rejectedBy;
     if (approvedBy !== undefined) updateData.approvedBy = approvedBy;
 
-    const timesheet = await updateTimesheet(id, updateData);
+    const timesheet = await updateTimesheet(id, updateData, clientUpdatedAt);
+
+    if (timesheet === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
+
     if (!timesheet) {
       return res.status(404).json({
         success: false,

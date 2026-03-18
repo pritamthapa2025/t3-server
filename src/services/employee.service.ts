@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import {
   employees,
   departments,
@@ -36,7 +37,7 @@ import {
   dispatchAssignments,
   dispatchTasks,
 } from "../drizzle/schema/dispatch.schema.js";
-import { jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
+import { jobTeamMembers, jobTasks } from "../drizzle/schema/jobs.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
@@ -47,13 +48,12 @@ export const getEmployees = async (
   filters?: {
     search?: string;
     status?: string;
+    isActive?: boolean;
     departmentId?: number;
   },
 ) => {
   // Show all non-deleted employees (include inactive user accounts so team list matches total count)
-  const conditions: ReturnType<typeof eq>[] = [
-    eq(employees.isDeleted, false),
-  ];
+  const conditions: ReturnType<typeof eq>[] = [eq(employees.isDeleted, false)];
 
   if (filters?.status) {
     conditions.push(
@@ -67,6 +67,9 @@ export const getEmployees = async (
           | "suspended",
       ),
     );
+  }
+  if (filters?.isActive !== undefined) {
+    conditions.push(eq(users.isActive, filters.isActive));
   }
   if (filters?.departmentId) {
     conditions.push(eq(employees.departmentId, filters.departmentId));
@@ -587,7 +590,14 @@ export const getEmployeeById = async (id: number) => {
       onTimeRate: onTimeRate,
       violations: employee.violations || 0,
       hoursThisMonth: Math.round(totalHoursThisMonth),
-      tasksCompleted: 24, // Mock data - implement actual task tracking
+      tasksCompleted: await (async () => {
+        if (!user?.id) return 0;
+        const result = await db
+          .select({ count: count() })
+          .from(jobTasks)
+          .where(and(eq(jobTasks.assignedTo, user.id), eq(jobTasks.status, "done")));
+        return result[0]?.count ?? 0;
+      })(),
       lastLogin: user?.lastLogin
         ? `${Math.floor(
             (Date.now() - new Date(user.lastLogin).getTime()) /
@@ -655,12 +665,16 @@ export const generateEmployeeId = async (): Promise<string> => {
     const prefix = `T3-${year}-`;
     const [maxRow] = await db
       .select({
-        maxNum: sql<string>`COALESCE(MAX(CAST(SUBSTRING(${employees.employeeId} FROM '([0-9]+)$') AS INTEGER)), 0)`.as("max_num"),
+        maxNum:
+          sql<string>`COALESCE(MAX(CAST(SUBSTRING(${employees.employeeId} FROM '([0-9]+)$') AS INTEGER)), 0)`.as(
+            "max_num",
+          ),
       })
       .from(employees)
       .where(sql`${employees.employeeId} LIKE ${prefix + "%"}`);
 
-    const maxNum = maxRow?.maxNum != null ? parseInt(String(maxRow.maxNum), 10) : 0;
+    const maxNum =
+      maxRow?.maxNum != null ? parseInt(String(maxRow.maxNum), 10) : 0;
     const nextNumber = maxNum + 1;
 
     const padding = Math.max(4, nextNumber.toString().length);
@@ -792,7 +806,11 @@ export const createEmployee = async (data: {
         type: "new_employee_onboarded",
         category: "system",
         priority: "medium",
-        data: { entityType: "Employee", entityId: String(employee?.id), entityName: employeeId },
+        data: {
+          entityType: "Employee",
+          entityId: String(employee?.id),
+          entityName: employeeId,
+        },
       });
     } catch (err) {
       console.error("[Notification] new_employee_onboarded failed:", err);
@@ -814,7 +832,18 @@ export const updateEmployee = async (
     endDate?: Date | null;
     note?: unknown;
   },
+  clientUpdatedAt?: string,
 ) => {
+  if (clientUpdatedAt) {
+    const [current] = await db
+      .select({ updatedAt: employees.updatedAt })
+      .from(employees)
+      .where(eq(employees.id, id))
+      .limit(1);
+    if (!current) return null;
+    if (isStale(current.updatedAt, clientUpdatedAt)) return STALE_DATA;
+  }
+
   const updateData: {
     userId?: string;
     departmentId?: number | null;
@@ -872,7 +901,8 @@ export const updateEmployee = async (
   if (data.status === "suspended" && employee) {
     void (async () => {
       try {
-        const { NotificationService } = await import("./notification.service.js");
+        const { NotificationService } =
+          await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "employee_suspended",
           category: "safety",

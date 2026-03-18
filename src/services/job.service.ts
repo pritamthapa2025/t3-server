@@ -13,6 +13,7 @@ import {
   getTableColumns,
 } from "drizzle-orm";
 import { logger } from "../utils/logger.js";
+import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -51,7 +52,8 @@ import {
 import { properties, clientContacts } from "../drizzle/schema/client.schema.js";
 import { getDefaultExpenseCategory } from "./expense.service.js";
 import { createExpenseFromSource } from "./expense.service.js";
-import { employees, positions } from "../drizzle/schema/org.schema.js";
+import { createAllocation } from "./inventory/inventory-allocations.service.js";
+import { employees, positions, departments } from "../drizzle/schema/org.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { getOrganizationById } from "./client.service.js";
@@ -106,16 +108,33 @@ export const getJobs = async (
     status?: string;
     priority?: string;
     search?: string;
+    organizationId?: string;
+    jobType?: string;
+    sortBy?: string;
+    propertyId?: string;
   },
   options?: GetJobsFilterOptions,
 ) => {
   let whereCondition = and(eq(jobs.isDeleted, false));
 
-  // Add filters
+  // Add filters — supports single status or comma-separated list (e.g., "in_progress,scheduled")
   if (filters?.status) {
+    const statuses = filters.status
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     whereCondition = and(
       whereCondition,
-      eq(jobs.status, filters.status as any),
+      statuses.length === 1
+        ? eq(jobs.status, statuses[0] as any)
+        : inArray(jobs.status, statuses as any[]),
+    );
+  }
+
+  if (filters?.organizationId) {
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.organizationId, filters.organizationId),
     );
   }
 
@@ -132,7 +151,22 @@ export const getJobs = async (
       or(
         ilike(jobs.jobNumber, `%${filters.search}%`),
         ilike(jobs.description, `%${filters.search}%`),
+        ilike(bidsTable.projectName, `%${filters.search}%`),
       ),
+    );
+  }
+
+  if (filters?.jobType) {
+    whereCondition = and(
+      whereCondition,
+      eq(jobs.jobType, filters.jobType as any),
+    );
+  }
+
+  if (filters?.propertyId) {
+    whereCondition = and(
+      whereCondition,
+      eq(bidsTable.propertyId, filters.propertyId),
     );
   }
 
@@ -184,7 +218,12 @@ export const getJobs = async (
     .leftJoin(users, eq(jobs.createdBy, users.id))
     .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(whereCondition)
-    .orderBy(desc(jobs.createdAt))
+    .orderBy(
+      filters?.sortBy === "oldest" ? asc(jobs.createdAt) :
+      filters?.sortBy === "status" ? asc(jobs.status) :
+      filters?.sortBy === "name" ? asc(bidsTable.projectName) :
+      desc(jobs.createdAt)
+    )
     .limit(limit)
     .offset(offset);
 
@@ -249,7 +288,10 @@ export const getJobsByOrganizationId = async (
   );
 
   if (filters?.status) {
-    whereCondition = and(whereCondition, eq(jobs.status, filters.status as any));
+    whereCondition = and(
+      whereCondition,
+      eq(jobs.status, filters.status as any),
+    );
   }
 
   if (filters?.search) {
@@ -258,6 +300,7 @@ export const getJobsByOrganizationId = async (
       or(
         ilike(jobs.jobNumber, `%${filters.search}%`),
         ilike(jobs.description, `%${filters.search}%`),
+        ilike(bidsTable.projectName, `%${filters.search}%`),
       ),
     );
   }
@@ -379,15 +422,19 @@ export const getJobById = async (
     result.bid.id,
     result.bid.organizationId,
   );
+  // Prefer actualTotalPrice; fall back to totalPrice for bids that pre-date the financial backfill
+  const effectiveBidPrice =
+    financialBreakdown?.actualTotalPrice || financialBreakdown?.totalPrice || null;
+
   const jobSummary = getJobFinancialSummaryFields(
     result.jobs,
     financialBreakdown,
-    financialBreakdown?.actualTotalPrice,
+    effectiveBidPrice,
   );
 
   const progress = await getJobProgressPercentages(
     result.jobs.id,
-    financialBreakdown?.actualTotalPrice ?? null,
+    effectiveBidPrice ?? null,
   );
 
   // Return job with bid priority and name, plus primaryContact, property, and summary
@@ -397,7 +444,7 @@ export const getJobById = async (
     name: result.bid.projectName, // Derive name from bid.projectName
     organizationId: result.bid.organizationId,
     createdByName: result.createdByName || null,
-    jobAmount: financialBreakdown?.actualTotalPrice ?? null,
+    jobAmount: effectiveBidPrice ?? null,
     ...(primaryContact && { primaryContact }),
     ...(property && { property }),
     totalContractValue: jobSummary.totalContractValue,
@@ -495,13 +542,23 @@ export const createJob = async (data: {
   // Generate job number atomically
   const jobNumber = await generateJobNumber(bid.organizationId);
 
+  // Derive status from scheduled start date when not explicitly provided:
+  //   today or past  → "in_progress"
+  //   future / unset → "scheduled"
+  const todayStr = new Date().toISOString().split("T")[0]!;
+  const scheduledStart = data.scheduledStartDate
+    ? String(data.scheduledStartDate).split("T")[0]
+    : null;
+  const derivedStatus =
+    scheduledStart && scheduledStart <= todayStr ? "in_progress" : "scheduled";
+
   // Insert job (without priority field)
   const result = await db
     .insert(jobs)
     .values({
       jobNumber,
       createdBy: data.createdBy,
-      status: (data.status as any) || "planned",
+      status: (data.status as any) || derivedStatus,
       jobType: data.jobType,
       serviceType: data.serviceType,
       bidId: data.bidId,
@@ -589,10 +646,26 @@ export const createJob = async (data: {
       const clientName = orgData?.name || null;
 
       // Build structured job details for the email info card
-      const LONG_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const LONG_MONTHS = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
       const formatDate = (d: string | null | undefined) => {
         if (!d) return null;
-        const [year, month, day] = String(d).split("T")[0]!.split("-").map(Number);
+        const [year, month, day] = String(d)
+          .split("T")[0]!
+          .split("-")
+          .map(Number);
         return `${LONG_MONTHS[(month ?? 1) - 1]} ${day}, ${year}`;
       };
 
@@ -601,8 +674,8 @@ export const createJob = async (data: {
       const endDateFormatted =
         formatDate(data.scheduledEndDate) || data.scheduledEndDate;
       const jobStatus =
-        (data.status || "planned").charAt(0).toUpperCase() +
-        (data.status || "planned").slice(1);
+        (data.status || derivedStatus).charAt(0).toUpperCase() +
+        (data.status || derivedStatus).slice(1);
 
       const jobDetails: Record<string, string> = {};
       if (clientName) jobDetails["Client"] = clientName;
@@ -686,12 +759,18 @@ export const createJob = async (data: {
             },
           });
         } catch (err) {
-          console.error("[Notification] job_assigned (technician) failed:", err);
+          console.error(
+            "[Notification] job_assigned (technician) failed:",
+            err,
+          );
         }
       }
 
       // 2. Notify the supervisorManager — they are directly assigned to supervise this job
-      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
+      if (
+        supervisorManagerUserId &&
+        !notifiedUsers.has(supervisorManagerUserId)
+      ) {
         notifiedUsers.add(supervisorManagerUserId);
         try {
           await svc.triggerNotification({
@@ -710,7 +789,10 @@ export const createJob = async (data: {
             },
           });
         } catch (err) {
-          console.error("[Notification] job_assigned (supervisorManager) failed:", err);
+          console.error(
+            "[Notification] job_assigned (supervisorManager) failed:",
+            err,
+          );
         }
       }
 
@@ -735,7 +817,10 @@ export const createJob = async (data: {
             },
           });
         } catch (err) {
-          console.error("[Notification] job_assigned (reportsTo manager) failed:", err);
+          console.error(
+            "[Notification] job_assigned (reportsTo manager) failed:",
+            err,
+          );
         }
       }
     } catch (err) {
@@ -759,6 +844,45 @@ export const createJob = async (data: {
       .where(eq(users.id, job.createdBy))
       .limit(1);
     createdByName = creator?.fullName || null;
+  }
+
+  // 16.6.1 — Auto-allocate bid materials that have inventoryItemId to the new job
+  (async () => {
+    try {
+      const materials = await getBidMaterials(data.bidId, undefined);
+      for (const material of materials) {
+        const invItemId = (material as any).inventoryItemId;
+        if (invItemId) {
+          await createAllocation(
+            {
+              itemId: invItemId,
+              jobId: job.id,
+              quantityAllocated: Number((material as any).quantity) || 1,
+              status: "allocated",
+              notes: `Auto-allocated from bid ${data.bidId}`,
+            },
+            data.createdBy,
+          ).catch(() => {/* non-fatal */});
+        }
+      }
+    } catch {/* non-fatal */}
+  })();
+
+  // 20.1.1 — Seed financial category budgets from bid cost breakdown
+  if (updatedBid) {
+    const { createFinancialCategoryBudget } = await import("./financial.service.js");
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const budgetEntries = [
+      { category: "materials", amount: parseFloat((updatedBid as any).materialsEquipment || "0") },
+      { category: "labor", amount: parseFloat((updatedBid as any).labor || "0") },
+      { category: "travel", amount: parseFloat((updatedBid as any).travel || "0") },
+      { category: "operating_expenses", amount: parseFloat((updatedBid as any).operatingExpenses || "0") },
+    ].filter(e => e.amount > 0);
+    for (const entry of budgetEntries) {
+      createFinancialCategoryBudget({ category: entry.category, month, year, budgetAmount: entry.amount, notes: `Seeded from bid ${data.bidId}`, createdBy: data.createdBy }).catch(() => {/* non-fatal */});
+    }
   }
 
   // Return job with bid priority and name
@@ -790,6 +914,7 @@ export const updateJob = async (
     completionNotes: string;
     completionPercentage: string;
   }>,
+  clientUpdatedAt?: string,
 ) => {
   // Get job to find bidId
   const [jobData] = await db
@@ -810,6 +935,10 @@ export const updateJob = async (
     return null;
   }
 
+  if (isStale(jobData.job.updatedAt, clientUpdatedAt)) {
+    return STALE_DATA;
+  }
+
   // Update bid priority if provided
   if (data.priority !== undefined) {
     const { updateBid } = await import("./bid.service.js");
@@ -820,6 +949,18 @@ export const updateJob = async (
 
   // Remove priority from data as it's not a job field anymore
   const { priority: _priority, ...jobUpdateData } = data;
+
+  // Auto-derive status from scheduledStartDate when not explicitly provided
+  if (jobUpdateData.scheduledStartDate && !jobUpdateData.status) {
+    const todayStr = new Date().toISOString().split("T")[0]!;
+    const newStart = String(jobUpdateData.scheduledStartDate).split("T")[0];
+    const currentStatus = jobData.job.status;
+    if (newStart && newStart > todayStr && currentStatus !== "scheduled") {
+      jobUpdateData.status = "scheduled";
+    } else if (newStart && newStart <= todayStr && currentStatus === "scheduled") {
+      jobUpdateData.status = "in_progress";
+    }
+  }
 
   const [job] = await db
     .update(jobs)
@@ -904,12 +1045,16 @@ export const updateJob = async (
           ["in_progress", "completed", "cancelled"].includes(data.status)
         ) {
           try {
-            const { NotificationEmailService } = await import("./notification-email.service.js");
+            const { NotificationEmailService } =
+              await import("./notification-email.service.js");
             const emailSvc = new NotificationEmailService();
 
             // Fetch: bid's explicit primaryContact + all isPrimary contacts on the org
             const contactRows = await db
-              .select({ email: clientContacts.email, fullName: clientContacts.fullName })
+              .select({
+                email: clientContacts.email,
+                fullName: clientContacts.fullName,
+              })
               .from(clientContacts)
               .where(
                 and(
@@ -933,9 +1078,14 @@ export const updateJob = async (
             });
 
             if (uniqueContacts.length === 0) {
-              logger.info(`[ClientEmail] No client contacts found for org ${updatedBid.organizationId} — skipping`);
+              logger.info(
+                `[ClientEmail] No client contacts found for org ${updatedBid.organizationId} — skipping`,
+              );
             } else {
-              const statusMessages: Record<string, { title: string; message: string }> = {
+              const statusMessages: Record<
+                string,
+                { title: string; message: string }
+              > = {
                 in_progress: {
                   title: "Job Started",
                   message: `We're pleased to inform you that work has officially started on "${jobName}". Our team is on-site and work has begun. You will be notified when the job is completed or if any updates arise.`,
@@ -954,7 +1104,9 @@ export const updateJob = async (
 
               await Promise.allSettled(
                 uniqueContacts.map((contact) => {
-                  logger.info(`[ClientEmail] Sending "${title}" email to client contact ${contact.email}`);
+                  logger.info(
+                    `[ClientEmail] Sending "${title}" email to client contact ${contact.email}`,
+                  );
                   return emailSvc.sendDirectEmail(
                     contact.email!,
                     contact.fullName,
@@ -965,7 +1117,10 @@ export const updateJob = async (
               );
             }
           } catch (clientEmailErr) {
-            logger.error("[ClientEmail] Failed to send client contact emails:", clientEmailErr);
+            logger.error(
+              "[ClientEmail] Failed to send client contact emails:",
+              clientEmailErr,
+            );
           }
         }
       } catch (err) {
@@ -974,6 +1129,39 @@ export const updateJob = async (
           err,
         );
       }
+    })();
+  }
+
+  // 16.6.1 — On job completion, return any outstanding inventory allocations
+  if (data.status === "completed" && (jobData.job as any).status !== "completed") {
+    (async () => {
+      try {
+        const { returnAllocation } = await import("./inventory/inventory-allocations.service.js");
+        const { inventoryAllocations } = await import("../drizzle/schema/inventory.schema.js");
+        const outstanding = await db
+          .select({ id: inventoryAllocations.id })
+          .from(inventoryAllocations)
+          .where(
+            and(
+              eq((inventoryAllocations as any).jobId, id),
+              eq(inventoryAllocations.status, "issued"),
+              eq(inventoryAllocations.isDeleted, false),
+            ),
+          );
+        for (const alloc of outstanding) {
+          const [fullAlloc] = await db
+            .select({ quantityAllocated: (inventoryAllocations as any).quantityAllocated, quantityUsed: (inventoryAllocations as any).quantityUsed })
+            .from(inventoryAllocations)
+            .where(eq(inventoryAllocations.id, alloc.id))
+            .limit(1);
+          if (fullAlloc) {
+            const qtyToReturn = String(parseFloat(fullAlloc.quantityAllocated || "0") - parseFloat(fullAlloc.quantityUsed || "0"));
+            if (parseFloat(qtyToReturn) > 0) {
+              await returnAllocation(alloc.id, { quantityReturned: qtyToReturn, notes: "Auto-returned on job completion" }, "system").catch(() => {});
+            }
+          }
+        }
+      } catch {/* non-fatal */}
     })();
   }
 
@@ -1087,8 +1275,12 @@ export const getJobTeamMembers = async (
       teamMember: jobTeamMembers,
       employee: employees,
       employeeName: users.fullName,
+      employeeEmail: users.email,
+      employeePhone: users.phone,
       position: positions,
       roleName: roles.name,
+      departmentId: departments.id,
+      departmentName: departments.name,
     })
     .from(jobTeamMembers)
     .leftJoin(employees, eq(jobTeamMembers.employeeId, employees.id))
@@ -1096,6 +1288,7 @@ export const getJobTeamMembers = async (
     .leftJoin(userRoles, eq(users.id, userRoles.userId))
     .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .leftJoin(positions, eq(jobTeamMembers.positionId, positions.id))
+    .leftJoin(departments, eq(employees.departmentId, departments.id))
     .innerJoin(jobs, eq(jobTeamMembers.jobId, jobs.id))
     .where(and(...conditions));
 
@@ -1103,8 +1296,13 @@ export const getJobTeamMembers = async (
     ...m.teamMember,
     employee: m.employee,
     employeeName: m.employeeName ?? null,
+    employeeEmail: m.employeeEmail ?? null,
+    employeePhone: m.employeePhone ?? null,
     position: m.position,
     role: m.roleName ?? null,
+    department: m.departmentId
+      ? { id: m.departmentId, name: m.departmentName ?? "" }
+      : null,
   }));
 };
 
@@ -1164,10 +1362,26 @@ export const addJobTeamMember = async (data: {
         clientName = orgData?.name || null;
       }
 
-      const LONG_MONTHS_2 = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const LONG_MONTHS_2 = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
       const formatDate = (d: string | null | undefined) => {
         if (!d) return null;
-        const [year, month, day] = String(d).split("T")[0]!.split("-").map(Number);
+        const [year, month, day] = String(d)
+          .split("T")[0]!
+          .split("-")
+          .map(Number);
         return `${LONG_MONTHS_2[(month ?? 1) - 1]} ${day}, ${year}`;
       };
 
@@ -1240,7 +1454,10 @@ export const addJobTeamMember = async (data: {
       }
 
       // 2. Notify the supervisorManager — they are directly assigned to supervise this job
-      if (supervisorManagerUserId && !notifiedUsers.has(supervisorManagerUserId)) {
+      if (
+        supervisorManagerUserId &&
+        !notifiedUsers.has(supervisorManagerUserId)
+      ) {
         notifiedUsers.add(supervisorManagerUserId);
         try {
           await svc.triggerNotification({
@@ -1258,13 +1475,19 @@ export const addJobTeamMember = async (data: {
             },
           });
         } catch (err) {
-          console.error("[Notification] job_assigned (supervisorManager) failed:", err);
+          console.error(
+            "[Notification] job_assigned (supervisorManager) failed:",
+            err,
+          );
         }
       }
 
       // 3. Notify the technician's reportsTo manager — ONLY if different from supervisorManager
       //    This person needs to know their department member was assigned
-      if (techEmployee.reportsTo && !notifiedUsers.has(techEmployee.reportsTo)) {
+      if (
+        techEmployee.reportsTo &&
+        !notifiedUsers.has(techEmployee.reportsTo)
+      ) {
         notifiedUsers.add(techEmployee.reportsTo);
         try {
           await svc.triggerNotification({
@@ -1282,7 +1505,10 @@ export const addJobTeamMember = async (data: {
             },
           });
         } catch (err) {
-          console.error("[Notification] job_assigned (reportsTo manager) failed:", err);
+          console.error(
+            "[Notification] job_assigned (reportsTo manager) failed:",
+            err,
+          );
         }
       }
     } catch (err) {
@@ -1436,7 +1662,8 @@ export const getJobWithAllData = async (jobId: string) => {
 
   // Enrich each travel entry with vehicle data via bidLabor.assignedEmployeeId
   // Wrapped in try-catch so jobs still load if the migration hasn't been applied yet
-  let travel: (typeof rawTravel[number] & { vehicle?: unknown })[] = rawTravel;
+  let travel: ((typeof rawTravel)[number] & { vehicle?: unknown })[] =
+    rawTravel;
   if (rawTravel.length > 0) {
     try {
       const bidLaborIds = [
@@ -1512,15 +1739,19 @@ export const getJobWithAllData = async (jobId: string) => {
   }
 
   // Financial summary (totalContractValue, profitMargin, estimatedProfit, startDate=createdAt, endDate, remaining)
+  // Prefer actualTotalPrice; fall back to totalPrice for bids that pre-date the financial backfill
+  const effectiveBidPriceForJob =
+    financialBreakdown?.actualTotalPrice || financialBreakdown?.totalPrice || null;
+
   const jobSummary = getJobFinancialSummaryFields(
     jobData.job,
     financialBreakdown,
-    financialBreakdown?.actualTotalPrice,
+    effectiveBidPriceForJob,
   );
 
   const progress = await getJobProgressPercentages(
     jobId,
-    financialBreakdown?.actualTotalPrice ?? null,
+    effectiveBidPriceForJob ?? null,
   );
 
   return {
@@ -1529,7 +1760,7 @@ export const getJobWithAllData = async (jobId: string) => {
       priority: bid?.priority, // Use bid priority instead of job priority
       name: bid?.projectName, // Derive name from bid.projectName
       organizationId: jobData.organizationId,
-      jobAmount: financialBreakdown?.actualTotalPrice ?? null,
+      jobAmount: effectiveBidPriceForJob ?? null,
       totalContractValue: jobSummary.totalContractValue,
       profitMargin: jobSummary.profitMargin,
       estimatedProfit: jobSummary.estimatedProfit,
@@ -2470,7 +2701,10 @@ export const getJobNotes = async (jobId: string, page = 1, limit = 10) => {
       createdByName: createdByJobNoteUser.fullName,
     })
     .from(jobNotes)
-    .leftJoin(createdByJobNoteUser, eq(jobNotes.createdBy, createdByJobNoteUser.id))
+    .leftJoin(
+      createdByJobNoteUser,
+      eq(jobNotes.createdBy, createdByJobNoteUser.id),
+    )
     .where(and(eq(jobNotes.jobId, jobId), eq(jobNotes.isDeleted, false)))
     .orderBy(desc(jobNotes.createdAt))
     .limit(limit)
@@ -2539,7 +2773,10 @@ export const getJobNoteById = async (_jobId: string, noteId: string) => {
       createdByName: createdByJobNoteUser.fullName,
     })
     .from(jobNotes)
-    .leftJoin(createdByJobNoteUser, eq(jobNotes.createdBy, createdByJobNoteUser.id))
+    .leftJoin(
+      createdByJobNoteUser,
+      eq(jobNotes.createdBy, createdByJobNoteUser.id),
+    )
     .where(and(eq(jobNotes.id, noteId), eq(jobNotes.isDeleted, false)));
   if (!row) return null;
   const { createdByName, ...note } = row;
@@ -2667,7 +2904,10 @@ const generateTaskNumber = async (): Promise<string> => {
   return `TASK-${year}-${nextNumber.toString().padStart(padding, "0")}`;
 };
 
-export const getJobTasks = async (jobId: string) => {
+export const getJobTasks = async (
+  jobId: string,
+  params?: { page?: number; limit?: number },
+) => {
   const [jobRow] = await db
     .select({ jobId: jobs.id })
     .from(jobs)
@@ -2677,13 +2917,26 @@ export const getJobTasks = async (jobId: string) => {
     return null;
   }
 
-  const tasks = await db
-    .select()
-    .from(jobTasks)
-    .where(and(eq(jobTasks.jobId, jobId), eq(jobTasks.isDeleted, false)))
-    .orderBy(asc(jobTasks.sortOrder), asc(jobTasks.dueDate));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobTasks.jobId, jobId),
+    eq(jobTasks.isDeleted, false),
+  );
 
-  return tasks;
+  const [totalResult, tasks] = await Promise.all([
+    db.select({ count: count() }).from(jobTasks).where(condition),
+    db
+      .select()
+      .from(jobTasks)
+      .where(condition)
+      .orderBy(asc(jobTasks.sortOrder), asc(jobTasks.dueDate))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data: tasks, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
 export const getJobTaskById = async (jobId: string, taskId: string) => {
@@ -2806,7 +3059,11 @@ export const updateJobTask = async (
     return null;
   }
 
-  if (data.assignedTo !== undefined && data.assignedTo != null && data.assignedTo !== "") {
+  if (
+    data.assignedTo !== undefined &&
+    data.assignedTo != null &&
+    data.assignedTo !== ""
+  ) {
     const [userRow] = await db
       .select({ id: users.id })
       .from(users)
@@ -3254,18 +3511,47 @@ export const deleteJobSurvey = async (surveyId: string, jobId: string) => {
 // Job Service Calls Operations
 // ============================
 
-export const getJobServiceCalls = async (jobId: string) => {
+export const getJobServiceCalls = async (
+  jobId: string,
+  params?: { page?: number; limit?: number },
+) => {
   const [jobRow] = await db
     .select({ id: jobs.id })
     .from(jobs)
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
   if (!jobRow) return null;
 
-  return db
-    .select()
-    .from(jobServiceCalls)
-    .where(and(eq(jobServiceCalls.jobId, jobId), eq(jobServiceCalls.isDeleted, false)))
-    .orderBy(desc(jobServiceCalls.createdAt));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobServiceCalls.jobId, jobId),
+    eq(jobServiceCalls.isDeleted, false),
+  );
+
+  const createdByUser = alias(users, "service_call_created_by");
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(jobServiceCalls).where(condition),
+    db
+      .select({
+        serviceCall: jobServiceCalls,
+        createdByName: createdByUser.fullName,
+      })
+      .from(jobServiceCalls)
+      .leftJoin(createdByUser, eq(jobServiceCalls.createdBy, createdByUser.id))
+      .where(condition)
+      .orderBy(desc(jobServiceCalls.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  const enrichedData = data.map((row) => ({
+    ...row.serviceCall,
+    createdByName: row.createdByName ?? null,
+  }));
+
+  return { data: enrichedData, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
 export const getJobServiceCallById = async (jobId: string, callId: string) => {
@@ -3306,7 +3592,11 @@ export const updateJobServiceCall = async (
   jobId: string,
   data: Record<string, unknown>,
 ) => {
-  const { jobId: _scJobId, createdBy: _scCreatedBy, ...safeServiceCallData } = data;
+  const {
+    jobId: _scJobId,
+    createdBy: _scCreatedBy,
+    ...safeServiceCallData
+  } = data;
   const [updated] = await db
     .update(jobServiceCalls)
     .set({ ...safeServiceCallData, updatedAt: new Date() } as any)
@@ -3341,21 +3631,42 @@ export const deleteJobServiceCall = async (callId: string, jobId: string) => {
 // Job PM Inspections Operations
 // ============================
 
-export const getJobPMInspections = async (jobId: string) => {
+export const getJobPMInspections = async (
+  jobId: string,
+  params?: { page?: number; limit?: number },
+) => {
   const [jobRow] = await db
     .select({ id: jobs.id })
     .from(jobs)
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
   if (!jobRow) return null;
 
-  return db
-    .select()
-    .from(jobPMInspections)
-    .where(and(eq(jobPMInspections.jobId, jobId), eq(jobPMInspections.isDeleted, false)))
-    .orderBy(desc(jobPMInspections.createdAt));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobPMInspections.jobId, jobId),
+    eq(jobPMInspections.isDeleted, false),
+  );
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(jobPMInspections).where(condition),
+    db
+      .select()
+      .from(jobPMInspections)
+      .where(condition)
+      .orderBy(desc(jobPMInspections.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
-export const getJobPMInspectionById = async (jobId: string, inspectionId: string) => {
+export const getJobPMInspectionById = async (
+  jobId: string,
+  inspectionId: string,
+) => {
   const [row] = await db
     .select()
     .from(jobPMInspections)
@@ -3409,7 +3720,10 @@ export const updateJobPMInspection = async (
   return getJobPMInspectionById(jobId, inspectionId);
 };
 
-export const deleteJobPMInspection = async (inspectionId: string, jobId: string) => {
+export const deleteJobPMInspection = async (
+  inspectionId: string,
+  jobId: string,
+) => {
   const [softDeleted] = await db
     .update(jobPMInspections)
     .set({ isDeleted: true, updatedAt: new Date() })
@@ -3428,21 +3742,42 @@ export const deleteJobPMInspection = async (inspectionId: string, jobId: string)
 // Job Plan Spec Records Operations
 // ============================
 
-export const getJobPlanSpecRecords = async (jobId: string) => {
+export const getJobPlanSpecRecords = async (
+  jobId: string,
+  params?: { page?: number; limit?: number },
+) => {
   const [jobRow] = await db
     .select({ id: jobs.id })
     .from(jobs)
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
   if (!jobRow) return null;
 
-  return db
-    .select()
-    .from(jobPlanSpecRecords)
-    .where(and(eq(jobPlanSpecRecords.jobId, jobId), eq(jobPlanSpecRecords.isDeleted, false)))
-    .orderBy(desc(jobPlanSpecRecords.createdAt));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobPlanSpecRecords.jobId, jobId),
+    eq(jobPlanSpecRecords.isDeleted, false),
+  );
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(jobPlanSpecRecords).where(condition),
+    db
+      .select()
+      .from(jobPlanSpecRecords)
+      .where(condition)
+      .orderBy(desc(jobPlanSpecRecords.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
-export const getJobPlanSpecRecordById = async (jobId: string, recordId: string) => {
+export const getJobPlanSpecRecordById = async (
+  jobId: string,
+  recordId: string,
+) => {
   const [row] = await db
     .select()
     .from(jobPlanSpecRecords)
@@ -3496,7 +3831,10 @@ export const updateJobPlanSpecRecord = async (
   return getJobPlanSpecRecordById(jobId, recordId);
 };
 
-export const deleteJobPlanSpecRecord = async (recordId: string, jobId: string) => {
+export const deleteJobPlanSpecRecord = async (
+  recordId: string,
+  jobId: string,
+) => {
   const [softDeleted] = await db
     .update(jobPlanSpecRecords)
     .set({ isDeleted: true, updatedAt: new Date() })
@@ -3515,21 +3853,42 @@ export const deleteJobPlanSpecRecord = async (recordId: string, jobId: string) =
 // Job Design Build Notes Operations
 // ============================
 
-export const getJobDesignBuildNotes = async (jobId: string) => {
+export const getJobDesignBuildNotes = async (
+  jobId: string,
+  params?: { page?: number; limit?: number },
+) => {
   const [jobRow] = await db
     .select({ id: jobs.id })
     .from(jobs)
     .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)));
   if (!jobRow) return null;
 
-  return db
-    .select()
-    .from(jobDesignBuildNotes)
-    .where(and(eq(jobDesignBuildNotes.jobId, jobId), eq(jobDesignBuildNotes.isDeleted, false)))
-    .orderBy(desc(jobDesignBuildNotes.createdAt));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobDesignBuildNotes.jobId, jobId),
+    eq(jobDesignBuildNotes.isDeleted, false),
+  );
+
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(jobDesignBuildNotes).where(condition),
+    db
+      .select()
+      .from(jobDesignBuildNotes)
+      .where(condition)
+      .orderBy(desc(jobDesignBuildNotes.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
-export const getJobDesignBuildNoteById = async (jobId: string, noteId: string) => {
+export const getJobDesignBuildNoteById = async (
+  jobId: string,
+  noteId: string,
+) => {
   const [row] = await db
     .select()
     .from(jobDesignBuildNotes)
@@ -3584,7 +3943,10 @@ export const updateJobDesignBuildNote = async (
   return getJobDesignBuildNoteById(jobId, noteId);
 };
 
-export const deleteJobDesignBuildNote = async (noteId: string, jobId: string) => {
+export const deleteJobDesignBuildNote = async (
+  noteId: string,
+  jobId: string,
+) => {
   const [softDeleted] = await db
     .update(jobDesignBuildNotes)
     .set({ isDeleted: true, updatedAt: new Date() })
@@ -3606,8 +3968,8 @@ export const deleteJobDesignBuildNote = async (noteId: string, jobId: string) =>
 export const getJobExpenses = async (
   jobId: string,
   _organizationId: string,
+  params?: { page?: number; limit?: number },
 ) => {
-  // Get job with bid info to retrieve the bid's organizationId
   const [jobData] = await db
     .select({
       jobId: jobs.id,
@@ -3624,14 +3986,26 @@ export const getJobExpenses = async (
     return null;
   }
 
-  // Get expenses for this job (job_expenses has no organizationId - filter by jobId only)
-  const expenses = await db
-    .select()
-    .from(jobExpenses)
-    .where(and(eq(jobExpenses.jobId, jobId), eq(jobExpenses.isDeleted, false)))
-    .orderBy(desc(jobExpenses.expenseDate));
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+  const condition = and(
+    eq(jobExpenses.jobId, jobId),
+    eq(jobExpenses.isDeleted, false),
+  );
 
-  return expenses;
+  const [totalResult, data] = await Promise.all([
+    db.select({ count: count() }).from(jobExpenses).where(condition),
+    db
+      .select()
+      .from(jobExpenses)
+      .where(condition)
+      .orderBy(desc(jobExpenses.expenseDate))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  return { data, total: totalResult[0]?.count ?? 0, page, limit };
 };
 
 export const getJobExpenseById = async (jobId: string, expenseId: string) => {
@@ -3743,10 +4117,20 @@ export const createJobExpense = async (data: {
     void (async () => {
       try {
         const [budgetRow] = await db
-          .select({ totalCost: bidFinancialBreakdown.totalCost, jobNumber: jobs.jobNumber, projectName: bidsTable.projectName })
+          .select({
+            totalCost: bidFinancialBreakdown.totalCost,
+            jobNumber: jobs.jobNumber,
+            projectName: bidsTable.projectName,
+          })
           .from(jobs)
-          .innerJoin(bidsTable, and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)))
-          .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
+          .innerJoin(
+            bidsTable,
+            and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+          )
+          .leftJoin(
+            bidFinancialBreakdown,
+            eq(bidsTable.id, bidFinancialBreakdown.bidId),
+          )
           .where(and(eq(jobs.id, data.jobId), eq(jobs.isDeleted, false)))
           .limit(1);
 
@@ -3756,11 +4140,15 @@ export const createJobExpense = async (data: {
             .from(jobExpenses)
             .where(and(eq(jobExpenses.jobId, data.jobId)));
 
-          const totalActual = expenseRows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+          const totalActual = expenseRows.reduce(
+            (sum, r) => sum + Number(r.amount || 0),
+            0,
+          );
           const budget = Number(budgetRow.totalCost);
 
           if (totalActual > budget) {
-            const { NotificationService } = await import("./notification.service.js");
+            const { NotificationService } =
+              await import("./notification.service.js");
             await new NotificationService().triggerNotification({
               type: "job_cost_exceeds_budget",
               category: "financial",
@@ -3768,7 +4156,8 @@ export const createJobExpense = async (data: {
               data: {
                 entityType: "Job",
                 entityId: data.jobId,
-                entityName: budgetRow.projectName || budgetRow.jobNumber || data.jobId,
+                entityName:
+                  budgetRow.projectName || budgetRow.jobNumber || data.jobId,
                 currentCost: totalActual,
                 budget,
                 amount: totalActual,
@@ -4152,24 +4541,22 @@ export const getJobLaborCostTracking = async (jobId: string) => {
     }
   });
 
-  // ACTUAL COST: Get actual hours from payroll_timesheet_entries for this job
-  const actualJobHours = await db
+  // ACTUAL COST SOURCE 1: dispatch_assignments.actual_hours for this job
+  const dispatchActualRows = await db
     .select({
-      jobHours: payrollTimesheetEntries.jobHours,
-      hoursIncluded: payrollTimesheetEntries.hoursIncluded,
-      overtimeHours: payrollTimesheetEntries.overtimeHours,
-      doubleOvertimeHours: payrollTimesheetEntries.doubleOvertimeHours,
-      timesheetId: payrollTimesheetEntries.timesheetId,
-      employeeId: timesheets.employeeId,
+      actualHours: dispatchAssignments.actualHours,
       hourlyRate: employees.hourlyRate,
     })
-    .from(payrollTimesheetEntries)
-    .innerJoin(
-      timesheets,
-      eq(payrollTimesheetEntries.timesheetId, timesheets.id),
-    )
-    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
-    .where(eq(payrollTimesheetEntries.jobId, jobId));
+    .from(dispatchAssignments)
+    .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+    .leftJoin(employees, eq(dispatchAssignments.technicianId, employees.id))
+    .where(
+      and(
+        eq(dispatchTasks.jobId, jobId),
+        eq(dispatchTasks.isDeleted, false),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    );
 
   let actualCostTotal = 0;
   let totalHours = 0;
@@ -4177,42 +4564,69 @@ export const getJobLaborCostTracking = async (jobId: string) => {
   let overtimeHours = 0;
   let doubleOTHours = 0;
 
-  actualJobHours.forEach((row) => {
-    const jobHrs = parseFloat(row.jobHours || "0");
-    const totalTimesheetHrs =
-      parseFloat(row.hoursIncluded || "0") +
-      parseFloat(row.overtimeHours || "0") +
-      parseFloat(row.doubleOvertimeHours || "0");
-    const hourlyRate = parseFloat(row.hourlyRate || "0");
-    const otRate = hourlyRate * 1.5; // employees table has no overtimeRate; use 1.5x
-    const dblOTRate = hourlyRate * 2;
-
-    if (totalTimesheetHrs > 0 && jobHrs > 0) {
-      // Calculate proportional breakdown for this job based on timesheet's OT distribution
-      const regHrs =
-        (parseFloat(row.hoursIncluded || "0") / totalTimesheetHrs) * jobHrs;
-      const otHrs =
-        (parseFloat(row.overtimeHours || "0") / totalTimesheetHrs) * jobHrs;
-      const dblOTHrs =
-        (parseFloat(row.doubleOvertimeHours || "0") / totalTimesheetHrs) *
-        jobHrs;
-
-      // Accumulate hours
-      totalHours += jobHrs;
-      regularHours += regHrs;
-      overtimeHours += otHrs;
-      doubleOTHours += dblOTHrs;
-
-      // Calculate cost
-      actualCostTotal +=
-        regHrs * hourlyRate + otHrs * otRate + dblOTHrs * dblOTRate;
-    } else if (jobHrs > 0) {
-      // If no breakdown available, treat all job hours as regular hours
-      totalHours += jobHrs;
-      regularHours += jobHrs;
-      actualCostTotal += jobHrs * hourlyRate;
-    }
+  // Use dispatch assignment logged hours as the primary actual source
+  dispatchActualRows.forEach((row) => {
+    const hrs = parseFloat(row.actualHours ?? "0");
+    if (hrs <= 0) return;
+    const rate = parseFloat(row.hourlyRate ?? "0");
+    totalHours += hrs;
+    regularHours += hrs;
+    actualCostTotal += hrs * rate;
   });
+
+  // ACTUAL COST SOURCE 2 (fallback): payroll_timesheet_entries if no dispatch hours logged
+  if (totalHours === 0) {
+    const actualJobHours = await db
+      .select({
+        jobHours: payrollTimesheetEntries.jobHours,
+        hoursIncluded: payrollTimesheetEntries.hoursIncluded,
+        overtimeHours: payrollTimesheetEntries.overtimeHours,
+        doubleOvertimeHours: payrollTimesheetEntries.doubleOvertimeHours,
+        timesheetId: payrollTimesheetEntries.timesheetId,
+        employeeId: timesheets.employeeId,
+        hourlyRate: employees.hourlyRate,
+      })
+      .from(payrollTimesheetEntries)
+      .innerJoin(
+        timesheets,
+        eq(payrollTimesheetEntries.timesheetId, timesheets.id),
+      )
+      .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+      .where(eq(payrollTimesheetEntries.jobId, jobId));
+
+    actualJobHours.forEach((row) => {
+      const jobHrs = parseFloat(row.jobHours || "0");
+      const totalTimesheetHrs =
+        parseFloat(row.hoursIncluded || "0") +
+        parseFloat(row.overtimeHours || "0") +
+        parseFloat(row.doubleOvertimeHours || "0");
+      const hourlyRate = parseFloat(row.hourlyRate || "0");
+      const otRate = hourlyRate * 1.5;
+      const dblOTRate = hourlyRate * 2;
+
+      if (totalTimesheetHrs > 0 && jobHrs > 0) {
+        const regHrs =
+          (parseFloat(row.hoursIncluded || "0") / totalTimesheetHrs) * jobHrs;
+        const otHrs =
+          (parseFloat(row.overtimeHours || "0") / totalTimesheetHrs) * jobHrs;
+        const dblOTHrs =
+          (parseFloat(row.doubleOvertimeHours || "0") / totalTimesheetHrs) *
+          jobHrs;
+
+        totalHours += jobHrs;
+        regularHours += regHrs;
+        overtimeHours += otHrs;
+        doubleOTHours += dblOTHrs;
+
+        actualCostTotal +=
+          regHrs * hourlyRate + otHrs * otRate + dblOTHrs * dblOTRate;
+      } else if (jobHrs > 0) {
+        totalHours += jobHrs;
+        regularHours += jobHrs;
+        actualCostTotal += jobHrs * hourlyRate;
+      }
+    });
+  }
 
   // Calculate status
   let status = "Under Budget";
@@ -4273,13 +4687,15 @@ async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
   const employeeId = emp?.id ?? null;
 
   // Team member on the job
-  const teamMemberExistsClause = employeeId !== null
-    ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`
-    : null;
+  const teamMemberExistsClause =
+    employeeId !== null
+      ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`
+      : null;
 
   // Dispatched to any task on the job (covers ad-hoc coverage)
-  const dispatchedExistsClause = employeeId !== null
-    ? sql`EXISTS (
+  const dispatchedExistsClause =
+    employeeId !== null
+      ? sql`EXISTS (
         SELECT 1 FROM org.dispatch_assignments da
         JOIN org.dispatch_tasks dt ON da.task_id = dt.id
         WHERE dt.job_id = ${jobs.id}
@@ -4287,7 +4703,7 @@ async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
           AND da.is_deleted = false
           AND dt.is_deleted = false
       )`
-    : null;
+      : null;
 
   const conditions = [
     eq(bidsTable.assignedTo, options.userId),
@@ -4305,8 +4721,12 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     eq(bidsTable.isDeleted, false),
   );
 
-  // Active jobs: planned + scheduled + in_progress + on_hold (non-terminal statuses — matches dashboard)
-  const activeStatusCondition = inArray(jobs.status, ["planned", "scheduled", "in_progress", "on_hold"]);
+  // Active jobs: scheduled + in_progress + on_hold (non-terminal statuses — matches dashboard)
+  const activeStatusCondition = inArray(jobs.status, [
+    "scheduled",
+    "in_progress",
+    "on_hold",
+  ]);
   const activeJobsQ = db
     .select({ count: count() })
     .from(jobs)
@@ -4387,7 +4807,6 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
     eq(jobs.isDeleted, false),
     lte(jobs.scheduledEndDate, today.toISOString().split("T")[0]),
     or(
-      eq(jobs.status, "planned"),
       eq(jobs.status, "scheduled"),
       eq(jobs.status, "in_progress"),
       eq(jobs.status, "on_hold"),
@@ -4514,7 +4933,10 @@ export const getJobLogs = async (jobId: string, page = 1, limit = 10) => {
       submittedByName: submittedByJobLogUser.fullName,
     })
     .from(jobLogs)
-    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .leftJoin(
+      submittedByJobLogUser,
+      eq(jobLogs.submittedBy, submittedByJobLogUser.id),
+    )
     .where(and(eq(jobLogs.jobId, jobId), eq(jobLogs.isDeleted, false)))
     .orderBy(desc(jobLogs.workDate), desc(jobLogs.createdAt))
     .limit(limit)
@@ -4531,13 +4953,10 @@ export const getJobLogs = async (jobId: string, page = 1, limit = 10) => {
           .orderBy(asc(jobLogMedia.createdAt))
       : [];
 
-  const mediaByLogId = media.reduce<Record<string, typeof media>>(
-    (acc, m) => {
-      (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
-      return acc;
-    },
-    {},
-  );
+  const mediaByLogId = media.reduce<Record<string, typeof media>>((acc, m) => {
+    (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
+    return acc;
+  }, {});
 
   return {
     data: logs.map(({ submittedByName, ...log }) => ({
@@ -4561,7 +4980,10 @@ export const getJobLogById = async (logId: string) => {
       submittedByName: submittedByJobLogUser.fullName,
     })
     .from(jobLogs)
-    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .leftJoin(
+      submittedByJobLogUser,
+      eq(jobLogs.submittedBy, submittedByJobLogUser.id),
+    )
     .where(and(eq(jobLogs.id, logId), eq(jobLogs.isDeleted, false)));
   if (!row) return null;
 
@@ -4589,7 +5011,8 @@ export const createJobLog = async (data: {
     .insert(jobLogs)
     .values({
       ...data,
-      hoursWorked: data.hoursWorked != null ? String(data.hoursWorked) : undefined,
+      hoursWorked:
+        data.hoursWorked != null ? String(data.hoursWorked) : undefined,
     })
     .returning();
   return log;
@@ -4610,7 +5033,8 @@ export const updateJobLog = async (
     .update(jobLogs)
     .set({
       ...data,
-      hoursWorked: data.hoursWorked != null ? String(data.hoursWorked) : undefined,
+      hoursWorked:
+        data.hoursWorked != null ? String(data.hoursWorked) : undefined,
       updatedAt: new Date(),
     })
     .where(and(eq(jobLogs.id, logId), eq(jobLogs.isDeleted, false)))
@@ -4627,16 +5051,18 @@ export const deleteJobLog = async (logId: string) => {
   return log ?? null;
 };
 
-export const addJobLogMedia = async (entries: {
-  jobLogId: string;
-  jobId: string;
-  fileUrl: string;
-  filePath: string;
-  fileName?: string;
-  fileType?: string;
-  caption?: string;
-  uploadedBy: string;
-}[]) => {
+export const addJobLogMedia = async (
+  entries: {
+    jobLogId: string;
+    jobId: string;
+    fileUrl: string;
+    filePath: string;
+    fileName?: string;
+    fileType?: string;
+    caption?: string;
+    uploadedBy: string;
+  }[],
+) => {
   if (entries.length === 0) return [];
   return db.insert(jobLogMedia).values(entries).returning();
 };
@@ -4649,7 +5075,11 @@ export const deleteJobLogMedia = async (mediaId: string) => {
   return media ?? null;
 };
 
-export const getPropertyJobLogs = async (propertyId: string, page = 1, limit = 10) => {
+export const getPropertyJobLogs = async (
+  propertyId: string,
+  page = 1,
+  limit = 10,
+) => {
   const offset = (page - 1) * limit;
 
   // Count via join: job_logs → jobs → bids → property_id
@@ -4678,7 +5108,10 @@ export const getPropertyJobLogs = async (propertyId: string, page = 1, limit = 1
     .from(jobLogs)
     .innerJoin(jobs, eq(jobLogs.jobId, jobs.id))
     .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(submittedByJobLogUser, eq(jobLogs.submittedBy, submittedByJobLogUser.id))
+    .leftJoin(
+      submittedByJobLogUser,
+      eq(jobLogs.submittedBy, submittedByJobLogUser.id),
+    )
     .where(
       and(
         eq(bidsTable.propertyId, propertyId),
@@ -4700,13 +5133,10 @@ export const getPropertyJobLogs = async (propertyId: string, page = 1, limit = 1
           .orderBy(asc(jobLogMedia.createdAt))
       : [];
 
-  const mediaByLogId = media.reduce<Record<string, typeof media>>(
-    (acc, m) => {
-      (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
-      return acc;
-    },
-    {},
-  );
+  const mediaByLogId = media.reduce<Record<string, typeof media>>((acc, m) => {
+    (acc[m.jobLogId] = acc[m.jobLogId] || []).push(m);
+    return acc;
+  }, {});
 
   return {
     data: logs.map(({ submittedByName, ...log }) => ({

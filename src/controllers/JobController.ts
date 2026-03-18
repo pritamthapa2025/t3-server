@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 
 // Access control: use USER data (req.user.id), not organization.
 // Organization = CLIENT data (see .cursorrules). For job handlers, get client org from the job (job.organizationId from bid).
@@ -185,11 +186,20 @@ export const getJobsHandler = async (req: Request, res: Response) => {
       status?: string;
       priority?: string;
       search?: string;
+      organizationId?: string;
+      jobType?: string;
+      sortBy?: string;
+      propertyId?: string;
     } = {};
 
     if (req.query.status) filters.status = req.query.status as string;
     if (req.query.priority) filters.priority = req.query.priority as string;
     if (req.query.search) filters.search = req.query.search as string;
+    if (req.query.organizationId)
+      filters.organizationId = req.query.organizationId as string;
+    if (req.query.jobType) filters.jobType = req.query.jobType as string;
+    if (req.query.sortBy) filters.sortBy = req.query.sortBy as string;
+    if (req.query.propertyId) filters.propertyId = req.query.propertyId as string;
 
     const dataFilter = await getDataFilterConditions(userId, "jobs");
     const options = dataFilter.assignedOnly
@@ -393,6 +403,7 @@ export const updateJobHandler = async (req: Request, res: Response) => {
       mediaIdsToUpdate,
       mediaUpdates,
       mediaIdsToDelete,
+      updatedAt: clientUpdatedAt,
       ...jobFields
     } = req.body;
 
@@ -400,7 +411,11 @@ export const updateJobHandler = async (req: Request, res: Response) => {
     delete jobFields.jobNumber;
 
     // Update job with only job fields
-    const updatedJob = await updateJob(id!, jobFields);
+    const updatedJob = await updateJob(id!, jobFields, clientUpdatedAt);
+
+    if (updatedJob === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedJob) {
       return res.status(404).json({
@@ -2967,9 +2982,10 @@ const processSurveyMedia = async (req: Request): Promise<void> => {
   let media: string[] = [];
   if (req.body.photosMedia) {
     try {
-      media = typeof req.body.photosMedia === "string"
-        ? JSON.parse(req.body.photosMedia)
-        : req.body.photosMedia;
+      media =
+        typeof req.body.photosMedia === "string"
+          ? JSON.parse(req.body.photosMedia)
+          : req.body.photosMedia;
     } catch {
       media = [];
     }
@@ -3967,7 +3983,9 @@ const processServiceCallPhotos = async (req: Request): Promise<void> => {
     const prefix = ["before", "after", "parts", "issues"].find((p) =>
       file.fieldname.startsWith(`${p}_`),
     );
-    const bucket = prefix ? categoryMap[prefix as keyof typeof categoryMap] : undefined;
+    const bucket = prefix
+      ? categoryMap[prefix as keyof typeof categoryMap]
+      : undefined;
     if (bucket) {
       const result = await uploadToSpaces(
         file.buffer,
@@ -4355,12 +4373,10 @@ export const deleteJobPlanSpecRecordHandler = async (
         .status(404)
         .json({ success: false, message: "Plan spec record not found" });
     }
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Plan spec record deleted successfully",
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Plan spec record deleted successfully",
+    });
   } catch (error) {
     logger.logApiError("Plan spec record error", error, req);
     return res
@@ -4504,7 +4520,9 @@ export const getJobLogsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4516,9 +4534,15 @@ export const createJobLogHandler = async (req: Request, res: Response) => {
     if (!userId) return;
     if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
 
-    const log = await createJobLog({ ...req.body, jobId: jobId!, submittedBy: userId });
+    const log = await createJobLog({
+      ...req.body,
+      jobId: jobId!,
+      submittedBy: userId,
+    });
     if (!log) {
-      return res.status(500).json({ success: false, message: "Failed to create log" });
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to create log" });
     }
 
     await createJobHistoryEntry({
@@ -4528,10 +4552,18 @@ export const createJobLogHandler = async (req: Request, res: Response) => {
       createdBy: userId,
     });
 
-    return res.status(201).json({ success: true, data: log, message: "Field log submitted successfully" });
+    return res
+      .status(201)
+      .json({
+        success: true,
+        data: log,
+        message: "Field log submitted successfully",
+      });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4542,11 +4574,14 @@ export const getJobLogByIdHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const log = await getJobLogById(asSingleString(req.params.logId)!);
-    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    if (!log)
+      return res.status(404).json({ success: false, message: "Log not found" });
     return res.status(200).json({ success: true, data: log });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4558,11 +4593,14 @@ export const updateJobLogHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const log = await updateJobLog(logId!, req.body);
-    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    if (!log)
+      return res.status(404).json({ success: false, message: "Log not found" });
     return res.status(200).json({ success: true, data: log });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4574,11 +4612,16 @@ export const deleteJobLogHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const log = await deleteJobLog(logId!);
-    if (!log) return res.status(404).json({ success: false, message: "Log not found" });
-    return res.status(200).json({ success: true, message: "Field log deleted" });
+    if (!log)
+      return res.status(404).json({ success: false, message: "Log not found" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Field log deleted" });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4592,7 +4635,9 @@ export const addJobLogMediaHandler = async (req: Request, res: Response) => {
 
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
-      return res.status(400).json({ success: false, message: "No files uploaded" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No files uploaded" });
     }
 
     const captions: string[] = Array.isArray(req.body.captions)
@@ -4622,10 +4667,18 @@ export const addJobLogMediaHandler = async (req: Request, res: Response) => {
     );
 
     const media = await addJobLogMedia(entries);
-    return res.status(201).json({ success: true, data: media, message: "Media uploaded successfully" });
+    return res
+      .status(201)
+      .json({
+        success: true,
+        data: media,
+        message: "Media uploaded successfully",
+      });
   } catch (error) {
     logger.logApiError("Job log media error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4637,15 +4690,23 @@ export const deleteJobLogMediaHandler = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const media = await deleteJobLogMedia(mediaId!);
-    if (!media) return res.status(404).json({ success: false, message: "Media not found" });
+    if (!media)
+      return res
+        .status(404)
+        .json({ success: false, message: "Media not found" });
     return res.status(200).json({ success: true, message: "Media deleted" });
   } catch (error) {
     logger.logApiError("Job log media error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
-export const getPropertyJobLogsHandler = async (req: Request, res: Response) => {
+export const getPropertyJobLogsHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!validateParams(req, res, ["propertyId"])) return;
     const propertyId = asSingleString(req.params.propertyId);
@@ -4663,7 +4724,9 @@ export const getPropertyJobLogsHandler = async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.logApiError("Property job logs error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4716,12 +4779,10 @@ export const deleteJobDesignBuildNoteHandler = async (
         .status(404)
         .json({ success: false, message: "Design build note not found" });
     }
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Design build note deleted successfully",
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Design build note deleted successfully",
+    });
   } catch (error) {
     logger.logApiError("Design build note error", error, req);
     return res

@@ -9,6 +9,7 @@ import {
   integer,
   index,
   jsonb,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 // Import related tables
@@ -106,6 +107,14 @@ export const dispatchAssignments = org.table(
 
     // Role in Task
     role: varchar("role", { length: 50 }), // "Primary Tech", "Helper", etc.
+
+    // Actual Hours Logged by Technician / Manager
+    actualStartTime: timestamp("actual_start_time"),
+    actualEndTime: timestamp("actual_end_time"),
+    actualHours: numeric("actual_hours", { precision: 6, scale: 2 }),
+    logNotes: text("log_notes"),
+    loggedAt: timestamp("logged_at"),
+    loggedBy: uuid("logged_by").references(() => users.id, { onDelete: "set null" }),
 
     // Metadata
     isDeleted: boolean("is_deleted").default(false),

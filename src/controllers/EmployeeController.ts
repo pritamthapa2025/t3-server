@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import {
   getEmployees,
   getEmployeesSimple,
@@ -54,6 +55,11 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
     const status = req.query.status as string | undefined;
+    const isActiveRaw = req.query.isActive as string | undefined;
+    const isActive =
+      isActiveRaw !== undefined
+        ? isActiveRaw === "true" || isActiveRaw === "1"
+        : undefined;
     const departmentId = req.query.departmentId
       ? parseInt(req.query.departmentId as string, 10)
       : undefined;
@@ -62,6 +68,7 @@ export const getEmployeesHandler = async (req: Request, res: Response) => {
     const result = await getEmployees(offset, limit, {
       ...(search !== undefined && { search }),
       ...(status !== undefined && { status }),
+      ...(isActive !== undefined && { isActive }),
       ...(departmentId !== undefined && { departmentId }),
     });
 
@@ -607,6 +614,8 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       accountNumber,
       routingNumber,
       accountType,
+      // Optimistic lock
+      updatedAt: clientUpdatedAt,
     } = req.body;
 
     // Get the employee to find the userId
@@ -719,7 +728,10 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
 
     let employee = null;
     if (Object.keys(employeeUpdateData).length > 0) {
-      employee = await updateEmployee(id, employeeUpdateData);
+      employee = await updateEmployee(id, employeeUpdateData, clientUpdatedAt);
+      if (employee === STALE_DATA) {
+        return res.status(409).json(staleDataResponse);
+      }
       if (!employee) {
         return res.status(404).json({
           success: false,

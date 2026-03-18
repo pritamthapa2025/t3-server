@@ -132,6 +132,8 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
       sortBy: req.query.sortBy as string,
       sortOrder: req.query.sortOrder as "asc" | "desc",
       includeDeleted: req.query.includeDeleted === "true",
+      // 20.1.1 — Exclude sourced (auto-generated) expenses
+      excludeSourced: req.query.excludeSourced === "true",
     };
 
     // own_only: Technicians can only see their own expenses

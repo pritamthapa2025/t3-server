@@ -10,7 +10,7 @@ import {
 } from "../drizzle/schema/settings.schema.js";
 import { invoiceSettings } from "../drizzle/schema/settings.schema.js";
 import { positions } from "../drizzle/schema/org.schema.js";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, count } from "drizzle-orm";
 
 /**
  * ============================================================================
@@ -276,22 +276,34 @@ export const getTravelOrigins = async (params?: {
   limit?: number;
   isActive?: boolean;
 }) => {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 50;
+  const offset = (page - 1) * limit;
+
   const conditions = [eq(travelOrigins.isDeleted, false)];
   if (params?.isActive !== undefined) {
     conditions.push(eq(travelOrigins.isActive, params.isActive));
   }
 
-  const origins = await db
-    .select()
-    .from(travelOrigins)
-    .where(and(...conditions))
-    .orderBy(desc(travelOrigins.isDefault), travelOrigins.name);
+  const [totalResult, origins] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(travelOrigins)
+      .where(and(...conditions)),
+    db
+      .select()
+      .from(travelOrigins)
+      .where(and(...conditions))
+      .orderBy(desc(travelOrigins.isDefault), travelOrigins.name)
+      .limit(limit)
+      .offset(offset),
+  ]);
 
   return {
     data: origins,
-    total: origins.length,
-    page: params?.page ?? 1,
-    limit: params?.limit ?? origins.length,
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
   };
 };
 
@@ -618,10 +630,7 @@ export const setDefaultTermsConditionsTemplate = async (id: string) => {
  */
 
 export const getInvoiceSettings = async () => {
-  const [row] = await db
-    .select()
-    .from(invoiceSettings)
-    .limit(1);
+  const [row] = await db.select().from(invoiceSettings).limit(1);
 
   if (row) return row;
 

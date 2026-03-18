@@ -377,11 +377,22 @@ export const deleteLocation = async (id: string) => {
 // Categories
 // ============================
 
-export const getCategories = async () => {
-  return await db
-    .select()
-    .from(inventoryCategories)
-    .orderBy(inventoryCategories.name);
+export const getCategories = async (params?: { page?: number; limit?: number }) => {
+  const page = Math.max(1, params?.page ?? 1);
+  const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
+  const offset = (page - 1) * limit;
+
+  const [data, countResult] = await Promise.all([
+    db.select().from(inventoryCategories).orderBy(inventoryCategories.name).limit(limit).offset(offset),
+    db.select({ count: sql<number>`count(*)::int` }).from(inventoryCategories),
+  ]);
+
+  const total = countResult[0]?.count ?? 0;
+  return {
+    data,
+    total,
+    pagination: { page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 export const createCategory = async (data: any) => {
@@ -429,11 +440,22 @@ export const deleteCategory = async (id: number) => {
 // Units of Measure
 // ============================
 
-export const getUnits = async () => {
-  return await db
-    .select()
-    .from(inventoryUnitsOfMeasure)
-    .orderBy(inventoryUnitsOfMeasure.name);
+export const getUnits = async (params?: { page?: number; limit?: number }) => {
+  const page = Math.max(1, params?.page ?? 1);
+  const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
+  const offset = (page - 1) * limit;
+
+  const [data, countResult] = await Promise.all([
+    db.select().from(inventoryUnitsOfMeasure).orderBy(inventoryUnitsOfMeasure.name).limit(limit).offset(offset),
+    db.select({ count: sql<number>`count(*)::int` }).from(inventoryUnitsOfMeasure),
+  ]);
+
+  const total = countResult[0]?.count ?? 0;
+  return {
+    data,
+    total,
+    pagination: { page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 export const createUnit = async (data: any) => {

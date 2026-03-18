@@ -283,10 +283,19 @@ export const getRevenueStats = async (
 
   const currentTotal = Number(currentMonthRevenue[0]?.total || 0);
   const previousTotal = Number(previousMonthRevenue[0]?.total || 0);
-  const growthPercentage =
-    previousTotal > 0
-      ? ((currentTotal - previousTotal) / previousTotal) * 100
-      : 0;
+
+  // Only calculate growth when prior month had meaningful revenue (≥ $100)
+  // AND the resulting percentage is within a believable range (≤ 500% / ≥ -100%).
+  // Otherwise return null so the UI shows "—" instead of a misleading number.
+  const MIN_PRIOR_REVENUE = 100;
+  let growthPercentage: number | null = null;
+  if (previousTotal >= MIN_PRIOR_REVENUE) {
+    const raw = ((currentTotal - previousTotal) / previousTotal) * 100;
+    if (raw <= 500 && raw >= -100) {
+      growthPercentage = Math.round(raw);
+    }
+    // else: growth is extreme (new month vs negligible prior) → leave null
+  }
 
   const total = chartData.reduce((acc, d) => acc + d.revenue, 0);
 
@@ -298,7 +307,7 @@ export const getRevenueStats = async (
     currentMonthTotal: currentTotal,
     currentMonthTarget,
     total,
-    growthPercentage: Math.round(growthPercentage),
+    growthPercentage,   // null = no meaningful prior-month data
     chartData,
   };
 };
@@ -332,9 +341,8 @@ export const getActiveJobsStats = async (
     eq(jobs.isDeleted, false),
   );
 
-  /** Active = not completed/cancelled: planned, scheduled, in_progress, on_hold (matches priority jobs + scheduled) */
+  /** Active = non-terminal: scheduled, in_progress, on_hold */
   const activeStatusCondition = inArray(jobs.status, [
-    "planned",
     "scheduled",
     "in_progress",
     "on_hold",
@@ -355,7 +363,6 @@ export const getActiveJobsStats = async (
 
   /** Breakdown by status so chart bars sum to currentActiveJobs */
   const statusOrder = [
-    "planned",
     "scheduled",
     "in_progress",
     "on_hold",
@@ -386,7 +393,6 @@ export const getActiveJobsStats = async (
     ]),
   );
   const statusLabels: Record<(typeof statusOrder)[number], string> = {
-    planned: "Planned",
     scheduled: "Scheduled",
     in_progress: "In progress",
     on_hold: "On hold",
@@ -876,12 +882,13 @@ export const getPriorityJobs = async (
   organizationId?: string,
   options: {
     limit?: number;
+    offset?: number;
     search?: string;
     assignedToEmployeeId?: number;
   } = {},
   dateRange?: DateRangeFilter,
 ) => {
-  const { limit = 10, search, assignedToEmployeeId } = options;
+  const { limit = 10, offset = 0, search, assignedToEmployeeId } = options;
   const priorityBidOrgFilter = organizationId
     ? eq(bidsTable.organizationId, organizationId)
     : undefined;
@@ -897,7 +904,8 @@ export const getPriorityJobs = async (
     ...(priorityBidOrgFilter ? [priorityBidOrgFilter] : []),
     ...(dueDateFilter ? [dueDateFilter] : []),
     eq(jobs.isDeleted, false),
-    sql`${jobs.status} IN ('planned', 'scheduled', 'in_progress', 'on_hold')`,
+    sql`${jobs.status} IN ('scheduled', 'in_progress', 'on_hold')`,
+    eq(bidsTable.priority, "high"),
   );
 
   const searchWhere = search
@@ -943,11 +951,44 @@ export const getPriorityJobs = async (
     ) as typeof query;
   }
 
-  const priorityJobs = await query.orderBy(jobs.scheduledEndDate).limit(limit);
+  // Total count (for hasMore calculation)
+  let countQuery = db
+    .select({ cnt: count(jobs.id) })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .leftJoin(
+      bidFinancialBreakdown,
+      and(
+        eq(bidFinancialBreakdown.bidId, bidsTable.id),
+        eq(bidFinancialBreakdown.isDeleted, false),
+      ),
+    )
+    .where(fullWhere)
+    .$dynamic();
+
+  if (assignedToEmployeeId != null) {
+    countQuery = countQuery.innerJoin(
+      jobTeamMembers,
+      and(
+        eq(jobTeamMembers.jobId, jobs.id),
+        eq(jobTeamMembers.employeeId, assignedToEmployeeId),
+        eq(jobTeamMembers.isActive, true),
+      ),
+    ) as typeof countQuery;
+  }
+
+  const [countRow] = await countQuery;
+  const total = Number(countRow?.cnt ?? 0);
+
+  const priorityJobs = await query
+    .orderBy(jobs.scheduledEndDate)
+    .limit(limit)
+    .offset(offset);
 
   return {
     data: priorityJobs,
-    total: priorityJobs.length,
+    total,
+    hasMore: offset + priorityJobs.length < total,
   };
 };
 
@@ -1156,20 +1197,18 @@ export const getMySchedule = async (employeeId: number) => {
 // ===========================================================================
 
 const ACTIVE_JOB_STATUSES = [
-  "planned",
   "scheduled",
   "in_progress",
   "on_hold",
 ] as const;
 const STATUS_LABELS: Record<string, string> = {
-  planned: "Planned",
   scheduled: "Scheduled",
   in_progress: "In progress",
   on_hold: "On hold",
 };
 
 /**
- * Returns active jobs (planned/scheduled/in_progress/on_hold) where the technician is either:
+ * Returns active jobs (scheduled/in_progress/on_hold) where the technician is either:
  *  1. A job team member (permanent assignment), OR
  *  2. Has a dispatch assignment on the job (ad-hoc, e.g. covering for a sick colleague)
  *

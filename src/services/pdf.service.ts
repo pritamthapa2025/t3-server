@@ -588,7 +588,7 @@ export const prepareInvoiceDataForPDF = (
       : "0.00",
     hasOperatingExpenses: Boolean(
       financialBreakdown?.operatingExpenses &&
-        Number(financialBreakdown.operatingExpenses) > 0
+      Number(financialBreakdown.operatingExpenses) > 0,
     ),
 
     // Totals - use financial breakdown if available, otherwise use invoice totals
@@ -749,7 +749,20 @@ function buildChecklistHtml(items: string[]): string {
 
 /** Format a date string/Date to a readable string, returning fallback if empty.
  *  Parses YYYY-MM-DD directly to avoid any timezone conversion. */
-const PDF_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const PDF_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 function fmtDate(d: string | Date | null | undefined, fallback = "—"): string {
   if (!d) return fallback;
   try {
@@ -843,9 +856,13 @@ export const prepareQuoteDataForPDF = (
   // Proposal note — customise for Plan Spec
   let proposalNote: string;
   if (jobType === "plan_spec" && typeData) {
-    const planRev = typeData.planRevision ? `Rev. ${typeData.planRevision}` : "";
+    const planRev = typeData.planRevision
+      ? `Rev. ${typeData.planRevision}`
+      : "";
     const planDate = fmtDate(typeData.plansReceivedDate, "");
-    const specRev = typeData.specificationRevision ? `Rev. ${typeData.specificationRevision}` : "";
+    const specRev = typeData.specificationRevision
+      ? `Rev. ${typeData.specificationRevision}`
+      : "";
     const addendaNote =
       typeData.addendaReceived && typeData.addendaCount
         ? `, Addendum #${typeData.addendaCount} acknowledged`
@@ -854,7 +871,8 @@ export const prepareQuoteDataForPDF = (
   } else if (bid.referenceDate || bid.proposalBasis) {
     proposalNote = `This proposal was based on Clients RFP, job walk information from ${bid.referenceDate ?? "—"}, and revised plans dated ${bid.referenceDate ?? "—"} by ${bid.proposalBasis ?? "—"}.`;
   } else {
-    proposalNote = "This proposal was based on the client RFP and job walk information.";
+    proposalNote =
+      "This proposal was based on the client RFP and job walk information.";
   }
 
   // Standard financial breakdown fields
@@ -872,17 +890,27 @@ export const prepareQuoteDataForPDF = (
     : "0.00";
   const hasOperatingExpenses = Boolean(
     financialBreakdown?.operatingExpenses &&
-      Number(financialBreakdown.operatingExpenses) > 0,
+    Number(financialBreakdown.operatingExpenses) > 0,
   );
 
-  const totalAmount = resolveTotal(jobType, financialBreakdown as any, typeData);
+  const totalAmount = resolveTotal(
+    jobType,
+    financialBreakdown as any,
+    typeData,
+  );
 
   // ── Plan Spec fields ──────────────────────────────────────────────────────
-  const planRevision = typeData?.planRevision ? `Rev. ${typeData.planRevision}` : "—";
+  const planRevision = typeData?.planRevision
+    ? `Rev. ${typeData.planRevision}`
+    : "—";
   const plansReceivedDate = fmtDate(typeData?.plansReceivedDate);
-  const specRevision = typeData?.specificationRevision ? `Rev. ${typeData.specificationRevision}` : "—";
+  const specRevision = typeData?.specificationRevision
+    ? `Rev. ${typeData.specificationRevision}`
+    : "—";
   const specsReceivedDate = fmtDate(typeData?.specificationsReceivedDate);
-  const hasAddenda = Boolean(typeData?.addendaReceived && typeData?.addendaCount);
+  const hasAddenda = Boolean(
+    typeData?.addendaReceived && typeData?.addendaCount,
+  );
   const addendaAcknowledged = hasAddenda
     ? `Addendum #${typeData!.addendaCount} acknowledged`
     : "";
@@ -899,17 +927,18 @@ export const prepareQuoteDataForPDF = (
     construction_admin: "Construction Administration",
   };
   const designPhaseLabel =
-    designPhaseMap[typeData?.designPhase as string] || typeData?.designPhase || "—";
+    designPhaseMap[typeData?.designPhase as string] ||
+    typeData?.designPhase ||
+    "—";
   const dsStart = fmtDate(typeData?.designStartDate, "");
   const dsEnd = fmtDate(typeData?.designCompletionDate, "");
   const designSchedule =
     dsStart && dsEnd ? `${dsStart} – ${dsEnd}` : dsStart || dsEnd || "—";
   const conceptDescription = typeData?.conceptDescription?.trim() || "";
   const designDeliverables = typeData?.designDeliverables?.trim() || "";
-  const designRevisionNote =
-    typeData?.designRevisionLimit
-      ? `Up to ${typeData.designRevisionLimit} design revision${typeData.designRevisionLimit > 1 ? "s" : ""} included`
-      : "";
+  const designRevisionNote = typeData?.designRevisionLimit
+    ? `Up to ${typeData.designRevisionLimit} design revision${typeData.designRevisionLimit > 1 ? "s" : ""} included`
+    : "";
   const designFeeBasisMap: Record<string, string> = {
     fixed: "Fixed Fee",
     hourly: "Hourly",
@@ -917,7 +946,9 @@ export const prepareQuoteDataForPDF = (
     lump_sum: "Lump Sum",
   };
   const designFeeLabel =
-    designFeeBasisMap[typeData?.designFeeBasis as string] || typeData?.designFeeBasis || "Design Fee";
+    designFeeBasisMap[typeData?.designFeeBasis as string] ||
+    typeData?.designFeeBasis ||
+    "Design Fee";
   const designFeeAmount = Number(typeData?.designPrice || 0).toFixed(2);
   const hasDesignFee = Number(typeData?.designPrice || 0) > 0;
   const hasConceptDescription = Boolean(conceptDescription);
@@ -931,31 +962,49 @@ export const prepareQuoteDataForPDF = (
     "feasibility-study": "Feasibility Study",
   };
   const surveyTypeLabel =
-    surveyTypeMap[typeData?.surveyType as string] || typeData?.surveyType || "Site Survey";
+    surveyTypeMap[typeData?.surveyType as string] ||
+    typeData?.surveyType ||
+    "Site Survey";
   const numBuildings = typeData?.numberOfBuildings || 0;
   const numUnits = typeData?.expectedUnitsToSurvey || 0;
-  const surveyScope = [
-    numBuildings > 0 ? `${numBuildings} building${numBuildings > 1 ? "s" : ""}` : "",
-    numUnits > 0 ? `${numUnits} unit${numUnits > 1 ? "s" : ""} to survey` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ") || "—";
+  const surveyScope =
+    [
+      numBuildings > 0
+        ? `${numBuildings} building${numBuildings > 1 ? "s" : ""}`
+        : "",
+      numUnits > 0
+        ? `${numUnits} unit${numUnits > 1 ? "s" : ""} to survey`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") || "—";
 
   let unitTypesList = "—";
   try {
-    const parsed = typeData?.unitTypes ? JSON.parse(String(typeData.unitTypes)) : [];
-    if (Array.isArray(parsed) && parsed.length > 0) unitTypesList = parsed.join(", ");
-  } catch { /* ignore */ }
+    const parsed = typeData?.unitTypes
+      ? JSON.parse(String(typeData.unitTypes))
+      : [];
+    if (Array.isArray(parsed) && parsed.length > 0)
+      unitTypesList = parsed.join(", ");
+  } catch {
+    /* ignore */
+  }
 
   const surveyServiceItems: string[] = [];
-  if (typeData?.includePhotoDocumentation) surveyServiceItems.push("Photo Documentation");
-  if (typeData?.includePerformanceTesting) surveyServiceItems.push("Performance Testing");
-  if (typeData?.includeEnergyAnalysis) surveyServiceItems.push("Energy Analysis");
-  if (typeData?.includeRecommendations) surveyServiceItems.push("Written Recommendations Report");
+  if (typeData?.includePhotoDocumentation)
+    surveyServiceItems.push("Photo Documentation");
+  if (typeData?.includePerformanceTesting)
+    surveyServiceItems.push("Performance Testing");
+  if (typeData?.includeEnergyAnalysis)
+    surveyServiceItems.push("Energy Analysis");
+  if (typeData?.includeRecommendations)
+    surveyServiceItems.push("Written Recommendations Report");
   const surveyServicesHtml = buildChecklistHtml(surveyServiceItems);
 
   const surveySchedulingNotes =
-    (typeData?.schedulingConstraints?.trim() || typeData?.accessRequirements?.trim() || "");
+    typeData?.schedulingConstraints?.trim() ||
+    typeData?.accessRequirements?.trim() ||
+    "";
   const hasSurveySchedulingNotes = Boolean(surveySchedulingNotes);
 
   const surveyPricingRows: Array<{ label: string; amount: string }> = [];
@@ -979,7 +1028,10 @@ export const prepareQuoteDataForPDF = (
       const rate = Number(typeData.hourlyRate || 0);
       const expenses = Number(typeData.estimatedExpenses || 0);
       surveyPricingRows.push(
-        { label: `Labour (${hrs} hrs × $${rate.toFixed(2)}/hr)`, amount: `$${(hrs * rate).toFixed(2)}` },
+        {
+          label: `Labour (${hrs} hrs × $${rate.toFixed(2)}/hr)`,
+          amount: `$${(hrs * rate).toFixed(2)}`,
+        },
         { label: "Site Expenses", amount: `$${expenses.toFixed(2)}` },
       );
     }
@@ -997,7 +1049,9 @@ export const prepareQuoteDataForPDF = (
     other: "General Service",
   };
   const serviceTypeLabel =
-    serviceTypeMap[typeData?.serviceType as string] || typeData?.serviceType || "Service Call";
+    serviceTypeMap[typeData?.serviceType as string] ||
+    typeData?.serviceType ||
+    "Service Call";
 
   const equipmentTypeMap: Record<string, string> = {
     rooftop_unit: "Rooftop Unit (RTU)",
@@ -1008,7 +1062,9 @@ export const prepareQuoteDataForPDF = (
     other: "HVAC Equipment",
   };
   const equipmentTypeLabel =
-    equipmentTypeMap[typeData?.equipmentType as string] || typeData?.equipmentType || "—";
+    equipmentTypeMap[typeData?.equipmentType as string] ||
+    typeData?.equipmentType ||
+    "—";
 
   const issueCategoryMap: Record<string, string> = {
     cooling: "Cooling System",
@@ -1020,7 +1076,9 @@ export const prepareQuoteDataForPDF = (
     other: "General",
   };
   const issueCategoryLabel =
-    issueCategoryMap[typeData?.issueCategory as string] || typeData?.issueCategory || "—";
+    issueCategoryMap[typeData?.issueCategory as string] ||
+    typeData?.issueCategory ||
+    "—";
 
   const reportedIssue = typeData?.reportedIssue?.trim() || "";
   const preliminaryAssessment = typeData?.preliminaryAssessment?.trim() || "";
@@ -1037,8 +1095,14 @@ export const prepareQuoteDataForPDF = (
       });
     } else if (model === "diagnostic_repair") {
       servicePricingRows.push(
-        { label: "Diagnostic Fee", amount: `$${Number(typeData.diagnosticFee || 0).toFixed(2)}` },
-        { label: "Estimated Repair Cost", amount: `$${Number(typeData.estimatedRepairCost || 0).toFixed(2)}` },
+        {
+          label: "Diagnostic Fee",
+          amount: `$${Number(typeData.diagnosticFee || 0).toFixed(2)}`,
+        },
+        {
+          label: "Estimated Repair Cost",
+          amount: `$${Number(typeData.estimatedRepairCost || 0).toFixed(2)}`,
+        },
       );
     } else {
       // time_materials
@@ -1049,7 +1113,10 @@ export const prepareQuoteDataForPDF = (
       const trav = Number(typeData.travelCost || 0);
       const markup = Number(typeData.serviceMarkup || 0);
       servicePricingRows.push(
-        { label: `Labour (${techs} tech${techs > 1 ? "s" : ""} × ${hrs} hrs × $${rate.toFixed(2)}/hr)`, amount: `$${(techs * hrs * rate).toFixed(2)}` },
+        {
+          label: `Labour (${techs} tech${techs > 1 ? "s" : ""} × ${hrs} hrs × $${rate.toFixed(2)}/hr)`,
+          amount: `$${(techs * hrs * rate).toFixed(2)}`,
+        },
         { label: "Materials & Parts", amount: `$${mat.toFixed(2)}` },
         { label: "Travel", amount: `$${trav.toFixed(2)}` },
       );
@@ -1061,7 +1128,9 @@ export const prepareQuoteDataForPDF = (
 
   // ── PM fields ─────────────────────────────────────────────────────────────
   const pmTypeLabel =
-    typeData?.pmType === "existing_pm_renewal" ? "PM Contract Renewal" : "New PM Contract";
+    typeData?.pmType === "existing_pm_renewal"
+      ? "PM Contract Renewal"
+      : "New PM Contract";
 
   const freqLabelMap: Record<string, string> = {
     quarterly: "Quarterly (4 visits/year)",
@@ -1069,26 +1138,35 @@ export const prepareQuoteDataForPDF = (
     annual: "Annual (1 visit/year)",
   };
   const frequencyLabel =
-    freqLabelMap[typeData?.maintenanceFrequency as string] || typeData?.maintenanceFrequency || "—";
+    freqLabelMap[typeData?.maintenanceFrequency as string] ||
+    typeData?.maintenanceFrequency ||
+    "—";
 
   const pmBuildings = typeData?.numberOfBuildings || 0;
   const pmUnits = typeData?.numberOfUnits || 0;
-  const coverageLabel = [
-    pmBuildings > 0 ? `${pmBuildings} building${pmBuildings > 1 ? "s" : ""}` : "",
-    pmUnits > 0 ? `${pmUnits} unit${pmUnits > 1 ? "s" : ""}` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ") || "—";
+  const coverageLabel =
+    [
+      pmBuildings > 0
+        ? `${pmBuildings} building${pmBuildings > 1 ? "s" : ""}`
+        : "",
+      pmUnits > 0 ? `${pmUnits} unit${pmUnits > 1 ? "s" : ""}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") || "—";
 
   const pmServiceItems: string[] = [];
   if (typeData?.filterReplacementIncluded || typeData?.includeFilterReplacement)
     pmServiceItems.push("Filter Replacement");
   if (typeData?.coilCleaningIncluded || typeData?.includeCoilCleaning)
     pmServiceItems.push("Coil Cleaning");
-  if (typeData?.temperatureReadingsIncluded) pmServiceItems.push("Temperature Readings");
-  if (typeData?.visualInspectionIncluded) pmServiceItems.push("Visual Inspection");
+  if (typeData?.temperatureReadingsIncluded)
+    pmServiceItems.push("Temperature Readings");
+  if (typeData?.visualInspectionIncluded)
+    pmServiceItems.push("Visual Inspection");
   const pmServicesHtml = buildChecklistHtml(
-    pmServiceItems.length > 0 ? pmServiceItems : ["Standard preventative maintenance inspection"],
+    pmServiceItems.length > 0
+      ? pmServiceItems
+      : ["Standard preventative maintenance inspection"],
   );
 
   const emergencyRate = Number(typeData?.emergencyServiceRate || 0);
@@ -1107,7 +1185,11 @@ export const prepareQuoteDataForPDF = (
     typeData?.paymentSchedule ||
     "Net 30 days from date of invoice";
 
-  const freqMap2: Record<string, number> = { quarterly: 4, semi_annual: 2, annual: 1 };
+  const freqMap2: Record<string, number> = {
+    quarterly: 4,
+    semi_annual: 2,
+    annual: 1,
+  };
   const pmVisits = freqMap2[typeData?.maintenanceFrequency as string] ?? 0;
   const pmPricingRows: Array<{ label: string; amount: string }> = [];
   if (jobType === "preventative_maintenance" && typeData) {
@@ -1116,14 +1198,16 @@ export const prepareQuoteDataForPDF = (
       const rate = Number(typeData.pricePerUnit || 0);
       const units = Number(typeData.numberOfUnits || 0);
       const perVisit = rate * units;
-      pmPricingRows.push(
-        { label: `Per-Unit Rate ($${rate.toFixed(2)}/unit × ${units} units × ${pmVisits} visits)`, amount: `$${(perVisit * pmVisits).toFixed(2)}` },
-      );
+      pmPricingRows.push({
+        label: `Per-Unit Rate ($${rate.toFixed(2)}/unit × ${units} units × ${pmVisits} visits)`,
+        amount: `$${(perVisit * pmVisits).toFixed(2)}`,
+      });
     } else if (pmModel === "flat_rate") {
       const perVisit = Number(typeData.flatRatePerVisit || 0);
-      pmPricingRows.push(
-        { label: `Flat Rate Per Visit × ${pmVisits} visits`, amount: `$${(perVisit * pmVisits).toFixed(2)}` },
-      );
+      pmPricingRows.push({
+        label: `Flat Rate Per Visit × ${pmVisits} visits`,
+        amount: `$${(perVisit * pmVisits).toFixed(2)}`,
+      });
     } else if (pmModel === "annual_contract") {
       pmPricingRows.push({
         label: "Annual Contract Value",
@@ -1131,26 +1215,46 @@ export const prepareQuoteDataForPDF = (
       });
     }
     if (typeData.includeFilterReplacement && typeData.filterReplacementCost) {
-      const frc = Number(typeData.filterReplacementCost) * Number(typeData.numberOfUnits || 1) * pmVisits;
-      pmPricingRows.push({ label: `Filter Replacement (${pmUnits} units × ${pmVisits} visits)`, amount: `$${frc.toFixed(2)}` });
+      const frc =
+        Number(typeData.filterReplacementCost) *
+        Number(typeData.numberOfUnits || 1) *
+        pmVisits;
+      pmPricingRows.push({
+        label: `Filter Replacement (${pmUnits} units × ${pmVisits} visits)`,
+        amount: `$${frc.toFixed(2)}`,
+      });
     }
     if (typeData.includeCoilCleaning && typeData.coilCleaningCost) {
       const cc = Number(typeData.coilCleaningCost) * pmVisits;
-      pmPricingRows.push({ label: `Coil Cleaning × ${pmVisits} visits`, amount: `$${cc.toFixed(2)}` });
+      pmPricingRows.push({
+        label: `Coil Cleaning × ${pmVisits} visits`,
+        amount: `$${cc.toFixed(2)}`,
+      });
     }
   }
   const pmPricingRowsHtml = buildPricingRowsHtml(pmPricingRows);
 
   // ── Shared enrichment fields ──────────────────────────────────────────────
-  const startDate = bid.plannedStartDate ? fmtDate(bid.plannedStartDate, "") : "";
-  const completionDate = bid.completionDate ? fmtDate(bid.completionDate, "") : (bid.estimatedCompletion ? fmtDate(bid.estimatedCompletion, "") : "");
+  const startDate = bid.plannedStartDate
+    ? fmtDate(bid.plannedStartDate, "")
+    : "";
+  const completionDate = bid.completionDate
+    ? fmtDate(bid.completionDate, "")
+    : bid.estimatedCompletion
+      ? fmtDate(bid.estimatedCompletion, "")
+      : "";
   const projectTimeline =
-    startDate && completionDate ? `${startDate} – ${completionDate}` :
-    startDate ? `Start: ${startDate}` :
-    completionDate ? `Target: ${completionDate}` : "";
+    startDate && completionDate
+      ? `${startDate} – ${completionDate}`
+      : startDate
+        ? `Start: ${startDate}`
+        : completionDate
+          ? `Target: ${completionDate}`
+          : "";
   const hasProjectTimeline = Boolean(projectTimeline);
   const estDays = bid.estimatedDuration ? Number(bid.estimatedDuration) : 0;
-  const estimatedDurationLabel = estDays > 0 ? `${estDays} day${estDays !== 1 ? "s" : ""}` : "";
+  const estimatedDurationLabel =
+    estDays > 0 ? `${estDays} day${estDays !== 1 ? "s" : ""}` : "";
   const hasDuration = Boolean(estimatedDurationLabel);
   const siteContactName = bid.siteContactName?.trim() || "";
   const siteContactPhone = bid.siteContactPhone?.trim() || "";
@@ -1166,10 +1270,16 @@ export const prepareQuoteDataForPDF = (
   const hasAddendaNotes = Boolean(addendaNotes);
 
   // ── Design Build extra fields ──────────────────────────────────────────────
-  const clientApprovalRequired = Boolean(typeData?.clientApprovalRequired || typeData?.approvalRequired);
-  const clientApprovalNote = clientApprovalRequired ? "Client approval required at each design milestone before work may proceed." : "";
+  const clientApprovalRequired = Boolean(
+    typeData?.clientApprovalRequired || typeData?.approvalRequired,
+  );
+  const clientApprovalNote = clientApprovalRequired
+    ? "Client approval required at each design milestone before work may proceed."
+    : "";
   const hasClientApproval = clientApprovalRequired;
-  const approvalMilestones = (typeData?.approvalMilestones || typeData?.keyMilestones || "")?.trim() || "";
+  const approvalMilestones =
+    (typeData?.approvalMilestones || typeData?.keyMilestones || "")?.trim() ||
+    "";
   const hasApprovalMilestones = Boolean(approvalMilestones);
 
   // ── Survey extra fields ────────────────────────────────────────────────────
@@ -1182,28 +1292,39 @@ export const prepareQuoteDataForPDF = (
     time_materials: "Time & Materials",
   };
   const surveyPricingModelLabel =
-    surveyPricingModelMap[typeData?.pricingModel as string] || typeData?.pricingModel || "";
-  const surveyNotes = (typeData?.surveyNotes || typeData?.additionalNotes || "")?.trim() || "";
+    surveyPricingModelMap[typeData?.pricingModel as string] ||
+    typeData?.pricingModel ||
+    "";
+  const surveyNotes =
+    (typeData?.surveyNotes || typeData?.additionalNotes || "")?.trim() || "";
   const hasSurveyNotes = Boolean(surveyNotes);
 
   // ── Service extra fields ───────────────────────────────────────────────────
-  const estimatedWorkScope = (typeData?.estimatedWorkScope || typeData?.workScope || "")?.trim() || "";
+  const estimatedWorkScope =
+    (typeData?.estimatedWorkScope || typeData?.workScope || "")?.trim() || "";
   const hasEstimatedWorkScope = Boolean(estimatedWorkScope);
-  const servicePricingNotes = (typeData?.pricingNotes || typeData?.notes || "")?.trim() || "";
+  const servicePricingNotes =
+    (typeData?.pricingNotes || typeData?.notes || "")?.trim() || "";
   const hasServicePricingNotes = Boolean(servicePricingNotes);
   const svcTechs = Number(typeData?.numberOfTechs || 0);
   const svcHours = Number(typeData?.laborHours || 0);
   const crewSummary =
     svcTechs > 0 && svcHours > 0
       ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""} · ${svcHours} hour${svcHours !== 1 ? "s" : ""} estimated`
-      : svcTechs > 0 ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""}` : "";
+      : svcTechs > 0
+        ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""}`
+        : "";
   const hasCrewSummary = Boolean(crewSummary);
-  const rawScheduledDate = bid.scheduledDateTime || typeData?.scheduledDate || "";
-  const scheduledDateLabel = rawScheduledDate ? fmtDate(rawScheduledDate, "") : "";
+  const rawScheduledDate =
+    bid.scheduledDateTime || typeData?.scheduledDate || "";
+  const scheduledDateLabel = rawScheduledDate
+    ? fmtDate(rawScheduledDate, "")
+    : "";
   const hasScheduledDate = Boolean(scheduledDateLabel);
 
   // ── PM extra fields ────────────────────────────────────────────────────────
-  const pmServiceScope = (typeData?.serviceScope || typeData?.scope || "")?.trim() || "";
+  const pmServiceScope =
+    (typeData?.serviceScope || typeData?.scope || "")?.trim() || "";
   const hasPMServiceScope = Boolean(pmServiceScope);
   const pmPricingModelMap: Record<string, string> = {
     per_unit: "Per Unit",
@@ -1211,11 +1332,17 @@ export const prepareQuoteDataForPDF = (
     annual_contract: "Annual Contract",
   };
   const pmPricingModelLabel =
-    pmPricingModelMap[typeData?.pricingModel as string] || typeData?.pricingModel || "";
+    pmPricingModelMap[typeData?.pricingModel as string] ||
+    typeData?.pricingModel ||
+    "";
 
   // ── Conditional section visibility ────────────────────────────────────────
-  const showExclusions = jobType !== "survey" && jobType !== "preventative_maintenance";
-  const showStandardWarranty = jobType === "general" || jobType === "plan_spec" || jobType === "design_build";
+  const showExclusions =
+    jobType !== "survey" && jobType !== "preventative_maintenance";
+  const showStandardWarranty =
+    jobType === "general" ||
+    jobType === "plan_spec" ||
+    jobType === "design_build";
   const showShortWarranty = jobType === "service";
   const showServiceGuarantee = jobType === "preventative_maintenance";
 
@@ -1421,7 +1548,12 @@ export interface FinancialReportPDFData {
 
 /** Build a grid of KPI summary cards (matches financial-report-template card styles) */
 export function buildSummaryCardsHtml(
-  cards: Array<{ label: string; value: string; sub?: string; variant?: "positive" | "negative" | "neutral" }>
+  cards: Array<{
+    label: string;
+    value: string;
+    sub?: string;
+    variant?: "positive" | "negative" | "neutral";
+  }>,
 ): string {
   if (!cards.length) return "";
   const cardHtml = cards
@@ -1433,7 +1565,7 @@ export function buildSummaryCardsHtml(
           <div class="summary-card-value ${c.variant === "positive" ? "positive" : c.variant === "negative" ? "negative" : ""}">${escHtml(c.value)}</div>
           ${c.sub ? `<div class="summary-card-sub">${escHtml(c.sub)}</div>` : ""}
           </div>
-        </div>`
+        </div>`,
     )
     .join("");
   return `<div class="summary-cards">${cardHtml}</div>`;
@@ -1443,13 +1575,18 @@ export function buildSummaryCardsHtml(
 export function buildDataTableHtml(opts: {
   sectionTitle?: string;
   columns: Array<{ label: string; align?: "left" | "right" | "center" }>;
-  rows: Array<Array<string | { text: string; badge?: string; badgeVariant?: string }>>;
+  rows: Array<
+    Array<string | { text: string; badge?: string; badgeVariant?: string }>
+  >;
   totalsRow?: string[];
 }): string {
   const { sectionTitle, columns, rows, totalsRow } = opts;
 
   const thHtml = columns
-    .map((c) => `<th class="${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : ""}">${escHtml(c.label)}</th>`)
+    .map(
+      (c) =>
+        `<th class="${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : ""}">${escHtml(c.label)}</th>`,
+    )
     .join("");
 
   const tbodyHtml = rows
@@ -1457,7 +1594,12 @@ export function buildDataTableHtml(opts: {
       const tdsHtml = row
         .map((cell, i) => {
           const align = columns[i]?.align;
-          const alignClass = align === "right" ? "text-right" : align === "center" ? "text-center" : "";
+          const alignClass =
+            align === "right"
+              ? "text-right"
+              : align === "center"
+                ? "text-center"
+                : "";
           if (typeof cell === "string") {
             return `<td class="${alignClass}">${escHtml(cell)}</td>`;
           }
@@ -1494,9 +1636,17 @@ export function buildPLHtml(
   sections: Array<{
     header: string;
     rows: Array<{ label: string; value: string; indent?: boolean }>;
-    subtotal?: { label: string; value: string; valueClass?: "positive" | "negative" };
+    subtotal?: {
+      label: string;
+      value: string;
+      valueClass?: "positive" | "negative";
+    };
   }>,
-  netTotal?: { label: string; value: string; valueClass?: "positive" | "negative" }
+  netTotal?: {
+    label: string;
+    value: string;
+    valueClass?: "positive" | "negative";
+  },
 ): string {
   const sectionsHtml = sections
     .map((s) => {
@@ -1506,7 +1656,7 @@ export function buildPLHtml(
             `<div class="pl-row" style="${r.indent ? "padding-left:28px" : ""}">
               <span class="pl-label">${escHtml(r.label)}</span>
               <span class="pl-value">${escHtml(r.value)}</span>
-            </div>`
+            </div>`,
         )
         .join("");
       const subtotalHtml = s.subtotal
@@ -1551,7 +1701,7 @@ function escHtml(s: string | undefined | null): string {
  */
 export const generateFinancialReportPDF = async (
   reportData: FinancialReportPDFData,
-  options: PDFGenerationOptions = {}
+  options: PDFGenerationOptions = {},
 ): Promise<Buffer> => {
   let page: Page | null = null;
   try {
@@ -1580,7 +1730,9 @@ export const generateFinancialReportPDF = async (
     return Buffer.from(pdfBuffer);
   } catch (err) {
     console.error("Financial report PDF error:", err);
-    throw new Error(`Failed to generate report PDF: ${err instanceof Error ? err.message : "Unknown error"}`);
+    throw new Error(
+      `Failed to generate report PDF: ${err instanceof Error ? err.message : "Unknown error"}`,
+    );
   } finally {
     if (page) await page.close();
   }

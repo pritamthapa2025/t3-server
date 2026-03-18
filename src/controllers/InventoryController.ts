@@ -1585,13 +1585,17 @@ export const deleteLocationHandler = async (req: Request, res: Response) => {
 
 export const getCategoriesHandler = async (req: Request, res: Response) => {
   try {
-    const categories = await inventoryService.getCategories();
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const result = await inventoryService.getCategories({ page, limit });
 
     logger.info("Inventory categories fetched successfully");
     res.status(200).json({
       success: true,
       message: "Categories retrieved successfully",
-      data: categories,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error: any) {
     logger.logApiError("Error fetching inventory categories", error, req);
@@ -1686,13 +1690,17 @@ export const deleteCategoryHandler = async (req: Request, res: Response) => {
 
 export const getUnitsHandler = async (req: Request, res: Response) => {
   try {
-    const units = await inventoryService.getUnits();
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const result = await inventoryService.getUnits({ page, limit });
 
     logger.info("Inventory units fetched successfully");
     res.status(200).json({
       success: true,
       message: "Units retrieved successfully",
-      data: units,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error: any) {
     logger.logApiError("Error fetching inventory units", error, req);
@@ -1810,13 +1818,17 @@ export const getUnresolvedAlertsHandler = async (
   res: Response,
 ) => {
   try {
-    const alerts = await inventoryService.getUnresolvedAlerts();
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const result = await inventoryService.getUnresolvedAlerts({ page, limit });
 
     logger.info("Unresolved inventory alerts fetched successfully");
     res.status(200).json({
       success: true,
       message: "Unresolved alerts retrieved successfully",
-      data: alerts,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error: any) {
     logger.logApiError(
@@ -1915,13 +1927,17 @@ export const triggerAlertCheckHandler = async (req: Request, res: Response) => {
 
 export const getCountsHandler = async (req: Request, res: Response) => {
   try {
-    const counts = await inventoryService.getCounts();
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const result = await inventoryService.getCounts({ page, limit });
 
     logger.info("Inventory counts fetched successfully");
     res.status(200).json({
       success: true,
       message: "Counts retrieved successfully",
-      data: counts,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
     });
   } catch (error: any) {
     logger.logApiError("Error fetching inventory counts", error, req);

@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-// Helper to validate decimal strings
+// Helper to validate decimal strings (allows negative values for credit memos)
 const decimalString = z
   .string()
-  .regex(/^\d+(\.\d{1,4})?$/, "Must be a valid decimal number");
+  .regex(/^-?\d+(\.\d{1,4})?$/, "Must be a valid decimal number");
 
 // Helper to validate date strings (YYYY-MM-DD)
 const dateString = z.string().refine((val) => !isNaN(Date.parse(val)), {

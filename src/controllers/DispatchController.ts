@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import {
   parseDatabaseError,
   isDatabaseError,
@@ -26,6 +27,8 @@ import {
   getEmployeesWithAssignedTasks,
   getDispatchKPIs,
   bulkDeleteDispatchTasks,
+  logHoursForAssignment,
+  getAssignmentLoggedHours,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -271,7 +274,7 @@ export const updateDispatchTaskHandler = async (
         message: "Dispatch task ID is required",
       });
     }
-    const updateData = { ...req.body };
+    const { updatedAt: clientUpdatedAt, ...updateData } = { ...req.body };
 
     // Handle file uploads (attachments_0, attachments_1, ...) and append URLs to attachments
     const files = (req.files as Express.Multer.File[]) || [];
@@ -304,7 +307,11 @@ export const updateDispatchTaskHandler = async (
       ];
     }
 
-    const updatedTask = await updateDispatchTask(id, updateData);
+    const updatedTask = await updateDispatchTask(id, updateData, clientUpdatedAt);
+
+    if (updatedTask === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedTask) {
       return res.status(404).json({
@@ -503,9 +510,13 @@ export const updateDispatchAssignmentHandler = async (
         message: "Dispatch assignment ID is required",
       });
     }
-    const updateData = req.body;
+    const { updatedAt: clientUpdatedAt, ...updateData } = req.body;
 
-    const updatedAssignment = await updateDispatchAssignment(id, updateData);
+    const updatedAssignment = await updateDispatchAssignment(id, updateData, clientUpdatedAt);
+
+    if (updatedAssignment === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedAssignment) {
       return res.status(404).json({
@@ -689,6 +700,7 @@ export const getEmployeesWithAssignedTasksHandler = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const status = req.query.status as string | undefined;
+    const search = req.query.search as string | undefined;
     const offset = (page - 1) * limit;
 
     let onlyForEmployeeId: number | undefined;
@@ -708,6 +720,7 @@ export const getEmployeesWithAssignedTasksHandler = async (
     const result = await getEmployeesWithAssignedTasks(offset, limit, {
       ...(status && { status }),
       ...(onlyForEmployeeId != null && { onlyForEmployeeId }),
+      ...(search && { search }),
     });
 
     logger.info("Employees with assigned tasks fetched successfully");
@@ -778,6 +791,94 @@ export const bulkDeleteDispatchTasksHandler = async (
     });
   } catch (error) {
     logger.logApiError("Bulk delete dispatch tasks error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Log Hours Handler — POST /assignments/:id/log-hours
+// ===========================================================================
+
+export const logHoursHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
+    }
+
+    const assignmentId = asSingleString(req.params.id);
+    if (!assignmentId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Assignment ID is required" });
+    }
+
+    const { actualStartTime, actualEndTime, actualHours, logNotes } = req.body;
+
+    if (!actualStartTime || !actualEndTime || actualHours == null) {
+      return res.status(400).json({
+        success: false,
+        message: "actualStartTime, actualEndTime, and actualHours are required",
+      });
+    }
+
+    const updated = await logHoursForAssignment(
+      assignmentId,
+      { actualStartTime, actualEndTime, actualHours: Number(actualHours), logNotes },
+      userId,
+    );
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Assignment not found",
+      });
+    }
+
+    logger.info(`Hours logged for assignment ${assignmentId} by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      data: updated,
+      message: "Hours logged successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Error logging hours for assignment", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Get Logged Hours for Task — GET /tasks/:taskId/logged-hours
+// ===========================================================================
+
+export const getTaskLoggedHoursHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const taskId = asSingleString(req.params.taskId);
+    if (!taskId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Task ID is required" });
+    }
+
+    if (!(await checkDispatchTaskAssignedAccess(req, res, taskId))) return;
+
+    const rows = await getAssignmentLoggedHours(taskId);
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching logged hours for task", error, req);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });

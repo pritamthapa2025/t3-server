@@ -677,16 +677,16 @@ router.get(
   previewBidMediaHandler,
 );
 
-// Quote PDF routes
+// Quote PDF routes — use module-level auth so managers can download quotes
 router.get(
   "/bids/:id/pdf",
-  authorizeAnyFeature("bids", ["view", "view_bids"]),
+  authorizeModule("bids"),
   validate(downloadBidQuotePDFSchema),
   downloadBidQuotePDF,
 );
 router.get(
   "/bids/:id/pdf/preview",
-  authorizeAnyFeature("bids", ["view", "view_bids"]),
+  authorizeModule("bids"),
   validate(previewBidQuotePDFSchema),
   previewBidQuotePDF,
 );

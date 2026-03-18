@@ -235,12 +235,10 @@ export const createEmployeeViolationSchema = z.object({
           "Violation type must be one of: safety, timesheet, conduct, training, certification, other",
       },
     ),
-    violationDate: z
-      .string()
-      .refine((val) => !isNaN(Date.parse(val)), {
-        message:
-          "Invalid violation date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)",
-      }),
+    violationDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+      message:
+        "Invalid violation date format. Please use YYYY-MM-DD format (e.g., 2024-12-15)",
+    }),
     description: z.string().min(1, "Description is required"),
     severity: z.enum(["low", "medium", "high", "critical"], {
       message: "Severity must be one of: low, medium, high, critical",

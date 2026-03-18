@@ -1,0 +1,1 @@
+ALTER TYPE "public"."job_status_enum" ADD VALUE 'pending_completion' BEFORE 'completed';

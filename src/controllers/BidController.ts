@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 
 // Access control: use USER data (req.user.id), not organization.
 // Organization = CLIENT data (see .cursorrules). For bid handlers, get client org from the bid (bid.organizationId) when needed.
@@ -134,6 +135,106 @@ import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.servi
 // ============================
 // Main Bid Operations
 // ============================
+
+/**
+ * Compute total price (and cost where applicable) from job-type-specific
+ * pricing data. Returns null when the data is absent or yields a zero total.
+ * Used to backfill bid_financial_breakdown.total_price after saving job-type
+ * data so that the bids list always returns an accurate bidAmount.
+ */
+/**
+ * Compute job-type-specific financial totals for backfilling bid_financial_breakdown.
+ *
+ * @param directCosts - Pre-existing direct costs from the financial breakdown
+ *   (materialsEquipment + labor + travel). Passed in so that job-type pricing
+ *   (e.g. PM contract value) can be added ON TOP of direct costs rather than
+ *   replacing them.
+ */
+function computeJobTypeFinancials(
+  jobType: string | null | undefined,
+  data: Record<string, unknown> | null | undefined,
+  directCosts: {
+    materialsEquipment: number;
+    labor: number;
+    travel: number;
+  } = { materialsEquipment: 0, labor: 0, travel: 0 },
+): { totalPrice: string; totalCost: string; grossProfit: string } | null {
+  if (!jobType || !data) return null;
+
+  const n = (v: unknown): number => parseFloat(String(v ?? "0")) || 0;
+  const directCostTotal =
+    directCosts.materialsEquipment + directCosts.labor + directCosts.travel;
+  let totalPrice = 0;
+  let totalCost = 0;
+
+  switch (jobType) {
+    case "survey": {
+      totalPrice = n(data.totalSurveyFee);
+      if (totalPrice === 0) {
+        if (data.pricingModel === "flat_fee")
+          totalPrice = n(data.flatSurveyFee);
+        else if (data.pricingModel === "time_materials")
+          totalPrice =
+            n(data.estimatedHours) * n(data.hourlyRate) +
+            n(data.estimatedExpenses);
+      }
+      // Survey fee is the revenue; direct costs (materials etc.) are the cost.
+      totalCost = directCostTotal;
+      break;
+    }
+    case "service": {
+      if (data.pricingModel === "flat_rate") {
+        totalPrice = n(data.flatRatePrice);
+        // Direct costs (materials, labour, travel) recorded in the breakdown.
+        totalCost = directCostTotal;
+      } else if (data.pricingModel === "diagnostic_repair") {
+        totalPrice = n(data.diagnosticFee) + n(data.estimatedRepairCost);
+        totalCost = directCostTotal;
+      } else {
+        // time_and_materials: service data carries its own cost/price fields.
+        totalCost =
+          n(data.laborHours) * n(data.laborRate) +
+          n(data.materialsCost) +
+          n(data.travelCost);
+        totalPrice = totalCost * (1 + n(data.serviceMarkup) / 100);
+      }
+      break;
+    }
+    case "preventative_maintenance": {
+      // PM contract value = revenue the client pays for the PM service.
+      // Direct costs (materials, filters, etc.) are tracked separately in the
+      // financial breakdown and are billed on top of the PM contract value.
+      let pmContractValue = 0;
+      if (data.pricingModel === "flat_rate")
+        pmContractValue = n(data.flatRatePerVisit);
+      else if (data.pricingModel === "annual_contract")
+        pmContractValue = n(data.annualContractValue);
+      else
+        pmContractValue =
+          n(data.pricePerUnit) * Math.max(n(data.numberOfUnits), 1);
+
+      totalCost = directCostTotal;
+      // Client invoice = PM contract value + any direct material/labour costs.
+      totalPrice = pmContractValue + directCostTotal;
+      break;
+    }
+    case "design_build": {
+      totalPrice = n(data.designPrice);
+      totalCost = n(data.designCost);
+      break;
+    }
+    default:
+      return null;
+  }
+
+  if (totalPrice === 0) return null;
+  const grossProfit = totalPrice - totalCost;
+  return {
+    totalPrice: totalPrice.toFixed(2),
+    totalCost: totalCost.toFixed(2),
+    grossProfit: grossProfit.toFixed(2),
+  };
+}
 
 export const getBidsHandler = async (req: Request, res: Response) => {
   try {
@@ -407,6 +508,45 @@ export const createBidHandler = async (req: Request, res: Response) => {
         );
     }
 
+    // Compute financial breakdown from job-type pricing data.
+    // For PM/service/survey bids this ALWAYS runs (regardless of whether the
+    // client already sent a financialBreakdown.totalPrice) so that the server
+    // is the authoritative source for totalPrice, totalCost, and grossProfit.
+    // For general/plan_spec bids there is no job-type pricing function, so the
+    // client-supplied breakdown is used as-is.
+    const jtData =
+      surveyData ??
+      serviceData ??
+      preventativeMaintenanceData ??
+      designBuildData ??
+      null;
+    if (jtData) {
+      // Read the direct costs (materials/labour/travel) that were just saved so
+      // computeJobTypeFinancials can incorporate them correctly (e.g. PM bids
+      // bill materials on top of the contract value).
+      const savedFb = createdRecords.financialBreakdown;
+      const nb = (v: unknown): number => parseFloat(String(v ?? "0")) || 0;
+      const directCosts = {
+        materialsEquipment: nb(savedFb?.actualMaterialsEquipment),
+        labor: nb(savedFb?.actualLabor),
+        travel: nb(savedFb?.actualTravel),
+      };
+      const computed = computeJobTypeFinancials(
+        bid.jobType,
+        jtData as Record<string, unknown>,
+        directCosts,
+      );
+      if (computed) {
+        const isFirstWrite = !createdRecords.financialBreakdown;
+        createdRecords.financialBreakdown = await updateBidFinancialBreakdown(
+          bid.id,
+          organizationId,
+          computed,
+          isFirstWrite,
+        );
+      }
+    }
+
     // Handle document uploads if provided (document_0, document_1, etc.)
     const files = (req.files as Express.Multer.File[]) || [];
     const documentFiles = files.filter((file) =>
@@ -578,6 +718,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       documentIdsToUpdate,
       documentUpdates,
       documentIdsToDelete,
+      updatedAt: clientUpdatedAt,
       ...bidFields
     } = req.body;
 
@@ -585,7 +726,11 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     delete bidFields.bidNumber;
 
     // Update bid with only bid fields (excluding nested objects)
-    const updatedBid = await updateBid(id!, clientOrgId, bidFields);
+    const updatedBid = await updateBid(id!, clientOrgId, bidFields, clientUpdatedAt);
+
+    if (updatedBid === STALE_DATA) {
+      return res.status(409).json(staleDataResponse);
+    }
 
     if (!updatedBid) {
       return res.status(404).json({
@@ -772,6 +917,44 @@ export const updateBidHandler = async (req: Request, res: Response) => {
           clientOrgId,
           preventativeMaintenanceData,
         );
+    }
+
+    // Recompute financial breakdown from job-type pricing data whenever
+    // job-type-specific data is present in the request.  For PM/service/survey
+    // bids the server is the authoritative source for totalPrice, totalCost, and
+    // grossProfit so we always overwrite rather than only backfilling zeros.
+    // For general/plan_spec bids there is no job-type function so the client
+    // breakdown is used as-is (already saved above via financialBreakdown block).
+    const jtData =
+      surveyData ??
+      serviceData ??
+      preventativeMaintenanceData ??
+      designBuildData ??
+      null;
+    if (jtData) {
+      // Pull direct costs from the most recent breakdown (just updated or existing).
+      const currentFb =
+        updatedRecords.financialBreakdown ??
+        (await getBidFinancialBreakdown(id!, clientOrgId));
+      const nb = (v: unknown): number => parseFloat(String(v ?? "0")) || 0;
+      const directCosts = {
+        materialsEquipment: nb(currentFb?.actualMaterialsEquipment),
+        labor: nb(currentFb?.actualLabor),
+        travel: nb(currentFb?.actualTravel),
+      };
+      const computed = computeJobTypeFinancials(
+        jobType,
+        jtData as Record<string, unknown>,
+        directCosts,
+      );
+      if (computed) {
+        updatedRecords.financialBreakdown = await updateBidFinancialBreakdown(
+          id!,
+          clientOrgId,
+          computed,
+          false,
+        );
+      }
     }
 
     // Handle document operations

@@ -291,7 +291,7 @@ export async function notifyJobOverdue(): Promise<CronResult> {
       .where(
         and(
           eq(jobs.isDeleted, false),
-          not(inArray(jobs.status, ["completed", "cancelled"])),
+          not(inArray(jobs.status, ["completed", "cancelled", "invoiced", "closed"])),
           lt(jobs.scheduledEndDate, today),
         ),
       )
