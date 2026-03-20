@@ -48,6 +48,7 @@ import {
   updateJob,
   deleteJob,
   getJobTeamMembers,
+  getAssignableTechniciansForJob,
   addJobTeamMember,
   removeJobTeamMember,
   getJobFinancialSummary,
@@ -102,6 +103,7 @@ import {
   updateJobExpense,
   deleteJobExpense,
   getJobWithAllData,
+  userHasAccessToJob,
   getJobInvoiceKPIs,
   getJobLaborCostTracking,
   getJobsKPIs,
@@ -199,7 +201,8 @@ export const getJobsHandler = async (req: Request, res: Response) => {
       filters.organizationId = req.query.organizationId as string;
     if (req.query.jobType) filters.jobType = req.query.jobType as string;
     if (req.query.sortBy) filters.sortBy = req.query.sortBy as string;
-    if (req.query.propertyId) filters.propertyId = req.query.propertyId as string;
+    if (req.query.propertyId)
+      filters.propertyId = req.query.propertyId as string;
 
     const dataFilter = await getDataFilterConditions(userId, "jobs");
     const options = dataFilter.assignedOnly
@@ -995,6 +998,34 @@ export const getJobTeamMembersHandler = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       data: teamMembers,
+    });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getAssignableTechniciansForJobHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["jobId"])) return;
+    const jobId = asSingleString(req.params.jobId);
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
+    const result = await getAssignableTechniciansForJob(jobId!);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);
@@ -3758,6 +3789,18 @@ export const getJobWithAllDataHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    const dataFilter = await getDataFilterConditions(userId, "jobs");
+    if (dataFilter.assignedOnly) {
+      const hasAccess = await userHasAccessToJob(id!, userId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You do not have access to this job. Only assigned team members can view job details.",
+        });
+      }
+    }
+
     const jobData = await getJobWithAllData(id!);
 
     if (!jobData) {
@@ -4552,13 +4595,11 @@ export const createJobLogHandler = async (req: Request, res: Response) => {
       createdBy: userId,
     });
 
-    return res
-      .status(201)
-      .json({
-        success: true,
-        data: log,
-        message: "Field log submitted successfully",
-      });
+    return res.status(201).json({
+      success: true,
+      data: log,
+      message: "Field log submitted successfully",
+    });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
     return res
@@ -4667,13 +4708,11 @@ export const addJobLogMediaHandler = async (req: Request, res: Response) => {
     );
 
     const media = await addJobLogMedia(entries);
-    return res
-      .status(201)
-      .json({
-        success: true,
-        data: media,
-        message: "Media uploaded successfully",
-      });
+    return res.status(201).json({
+      success: true,
+      data: media,
+      message: "Media uploaded successfully",
+    });
   } catch (error) {
     logger.logApiError("Job log media error", error, req);
     return res

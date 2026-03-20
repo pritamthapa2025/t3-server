@@ -7,6 +7,7 @@ import {
   getEmployeeById,
   getInspectors,
   getTechnicians,
+  getManagersAndTechniciansByRole,
   getUnassignedDrivers,
   getEmployeeKPIs,
   getEmployeeJobsAndDispatchForDate,
@@ -144,6 +145,25 @@ export const getTechniciansHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error fetching technicians", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getManagersAndTechniciansByRoleHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const data = await getManagersAndTechniciansByRole();
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching managers and technicians", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

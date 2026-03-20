@@ -194,7 +194,7 @@ export const getExpensesQuerySchema = z.object({
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
+      .pipe(z.number().int().positive().max(10000, "Maximum 10000 items per page")),
     status: expenseStatusEnum.optional(),
     expenseType: expenseTypeEnum.optional(),
     paymentMethod: paymentMethodEnum.optional(),
@@ -234,6 +234,13 @@ export const getExpensesQuerySchema = z.object({
       .optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
     includeDeleted: z
+      .string()
+      .optional()
+      .transform((val) => val === "true")
+      .refine((val) => val === undefined || typeof val === "boolean", {
+        message: "Must be a boolean value",
+      }),
+    excludeSourced: z
       .string()
       .optional()
       .transform((val) => val === "true")

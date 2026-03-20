@@ -303,6 +303,8 @@ export const createBidSchema = z.object({
           travel: z.array(
             z.object({
               vehicleName: z.string().optional(),
+              originAddressId: z.string().uuid().optional().nullable(),
+              originAddress: z.string().optional().nullable(),
               roundTripMiles: z.string(),
               mileageRate: z.string(),
               vehicleDayRate: z.string(),
@@ -784,6 +786,8 @@ export const updateBidSchema = z.object({
           z.object({
             id: uuidSchema.optional(),
             vehicleName: z.string().optional(),
+            originAddressId: z.string().uuid().optional().nullable(),
+            originAddress: z.string().optional().nullable(),
             roundTripMiles: z.string(),
             mileageRate: z.string(),
             vehicleDayRate: z.string(),
@@ -1350,6 +1354,8 @@ export const createBidTravelDirectSchema = z.object({
       .string()
       .max(255, "Vehicle name is too long (maximum 255 characters)")
       .optional(),
+    originAddressId: z.string().uuid().optional().nullable(),
+    originAddress: z.string().optional().nullable(),
     roundTripMiles: numericStringSchema,
     mileageRate: numericStringSchema,
     vehicleDayRate: numericStringSchema,
@@ -1379,6 +1385,8 @@ export const updateBidTravelDirectSchema = z.object({
       .string()
       .max(255, "Vehicle name is too long (maximum 255 characters)")
       .optional(),
+    originAddressId: z.string().uuid().optional().nullable(),
+    originAddress: z.string().optional().nullable(),
     roundTripMiles: numericStringSchema.optional(),
     mileageRate: numericStringSchema.optional(),
     vehicleDayRate: numericStringSchema.optional(),
@@ -1409,6 +1417,8 @@ export const createBidTravelSchema = z.object({
   }),
   body: z.object({
     // Note: vehicleName removed - derived from bidLabor → positionId → employee → assigned vehicle
+    originAddressId: z.string().uuid().optional().nullable(),
+    originAddress: z.string().optional().nullable(),
     roundTripMiles: numericStringSchema,
     mileageRate: numericStringSchema,
     vehicleDayRate: numericStringSchema,
@@ -1435,6 +1445,8 @@ export const updateBidTravelSchema = z.object({
       .string()
       .max(255, "Vehicle name is too long (maximum 255 characters)")
       .optional(),
+    originAddressId: z.string().uuid().optional().nullable(),
+    originAddress: z.string().optional().nullable(),
     roundTripMiles: numericStringSchema.optional(),
     mileageRate: numericStringSchema.optional(),
     vehicleDayRate: numericStringSchema.optional(),
@@ -1512,6 +1524,8 @@ export const createBulkLaborAndTravelSchema = z.object({
               .string()
               .max(255, "Vehicle name is too long (maximum 255 characters)")
               .optional(),
+            originAddressId: z.string().uuid().optional().nullable(),
+            originAddress: z.string().optional().nullable(),
             roundTripMiles: numericStringSchema,
             mileageRate: numericStringSchema,
             vehicleDayRate: numericStringSchema,
@@ -1887,18 +1901,20 @@ export const getBidNotesSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
-  query: z.object({
-    page: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
-    limit: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
-  }).optional(),
+  query: z
+    .object({
+      page: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 1))
+        .pipe(z.number().int().positive()),
+      limit: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 10))
+        .pipe(z.number().int().positive().max(100)),
+    })
+    .optional(),
 });
 
 export const createBidNoteSchema = z.object({

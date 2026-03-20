@@ -1223,14 +1223,16 @@ export const getRepairRecords = async (
     .limit(limit)
     .offset(offset);
 
-  const data = rows.map(({ approvedByName, rejectedByName, resolvedReportedByName, ...rec }) => ({
-    ...rec,
-    approvedByName: approvedByName ?? null,
-    rejectedByName: rejectedByName ?? null,
-    // reportedByName: resolved from UUID if stored as user ID, fallback to raw string
-    reportedByName: resolvedReportedByName ?? rec.reportedBy ?? null,
-    performedByName: rec.performedBy ?? null,
-  }));
+  const data = rows.map(
+    ({ approvedByName, rejectedByName, resolvedReportedByName, ...rec }) => ({
+      ...rec,
+      approvedByName: approvedByName ?? null,
+      rejectedByName: rejectedByName ?? null,
+      // reportedByName: resolved from UUID if stored as user ID, fallback to raw string
+      reportedByName: resolvedReportedByName ?? rec.reportedBy ?? null,
+      performedByName: rec.performedBy ?? null,
+    }),
+  );
 
   return {
     data,

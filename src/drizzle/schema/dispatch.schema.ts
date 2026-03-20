@@ -99,8 +99,9 @@ export const dispatchAssignments = org.table(
     taskId: uuid("task_id")
       .notNull()
       .references(() => dispatchTasks.id, { onDelete: "cascade" }),
-    technicianId: integer("technician_id")
-      .references(() => employees.id, { onDelete: "set null" }),
+    technicianId: integer("technician_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
 
     // Assignment Status
     status: dispatchAssignmentStatusEnum("status").notNull().default("pending"), // pending, started, completed
@@ -114,7 +115,9 @@ export const dispatchAssignments = org.table(
     actualHours: numeric("actual_hours", { precision: 6, scale: 2 }),
     logNotes: text("log_notes"),
     loggedAt: timestamp("logged_at"),
-    loggedBy: uuid("logged_by").references(() => users.id, { onDelete: "set null" }),
+    loggedBy: uuid("logged_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
 
     // Metadata
     isDeleted: boolean("is_deleted").default(false),

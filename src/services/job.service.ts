@@ -53,7 +53,11 @@ import { properties, clientContacts } from "../drizzle/schema/client.schema.js";
 import { getDefaultExpenseCategory } from "./expense.service.js";
 import { createExpenseFromSource } from "./expense.service.js";
 import { createAllocation } from "./inventory/inventory-allocations.service.js";
-import { employees, positions, departments } from "../drizzle/schema/org.schema.js";
+import {
+  employees,
+  positions,
+  departments,
+} from "../drizzle/schema/org.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
 import { getOrganizationById } from "./client.service.js";
@@ -170,7 +174,8 @@ export const getJobs = async (
     );
   }
 
-  // Technician / assigned-only: show jobs where (1) bid.assignedTo = userId OR (2) user is in job_team_members
+  // Technician / assigned-only: show jobs where user is linked via any schema source
+  // (bid.assignedTo, job_team_members, job_tasks.assignedTo, jobs.createdBy, bid_labor, dispatch, service_calls, pm_inspections, surveys)
   if (options?.applyAssignedOrTeamFilter && options?.userId) {
     const [emp] = await db
       .select({ id: employees.id })
@@ -179,14 +184,22 @@ export const getJobs = async (
       .limit(1);
     const employeeId = emp?.id ?? null;
 
-    const assignedOrTeamCondition =
-      employeeId === null
-        ? eq(bidsTable.assignedTo, options.userId)
-        : or(
-            eq(bidsTable.assignedTo, options.userId),
-            sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
-          );
-    whereCondition = and(whereCondition, assignedOrTeamCondition);
+    const conditions: ReturnType<typeof sql>[] = [
+      eq(jobs.createdBy, options.userId),
+      eq(bidsTable.assignedTo, options.userId),
+      sql`EXISTS (SELECT 1 FROM org.job_tasks jt WHERE jt.job_id = ${jobs.id} AND jt.assigned_to = ${options.userId} AND jt.is_deleted = false)`,
+    ];
+    if (employeeId !== null) {
+      conditions.push(
+        sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+        sql`EXISTS (SELECT 1 FROM org.bid_labor bl WHERE bl.bid_id = ${jobs.bidId} AND bl.assigned_employee_id = ${employeeId} AND bl.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.dispatch_assignments da JOIN org.dispatch_tasks dt ON da.task_id = dt.id WHERE dt.job_id = ${jobs.id} AND da.technician_id = ${employeeId} AND da.is_deleted = false AND dt.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_service_calls jsc WHERE jsc.job_id = ${jobs.id} AND jsc.technician_id = ${employeeId} AND jsc.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_pm_inspections jpi WHERE jpi.job_id = ${jobs.id} AND jpi.technician_id = ${employeeId} AND jpi.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_surveys js WHERE js.job_id = ${jobs.id} AND js.technician_id = ${employeeId} AND js.is_deleted = false)`,
+      );
+    }
+    whereCondition = and(whereCondition, or(...conditions));
   }
 
   // Get all jobs (with optional assigned/team filter)
@@ -219,10 +232,13 @@ export const getJobs = async (
     .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
     .where(whereCondition)
     .orderBy(
-      filters?.sortBy === "oldest" ? asc(jobs.createdAt) :
-      filters?.sortBy === "status" ? asc(jobs.status) :
-      filters?.sortBy === "name" ? asc(bidsTable.projectName) :
-      desc(jobs.createdAt)
+      filters?.sortBy === "oldest"
+        ? asc(jobs.createdAt)
+        : filters?.sortBy === "status"
+          ? asc(jobs.status)
+          : filters?.sortBy === "name"
+            ? asc(bidsTable.projectName)
+            : desc(jobs.createdAt),
     )
     .limit(limit)
     .offset(offset);
@@ -387,14 +403,22 @@ export const getJobById = async (
       .limit(1);
     const employeeId = emp?.id ?? null;
 
-    const assignedOrTeamCondition =
-      employeeId === null
-        ? eq(bidsTable.assignedTo, options.userId)
-        : or(
-            eq(bidsTable.assignedTo, options.userId),
-            sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
-          );
-    whereCondition = and(whereCondition, assignedOrTeamCondition);
+    const conditions: ReturnType<typeof sql>[] = [
+      eq(jobs.createdBy, options.userId),
+      eq(bidsTable.assignedTo, options.userId),
+      sql`EXISTS (SELECT 1 FROM org.job_tasks jt WHERE jt.job_id = ${jobs.id} AND jt.assigned_to = ${options.userId} AND jt.is_deleted = false)`,
+    ];
+    if (employeeId !== null) {
+      conditions.push(
+        sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+        sql`EXISTS (SELECT 1 FROM org.bid_labor bl WHERE bl.bid_id = ${jobs.bidId} AND bl.assigned_employee_id = ${employeeId} AND bl.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.dispatch_assignments da JOIN org.dispatch_tasks dt ON da.task_id = dt.id WHERE dt.job_id = ${jobs.id} AND da.technician_id = ${employeeId} AND da.is_deleted = false AND dt.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_service_calls jsc WHERE jsc.job_id = ${jobs.id} AND jsc.technician_id = ${employeeId} AND jsc.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_pm_inspections jpi WHERE jpi.job_id = ${jobs.id} AND jpi.technician_id = ${employeeId} AND jpi.is_deleted = false)`,
+        sql`EXISTS (SELECT 1 FROM org.job_surveys js WHERE js.job_id = ${jobs.id} AND js.technician_id = ${employeeId} AND js.is_deleted = false)`,
+      );
+    }
+    whereCondition = and(whereCondition, or(...conditions));
   }
 
   const [result] = await db
@@ -424,7 +448,9 @@ export const getJobById = async (
   );
   // Prefer actualTotalPrice; fall back to totalPrice for bids that pre-date the financial backfill
   const effectiveBidPrice =
-    financialBreakdown?.actualTotalPrice || financialBreakdown?.totalPrice || null;
+    financialBreakdown?.actualTotalPrice ||
+    financialBreakdown?.totalPrice ||
+    null;
 
   const jobSummary = getJobFinancialSummaryFields(
     result.jobs,
@@ -862,26 +888,52 @@ export const createJob = async (data: {
               notes: `Auto-allocated from bid ${data.bidId}`,
             },
             data.createdBy,
-          ).catch(() => {/* non-fatal */});
+          ).catch(() => {
+            /* non-fatal */
+          });
         }
       }
-    } catch {/* non-fatal */}
+    } catch {
+      /* non-fatal */
+    }
   })();
 
   // 20.1.1 — Seed financial category budgets from bid cost breakdown
   if (updatedBid) {
-    const { createFinancialCategoryBudget } = await import("./financial.service.js");
+    const { createFinancialCategoryBudget } =
+      await import("./financial.service.js");
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const budgetEntries = [
-      { category: "materials", amount: parseFloat((updatedBid as any).materialsEquipment || "0") },
-      { category: "labor", amount: parseFloat((updatedBid as any).labor || "0") },
-      { category: "travel", amount: parseFloat((updatedBid as any).travel || "0") },
-      { category: "operating_expenses", amount: parseFloat((updatedBid as any).operatingExpenses || "0") },
-    ].filter(e => e.amount > 0);
+      {
+        category: "materials",
+        amount: parseFloat((updatedBid as any).materialsEquipment || "0"),
+      },
+      {
+        category: "labor",
+        amount: parseFloat((updatedBid as any).labor || "0"),
+      },
+      {
+        category: "travel",
+        amount: parseFloat((updatedBid as any).travel || "0"),
+      },
+      {
+        category: "operating_expenses",
+        amount: parseFloat((updatedBid as any).operatingExpenses || "0"),
+      },
+    ].filter((e) => e.amount > 0);
     for (const entry of budgetEntries) {
-      createFinancialCategoryBudget({ category: entry.category, month, year, budgetAmount: entry.amount, notes: `Seeded from bid ${data.bidId}`, createdBy: data.createdBy }).catch(() => {/* non-fatal */});
+      createFinancialCategoryBudget({
+        category: entry.category,
+        month,
+        year,
+        budgetAmount: entry.amount,
+        notes: `Seeded from bid ${data.bidId}`,
+        createdBy: data.createdBy,
+      }).catch(() => {
+        /* non-fatal */
+      });
     }
   }
 
@@ -957,7 +1009,11 @@ export const updateJob = async (
     const currentStatus = jobData.job.status;
     if (newStart && newStart > todayStr && currentStatus !== "scheduled") {
       jobUpdateData.status = "scheduled";
-    } else if (newStart && newStart <= todayStr && currentStatus === "scheduled") {
+    } else if (
+      newStart &&
+      newStart <= todayStr &&
+      currentStatus === "scheduled"
+    ) {
       jobUpdateData.status = "in_progress";
     }
   }
@@ -1133,11 +1189,16 @@ export const updateJob = async (
   }
 
   // 16.6.1 — On job completion, return any outstanding inventory allocations
-  if (data.status === "completed" && (jobData.job as any).status !== "completed") {
+  if (
+    data.status === "completed" &&
+    (jobData.job as any).status !== "completed"
+  ) {
     (async () => {
       try {
-        const { returnAllocation } = await import("./inventory/inventory-allocations.service.js");
-        const { inventoryAllocations } = await import("../drizzle/schema/inventory.schema.js");
+        const { returnAllocation } =
+          await import("./inventory/inventory-allocations.service.js");
+        const { inventoryAllocations } =
+          await import("../drizzle/schema/inventory.schema.js");
         const outstanding = await db
           .select({ id: inventoryAllocations.id })
           .from(inventoryAllocations)
@@ -1150,18 +1211,34 @@ export const updateJob = async (
           );
         for (const alloc of outstanding) {
           const [fullAlloc] = await db
-            .select({ quantityAllocated: (inventoryAllocations as any).quantityAllocated, quantityUsed: (inventoryAllocations as any).quantityUsed })
+            .select({
+              quantityAllocated: (inventoryAllocations as any)
+                .quantityAllocated,
+              quantityUsed: (inventoryAllocations as any).quantityUsed,
+            })
             .from(inventoryAllocations)
             .where(eq(inventoryAllocations.id, alloc.id))
             .limit(1);
           if (fullAlloc) {
-            const qtyToReturn = String(parseFloat(fullAlloc.quantityAllocated || "0") - parseFloat(fullAlloc.quantityUsed || "0"));
+            const qtyToReturn = String(
+              parseFloat(fullAlloc.quantityAllocated || "0") -
+                parseFloat(fullAlloc.quantityUsed || "0"),
+            );
             if (parseFloat(qtyToReturn) > 0) {
-              await returnAllocation(alloc.id, { quantityReturned: qtyToReturn, notes: "Auto-returned on job completion" }, "system").catch(() => {});
+              await returnAllocation(
+                alloc.id,
+                {
+                  quantityReturned: qtyToReturn,
+                  notes: "Auto-returned on job completion",
+                },
+                "system",
+              ).catch(() => {});
             }
           }
         }
-      } catch {/* non-fatal */}
+      } catch {
+        /* non-fatal */
+      }
     })();
   }
 
@@ -1304,6 +1381,104 @@ export const getJobTeamMembers = async (
       ? { id: m.departmentId, name: m.departmentName ?? "" }
       : null,
   }));
+};
+
+// ============================
+// Assignable technicians for dispatch (grouped)
+// ============================
+export type AssignableTechnicianItem = {
+  id: number;
+  userId: string | null;
+  name: string;
+  positionName: string | null;
+  role: string | null;
+};
+
+export const getAssignableTechniciansForJob = async (jobId: string) => {
+  const assignedToJobRaw = await getJobTeamMembers(jobId, undefined);
+  const assignedToJob: AssignableTechnicianItem[] = assignedToJobRaw
+    .filter((m) => m.employee && !m.employee.isDeleted)
+    .map((m) => ({
+      id: m.employee!.id,
+      userId: m.employee!.userId ?? null,
+      name: m.employeeName ?? m.employee!.employeeId ?? `Employee ${m.employee!.id}`,
+      positionName: m.position?.name ?? null,
+      role: m.role ?? null,
+    }));
+
+  const supervisorsRows = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      employeeName: users.fullName,
+      positionName: positions.name,
+      roleName: roles.name,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        eq(roles.name, "Manager"),
+        eq(roles.isDeleted, false),
+      ),
+    );
+
+  const supervisors: AssignableTechnicianItem[] = supervisorsRows.map((r) => ({
+    id: r.id,
+    userId: r.userId ?? null,
+    name: r.employeeName ?? `Employee ${r.id}`,
+    positionName: r.positionName ?? null,
+    role: r.roleName ?? null,
+  }));
+
+  const allManagersAndTechRows = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      employeeName: users.fullName,
+      positionName: positions.name,
+      roleName: roles.name,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        inArray(roles.name, ["Manager", "Technician"]),
+        eq(roles.isDeleted, false),
+      ),
+    )
+    .orderBy(employees.id);
+
+  const seenIds = new Set<number>();
+  const allManagersAndTechnicians: AssignableTechnicianItem[] =
+    allManagersAndTechRows
+      .filter((r) => {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+        return true;
+      })
+      .map((r) => ({
+        id: r.id,
+        userId: r.userId ?? null,
+        name: r.employeeName ?? `Employee ${r.id}`,
+        positionName: r.positionName ?? null,
+        role: r.roleName ?? null,
+      }));
+
+  return {
+    assignedToJob,
+    supervisors,
+    teamMembers: assignedToJob,
+    allManagersAndTechnicians,
+  };
 };
 
 export const addJobTeamMember = async (data: {
@@ -1599,6 +1774,178 @@ export const getJobFinancialSummaryFields = (
 };
 
 // ============================
+// Job access (all schema sources)
+// ============================
+
+/**
+ * Returns true if the user has access to the job via any of:
+ * - jobs.createdBy, bid.assignedTo
+ * - job_team_members (employeeId → userId)
+ * - job_tasks.assignedTo
+ * - bid_labor.assignedEmployeeId (bid for this job)
+ * - dispatch_assignments (task → job, technicianId → userId)
+ * - job_service_calls.technicianId, job_pm_inspections.technicianId, job_surveys.technicianId
+ */
+export const userHasAccessToJob = async (
+  jobId: string,
+  userId: string,
+): Promise<boolean> => {
+  const [emp] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.userId, userId))
+    .limit(1);
+  const employeeId = emp?.id ?? null;
+
+  const [row] = await db
+    .select({ jobId: jobs.id })
+    .from(jobs)
+    .leftJoin(
+      bidsTable,
+      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+    )
+    .where(and(eq(jobs.id, jobId), eq(jobs.isDeleted, false)))
+    .limit(1);
+
+  if (!row) return false;
+
+  // 1) Job creator
+  const [createdByRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.createdBy, userId)))
+    .limit(1);
+  if (createdByRow) return true;
+
+  // 2) Bid assignedTo
+  const [bidRow] = await db
+    .select({ bidId: jobs.bidId })
+    .from(jobs)
+    .innerJoin(
+      bidsTable,
+      and(eq(jobs.bidId, bidsTable.id), eq(bidsTable.isDeleted, false)),
+    )
+    .where(and(eq(jobs.id, jobId), eq(bidsTable.assignedTo, userId)))
+    .limit(1);
+  if (bidRow) return true;
+
+  // 3) Job team member
+  if (employeeId !== null) {
+    const [teamRow] = await db
+      .select({ id: jobTeamMembers.id })
+      .from(jobTeamMembers)
+      .where(
+        and(
+          eq(jobTeamMembers.jobId, jobId),
+          eq(jobTeamMembers.employeeId, employeeId),
+          eq(jobTeamMembers.isActive, true),
+        ),
+      )
+      .limit(1);
+    if (teamRow) return true;
+  }
+
+  // 4) Assigned to any job task
+  const [taskRow] = await db
+    .select({ id: jobTasks.id })
+    .from(jobTasks)
+    .where(
+      and(
+        eq(jobTasks.jobId, jobId),
+        eq(jobTasks.assignedTo, userId),
+        eq(jobTasks.isDeleted, false),
+      ),
+    )
+    .limit(1);
+  if (taskRow) return true;
+
+  // 5) Bid labor assigned to this employee
+  if (employeeId !== null) {
+    const [laborRow] = await db
+      .select({ id: bidLabor.id })
+      .from(bidLabor)
+      .innerJoin(jobs, eq(jobs.bidId, bidLabor.bidId))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(bidLabor.assignedEmployeeId, employeeId),
+          eq(bidLabor.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (laborRow) return true;
+  }
+
+  // 6) Dispatch assignment (task on this job)
+  if (employeeId !== null) {
+    const [dispatchRow] = await db
+      .select({ id: dispatchAssignments.id })
+      .from(dispatchAssignments)
+      .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+      .where(
+        and(
+          eq(dispatchTasks.jobId, jobId),
+          eq(dispatchAssignments.technicianId, employeeId),
+          eq(dispatchAssignments.isDeleted, false),
+          eq(dispatchTasks.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (dispatchRow) return true;
+  }
+
+  // 7) Job service call technician
+  if (employeeId !== null) {
+    const [svcRow] = await db
+      .select({ id: jobServiceCalls.id })
+      .from(jobServiceCalls)
+      .where(
+        and(
+          eq(jobServiceCalls.jobId, jobId),
+          eq(jobServiceCalls.technicianId, employeeId),
+          eq(jobServiceCalls.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (svcRow) return true;
+  }
+
+  // 8) Job PM inspection technician
+  if (employeeId !== null) {
+    const [pmRow] = await db
+      .select({ id: jobPMInspections.id })
+      .from(jobPMInspections)
+      .where(
+        and(
+          eq(jobPMInspections.jobId, jobId),
+          eq(jobPMInspections.technicianId, employeeId),
+          eq(jobPMInspections.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (pmRow) return true;
+  }
+
+  // 9) Job survey technician
+  if (employeeId !== null) {
+    const [surveyRow] = await db
+      .select({ id: jobSurveys.id })
+      .from(jobSurveys)
+      .where(
+        and(
+          eq(jobSurveys.jobId, jobId),
+          eq(jobSurveys.technicianId, employeeId),
+          eq(jobSurveys.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    if (surveyRow) return true;
+  }
+
+  return false;
+};
+
+// ============================
 // Job with All Data (from Bid)
 // ============================
 
@@ -1741,7 +2088,9 @@ export const getJobWithAllData = async (jobId: string) => {
   // Financial summary (totalContractValue, profitMargin, estimatedProfit, startDate=createdAt, endDate, remaining)
   // Prefer actualTotalPrice; fall back to totalPrice for bids that pre-date the financial backfill
   const effectiveBidPriceForJob =
-    financialBreakdown?.actualTotalPrice || financialBreakdown?.totalPrice || null;
+    financialBreakdown?.actualTotalPrice ||
+    financialBreakdown?.totalPrice ||
+    null;
 
   const jobSummary = getJobFinancialSummaryFields(
     jobData.job,
@@ -1776,6 +2125,7 @@ export const getJobWithAllData = async (jobId: string) => {
             title: bid.title,
             projectName: bid.projectName,
             priority: bid.priority,
+            assignedTo: bid.assignedTo ?? undefined,
             propertyId: bid.propertyId,
             siteAddress: bid.siteAddress,
             buildingSuiteNumber: bid.buildingSuiteNumber,
@@ -4674,7 +5024,7 @@ export const getJobLaborCostTracking = async (jobId: string) => {
 // Jobs KPIs
 // ============================
 
-/** Base condition for job KPIs; when options set, restricts to assigned/team jobs (technician view). */
+/** Base condition for job KPIs; when options set, restricts to jobs user is linked to (technician view). */
 async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
   const base = and(eq(jobs.isDeleted, false));
   if (!options?.applyAssignedOrTeamFilter || !options?.userId) return base;
@@ -4686,30 +5036,21 @@ async function jobsKpiBaseCondition(options?: GetJobsFilterOptions) {
     .limit(1);
   const employeeId = emp?.id ?? null;
 
-  // Team member on the job
-  const teamMemberExistsClause =
-    employeeId !== null
-      ? sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`
-      : null;
-
-  // Dispatched to any task on the job (covers ad-hoc coverage)
-  const dispatchedExistsClause =
-    employeeId !== null
-      ? sql`EXISTS (
-        SELECT 1 FROM org.dispatch_assignments da
-        JOIN org.dispatch_tasks dt ON da.task_id = dt.id
-        WHERE dt.job_id = ${jobs.id}
-          AND da.technician_id = ${employeeId}
-          AND da.is_deleted = false
-          AND dt.is_deleted = false
-      )`
-      : null;
-
-  const conditions = [
+  const conditions: ReturnType<typeof sql>[] = [
+    eq(jobs.createdBy, options.userId),
     eq(bidsTable.assignedTo, options.userId),
-    ...(teamMemberExistsClause ? [teamMemberExistsClause] : []),
-    ...(dispatchedExistsClause ? [dispatchedExistsClause] : []),
+    sql`EXISTS (SELECT 1 FROM org.job_tasks jt WHERE jt.job_id = ${jobs.id} AND jt.assigned_to = ${options.userId} AND jt.is_deleted = false)`,
   ];
+  if (employeeId !== null) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM org.job_team_members jtm WHERE jtm.job_id = ${jobs.id} AND jtm.employee_id = ${employeeId} AND jtm.is_active = true)`,
+      sql`EXISTS (SELECT 1 FROM org.bid_labor bl WHERE bl.bid_id = ${jobs.bidId} AND bl.assigned_employee_id = ${employeeId} AND bl.is_deleted = false)`,
+      sql`EXISTS (SELECT 1 FROM org.dispatch_assignments da JOIN org.dispatch_tasks dt ON da.task_id = dt.id WHERE dt.job_id = ${jobs.id} AND da.technician_id = ${employeeId} AND da.is_deleted = false AND dt.is_deleted = false)`,
+      sql`EXISTS (SELECT 1 FROM org.job_service_calls jsc WHERE jsc.job_id = ${jobs.id} AND jsc.technician_id = ${employeeId} AND jsc.is_deleted = false)`,
+      sql`EXISTS (SELECT 1 FROM org.job_pm_inspections jpi WHERE jpi.job_id = ${jobs.id} AND jpi.technician_id = ${employeeId} AND jpi.is_deleted = false)`,
+      sql`EXISTS (SELECT 1 FROM org.job_surveys js WHERE js.job_id = ${jobs.id} AND js.technician_id = ${employeeId} AND js.is_deleted = false)`,
+    );
+  }
 
   return and(base, or(...conditions));
 }

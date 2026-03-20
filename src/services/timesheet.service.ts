@@ -359,6 +359,43 @@ export const updateTimesheet = async (
     .where(eq(timesheets.id, id))
     .returning();
 
+  // Fire timesheet_submitted notification when employee first-time submits (pending → submitted)
+  if (
+    timesheet &&
+    data.status === "submitted" &&
+    existingTimesheet.status === "pending"
+  ) {
+    void (async () => {
+      try {
+        const empId = existingTimesheet.employeeId;
+        const [empRow] =
+          empId != null
+            ? await db
+                .select({ departmentId: employees.departmentId })
+                .from(employees)
+                .where(eq(employees.id, empId))
+                .limit(1)
+            : [];
+        const departmentId = empRow?.departmentId ?? undefined;
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "timesheet_submitted",
+          category: "timesheet",
+          priority: "medium",
+          data: {
+            entityType: "Timesheet",
+            entityId: String(id),
+            entityName: `Timesheet #${id}`,
+            employeeId: String(existingTimesheet.employeeId),
+            ...(departmentId != null ? { departmentId: String(departmentId) } : {}),
+          },
+        });
+      } catch (err) {
+        console.error("[Notification] timesheet_submitted failed:", err);
+      }
+    })();
+  }
+
   // Fire timesheet_resubmitted notification when employee resubmits after rejection
   if (
     timesheet &&
@@ -367,6 +404,16 @@ export const updateTimesheet = async (
   ) {
     void (async () => {
       try {
+        const empId = existingTimesheet.employeeId;
+        const [empRow] =
+          empId != null
+            ? await db
+                .select({ departmentId: employees.departmentId })
+                .from(employees)
+                .where(eq(employees.id, empId))
+                .limit(1)
+            : [];
+        const departmentId = empRow?.departmentId ?? undefined;
         const { NotificationService } = await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "timesheet_resubmitted",
@@ -377,6 +424,7 @@ export const updateTimesheet = async (
             entityId: String(id),
             entityName: `Timesheet #${id}`,
             employeeId: String(existingTimesheet.employeeId),
+            ...(departmentId != null ? { departmentId: String(departmentId) } : {}),
           },
         });
       } catch (err) {

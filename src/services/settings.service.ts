@@ -318,6 +318,14 @@ export const getTravelOriginById = async (id: string) => {
 };
 
 export const createTravelOrigin = async (data: any, userId?: string) => {
+  // When creating with isDefault: true, unset all other defaults first (only one default allowed).
+  if (data.isDefault === true) {
+    await db
+      .update(travelOrigins)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(travelOrigins.isDefault, true));
+  }
+
   // Build full address
   const fullAddress = [
     data.addressLine1,
@@ -346,6 +354,14 @@ export const updateTravelOrigin = async (
   data: any,
   userId?: string,
 ) => {
+  // When setting this origin as default, unset all other defaults first (only one default allowed).
+  if (data.isDefault === true) {
+    await db
+      .update(travelOrigins)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(travelOrigins.isDefault, true));
+  }
+
   // Build full address if address fields provided
   let fullAddress;
   if (data.addressLine1 || data.city || data.state || data.zipCode) {

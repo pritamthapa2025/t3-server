@@ -294,7 +294,7 @@ export const deleteDepartmentHandler = async (req: Request, res: Response) => {
 
 export const getDepartmentsListHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const departments = await getDepartmentsList();
@@ -335,11 +335,16 @@ export const getDepartmentKPIsHandler = async (req: Request, res: Response) => {
 // Bulk Delete
 // ===========================================================================
 
-export const bulkDeleteDepartmentsHandler = async (req: Request, res: Response) => {
+export const bulkDeleteDepartmentsHandler = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: number[] };
     const result = await bulkDeleteDepartments(ids, userId);
@@ -352,6 +357,8 @@ export const bulkDeleteDepartmentsHandler = async (req: Request, res: Response) 
     });
   } catch (error) {
     logger.logApiError("Bulk delete departments error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

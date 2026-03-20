@@ -11,6 +11,7 @@ import {
   getEmployeeKPIsHandler,
   getInspectorsHandler,
   getTechniciansHandler,
+  getManagersAndTechniciansByRoleHandler,
   getUnassignedDriversHandler,
   bulkDeleteEmployeesHandler,
 } from "../../controllers/EmployeeController.js";
@@ -94,6 +95,10 @@ router.route("/unassigned-drivers").get(getUnassignedDriversHandler);
 // ─── Employees ───────────────────────────────────────────────────────────────
 
 router.route("/employees/technicians").get(getTechniciansHandler);
+
+router
+  .route("/employees/managers-and-technicians")
+  .get(getManagersAndTechniciansByRoleHandler);
 
 router.route("/employees/kpis").get(getEmployeeKPIsHandler);
 

@@ -327,6 +327,15 @@ async function seedNotificationRulesInternal(): Promise<number> {
     },
     {
       category: "timesheet",
+      eventType: "timesheet_submitted",
+      description: "Timesheet Submitted (first-time submission)",
+      enabled: true,
+      priority: "medium",
+      recipientRoles: ["department_manager", "executive"],
+      channels: ["push"],
+    },
+    {
+      category: "timesheet",
       eventType: "timesheet_resubmitted",
       description: "Timesheet Resubmitted After Rejection",
       enabled: true,

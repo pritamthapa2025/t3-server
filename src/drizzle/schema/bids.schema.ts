@@ -352,6 +352,10 @@ export const bidTravel = org.table(
       .notNull()
       .references(() => bidLabor.id, { onDelete: "cascade" }),
 
+    // Travel origin — the starting address used to calculate round-trip miles
+    originAddressId: uuid("origin_address_id"),
+    originAddress: text("origin_address"),
+
     // Note: vehicleName removed - can be derived from bidLabor → positionId → employee → assigned vehicle
     roundTripMiles: numeric("round_trip_miles", {
       precision: 10,

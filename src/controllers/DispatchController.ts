@@ -307,7 +307,11 @@ export const updateDispatchTaskHandler = async (
       ];
     }
 
-    const updatedTask = await updateDispatchTask(id, updateData, clientUpdatedAt);
+    const updatedTask = await updateDispatchTask(
+      id,
+      updateData,
+      clientUpdatedAt,
+    );
 
     if (updatedTask === STALE_DATA) {
       return res.status(409).json(staleDataResponse);
@@ -512,7 +516,11 @@ export const updateDispatchAssignmentHandler = async (
     }
     const { updatedAt: clientUpdatedAt, ...updateData } = req.body;
 
-    const updatedAssignment = await updateDispatchAssignment(id, updateData, clientUpdatedAt);
+    const updatedAssignment = await updateDispatchAssignment(
+      id,
+      updateData,
+      clientUpdatedAt,
+    );
 
     if (updatedAssignment === STALE_DATA) {
       return res.status(409).json(staleDataResponse);
@@ -828,7 +836,12 @@ export const logHoursHandler = async (req: Request, res: Response) => {
 
     const updated = await logHoursForAssignment(
       assignmentId,
-      { actualStartTime, actualEndTime, actualHours: Number(actualHours), logNotes },
+      {
+        actualStartTime,
+        actualEndTime,
+        actualHours: Number(actualHours),
+        logNotes,
+      },
       userId,
     );
 

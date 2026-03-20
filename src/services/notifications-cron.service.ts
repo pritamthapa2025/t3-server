@@ -273,6 +273,8 @@ async function sendCronDigest(params: DigestParams): Promise<CronResult> {
  * Recommended schedule: daily at 08:00.
  */
 export async function notifyJobOverdue(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const now = new Date();
@@ -296,41 +298,40 @@ export async function notifyJobOverdue(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(jobs.scheduledEndDate))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const overdueJobs = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = overdueJobs.map((job) => {
-      const dueDate = job.scheduledEndDate ? new Date(job.scheduledEndDate) : null;
-      const daysOverdue = dueDate
-        ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
-        : 0;
-      return [
-        job.jobNumber ?? "—",
-        job.projectName ?? "—",
-        job.clientName ?? "—",
-        job.scheduledEndDate ?? "—",
-        `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "job_overdue_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "⚠️ Overdue Jobs Summary",
-      intro: `${overdueJobs.length} job${overdueJobs.length !== 1 ? "s are" : " is"} overdue and require your attention.`,
-      columns: ["Job #", "Project Name", "Client", "Due Date", "Days Overdue"],
-      rows,
-      hasMore,
-      cooldownDays: 3,
-      actionUrl: "/dashboard/jobs",
-      actionLabel: "View All Jobs",
-    });
+    for (const job of raw) {
+      try {
+        if (await isCoolingDown("job_overdue", "Job", job.id)) continue;
+        const dueDate = job.scheduledEndDate ? new Date(job.scheduledEndDate) : null;
+        const daysOverdue = dueDate
+          ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
+          : 0;
+        await svc.triggerNotification({
+          type: "job_overdue",
+          category: "job",
+          priority: "high",
+          data: {
+            entityType: "Job",
+            entityId: job.id,
+            entityName: job.projectName || job.jobNumber || job.id,
+            daysOverdue,
+            dueDate: job.scheduledEndDate ?? undefined,
+            clientName: job.clientName ?? undefined,
+          },
+        });
+        await setCooldown("job_overdue", "Job", job.id, 3);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] job_overdue failed for job ${job.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifyJobOverdue failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifyJobOverdue query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -663,6 +664,8 @@ async function _notifyMaintenanceDue(
  * Recommended schedule: daily.
  */
 export async function notifyMaintenanceOverdue(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const now = new Date();
@@ -675,6 +678,7 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
         model: vehicles.model,
         licensePlate: vehicles.licensePlate,
         nextServiceDue: vehicles.nextServiceDue,
+        assignedToEmployeeId: vehicles.assignedToEmployeeId,
       })
       .from(vehicles)
       .where(
@@ -684,41 +688,42 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(vehicles.nextServiceDue))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const overdueVehicles = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = overdueVehicles.map((v) => {
-      const dueDate = v.nextServiceDue ? new Date(v.nextServiceDue) : null;
-      const daysOverdue = dueDate
-        ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
-        : 0;
-      return [
-        `${v.make} ${v.model}`,
-        v.vehicleId ?? "—",
-        v.licensePlate ?? "—",
-        v.nextServiceDue ?? "—",
-        `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "maintenance_overdue_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "🔧 Overdue Vehicle Maintenance Summary",
-      intro: `${overdueVehicles.length} vehicle${overdueVehicles.length !== 1 ? "s have" : " has"} overdue maintenance that requires immediate attention.`,
-      columns: ["Vehicle", "Vehicle ID", "License Plate", "Service Due", "Days Overdue"],
-      rows,
-      hasMore,
-      cooldownDays: 3,
-      actionUrl: "/dashboard/fleet",
-      actionLabel: "View Fleet",
-    });
+    for (const v of raw) {
+      try {
+        if (await isCoolingDown("maintenance_overdue", "Vehicle", v.id)) continue;
+        const dueDate = v.nextServiceDue ? new Date(v.nextServiceDue) : null;
+        const daysOverdue = dueDate
+          ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
+          : 0;
+        const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
+        await svc.triggerNotification({
+          type: "maintenance_overdue",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName,
+            licensePlate: v.licensePlate ?? undefined,
+            dueDate: v.nextServiceDue ?? undefined,
+            daysOverdue,
+            ...(v.assignedToEmployeeId != null ? { driverId: String(v.assignedToEmployeeId) } : {}),
+          },
+        });
+        await setCooldown("maintenance_overdue", "Vehicle", v.id, 3);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] maintenance_overdue failed for vehicle ${v.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifyMaintenanceOverdue failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifyMaintenanceOverdue query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +736,8 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
  * Recommended schedule: daily.
  */
 export async function notifySafetyInspectionExpired(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const now = new Date();
@@ -752,41 +759,41 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(vehicles.nextInspectionDue))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const expiredVehicles = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = expiredVehicles.map((v) => {
-      const expiredDate = v.nextInspectionDue ? new Date(v.nextInspectionDue) : null;
-      const daysExpired = expiredDate
-        ? Math.floor((now.getTime() - expiredDate.getTime()) / 86_400_000)
-        : 0;
-      return [
-        `${v.make} ${v.model}`,
-        v.vehicleId ?? "—",
-        v.licensePlate ?? "—",
-        v.nextInspectionDue ?? "—",
-        `${daysExpired} day${daysExpired !== 1 ? "s" : ""}`,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "safety_inspection_expired_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "🚨 Expired Safety Inspections Summary",
-      intro: `${expiredVehicles.length} vehicle${expiredVehicles.length !== 1 ? "s have" : " has"} expired safety inspections. Immediate action required.`,
-      columns: ["Vehicle", "Vehicle ID", "License Plate", "Inspection Expired", "Days Expired"],
-      rows,
-      hasMore,
-      cooldownDays: 3,
-      actionUrl: "/dashboard/fleet",
-      actionLabel: "View Fleet",
-    });
+    for (const v of raw) {
+      try {
+        if (await isCoolingDown("safety_inspection_expired", "Vehicle", v.id)) continue;
+        const expiredDate = v.nextInspectionDue ? new Date(v.nextInspectionDue) : null;
+        const daysExpired = expiredDate
+          ? Math.floor((now.getTime() - expiredDate.getTime()) / 86_400_000)
+          : 0;
+        const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
+        await svc.triggerNotification({
+          type: "safety_inspection_expired",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName,
+            licensePlate: v.licensePlate ?? undefined,
+            dueDate: v.nextInspectionDue ?? undefined,
+            daysOverdue: daysExpired,
+          },
+        });
+        await setCooldown("safety_inspection_expired", "Vehicle", v.id, 3);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] safety_inspection_expired failed for vehicle ${v.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifySafetyInspectionExpired failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifySafetyInspectionExpired query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -799,10 +806,11 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
  * Recommended schedule: daily.
  */
 export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const in30 = daysFromNow(30);
-    const now = new Date();
 
     const raw = await db
       .select({
@@ -822,41 +830,36 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(vehicles.registrationExpiration))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const expiringVehicles = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = expiringVehicles.map((v) => {
-      const expDate = v.registrationExpiration ? new Date(v.registrationExpiration) : null;
-      const daysLeft = expDate
-        ? Math.ceil((expDate.getTime() - now.getTime()) / 86_400_000)
-        : 0;
-      return [
-        `${v.make} ${v.model}`,
-        v.vehicleId ?? "—",
-        v.licensePlate ?? "—",
-        v.registrationExpiration ?? "—",
-        `${daysLeft} day${daysLeft !== 1 ? "s" : ""}`,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "vehicle_registration_expiring_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "📋 Vehicle Registration Expiry Summary",
-      intro: `${expiringVehicles.length} vehicle registration${expiringVehicles.length !== 1 ? "s are" : " is"} expiring within the next 30 days.`,
-      columns: ["Vehicle", "Vehicle ID", "License Plate", "Expires On", "Days Left"],
-      rows,
-      hasMore,
-      cooldownDays: 7,
-      actionUrl: "/dashboard/fleet",
-      actionLabel: "View Fleet",
-    });
+    for (const v of raw) {
+      try {
+        if (await isCoolingDown("vehicle_registration_expiring", "Vehicle", v.id)) continue;
+        const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
+        await svc.triggerNotification({
+          type: "vehicle_registration_expiring",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName,
+            licensePlate: v.licensePlate ?? undefined,
+            dueDate: v.registrationExpiration ?? undefined,
+          },
+        });
+        await setCooldown("vehicle_registration_expiring", "Vehicle", v.id, 7);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] vehicle_registration_expiring failed for vehicle ${v.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifyVehicleRegistrationExpiring failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifyVehicleRegistrationExpiring query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,10 +872,11 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
  * Recommended schedule: daily.
  */
 export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const in30 = daysFromNow(30);
-    const now = new Date();
 
     const raw = await db
       .select({
@@ -892,41 +896,36 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(vehicles.insuranceExpiration))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const expiringVehicles = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = expiringVehicles.map((v) => {
-      const expDate = v.insuranceExpiration ? new Date(v.insuranceExpiration) : null;
-      const daysLeft = expDate
-        ? Math.ceil((expDate.getTime() - now.getTime()) / 86_400_000)
-        : 0;
-      return [
-        `${v.make} ${v.model}`,
-        v.vehicleId ?? "—",
-        v.licensePlate ?? "—",
-        v.insuranceExpiration ?? "—",
-        `${daysLeft} day${daysLeft !== 1 ? "s" : ""}`,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "vehicle_insurance_expiring_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "🛡️ Vehicle Insurance Expiry Summary",
-      intro: `${expiringVehicles.length} vehicle insurance polic${expiringVehicles.length !== 1 ? "ies are" : "y is"} expiring within the next 30 days.`,
-      columns: ["Vehicle", "Vehicle ID", "License Plate", "Expires On", "Days Left"],
-      rows,
-      hasMore,
-      cooldownDays: 7,
-      actionUrl: "/dashboard/fleet",
-      actionLabel: "View Fleet",
-    });
+    for (const v of raw) {
+      try {
+        if (await isCoolingDown("vehicle_insurance_expiring", "Vehicle", v.id)) continue;
+        const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
+        await svc.triggerNotification({
+          type: "vehicle_insurance_expiring",
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName,
+            licensePlate: v.licensePlate ?? undefined,
+            dueDate: v.insuranceExpiration ?? undefined,
+          },
+        });
+        await setCooldown("vehicle_insurance_expiring", "Vehicle", v.id, 7);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] vehicle_insurance_expiring failed for vehicle ${v.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifyVehicleInsuranceExpiring failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifyVehicleInsuranceExpiring query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -939,10 +938,11 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
  * Recommended schedule: daily.
  */
 export async function notifyPerformanceReviewDue(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const in7 = daysFromNow(7);
-    const now = new Date();
 
     const raw = await db
       .select({
@@ -958,45 +958,36 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
           lte(sql`COALESCE((employees.next_review_date)::text, '9999-01-01')`, in7),
         ),
       )
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const dueEmployees = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = dueEmployees.map((emp) => {
-      const reviewDate = emp.nextReviewDate ? new Date(emp.nextReviewDate) : null;
-      const daysUntil = reviewDate
-        ? Math.ceil((reviewDate.getTime() - now.getTime()) / 86_400_000)
-        : 0;
-      const status =
-        daysUntil < 0
-          ? `${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? "s" : ""} overdue`
-          : daysUntil === 0
-            ? "Due today"
-            : `Due in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`;
-      return [
-        emp.employeeId ?? `EMP-${emp.id}`,
-        emp.nextReviewDate || "—",
-        status,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "performance_review_due_digest",
-      recipientRoles: ["manager"],
-      title: "📊 Performance Reviews Due",
-      intro: `${dueEmployees.length} employee performance review${dueEmployees.length !== 1 ? "s are" : " is"} due within the next 7 days and require scheduling.`,
-      columns: ["Employee ID", "Review Due Date", "Status"],
-      rows,
-      hasMore,
-      cooldownDays: 3,
-      actionUrl: "/dashboard/team/employees",
-      actionLabel: "View Employees",
-    });
+    for (const emp of raw) {
+      try {
+        if (await isCoolingDown("performance_review_due", "Employee", String(emp.id))) continue;
+        const entityName = emp.employeeId ?? `Employee #${emp.id}`;
+        await svc.triggerNotification({
+          type: "performance_review_due",
+          category: "system",
+          priority: "medium",
+          data: {
+            entityType: "Employee",
+            entityId: String(emp.id),
+            entityName,
+            employeeId: String(emp.id),
+            dueDate: emp.nextReviewDate || undefined,
+          },
+        });
+        await setCooldown("performance_review_due", "Employee", String(emp.id), 3);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] performance_review_due failed for employee ${emp.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
     logger.warn("[CronNotif] notifyPerformanceReviewDue skipped:", (err as any)?.message);
-    return { processed: 0, errors: 0 };
+    errors++;
   }
+  return { processed, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,6 +1072,8 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
  * Recommended schedule: daily (e.g. 07:30).
  */
 export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
   try {
     const today = todayStr();
     const now = new Date();
@@ -1103,40 +1096,39 @@ export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
         ),
       )
       .orderBy(asc(inventoryPurchaseOrders.expectedDeliveryDate))
-      .limit(DIGEST_LIMIT + 1);
+      .limit(BATCH_SIZE);
 
-    const hasMore = raw.length > DIGEST_LIMIT;
-    const delayedOrders = hasMore ? raw.slice(0, DIGEST_LIMIT) : raw;
-
-    const rows = delayedOrders.map((po) => {
-      const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : null;
-      const daysDelayed = expectedDate
-        ? Math.floor((now.getTime() - expectedDate.getTime()) / 86_400_000)
-        : 0;
-      const amount = po.totalAmount ? `$${Number(po.totalAmount).toLocaleString()}` : "—";
-      return [
-        po.poNumber ?? "—",
-        po.title ?? "—",
-        po.expectedDeliveryDate ?? "—",
-        `${daysDelayed} day${daysDelayed !== 1 ? "s" : ""}`,
-        amount,
-      ];
-    });
-
-    return sendCronDigest({
-      digestKey: "purchase_order_delayed_digest",
-      recipientRoles: ["manager", "executive"],
-      title: "📦 Delayed Purchase Orders Summary",
-      intro: `${delayedOrders.length} purchase order${delayedOrders.length !== 1 ? "s have" : " has"} passed the expected delivery date and require follow-up.`,
-      columns: ["PO #", "Title", "Expected Delivery", "Days Delayed", "Amount"],
-      rows,
-      hasMore,
-      cooldownDays: 3,
-      actionUrl: "/dashboard/inventory/purchase-orders",
-      actionLabel: "View Purchase Orders",
-    });
+    for (const po of raw) {
+      try {
+        if (await isCoolingDown("purchase_order_delayed", "PurchaseOrder", po.id)) continue;
+        const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : null;
+        const daysDelayed = expectedDate
+          ? Math.floor((now.getTime() - expectedDate.getTime()) / 86_400_000)
+          : 0;
+        const entityName = po.poNumber || po.title || po.id;
+        await svc.triggerNotification({
+          type: "purchase_order_delayed",
+          category: "inventory",
+          priority: "medium",
+          data: {
+            entityType: "PurchaseOrder",
+            entityId: po.id,
+            entityName,
+            dueDate: po.expectedDeliveryDate ?? undefined,
+            daysOverdue: daysDelayed,
+            ...(po.totalAmount ? { amount: Number(po.totalAmount) } : {}),
+          },
+        });
+        await setCooldown("purchase_order_delayed", "PurchaseOrder", po.id, 3);
+        processed++;
+      } catch (err) {
+        logger.error(`[CronNotif] purchase_order_delayed failed for PO ${po.id}:`, err);
+        errors++;
+      }
+    }
   } catch (err) {
-    logger.error("[CronNotif] notifyPurchaseOrderDelayed failed:", err);
-    return { processed: 0, errors: 1 };
+    logger.error("[CronNotif] notifyPurchaseOrderDelayed query failed:", err);
+    errors++;
   }
+  return { processed, errors };
 }

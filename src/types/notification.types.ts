@@ -217,6 +217,7 @@ export const NOTIFICATION_EVENT_TYPES = {
   TIMESHEET_APPROVED: "timesheet_approved",
   TIMESHEET_REJECTED: "timesheet_rejected",
   CLOCK_REMINDER: "clock_reminder",
+  TIMESHEET_SUBMITTED: "timesheet_submitted",
   TIMESHEET_RESUBMITTED: "timesheet_resubmitted",
 
   // Expenses

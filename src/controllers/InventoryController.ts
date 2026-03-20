@@ -923,15 +923,28 @@ export const createPurchaseOrderHandler = async (
     void (async () => {
       try {
         const { NotificationService } = await import("../services/notification.service.js");
-        await new NotificationService().triggerNotification({
+        const svc = new NotificationService();
+        await svc.triggerNotification({
           type: "purchase_order_created",
           category: "inventory",
           priority: "medium",
           triggeredBy: userId,
           data: { entityType: "PurchaseOrder", entityId: newPO.id, entityName: newPO.poNumber || newPO.id },
         });
+        // Fire stock_reordered when a PO is created (reorder placed) — Manager & Executive
+        await svc.triggerNotification({
+          type: "stock_reordered",
+          category: "inventory",
+          priority: "medium",
+          triggeredBy: userId,
+          data: {
+            entityType: "PurchaseOrder",
+            entityId: newPO.id,
+            entityName: newPO.poNumber || newPO.id,
+          },
+        });
       } catch (err) {
-        console.error("[Notification] purchase_order_created failed:", err);
+        console.error("[Notification] purchase_order_created / stock_reordered failed:", err);
       }
     })();
 

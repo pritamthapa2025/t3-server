@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T3 Mechanical - Expense Report {{reportNumber}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #475569;
+        --muted-2: #64748b;
+        --line: #e5e7eb;
+        --panel: #ffffff;
+        --wash: #f8fafc;
+        --wash-2: #f1f5f9;
+        --accent: #dc2626;
+        --accent-light: #fef2f2;
+        --green: #16a34a;
+        --green-light: #f0fdf4;
+        --blue: #2563eb;
+        --blue-light: #eff6ff;
+        --radius: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: #f0f2f5;
+        color: var(--ink);
+        font-size: 13px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        max-width: 860px;
+        margin: 0 auto;
+        background: var(--panel);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      }
+
+      /* ── Header ────────────────────────────────────── */
+      .header {
+        background: var(--ink);
+        padding: 28px 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .header-logo img {
+        height: 40px;
+        width: auto;
+      }
+
+      .header-right {
+        text-align: right;
+      }
+
+      .header-right .doc-type {
+        color: #94a3b8;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .header-right .doc-number {
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .header-right .doc-date {
+        color: #94a3b8;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      /* ── Status Banner ─────────────────────────────── */
+      .status-banner {
+        padding: 10px 36px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-banner.draft {
+        background: #f1f5f9;
+        color: #64748b;
+      }
+      .status-banner.submitted {
+        background: var(--blue-light);
+        color: var(--blue);
+      }
+      .status-banner.under_review {
+        background: #fffbeb;
+        color: #d97706;
+      }
+      .status-banner.approved {
+        background: var(--green-light);
+        color: var(--green);
+      }
+      .status-banner.rejected {
+        background: var(--accent-light);
+        color: var(--accent);
+      }
+      .status-banner.paid {
+        background: #faf5ff;
+        color: #7c3aed;
+      }
+      .status-banner.closed {
+        background: #f1f5f9;
+        color: #64748b;
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        display: inline-block;
+      }
+
+      /* ── Meta Section ──────────────────────────────── */
+      .meta-section {
+        padding: 28px 36px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--wash);
+      }
+
+      .meta-group label {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+        margin-bottom: 4px;
+      }
+
+      .meta-group .meta-value {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      .meta-group .meta-sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      /* ── Summary Cards ─────────────────────────────── */
+      .summary-section {
+        padding: 28px 36px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+        margin-bottom: 16px;
+      }
+
+      .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .summary-card {
+        background: var(--wash);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+
+      .summary-card .card-label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+        margin-bottom: 8px;
+      }
+
+      .summary-card .card-value {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--ink);
+        letter-spacing: -0.03em;
+      }
+
+      .summary-card .card-value.green {
+        color: var(--green);
+      }
+      .summary-card .card-value.blue {
+        color: var(--blue);
+      }
+      .summary-card .card-value.muted {
+        color: var(--muted);
+      }
+
+      /* ── Category Breakdown ────────────────────────── */
+      .content-section {
+        padding: 28px 36px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+
+      .data-table thead tr {
+        background: var(--wash-2);
+      }
+
+      .data-table th {
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+        border-bottom: 2px solid var(--line);
+      }
+
+      .data-table th.right,
+      .data-table td.right {
+        text-align: right;
+      }
+
+      .data-table td {
+        padding: 10px 14px;
+        color: var(--ink);
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .data-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .data-table tbody tr:hover {
+        background: var(--wash);
+      }
+
+      .data-table .total-row td {
+        background: var(--wash-2);
+        font-weight: 700;
+        border-top: 2px solid var(--line);
+        border-bottom: none;
+      }
+
+      .data-table .zero-row td {
+        color: var(--muted-2);
+      }
+
+      .amount-positive {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .amount-zero {
+        color: #cbd5e1;
+      }
+
+      /* Category color dots */
+      .cat-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+
+      .cat-materials {
+        background: #f59e0b;
+      }
+      .cat-travel {
+        background: #3b82f6;
+      }
+      .cat-operating {
+        background: #8b5cf6;
+      }
+      .cat-labor {
+        background: #10b981;
+      }
+      .cat-other {
+        background: #94a3b8;
+      }
+
+      /* Expense items */
+      .expense-number {
+        font-family: monospace;
+        font-size: 11px;
+        color: var(--muted-2);
+        background: var(--wash-2);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+
+      .expense-title {
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 2px;
+      }
+
+      .expense-meta {
+        font-size: 11px;
+        color: var(--muted-2);
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+
+      .badge-yes {
+        background: var(--green-light);
+        color: var(--green);
+      }
+      .badge-no {
+        background: var(--accent-light);
+        color: var(--accent);
+      }
+
+      /* ── Notes ─────────────────────────────────────── */
+      .notes-section {
+        padding: 22px 36px;
+        border-bottom: 1px solid var(--line);
+        background: var(--wash);
+      }
+
+      .notes-box {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        font-size: 12.5px;
+        color: var(--muted);
+        white-space: pre-wrap;
+      }
+
+      /* ── Footer ─────────────────────────────────────── */
+      .footer {
+        padding: 20px 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--wash-2);
+      }
+
+      .footer-left {
+        font-size: 11px;
+        color: var(--muted-2);
+      }
+
+      .footer-right {
+        font-size: 11px;
+        color: var(--muted-2);
+        text-align: right;
+      }
+
+      .footer-brand {
+        font-weight: 700;
+        color: var(--muted);
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+        .page {
+          box-shadow: none;
+          border-radius: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-logo">
+          <img
+            src="https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-white.png"
+            alt="T3 Mechanical"
+          />
+        </div>
+        <div class="header-right">
+          <div class="doc-type">Expense Report</div>
+          <div class="doc-number">{{reportNumber}}</div>
+          <div class="doc-date">Generated {{generatedDate}}</div>
+        </div>
+      </div>
+
+      <!-- Status Banner -->
+      <div class="status-banner {{statusClass}}">
+        <span class="status-dot"></span>
+        {{statusLabel}}
+      </div>
+
+      <!-- Meta: Employee + Period -->
+      <div class="meta-section">
+        <div class="meta-group">
+          <label>Employee</label>
+          <div class="meta-value">{{employeeName}}</div>
+          {{#if employeeEmail}}
+          <div class="meta-sub">{{employeeEmail}}</div>
+          {{/if}}
+        </div>
+        <div class="meta-group">
+          <label>Report Period</label>
+          <div class="meta-value">{{periodStart}} — {{periodEnd}}</div>
+          {{#if reportTitle}}
+          <div class="meta-sub">{{reportTitle}}</div>
+          {{/if}}
+        </div>
+        <div class="meta-group">
+          <label>Organization</label>
+          <div class="meta-value">{{organizationName}}</div>
+        </div>
+        <div class="meta-group">
+          <label>Total Expenses</label>
+          <div class="meta-value">{{totalExpensesCount}} items</div>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="summary-section">
+        <div class="section-title">Financial Summary</div>
+        <div class="summary-cards">
+          <div class="summary-card">
+            <div class="card-label">Total Amount</div>
+            <div class="card-value">{{totalAmount}}</div>
+          </div>
+          <div class="summary-card">
+            <div class="card-label">Reimbursable</div>
+            <div class="card-value green">{{totalReimbursable}}</div>
+          </div>
+          <div class="summary-card">
+            <div class="card-label">Non-Reimbursable</div>
+            <div class="card-value muted">{{totalNonReimbursable}}</div>
+          </div>
+          <div class="summary-card">
+            <div class="card-label">Mileage Amount</div>
+            <div class="card-value blue">{{totalMileageAmount}}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Breakdown -->
+      <div class="content-section">
+        <div class="section-title">Category Breakdown</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th class="right">Items</th>
+              <th class="right">Amount</th>
+              <th class="right">Reimbursable</th>
+              <th class="right">% of Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{categoryBreakdownHtml}}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Expense Items -->
+      <div class="content-section">
+        <div class="section-title">Expense Items</div>
+        {{#if hasItems}}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Expense</th>
+              <th>Category</th>
+              <th>Date</th>
+              <th>Vendor</th>
+              <th class="right">Amount</th>
+              <th class="right">Reimb.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{expenseItemsHtml}}
+          </tbody>
+        </table>
+        {{/if}} {{#if noItems}}
+        <div
+          style="
+            padding: 24px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 13px;
+          "
+        >
+          No expense items linked to this report.
+        </div>
+        {{/if}}
+      </div>
+
+      <!-- Notes -->
+      {{#if notes}}
+      <div class="notes-section">
+        <div class="section-title" style="margin-bottom: 10px">Notes</div>
+        <div class="notes-box">{{notes}}</div>
+      </div>
+      {{/if}}
+
+      <!-- Footer -->
+      <div class="footer">
+        <div class="footer-left">
+          <div class="footer-brand">T3 Mechanical Inc.</div>
+          <div>Expense Report · {{reportNumber}}</div>
+        </div>
+        <div class="footer-right">
+          <div>Period: {{periodStart}} — {{periodEnd}}</div>
+          <div>Generated: {{generatedDate}}</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

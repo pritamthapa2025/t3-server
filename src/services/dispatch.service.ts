@@ -1019,9 +1019,7 @@ export const getEmployeesWithAssignedTasks = async (
     employeeConditions.push(eq(employees.id, filters.onlyForEmployeeId));
   }
   if (filters?.search) {
-    employeeConditions.push(
-      ilike(users.fullName, `%${filters.search}%`),
-    );
+    employeeConditions.push(ilike(users.fullName, `%${filters.search}%`));
   }
   if (filters?.status) {
     if (filters.status === "active") {

@@ -2077,14 +2077,21 @@ export const deleteBidMaterial = async (
   id: string,
   _organizationId: string,
 ) => {
+  // Get material data before deletion (for history logging) - fetch without isDeleted check
   const [material] = await db
-    .update(bidMaterials)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(bidMaterials.id, id), eq(bidMaterials.isDeleted, false)))
-    .returning();
+    .select()
+    .from(bidMaterials)
+    .where(eq(bidMaterials.id, id))
+    .limit(1);
+  
+  if (!material) {
+    return null;
+  }
+  
+  // Hard delete - actually remove from database
+  await db
+    .delete(bidMaterials)
+    .where(eq(bidMaterials.id, id));
   return material;
 };
 
@@ -2278,14 +2285,41 @@ export const updateBidLabor = async (
 };
 
 export const deleteBidLabor = async (id: string) => {
+  // Get labor data before deletion (for history logging) - fetch without isDeleted check
   const [labor] = await db
-    .update(bidLabor)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
+    .select({
+      id: bidLabor.id,
+      bidId: bidLabor.bidId,
+      positionId: bidLabor.positionId,
+      positionName: positions.name,
+      quantity: bidLabor.quantity,
+      days: bidLabor.days,
+      hoursPerDay: bidLabor.hoursPerDay,
+      totalHours: bidLabor.totalHours,
+      costRate: bidLabor.costRate,
+      billableRate: bidLabor.billableRate,
+      totalCost: bidLabor.totalCost,
+      totalPrice: bidLabor.totalPrice,
     })
-    .where(and(eq(bidLabor.id, id), eq(bidLabor.isDeleted, false)))
-    .returning();
+    .from(bidLabor)
+    .leftJoin(positions, eq(bidLabor.positionId, positions.id))
+    .where(eq(bidLabor.id, id))
+    .limit(1);
+  
+  if (!labor) {
+    return null;
+  }
+  
+  // First, hard delete all associated travel entries
+  await db
+    .delete(bidTravel)
+    .where(eq(bidTravel.bidLaborId, id));
+  
+  // Then hard delete the labor entry
+  await db
+    .delete(bidLabor)
+    .where(eq(bidLabor.id, id));
+  
   return labor;
 };
 
@@ -2350,6 +2384,8 @@ export const getBidTravelById = async (travelId: string) => {
 
 export const createBidTravel = async (data: {
   bidLaborId: string;
+  originAddressId?: string | null;
+  originAddress?: string | null;
   roundTripMiles: string;
   mileageRate: string;
   vehicleDayRate: string;
@@ -2397,6 +2433,8 @@ export const createBulkLaborAndTravel = async (
   travelEntries: Array<{
     employeeName?: string;
     vehicleName?: string;
+    originAddressId?: string | null;
+    originAddress?: string | null;
     roundTripMiles: string;
     mileageRate: string;
     vehicleDayRate: string;
@@ -2453,6 +2491,8 @@ export const createBulkLaborAndTravel = async (
       .insert(bidTravel)
       .values({
         bidLaborId: laborEntry.id,
+        originAddressId: travelData.originAddressId ?? null,
+        originAddress: travelData.originAddress ?? null,
         roundTripMiles: travelData.roundTripMiles,
         mileageRate: travelData.mileageRate,
         vehicleDayRate: travelData.vehicleDayRate,
@@ -2487,6 +2527,8 @@ export const updateBidTravel = async (
   data: Partial<{
     bidLaborId: string;
     vehicleName: string;
+    originAddressId: string | null;
+    originAddress: string | null;
     roundTripMiles: string;
     mileageRate: string;
     vehicleDayRate: string;
@@ -2528,6 +2570,11 @@ export const updateBidTravel = async (
     data.totalCost !== undefined ||
     data.totalPrice !== undefined;
   const setPayload: Record<string, unknown> = { updatedAt: new Date() };
+
+  // Always persist origin fields when provided
+  if ("originAddressId" in data) setPayload.originAddressId = data.originAddressId ?? null;
+  if ("originAddress" in data) setPayload.originAddress = data.originAddress ?? null;
+
   if (hasActual) {
     if (data.actualRoundTripMiles !== undefined)
       setPayload.actualRoundTripMiles = data.actualRoundTripMiles;
@@ -2547,22 +2594,43 @@ export const updateBidTravel = async (
     if (data.actualTotalPrice !== undefined)
       setPayload.actualTotalPrice = data.actualTotalPrice;
   } else if (hasInitial) {
-    if (data.roundTripMiles !== undefined)
+    // Editing a bid: update both initial columns and actual* columns together
+    if (data.roundTripMiles !== undefined) {
+      setPayload.roundTripMiles = data.roundTripMiles;
       setPayload.actualRoundTripMiles = data.roundTripMiles;
-    if (data.mileageRate !== undefined)
+    }
+    if (data.mileageRate !== undefined) {
+      setPayload.mileageRate = data.mileageRate;
       setPayload.actualMileageRate = data.mileageRate;
-    if (data.vehicleDayRate !== undefined)
+    }
+    if (data.vehicleDayRate !== undefined) {
+      setPayload.vehicleDayRate = data.vehicleDayRate;
       setPayload.actualVehicleDayRate = data.vehicleDayRate;
-    if (data.days !== undefined) setPayload.actualDays = data.days;
-    if (data.mileageCost !== undefined)
+    }
+    if (data.days !== undefined) {
+      setPayload.days = data.days;
+      setPayload.actualDays = data.days;
+    }
+    if (data.mileageCost !== undefined) {
+      setPayload.mileageCost = data.mileageCost;
       setPayload.actualMileageCost = data.mileageCost;
-    if (data.vehicleCost !== undefined)
+    }
+    if (data.vehicleCost !== undefined) {
+      setPayload.vehicleCost = data.vehicleCost;
       setPayload.actualVehicleCost = data.vehicleCost;
-    if (data.markup !== undefined) setPayload.actualMarkup = data.markup;
-    if (data.totalCost !== undefined)
+    }
+    if (data.markup !== undefined) {
+      setPayload.markup = data.markup;
+      setPayload.actualMarkup = data.markup;
+    }
+    if (data.totalCost !== undefined) {
+      setPayload.totalCost = data.totalCost;
       setPayload.actualTotalCost = data.totalCost;
-    if (data.totalPrice !== undefined)
+    }
+    if (data.totalPrice !== undefined) {
+      setPayload.totalPrice = data.totalPrice;
       setPayload.actualTotalPrice = data.totalPrice;
+    }
   }
   if (Object.keys(setPayload).length <= 1)
     return (await getBidTravelById(id)) ?? null;
@@ -2575,14 +2643,21 @@ export const updateBidTravel = async (
 };
 
 export const deleteBidTravel = async (id: string) => {
+  // Get travel data before deletion (for history logging) - fetch without isDeleted check
   const [travel] = await db
-    .update(bidTravel)
-    .set({
-      isDeleted: true,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(bidTravel.id, id), eq(bidTravel.isDeleted, false)))
-    .returning();
+    .select()
+    .from(bidTravel)
+    .where(eq(bidTravel.id, id))
+    .limit(1);
+  
+  if (!travel) {
+    return null;
+  }
+  
+  // Hard delete - actually remove from database
+  await db
+    .delete(bidTravel)
+    .where(eq(bidTravel.id, id));
   return travel;
 };
 

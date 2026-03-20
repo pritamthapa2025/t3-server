@@ -527,6 +527,12 @@ export const getJobTeamMembersSchema = z.object({
     .optional(),
 });
 
+export const getAssignableTechniciansForJobSchema = z.object({
+  params: z.object({
+    jobId: uuidSchema,
+  }),
+});
+
 export const addJobTeamMemberSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
@@ -877,18 +883,20 @@ export const getJobNotesSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
   }),
-  query: z.object({
-    page: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 1))
-      .pipe(z.number().int().positive()),
-    limit: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 10))
-      .pipe(z.number().int().positive().max(100)),
-  }).optional(),
+  query: z
+    .object({
+      page: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 1))
+        .pipe(z.number().int().positive()),
+      limit: z
+        .string()
+        .optional()
+        .transform((val) => (val ? parseInt(val, 10) : 10))
+        .pipe(z.number().int().positive().max(100)),
+    })
+    .optional(),
 });
 
 export const createJobNoteSchema = z.object({
@@ -950,7 +958,12 @@ export const getJobTasksSchema = z.object({
   }),
 });
 
-const jobTaskStatusEnum = z.enum(["backlog", "in_progress", "in_review", "done"]);
+const jobTaskStatusEnum = z.enum([
+  "backlog",
+  "in_progress",
+  "in_review",
+  "done",
+]);
 
 export const createJobTaskSchema = z.object({
   params: z.object({
@@ -1350,7 +1363,11 @@ export const addJobLogMediaSchema = z.object({
 });
 
 export const deleteJobLogMediaSchema = z.object({
-  params: z.object({ jobId: uuidSchema, logId: uuidSchema, mediaId: uuidSchema }),
+  params: z.object({
+    jobId: uuidSchema,
+    logId: uuidSchema,
+    mediaId: uuidSchema,
+  }),
 });
 
 export const getPropertyJobLogsSchema = z.object({

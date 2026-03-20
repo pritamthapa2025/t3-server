@@ -140,6 +140,12 @@ router
     createDispatchTaskHandler,
   );
 
+// Update task: Technicians with confirm_dispatch can Start/Mark Complete; Managers/Executives with edit_dispatch can edit fully
+const updateDispatchTask = authorizeAnyFeature("dispatch", [
+  "confirm_dispatch",
+  "edit_dispatch",
+]);
+
 router
   .route("/tasks/:id")
   .get(
@@ -148,7 +154,7 @@ router
     getDispatchTaskByIdHandler,
   )
   .put(
-    editDispatch,
+    updateDispatchTask,
     uploadDispatchAttachments,
     handleMulterError,
     parseFormData,

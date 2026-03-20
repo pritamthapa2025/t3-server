@@ -140,7 +140,8 @@ export const createSupplier = async (data: any) => {
       taxId: data.taxId,
       accountNumber: data.accountNumber,
       paymentTerms: data.paymentTerms,
-      creditLimit: data.creditLimit != null ? data.creditLimit.toString() : undefined,
+      creditLimit:
+        data.creditLimit != null ? data.creditLimit.toString() : undefined,
       rating: data.rating != null ? data.rating.toString() : undefined,
       leadTimeDays: data.leadTimeDays,
       isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
@@ -291,7 +292,12 @@ export const getLocationById = async (id: string) => {
   const [location] = await db
     .select()
     .from(inventoryLocations)
-    .where(and(eq(inventoryLocations.id, id), eq(inventoryLocations.isDeleted, false)))
+    .where(
+      and(
+        eq(inventoryLocations.id, id),
+        eq(inventoryLocations.isDeleted, false),
+      ),
+    )
     .limit(1);
 
   return location || null;
@@ -377,13 +383,21 @@ export const deleteLocation = async (id: string) => {
 // Categories
 // ============================
 
-export const getCategories = async (params?: { page?: number; limit?: number }) => {
+export const getCategories = async (params?: {
+  page?: number;
+  limit?: number;
+}) => {
   const page = Math.max(1, params?.page ?? 1);
   const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
   const offset = (page - 1) * limit;
 
   const [data, countResult] = await Promise.all([
-    db.select().from(inventoryCategories).orderBy(inventoryCategories.name).limit(limit).offset(offset),
+    db
+      .select()
+      .from(inventoryCategories)
+      .orderBy(inventoryCategories.name)
+      .limit(limit)
+      .offset(offset),
     db.select({ count: sql<number>`count(*)::int` }).from(inventoryCategories),
   ]);
 
@@ -446,8 +460,15 @@ export const getUnits = async (params?: { page?: number; limit?: number }) => {
   const offset = (page - 1) * limit;
 
   const [data, countResult] = await Promise.all([
-    db.select().from(inventoryUnitsOfMeasure).orderBy(inventoryUnitsOfMeasure.name).limit(limit).offset(offset),
-    db.select({ count: sql<number>`count(*)::int` }).from(inventoryUnitsOfMeasure),
+    db
+      .select()
+      .from(inventoryUnitsOfMeasure)
+      .orderBy(inventoryUnitsOfMeasure.name)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(inventoryUnitsOfMeasure),
   ]);
 
   const total = countResult[0]?.count ?? 0;

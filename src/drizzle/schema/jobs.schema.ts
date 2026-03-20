@@ -286,7 +286,9 @@ export const jobServiceCalls = org.table(
 
     // Scheduling
     callDate: date("call_date"),
-    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "set null" }),
+    technicianId: integer("technician_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
     timeIn: varchar("time_in", { length: 10 }),
     timeOut: varchar("time_out", { length: 10 }),
     serviceDescription: text("service_description"),
@@ -303,10 +305,22 @@ export const jobServiceCalls = org.table(
     supplyAirTemp: numeric("supply_air_temp", { precision: 8, scale: 2 }),
     returnAirTemp: numeric("return_air_temp", { precision: 8, scale: 2 }),
     ambientTemp: numeric("ambient_temp", { precision: 8, scale: 2 }),
-    coolingSupplyTemp: numeric("cooling_supply_temp", { precision: 8, scale: 2 }),
-    coolingReturnTemp: numeric("cooling_return_temp", { precision: 8, scale: 2 }),
-    heatingSupplyTemp: numeric("heating_supply_temp", { precision: 8, scale: 2 }),
-    heatingReturnTemp: numeric("heating_return_temp", { precision: 8, scale: 2 }),
+    coolingSupplyTemp: numeric("cooling_supply_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    coolingReturnTemp: numeric("cooling_return_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    heatingSupplyTemp: numeric("heating_supply_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    heatingReturnTemp: numeric("heating_return_temp", {
+      precision: 8,
+      scale: 2,
+    }),
 
     // Component Status
     blowerMotorStatus: varchar("blower_motor_status", { length: 50 }),
@@ -319,9 +333,13 @@ export const jobServiceCalls = org.table(
     plumbingSystemCheck: boolean("plumbing_system_check").default(false),
     thermostatCheck: boolean("thermostat_check").default(false),
     hvacSystemCheck: boolean("hvac_system_check").default(false),
-    clientCommunicationCheck: boolean("client_communication_check").default(false),
+    clientCommunicationCheck: boolean("client_communication_check").default(
+      false,
+    ),
     filterInspected: boolean("filter_inspected").default(false),
-    electricalConnectionsCheck: boolean("electrical_connections_check").default(false),
+    electricalConnectionsCheck: boolean("electrical_connections_check").default(
+      false,
+    ),
     refrigerantLinesCheck: boolean("refrigerant_lines_check").default(false),
     safetyControlsCheck: boolean("safety_controls_check").default(false),
 
@@ -342,7 +360,9 @@ export const jobServiceCalls = org.table(
     customerSignaturePath: text("customer_signature_path"),
     customerName: varchar("customer_name", { length: 255 }),
     customerSignatureDate: date("customer_signature_date"),
-    customerDeclinedSignature: boolean("customer_declined_signature").default(false),
+    customerDeclinedSignature: boolean("customer_declined_signature").default(
+      false,
+    ),
 
     // Status & Metadata
     status: varchar("status", { length: 20 }).default("draft"),
@@ -384,7 +404,9 @@ export const jobPMInspections = org.table(
     corrosionRustCheck: boolean("corrosion_rust_check").default(false),
     debrisBlockageCheck: boolean("debris_blockage_check").default(false),
     refrigerantLineCheck: boolean("refrigerant_line_check").default(false),
-    electricalComponentsCheck: boolean("electrical_components_check").default(false),
+    electricalComponentsCheck: boolean("electrical_components_check").default(
+      false,
+    ),
     ductingConditionCheck: boolean("ducting_condition_check").default(false),
     condensateLineCheck: boolean("condensate_line_check").default(false),
 
@@ -399,10 +421,22 @@ export const jobPMInspections = org.table(
     newFilterPhotoUrl: text("new_filter_photo_url"),
 
     // Temperature Readings
-    coolingSupplyTemp: numeric("cooling_supply_temp", { precision: 8, scale: 2 }),
-    coolingReturnTemp: numeric("cooling_return_temp", { precision: 8, scale: 2 }),
-    heatingSupplyTemp: numeric("heating_supply_temp", { precision: 8, scale: 2 }),
-    heatingReturnTemp: numeric("heating_return_temp", { precision: 8, scale: 2 }),
+    coolingSupplyTemp: numeric("cooling_supply_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    coolingReturnTemp: numeric("cooling_return_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    heatingSupplyTemp: numeric("heating_supply_temp", {
+      precision: 8,
+      scale: 2,
+    }),
+    heatingReturnTemp: numeric("heating_return_temp", {
+      precision: 8,
+      scale: 2,
+    }),
     supplyAirTemp: numeric("supply_air_temp", { precision: 8, scale: 2 }),
     returnAirTemp: numeric("return_air_temp", { precision: 8, scale: 2 }),
     ambientTemp: numeric("ambient_temp", { precision: 8, scale: 2 }),
@@ -423,18 +457,50 @@ export const jobPMInspections = org.table(
     exhaustFansInspected: varchar("exhaust_fans_inspected", { length: 10 }),
     exhaustFanIssues: varchar("exhaust_fan_issues", { length: 10 }),
     exhaustFanIssuesDescription: text("exhaust_fan_issues_description"),
-    lockingPanelInGoodCondition: varchar("locking_panel_in_good_condition", { length: 10 }),
-    checkForGrimeOnExternalSurfaces: varchar("check_for_grime_on_external_surfaces", { length: 10 }),
-    condensatePansCleanedProvidePhotos: varchar("condensate_pans_cleaned_provide_photos", { length: 10 }),
-    compressorConnectionsProvidePhotos: varchar("compressor_connections_provide_photos", { length: 10 }),
-    coilsSuppressantsApplied: varchar("coils_suppressants_applied", { length: 10 }),
-    addCoilsEvapCondensatorRefrigDamaged: varchar("add_coils_evap_condensator_refrig_damaged", { length: 10 }),
-    coilsCleanWithPowerWashGoodCondition: varchar("coils_clean_with_power_wash_good_condition", { length: 10 }),
-    heatingAndHeatPumpOperatingBelts: varchar("heating_and_heat_pump_operating_belts", { length: 10 }),
-    refrigerantLinesLeaksRepaired: varchar("refrigerant_lines_leaks_repaired", { length: 10 }),
-    economizeOrExhaustDamperOpenClose: varchar("economize_or_exhaust_damper_open_close", { length: 10 }),
-    supercoolWithPowerRefrigerationSafety: varchar("supercool_with_power_refrigeration_safety", { length: 10 }),
-    unitSafeGoodWorkingOrder: varchar("unit_safe_good_working_order", { length: 10 }),
+    lockingPanelInGoodCondition: varchar("locking_panel_in_good_condition", {
+      length: 10,
+    }),
+    checkForGrimeOnExternalSurfaces: varchar(
+      "check_for_grime_on_external_surfaces",
+      { length: 10 },
+    ),
+    condensatePansCleanedProvidePhotos: varchar(
+      "condensate_pans_cleaned_provide_photos",
+      { length: 10 },
+    ),
+    compressorConnectionsProvidePhotos: varchar(
+      "compressor_connections_provide_photos",
+      { length: 10 },
+    ),
+    coilsSuppressantsApplied: varchar("coils_suppressants_applied", {
+      length: 10,
+    }),
+    addCoilsEvapCondensatorRefrigDamaged: varchar(
+      "add_coils_evap_condensator_refrig_damaged",
+      { length: 10 },
+    ),
+    coilsCleanWithPowerWashGoodCondition: varchar(
+      "coils_clean_with_power_wash_good_condition",
+      { length: 10 },
+    ),
+    heatingAndHeatPumpOperatingBelts: varchar(
+      "heating_and_heat_pump_operating_belts",
+      { length: 10 },
+    ),
+    refrigerantLinesLeaksRepaired: varchar("refrigerant_lines_leaks_repaired", {
+      length: 10,
+    }),
+    economizeOrExhaustDamperOpenClose: varchar(
+      "economize_or_exhaust_damper_open_close",
+      { length: 10 },
+    ),
+    supercoolWithPowerRefrigerationSafety: varchar(
+      "supercool_with_power_refrigeration_safety",
+      { length: 10 },
+    ),
+    unitSafeGoodWorkingOrder: varchar("unit_safe_good_working_order", {
+      length: 10,
+    }),
     hasRecommendations: boolean("has_recommendations").default(false),
 
     // Recommendations & Notes
@@ -446,7 +512,9 @@ export const jobPMInspections = org.table(
     priorityLevel: varchar("priority_level", { length: 20 }),
 
     // Meta
-    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "set null" }),
+    technicianId: integer("technician_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
     inspectionDate: date("inspection_date"),
     status: varchar("status", { length: 20 }).default("draft"),
     createdBy: uuid("created_by").references(() => users.id),
@@ -574,7 +642,9 @@ export const jobSurveys = org.table(
     buildingNumber: varchar("building_number", { length: 100 }),
     unitTagLabel: varchar("unit_tag_label", { length: 100 }),
     unitLocation: varchar("unit_location", { length: 255 }),
-    technicianId: integer("technician_id").references(() => employees.id, { onDelete: "set null" }),
+    technicianId: integer("technician_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
     make: varchar("make", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
     serialNumber: varchar("serial_number", { length: 255 }),

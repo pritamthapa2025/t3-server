@@ -1,6 +1,6 @@
 import { db } from "../config/db.js";
 import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
-import { employees } from "../drizzle/schema/org.schema.js";
+import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { clientContacts } from "../drizzle/schema/client.schema.js";
 import { eq, inArray, and, isNull, or } from "drizzle-orm";
 import { logger } from "./logger.js";
@@ -140,11 +140,10 @@ export async function resolveRecipients(
       }
 
       case "department_manager": {
-        // Get department manager
-        if (event.data.departmentId) {
-          const deptManager = await getDepartmentManager(
-            event.data.departmentId
-          );
+        // Get department manager (department lead) from org.departments.leadId
+        const deptId = event.data.departmentId;
+        if (deptId != null && deptId !== "") {
+          const deptManager = await getDepartmentManager(String(deptId));
           if (deptManager?.userId) {
             userIds.add(deptManager.userId);
           }
@@ -346,14 +345,26 @@ async function getAllEmployees(): Promise<{ userId: string }[]> {
 }
 
 /**
- * Get department manager
+ * Get department manager (department lead) by department ID.
+ * Uses org.departments.leadId (user UUID). Returns null if department has no lead or not found.
  */
 async function getDepartmentManager(
-  _departmentId: string
+  departmentId: string
 ): Promise<{ userId: string } | null> {
-  // Adjust this query based on your department schema
-  // This is a placeholder
-  return null;
+  try {
+    const deptId = parseInt(departmentId, 10);
+    if (Number.isNaN(deptId)) return null;
+    const [row] = await db
+      .select({ leadId: departments.leadId })
+      .from(departments)
+      .where(eq(departments.id, deptId))
+      .limit(1);
+    if (!row?.leadId) return null;
+    return { userId: row.leadId };
+  } catch (error) {
+    logger.error("Error getting department manager:", error);
+    return null;
+  }
 }
 
 /**
@@ -462,6 +473,7 @@ export function generateNotificationTitle(eventType: string): string {
     timesheet_approved: "Timesheet Approved",
     timesheet_rejected: "Timesheet Rejected",
     clock_reminder: "Clock In/Out Reminder",
+    timesheet_submitted: "Timesheet Submitted",
     timesheet_resubmitted: "Timesheet Resubmitted",
 
     // Expenses
@@ -868,6 +880,14 @@ export function generateNotificationMessage(
         message = `Employee "${name}" has been suspended${eventData.effectiveDate ? ` effective ${eventData.effectiveDate}` : ""}${eventData.reason ? ` — Reason: ${eventData.reason}` : ""}. Please log in to review the details, ensure proper handover of responsibilities, and follow the required HR procedures.`;
         shortMessage = `Employee suspended: ${name}`;
         break;
+
+      case "timesheet_submitted": {
+        const period = eventData.period ? ` for period ${eventData.period}` : "";
+        const hours = eventData.totalHours ? ` (${eventData.totalHours} hrs)` : "";
+        message = `Timesheet "${name}"${period}${hours} has been submitted for approval. Please log in to review and approve or reject it.`;
+        shortMessage = `Timesheet submitted for review: ${name}`;
+        break;
+      }
 
       case "timesheet_resubmitted": {
         const period = eventData.period ? ` for period ${eventData.period}` : "";

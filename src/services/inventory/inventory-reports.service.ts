@@ -133,7 +133,10 @@ export const getAlerts = async () => {
   return result.map((r) => ({ ...r.alert, item: r.item }));
 };
 
-export const getUnresolvedAlerts = async (params?: { page?: number; limit?: number }) => {
+export const getUnresolvedAlerts = async (params?: {
+  page?: number;
+  limit?: number;
+}) => {
   const page = Math.max(1, params?.page ?? 1);
   const limit = Math.min(500, Math.max(1, params?.limit ?? 10));
   const offset = (page - 1) * limit;
@@ -142,7 +145,10 @@ export const getUnresolvedAlerts = async (params?: { page?: number; limit?: numb
     db
       .select({ alert: inventoryStockAlerts, item: inventoryItems })
       .from(inventoryStockAlerts)
-      .leftJoin(inventoryItems, eq(inventoryStockAlerts.itemId, inventoryItems.id))
+      .leftJoin(
+        inventoryItems,
+        eq(inventoryStockAlerts.itemId, inventoryItems.id),
+      )
       .where(eq(inventoryStockAlerts.isResolved, false))
       .orderBy(desc(inventoryStockAlerts.createdAt))
       .limit(limit)
@@ -278,7 +284,10 @@ export const getCounts = async (params?: { page?: number; limit?: number }) => {
     db
       .select({ count: inventoryCounts, location: inventoryLocations })
       .from(inventoryCounts)
-      .leftJoin(inventoryLocations, eq(inventoryCounts.locationId, inventoryLocations.id))
+      .leftJoin(
+        inventoryLocations,
+        eq(inventoryCounts.locationId, inventoryLocations.id),
+      )
       .orderBy(desc(inventoryCounts.countDate))
       .limit(limit)
       .offset(offset),

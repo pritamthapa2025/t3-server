@@ -7,6 +7,7 @@ import {
   updateJobHandler,
   deleteJobHandler,
   getJobTeamMembersHandler,
+  getAssignableTechniciansForJobHandler,
   addJobTeamMemberHandler,
   removeJobTeamMemberHandler,
   getJobFinancialSummaryHandler,
@@ -112,6 +113,7 @@ import {
   updateJobSchema,
   deleteJobSchema,
   getJobTeamMembersSchema,
+  getAssignableTechniciansForJobSchema,
   addJobTeamMemberSchema,
   removeJobTeamMemberSchema,
   getJobFinancialSummarySchema,
@@ -223,7 +225,10 @@ const uploadServiceCallPhotos = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 20 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+    if (
+      file.mimetype.startsWith("image/") &&
+      file.mimetype !== "image/svg+xml"
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for service call photos"));
@@ -236,10 +241,15 @@ const uploadDesignBuildNotePhotos = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 10 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+    if (
+      file.mimetype.startsWith("image/") &&
+      file.mimetype !== "image/svg+xml"
+    ) {
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed for design build note photos"));
+      cb(
+        new Error("Only image files are allowed for design build note photos"),
+      );
     }
   },
 });
@@ -249,7 +259,10 @@ const uploadPMInspectionPhotos = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 3 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+    if (
+      file.mimetype.startsWith("image/") &&
+      file.mimetype !== "image/svg+xml"
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for PM inspection photos"));
@@ -262,7 +275,10 @@ const uploadSurveyMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 10 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+    if (
+      file.mimetype.startsWith("image/") &&
+      file.mimetype !== "image/svg+xml"
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed for survey media"));
@@ -387,6 +403,13 @@ router
   .route("/jobs/:jobId/team-members")
   .get(editJob, validate(getJobTeamMembersSchema), getJobTeamMembersHandler)
   .post(editJob, validate(addJobTeamMemberSchema), addJobTeamMemberHandler);
+
+router.get(
+  "/jobs/:jobId/assignable-technicians",
+  editJob,
+  validate(getAssignableTechniciansForJobSchema),
+  getAssignableTechniciansForJobHandler,
+);
 
 router
   .route("/jobs/:jobId/team-members/:employeeId")
@@ -832,14 +855,17 @@ router
   .put(viewJobs, validate(updateJobLogSchema), updateJobLogHandler)
   .delete(editJob, validate(deleteJobLogSchema), deleteJobLogHandler);
 
-router
-  .route("/jobs/:jobId/logs/:logId/media")
-  .post(viewJobs, (req, res, next) => {
+router.route("/jobs/:jobId/logs/:logId/media").post(
+  viewJobs,
+  (req, res, next) => {
     uploadLogMedia.array("media", 10)(req, res, (err) => {
       if (err) return handleMulterError(err, req, res, next);
       next();
     });
-  }, validate(addJobLogMediaSchema), addJobLogMediaHandler);
+  },
+  validate(addJobLogMediaSchema),
+  addJobLogMediaHandler,
+);
 
 router
   .route("/jobs/:jobId/logs/:logId/media/:mediaId")

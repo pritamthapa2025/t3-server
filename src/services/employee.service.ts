@@ -912,6 +912,9 @@ export const updateEmployee = async (
             entityType: "Employee",
             entityId: String(id),
             entityName: employee.employeeId || String(id),
+            ...(employee.departmentId != null
+              ? { departmentId: String(employee.departmentId) }
+              : {}),
           },
         });
       } catch (err) {
@@ -1197,6 +1200,66 @@ export const getTechnicians = async () => {
     createdAt: row.createdAt ?? null,
     updatedAt: row.updatedAt ?? null,
   }));
+};
+
+/**
+ * Get all managers and technicians grouped by role.
+ * Used by dispatch Assign Technicians and Edit Team modal.
+ */
+export type ManagerOrTechnicianItem = {
+  id: number;
+  userId: string | null;
+  name: string;
+  positionName: string | null;
+  role: string | null;
+};
+
+export const getManagersAndTechniciansByRole = async (): Promise<{
+  managers: ManagerOrTechnicianItem[];
+  technicians: ManagerOrTechnicianItem[];
+}> => {
+  const rows = await db
+    .select({
+      id: employees.id,
+      userId: employees.userId,
+      employeeName: users.fullName,
+      positionName: positions.name,
+      roleName: roles.name,
+    })
+    .from(employees)
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(
+      and(
+        eq(employees.isDeleted, false),
+        inArray(roles.name, ["Manager", "Technician"]),
+        eq(roles.isDeleted, false),
+      ),
+    )
+    .orderBy(roles.name, users.fullName);
+
+  const seenIds = new Set<number>();
+  const managers: ManagerOrTechnicianItem[] = [];
+  const technicians: ManagerOrTechnicianItem[] = [];
+  for (const r of rows) {
+    if (seenIds.has(r.id)) continue;
+    seenIds.add(r.id);
+    const item: ManagerOrTechnicianItem = {
+      id: r.id,
+      userId: r.userId ?? null,
+      name: r.employeeName ?? `Employee ${r.id}`,
+      positionName: r.positionName ?? null,
+      role: r.roleName ?? null,
+    };
+    if (r.roleName === "Manager") {
+      managers.push(item);
+    } else {
+      technicians.push(item);
+    }
+  }
+  return { managers, technicians };
 };
 
 /**
