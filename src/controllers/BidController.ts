@@ -4781,6 +4781,56 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
   }
 };
 
+/** Financial + job-type rows for quote PDF (includes secondary service/PM when bid mixes types). */
+async function loadQuotePdfTypeData(
+  bidId: string,
+  organizationId: string,
+  jobType: string | null | undefined,
+) {
+  const jt = jobType ?? "general";
+  const primaryLoader = () => {
+    switch (jt) {
+      case "survey":
+        return getBidSurveyData(bidId, organizationId);
+      case "plan_spec":
+        return getBidPlanSpecData(bidId, organizationId);
+      case "design_build":
+        return getBidDesignBuildData(bidId, organizationId);
+      case "service":
+        return getBidServiceData(bidId, organizationId);
+      case "preventative_maintenance":
+        return getBidPreventativeMaintenanceData(bidId, organizationId);
+      default:
+        return Promise.resolve(null);
+    }
+  };
+  const loadSecondaryService =
+    jt !== "service"
+      ? getBidServiceData(bidId, organizationId)
+      : Promise.resolve(null);
+  const loadSecondaryPm =
+    jt !== "preventative_maintenance"
+      ? getBidPreventativeMaintenanceData(bidId, organizationId)
+      : Promise.resolve(null);
+
+  const [financialBreakdown, typeSpecificData, secondaryService, secondaryPm] =
+    await Promise.all([
+      getBidFinancialBreakdown(bidId, organizationId),
+      primaryLoader(),
+      loadSecondaryService,
+      loadSecondaryPm,
+    ]);
+
+  return {
+    financialBreakdown,
+    typeSpecificData,
+    typeSpecificSecondary: {
+      serviceData: secondaryService,
+      pmData: secondaryPm,
+    },
+  };
+}
+
 /**
  * Download quote (bid) as PDF
  * GET /bids/:id/pdf
@@ -4815,25 +4865,8 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const [financialBreakdown, typeSpecificData] = await Promise.all([
-      getBidFinancialBreakdown(id, organizationId),
-      (() => {
-        switch (bid.jobType) {
-          case "survey":
-            return getBidSurveyData(id, organizationId);
-          case "plan_spec":
-            return getBidPlanSpecData(id, organizationId);
-          case "design_build":
-            return getBidDesignBuildData(id, organizationId);
-          case "service":
-            return getBidServiceData(id, organizationId);
-          case "preventative_maintenance":
-            return getBidPreventativeMaintenanceData(id, organizationId);
-          default:
-            return Promise.resolve(null);
-        }
-      })(),
-    ]);
+    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
+      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -4853,6 +4886,7 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       bid.property ?? null,
       undefined,
       typeSpecificData,
+      typeSpecificSecondary,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -4915,25 +4949,8 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const [financialBreakdown, typeSpecificData] = await Promise.all([
-      getBidFinancialBreakdown(id, organizationId),
-      (() => {
-        switch (bid.jobType) {
-          case "survey":
-            return getBidSurveyData(id, organizationId);
-          case "plan_spec":
-            return getBidPlanSpecData(id, organizationId);
-          case "design_build":
-            return getBidDesignBuildData(id, organizationId);
-          case "service":
-            return getBidServiceData(id, organizationId);
-          case "preventative_maintenance":
-            return getBidPreventativeMaintenanceData(id, organizationId);
-          default:
-            return Promise.resolve(null);
-        }
-      })(),
-    ]);
+    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
+      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -4953,6 +4970,7 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       bid.property ?? null,
       undefined,
       typeSpecificData,
+      typeSpecificSecondary,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -5048,25 +5066,8 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     const primaryContact = allRecipients[0]!;
     const ccEmails = allRecipients.slice(1).map((r) => r.email);
 
-    const [financialBreakdown, typeSpecificData] = await Promise.all([
-      getBidFinancialBreakdown(id, organizationId),
-      (() => {
-        switch (bid.jobType) {
-          case "survey":
-            return getBidSurveyData(id, organizationId);
-          case "plan_spec":
-            return getBidPlanSpecData(id, organizationId);
-          case "design_build":
-            return getBidDesignBuildData(id, organizationId);
-          case "service":
-            return getBidServiceData(id, organizationId);
-          case "preventative_maintenance":
-            return getBidPreventativeMaintenanceData(id, organizationId);
-          default:
-            return Promise.resolve(null);
-        }
-      })(),
-    ]);
+    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
+      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -5076,6 +5077,7 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
       bid.property ?? null,
       undefined,
       typeSpecificData,
+      typeSpecificSecondary,
     );
 
     const pdfBuffer = await generateQuotePDF(pdfData);
@@ -5164,25 +5166,8 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       });
     }
 
-    const [financialBreakdown, typeSpecificData] = await Promise.all([
-      getBidFinancialBreakdown(id, organizationId),
-      (() => {
-        switch (bid.jobType) {
-          case "survey":
-            return getBidSurveyData(id, organizationId);
-          case "plan_spec":
-            return getBidPlanSpecData(id, organizationId);
-          case "design_build":
-            return getBidDesignBuildData(id, organizationId);
-          case "service":
-            return getBidServiceData(id, organizationId);
-          case "preventative_maintenance":
-            return getBidPreventativeMaintenanceData(id, organizationId);
-          default:
-            return Promise.resolve(null);
-        }
-      })(),
-    ]);
+    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
+      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const primaryContact =
@@ -5202,6 +5187,7 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       bid.property ?? null,
       undefined,
       typeSpecificData,
+      typeSpecificSecondary,
     );
 
     let pdfAttachment: { content: Buffer; filename: string } | undefined;

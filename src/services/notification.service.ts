@@ -18,7 +18,8 @@ import type {
   NotificationEvent,
   NotificationFilters,
   PaginatedNotifications,
-  UserPreferencesData,
+  UserNotificationPreferencesApi,
+  UserNotificationPreferencesUpdate,
   DeliveryChannel,
 } from "../types/notification.types.js";
 import type {
@@ -301,7 +302,7 @@ export class NotificationService {
   /**
    * Get user's notification preferences
    */
-  async getPreferences(userId: string): Promise<UserPreferencesData> {
+  async getPreferences(userId: string): Promise<UserNotificationPreferencesApi> {
     return await this.repository.getPreferences(userId);
   }
 
@@ -310,9 +311,9 @@ export class NotificationService {
    */
   async updatePreferences(
     userId: string,
-    preferences: Partial<UserPreferencesData>,
+    body: UserNotificationPreferencesUpdate,
   ): Promise<void> {
-    await this.repository.updatePreferences(userId, preferences);
+    await this.repository.updatePreferences(userId, body);
   }
 
   /**
@@ -385,7 +386,8 @@ export class NotificationService {
     }
 
     // Respect per-user channel preferences
-    const prefs = await this.repository.getPreferences(userId);
+    const prefRow = await this.repository.getPreferences(userId);
+    const prefs = prefRow.preferences;
     const categoryPrefs = prefs[notification.category as keyof typeof prefs] as
       | { email?: boolean; sms?: boolean; inApp?: boolean }
       | undefined;

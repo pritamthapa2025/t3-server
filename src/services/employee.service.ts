@@ -42,6 +42,27 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 
 const reportsToUser = alias(users, "reports_to_user");
 
+/** Display string for profile / API `user.location` (backed by users.address, city, state, zip). */
+function formatEmployeeUserLocation(
+  u: {
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zipCode?: string | null;
+  } | null | undefined,
+): string {
+  if (!u) return "N/A";
+  const chunks: string[] = [];
+  const addr = u.address?.trim();
+  if (addr) chunks.push(addr);
+  const cityState = [u.city?.trim(), u.state?.trim()].filter(Boolean).join(", ");
+  if (cityState) chunks.push(cityState);
+  const zip = u.zipCode?.trim();
+  if (zip) chunks.push(zip);
+  const line = chunks.join(", ");
+  return line || "N/A";
+}
+
 export const getEmployees = async (
   offset: number,
   limit: number,
@@ -556,7 +577,7 @@ export const getEmployeeById = async (id: number) => {
           profilePicture: user.profilePicture,
           isActive: user.isActive,
           lastLogin: user.lastLogin,
-          location: "N/A", // Mock location - add location fields to user schema if needed
+          location: formatEmployeeUserLocation(user),
         }
       : null,
 

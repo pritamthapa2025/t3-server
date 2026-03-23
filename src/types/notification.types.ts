@@ -88,6 +88,29 @@ export interface UserPreferencesData {
   system?: CategoryPreferences;
 }
 
+/** Merged JSONB shape with every category present (API + delivery logic). */
+export type FullUserPreferencesData = Required<UserPreferencesData>;
+
+/** GET /notifications/preferences — matches frontend contract. */
+export interface UserNotificationPreferencesApi {
+  id: string;
+  userId: string;
+  preferences: FullUserPreferencesData;
+  realTime: boolean;
+  hourlyDigest: boolean;
+  dailySummary: boolean;
+  weeklySummary: boolean;
+}
+
+/** PUT /notifications/preferences body */
+export interface UserNotificationPreferencesUpdate {
+  preferences?: Partial<UserPreferencesData>;
+  realTime?: boolean;
+  hourlyDigest?: boolean;
+  dailySummary?: boolean;
+  weeklySummary?: boolean;
+}
+
 // Email Template Data
 export interface EmailTemplateData {
   recipientName: string;

@@ -18,6 +18,9 @@ import type {
   UserPreferencesData,
   CategoryPreferences,
   DeliveryChannel,
+  FullUserPreferencesData,
+  UserNotificationPreferencesApi,
+  UserNotificationPreferencesUpdate,
 } from "../types/notification.types.js";
 
 export class NotificationRepository {
@@ -239,22 +242,59 @@ export class NotificationRepository {
   }
 
   /**
-   * Get user's notification preferences
+   * Merge stored JSONB with defaults so every category has inApp/email/sms.
    */
-  async getPreferences(userId: string): Promise<UserPreferencesData> {
+  private mergePreferenceJson(
+    stored: UserPreferencesData | Record<string, unknown> | null | undefined,
+  ): FullUserPreferencesData {
+    const defaults = this.getDefaultPreferences() as FullUserPreferencesData;
+    if (!stored || typeof stored !== "object") {
+      return defaults;
+    }
+    const s = stored as UserPreferencesData;
+    const out: FullUserPreferencesData = { ...defaults };
+    (Object.keys(defaults) as (keyof FullUserPreferencesData)[]).forEach((cat) => {
+      if (s[cat]) {
+        out[cat] = { ...defaults[cat], ...s[cat]! };
+      }
+    });
+    return out;
+  }
+
+  /**
+   * Get user's notification preferences (JSONB + frequency columns).
+   */
+  async getPreferences(userId: string): Promise<UserNotificationPreferencesApi> {
     try {
-      const [preference] = await db
+      const [row] = await db
         .select()
         .from(notificationPreferences)
         .where(eq(notificationPreferences.userId, userId))
         .limit(1);
 
-      if (!preference) {
-        // Return default preferences
-        return this.getDefaultPreferences();
+      if (!row) {
+        return {
+          id: "",
+          userId,
+          preferences: this.mergePreferenceJson({}),
+          realTime: true,
+          hourlyDigest: false,
+          dailySummary: false,
+          weeklySummary: false,
+        };
       }
 
-      return preference.preferences as unknown as UserPreferencesData;
+      return {
+        id: row.id,
+        userId: row.userId,
+        preferences: this.mergePreferenceJson(
+          row.preferences as unknown as UserPreferencesData,
+        ),
+        realTime: row.realTime,
+        hourlyDigest: row.hourlyDigest,
+        dailySummary: row.dailySummary,
+        weeklySummary: row.weeklySummary,
+      };
     } catch (error) {
       logger.error("Error getting notification preferences:", error);
       throw error;
@@ -285,40 +325,61 @@ export class NotificationRepository {
   }
 
   /**
-   * Update user's notification preferences
+   * Update user's notification preferences (deep-merge categories; optional frequency columns).
    */
   async updatePreferences(
     userId: string,
-    preferences: Partial<UserPreferencesData>
+    body: UserNotificationPreferencesUpdate,
   ): Promise<void> {
     try {
-      // Check if preferences exist
       const [existing] = await db
         .select()
         .from(notificationPreferences)
         .where(eq(notificationPreferences.userId, userId))
         .limit(1);
 
-      if (existing) {
-        // Update existing preferences
-        const currentPrefs = existing.preferences as unknown as UserPreferencesData;
-        const updatedPrefs = { ...currentPrefs, ...preferences };
+      const base = existing
+        ? this.mergePreferenceJson(
+            existing.preferences as unknown as UserPreferencesData,
+          )
+        : this.mergePreferenceJson({});
 
+      let nextPrefs = base;
+      if (body.preferences) {
+        nextPrefs = { ...base };
+        (Object.keys(body.preferences) as (keyof UserPreferencesData)[]).forEach(
+          (cat) => {
+            const patch = body.preferences![cat];
+            if (patch && nextPrefs[cat]) {
+              nextPrefs[cat] = { ...nextPrefs[cat], ...patch };
+            }
+          },
+        );
+      }
+
+      const setPayload: Record<string, unknown> = {
+        preferences: nextPrefs as any,
+        updatedAt: new Date(),
+      };
+      if (body.realTime !== undefined) setPayload.realTime = body.realTime;
+      if (body.hourlyDigest !== undefined) setPayload.hourlyDigest = body.hourlyDigest;
+      if (body.dailySummary !== undefined) setPayload.dailySummary = body.dailySummary;
+      if (body.weeklySummary !== undefined)
+        setPayload.weeklySummary = body.weeklySummary;
+
+      if (existing) {
         await db
           .update(notificationPreferences)
-          .set({
-            preferences: updatedPrefs as any,
-            updatedAt: new Date(),
-          })
+          .set(setPayload as any)
           .where(eq(notificationPreferences.userId, userId));
       } else {
-        // Create new preferences
-        const defaultPrefs = this.getDefaultPreferences();
-        const newPrefs = { ...defaultPrefs, ...preferences };
-
         await db.insert(notificationPreferences).values({
           userId,
-          preferences: newPrefs as any,
+          preferences: nextPrefs as any,
+          realTime: body.realTime ?? true,
+          hourlyDigest: body.hourlyDigest ?? false,
+          dailySummary: body.dailySummary ?? false,
+          weeklySummary: body.weeklySummary ?? false,
         });
       }
     } catch (error) {

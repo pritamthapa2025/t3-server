@@ -38,7 +38,6 @@
 
       .quote-container {
         width: 210mm;
-        min-height: 297mm;
         margin: 0 auto;
         background: #ffffff;
         padding: 20mm;
@@ -228,6 +227,12 @@
         font-weight: 700;
         color: #dc2626;
         background: #fef2f2;
+      }
+
+      /* Keep pricing table + total on one page (PDF/print); if it won’t fit, move whole block down */
+      .quote-pricing-keep {
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
 
       /* Total Job Cost */
@@ -575,9 +580,9 @@
         }
 
         .exclusions-section {
-          page-break-before: always !important;
-          break-before: page !important;
-          margin-top: 40px !important;
+          page-break-before: auto;
+          break-before: auto;
+          margin-top: 16px !important;
         }
 
         .quote-container {
@@ -592,6 +597,11 @@
 
         .work-items-table tbody tr:hover {
           background: transparent;
+        }
+
+        .quote-pricing-keep {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
       }
     </style>
@@ -820,6 +830,11 @@
         font-variant-numeric: tabular-nums;
       }
 
+      .quote-pricing-keep {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
       .exclusions-section,
       .terms-section,
       .warranty-section {
@@ -912,10 +927,11 @@
       <!-- Locations -->
       <div class="locations">
         <span class="chip"
-          ><strong>Locations</strong>: 4749 Bennett Drive, Suite H, Livermore,
-          CA 94551</span
+          ><strong>Locations</strong>: {{officeAddress}}</span
         >
-        <span class="chip"><strong>Office Phone</strong>: (888) 488-2312</span>
+        <span class="chip"
+          ><strong>Office Phone</strong>: {{officePhone}}</span
+        >
       </div>
 
       <!-- Info Grid -->
@@ -1155,11 +1171,11 @@
       {{/if}}
 
       <!-- ── Service Detail Block ── -->
-      {{#if isService}}
+      {{#if showPdfServiceDetail}}
       <div class="type-section">
-        <div class="type-section-header">Service Call Details</div>
+        <div class="type-section-header">Service call details</div>
         <div class="type-section-body">
-          <!-- Row 1: Service Type / Equipment / Issue Category / Scheduled Date -->
+          <!-- Row 1: Service Type / Equipment / Issue / Reported issue -->
           <div class="type-info-grid-4">
             <div class="type-info-item">
               <div class="type-info-label">Service Type</div>
@@ -1173,16 +1189,37 @@
               <div class="type-info-label">Issue Category</div>
               <div class="type-info-value">{{issueCategoryLabel}}</div>
             </div>
-            {{#if hasScheduledDate}}
             <div class="type-info-item">
-              <div class="type-info-label">Scheduled Date</div>
-              <div class="type-info-value">{{scheduledDateLabel}}</div>
+              <div class="type-info-label">Reported Issue</div>
+              <div class="type-info-value">{{reportedIssue}}</div>
             </div>
-            {{/if}}
           </div>
-          <!-- Row 2: Crew summary + Site contact -->
+          <!-- Row 2: Frequency / Coverage / Payment schedule -->
+          <div
+            class="type-info-grid-4"
+            style="margin-top: 10px; align-items: start"
+          >
+            <div class="type-info-item">
+              <div class="type-info-label">Service Frequency</div>
+              <div class="type-info-value">{{serviceFrequencyDisplay}}</div>
+            </div>
+            <div class="type-info-item">
+              <div class="type-info-label">Coverage</div>
+              <div class="type-info-value">{{serviceCoverageDisplay}}</div>
+            </div>
+            <div class="type-info-item" style="grid-column: span 2">
+              <div class="type-info-label">Payment Schedule</div>
+              <div class="type-info-value">{{servicePaymentDisplay}}</div>
+            </div>
+          </div>
+          {{#if hasScheduledDate}}
+          <div style="margin-top: 8px; font-size: 10.5px; color: #64748b">
+            <strong>Scheduled date:</strong> {{scheduledDateLabel}}
+          </div>
+          {{/if}}
+          <!-- Crew + Site contact -->
           {{#if hasCrewSummary}}
-          <div class="type-info-grid">
+          <div class="type-info-grid" style="margin-top: 10px">
             <div class="type-info-item">
               <div class="type-info-label">Estimated Crew</div>
               <div class="type-info-value">{{crewSummary}}</div>
@@ -1194,22 +1231,16 @@
             </div>
             {{/if}}
           </div>
-          {{/if}} {{#if hasReportedIssue}}
-          <div style="margin-top: 8px">
-            <div class="type-sub-label">Reported Issue</div>
-            <div class="type-narrative">{{reportedIssue}}</div>
+          {{/if}}
+          {{#if hasServiceIncludedHtml}} {{#if serviceIncludedHtml}}
+          <div style="margin-top: 10px">
+            <div class="type-sub-label">Services included per visit</div>
+            {{serviceIncludedHtml}}
           </div>
-          {{/if}} {{#if hasPreliminaryAssessment}}
+          {{/if}} {{/if}} {{#if hasPreliminaryAssessment}}
           <div style="margin-top: 8px">
             <div class="type-sub-label">Preliminary Assessment</div>
             <div class="type-narrative">{{preliminaryAssessment}}</div>
-          </div>
-          {{/if}} {{#if hasEstimatedWorkScope}}
-          <div style="margin-top: 8px">
-            <div class="type-sub-label">Estimated Work Scope</div>
-            <div style="font-size: 11px; color: #374151; line-height: 1.6">
-              {{estimatedWorkScope}}
-            </div>
           </div>
           {{/if}} {{#if hasServicePricingNotes}}
           <div
@@ -1228,16 +1259,35 @@
       {{/if}}
 
       <!-- ── PM Detail Block ── -->
-      {{#if isPM}}
+      {{#if showPdfPmDetail}}
       <div class="type-section">
-        <div class="type-section-header">Preventative Maintenance Contract</div>
+        <div class="type-section-header">Preventative maintenance details</div>
         <div class="type-section-body">
           <span class="type-badge">{{pmTypeLabel}}</span>
           {{#if pmPricingModelLabel}}<span class="type-badge-accent"
             >{{pmPricingModelLabel}}</span
           >{{/if}}
-          <!-- Row 1: Frequency / Coverage / Payment Schedule -->
-          <div class="type-info-grid-3">
+          <!-- Row 1: aligned with service quote (4 columns) -->
+          <div class="type-info-grid-4" style="margin-top: 8px">
+            <div class="type-info-item">
+              <div class="type-info-label">Service Type</div>
+              <div class="type-info-value">Preventative maintenance</div>
+            </div>
+            <div class="type-info-item">
+              <div class="type-info-label">Equipment</div>
+              <div class="type-info-value">—</div>
+            </div>
+            <div class="type-info-item">
+              <div class="type-info-label">Issue Category</div>
+              <div class="type-info-value">—</div>
+            </div>
+            <div class="type-info-item">
+              <div class="type-info-label">Reported Issue / Scope</div>
+              <div class="type-info-value">{{pmReportedIssueGrid}}</div>
+            </div>
+          </div>
+          <!-- Row 2: Frequency / Coverage / Payment Schedule -->
+          <div class="type-info-grid-4" style="margin-top: 10px">
             <div class="type-info-item">
               <div class="type-info-label">Service Frequency</div>
               <div class="type-info-value">{{frequencyLabel}}</div>
@@ -1246,7 +1296,7 @@
               <div class="type-info-label">Coverage</div>
               <div class="type-info-value">{{coverageLabel}}</div>
             </div>
-            <div class="type-info-item">
+            <div class="type-info-item" style="grid-column: span 2">
               <div class="type-info-label">Payment Schedule</div>
               <div class="type-info-value">{{paymentScheduleLabel}}</div>
             </div>
@@ -1290,8 +1340,15 @@
       </div>
 
       <div class="proposal-note">{{proposalNote}}</div>
+      <div
+        class="proposal-note"
+        style="margin-top: 6px; font-style: normal; color: #94a3b8"
+      >
+        {{proposalValidityNote}}
+      </div>
 
-      <!-- Work Items Table -->
+      <!-- Work Items Table (+ total) kept on one page when possible -->
+      <div class="quote-pricing-keep">
       <table class="work-items-table">
         <thead>
           <tr>
@@ -1396,6 +1453,7 @@
           <div class="total-label">Total job cost</div>
           <div class="total-value">$ {{totalAmount}}</div>
         </div>
+      </div>
       </div>
 
       <!-- Exclusions (hidden for Survey and PM) -->

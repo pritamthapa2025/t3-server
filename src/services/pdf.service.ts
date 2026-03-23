@@ -276,6 +276,10 @@ export interface QuotePDFData {
   isSurvey: boolean;
   isService: boolean;
   isPM: boolean;
+  /** Service-call detail block (primary job type or secondary row) */
+  showPdfServiceDetail: boolean;
+  /** PM detail block (primary job type or secondary row) */
+  showPdfPmDetail: boolean;
 
   // Shared enrichment fields (all types)
   projectTimeline: string;
@@ -346,6 +350,18 @@ export interface QuotePDFData {
   hasCrewSummary: boolean;
   scheduledDateLabel: string;
   hasScheduledDate: boolean;
+
+  /** Service call grid — row 2 (aligned with web quote preview) */
+  serviceFrequencyDisplay: string;
+  serviceCoverageDisplay: string;
+  servicePaymentDisplay: string;
+  serviceIncludedHtml: string;
+  hasServiceIncludedHtml: boolean;
+
+  /** PM — primary scope text for 4-column service-details grid */
+  pmReportedIssueGrid: string;
+
+  proposalValidityNote: string;
 
   // PM specific
   pmTypeLabel: string;
@@ -792,6 +808,7 @@ export const prepareQuoteDataForPDF = (
     proposalBasis?: string | null;
     assignedToName?: string | null;
     createdByName?: string | null;
+    createdAt?: string | Date | null;
     plannedStartDate?: string | null;
     estimatedCompletion?: string | null;
     completionDate?: string | null;
@@ -825,11 +842,24 @@ export const prepareQuoteDataForPDF = (
   } | null,
   options?: { officeAddress?: string; officePhone?: string },
   typeSpecificData?: Record<string, any> | null,
+  typeSpecificSecondary?: {
+    serviceData?: Record<string, any> | null;
+    pmData?: Record<string, any> | null;
+  } | null,
 ): QuotePDFData => {
   const jobType = bid.jobType ?? "general";
   const typeData = typeSpecificData ?? null;
+  const svcDisplayData =
+    jobType === "service"
+      ? typeData
+      : typeSpecificSecondary?.serviceData ?? null;
+  const pmDisplayData =
+    jobType === "preventative_maintenance"
+      ? typeData
+      : typeSpecificSecondary?.pmData ?? null;
 
-  const createdDate = bid.createdDate ? new Date(bid.createdDate) : new Date();
+  const createdRaw = bid.createdDate ?? bid.createdAt;
+  const createdDate = createdRaw ? new Date(createdRaw) : new Date();
   const endDate = bid.endDate ? new Date(bid.endDate) : null;
 
   const clientAddressParts = [
@@ -868,12 +898,15 @@ export const prepareQuoteDataForPDF = (
         ? `, Addendum #${typeData.addendaCount} acknowledged`
         : "";
     proposalNote = `This proposal is based on Plans ${[planRev, planDate].filter(Boolean).join(" received ")} and Specifications ${[specRev].filter(Boolean).join(", ")}${addendaNote}.`;
-  } else if (bid.referenceDate || bid.proposalBasis) {
-    proposalNote = `This proposal was based on Clients RFP, job walk information from ${bid.referenceDate ?? "—"}, and revised plans dated ${bid.referenceDate ?? "—"} by ${bid.proposalBasis ?? "—"}.`;
   } else {
-    proposalNote =
-      "This proposal was based on the client RFP and job walk information.";
+    const basis = bid.proposalBasis?.trim();
+    proposalNote = basis
+      ? basis
+      : "This proposal was based on the client RFP and job walk information.";
   }
+
+  const proposalValidityNote =
+    "This quote is valid for 30 days from the date of issue.";
 
   // Standard financial breakdown fields
   const materialsCost = financialBreakdown?.materialsEquipment
@@ -981,11 +1014,14 @@ export const prepareQuoteDataForPDF = (
 
   let unitTypesList = "—";
   try {
-    const parsed = typeData?.unitTypes
-      ? JSON.parse(String(typeData.unitTypes))
-      : [];
-    if (Array.isArray(parsed) && parsed.length > 0)
-      unitTypesList = parsed.join(", ");
+    const rawUt = typeData?.unitTypes;
+    if (Array.isArray(rawUt) && rawUt.length > 0) {
+      unitTypesList = rawUt.join(", ");
+    } else if (rawUt != null && String(rawUt).trim() !== "") {
+      const parsed = JSON.parse(String(rawUt));
+      if (Array.isArray(parsed) && parsed.length > 0)
+        unitTypesList = parsed.join(", ");
+    }
   } catch {
     /* ignore */
   }
@@ -1049,8 +1085,8 @@ export const prepareQuoteDataForPDF = (
     other: "General Service",
   };
   const serviceTypeLabel =
-    serviceTypeMap[typeData?.serviceType as string] ||
-    typeData?.serviceType ||
+    serviceTypeMap[svcDisplayData?.serviceType as string] ||
+    svcDisplayData?.serviceType ||
     "Service Call";
 
   const equipmentTypeMap: Record<string, string> = {
@@ -1062,8 +1098,8 @@ export const prepareQuoteDataForPDF = (
     other: "HVAC Equipment",
   };
   const equipmentTypeLabel =
-    equipmentTypeMap[typeData?.equipmentType as string] ||
-    typeData?.equipmentType ||
+    equipmentTypeMap[svcDisplayData?.equipmentType as string] ||
+    svcDisplayData?.equipmentType ||
     "—";
 
   const issueCategoryMap: Record<string, string> = {
@@ -1076,13 +1112,15 @@ export const prepareQuoteDataForPDF = (
     other: "General",
   };
   const issueCategoryLabel =
-    issueCategoryMap[typeData?.issueCategory as string] ||
-    typeData?.issueCategory ||
+    issueCategoryMap[svcDisplayData?.issueCategory as string] ||
+    svcDisplayData?.issueCategory ||
     "—";
 
-  const reportedIssue = typeData?.reportedIssue?.trim() || "";
-  const preliminaryAssessment = typeData?.preliminaryAssessment?.trim() || "";
-  const hasReportedIssue = Boolean(reportedIssue);
+  const reportedIssueRaw = svcDisplayData?.reportedIssue?.trim() || "";
+  const reportedIssue = reportedIssueRaw || "—";
+  const preliminaryAssessment =
+    svcDisplayData?.preliminaryAssessment?.trim() || "";
+  const hasReportedIssue = Boolean(reportedIssueRaw);
   const hasPreliminaryAssessment = Boolean(preliminaryAssessment);
 
   const servicePricingRows: Array<{ label: string; amount: string }> = [];
@@ -1128,7 +1166,7 @@ export const prepareQuoteDataForPDF = (
 
   // ── PM fields ─────────────────────────────────────────────────────────────
   const pmTypeLabel =
-    typeData?.pmType === "existing_pm_renewal"
+    pmDisplayData?.pmType === "existing_pm_renewal"
       ? "PM Contract Renewal"
       : "New PM Contract";
 
@@ -1138,12 +1176,12 @@ export const prepareQuoteDataForPDF = (
     annual: "Annual (1 visit/year)",
   };
   const frequencyLabel =
-    freqLabelMap[typeData?.maintenanceFrequency as string] ||
-    typeData?.maintenanceFrequency ||
+    freqLabelMap[pmDisplayData?.maintenanceFrequency as string] ||
+    pmDisplayData?.maintenanceFrequency ||
     "—";
 
-  const pmBuildings = typeData?.numberOfBuildings || 0;
-  const pmUnits = typeData?.numberOfUnits || 0;
+  const pmBuildings = pmDisplayData?.numberOfBuildings || 0;
+  const pmUnits = pmDisplayData?.numberOfUnits || 0;
   const coverageLabel =
     [
       pmBuildings > 0
@@ -1155,13 +1193,19 @@ export const prepareQuoteDataForPDF = (
       .join(" · ") || "—";
 
   const pmServiceItems: string[] = [];
-  if (typeData?.filterReplacementIncluded || typeData?.includeFilterReplacement)
+  if (
+    pmDisplayData?.filterReplacementIncluded ||
+    pmDisplayData?.includeFilterReplacement
+  )
     pmServiceItems.push("Filter Replacement");
-  if (typeData?.coilCleaningIncluded || typeData?.includeCoilCleaning)
+  if (
+    pmDisplayData?.coilCleaningIncluded ||
+    pmDisplayData?.includeCoilCleaning
+  )
     pmServiceItems.push("Coil Cleaning");
-  if (typeData?.temperatureReadingsIncluded)
+  if (pmDisplayData?.temperatureReadingsIncluded)
     pmServiceItems.push("Temperature Readings");
-  if (typeData?.visualInspectionIncluded)
+  if (pmDisplayData?.visualInspectionIncluded)
     pmServiceItems.push("Visual Inspection");
   const pmServicesHtml = buildChecklistHtml(
     pmServiceItems.length > 0
@@ -1169,7 +1213,7 @@ export const prepareQuoteDataForPDF = (
       : ["Standard preventative maintenance inspection"],
   );
 
-  const emergencyRate = Number(typeData?.emergencyServiceRate || 0);
+  const emergencyRate = Number(pmDisplayData?.emergencyServiceRate || 0);
   const hasEmergencyRate = emergencyRate > 0;
   const emergencyRateNote = hasEmergencyRate
     ? `Emergency service rate: $${emergencyRate.toFixed(2)}/hr (charged when used)`
@@ -1181,8 +1225,9 @@ export const prepareQuoteDataForPDF = (
     quarterly: "Quarterly",
   };
   const paymentScheduleLabel =
-    paymentScheduleMap[typeData?.paymentSchedule as string] ||
-    typeData?.paymentSchedule ||
+    bid.paymentTerms?.trim() ||
+    paymentScheduleMap[pmDisplayData?.paymentSchedule as string] ||
+    pmDisplayData?.paymentSchedule ||
     "Net 30 days from date of invoice";
 
   const freqMap2: Record<string, number> = {
@@ -1301,13 +1346,18 @@ export const prepareQuoteDataForPDF = (
 
   // ── Service extra fields ───────────────────────────────────────────────────
   const estimatedWorkScope =
-    (typeData?.estimatedWorkScope || typeData?.workScope || "")?.trim() || "";
+    (
+      svcDisplayData?.estimatedWorkScope ||
+      svcDisplayData?.workScope ||
+      ""
+    )?.trim() || "";
   const hasEstimatedWorkScope = Boolean(estimatedWorkScope);
   const servicePricingNotes =
-    (typeData?.pricingNotes || typeData?.notes || "")?.trim() || "";
+    (svcDisplayData?.pricingNotes || svcDisplayData?.notes || "")?.trim() ||
+    "";
   const hasServicePricingNotes = Boolean(servicePricingNotes);
-  const svcTechs = Number(typeData?.numberOfTechs || 0);
-  const svcHours = Number(typeData?.laborHours || 0);
+  const svcTechs = Number(svcDisplayData?.numberOfTechs || 0);
+  const svcHours = Number(svcDisplayData?.laborHours || 0);
   const crewSummary =
     svcTechs > 0 && svcHours > 0
       ? `${svcTechs} technician${svcTechs > 1 ? "s" : ""} · ${svcHours} hour${svcHours !== 1 ? "s" : ""} estimated`
@@ -1316,15 +1366,42 @@ export const prepareQuoteDataForPDF = (
         : "";
   const hasCrewSummary = Boolean(crewSummary);
   const rawScheduledDate =
-    bid.scheduledDateTime || typeData?.scheduledDate || "";
+    bid.scheduledDateTime || svcDisplayData?.scheduledDate || "";
   const scheduledDateLabel = rawScheduledDate
     ? fmtDate(rawScheduledDate, "")
     : "";
   const hasScheduledDate = Boolean(scheduledDateLabel);
 
+  const serviceFrequencyDisplay = "—";
+  const serviceCoverageDisplay = "—";
+  const servicePaymentDisplay = bid.paymentTerms?.trim() || "—";
+
+  const showPdfServiceDetail =
+    jobType === "service" || Boolean(svcDisplayData);
+  const showPdfPmDetail =
+    jobType === "preventative_maintenance" || Boolean(pmDisplayData);
+
+  const serviceIncludedItems: string[] = [];
+  if (showPdfServiceDetail) {
+    if (estimatedWorkScope)
+      serviceIncludedItems.push(estimatedWorkScope);
+    else
+      serviceIncludedItems.push(
+        "Labor, materials, and travel per proposal scope",
+      );
+  }
+  const serviceIncludedHtml = buildChecklistHtml(serviceIncludedItems);
+  const hasServiceIncludedHtml = showPdfServiceDetail;
+
+  const pmReportedIssueGrid =
+    pmDisplayData?.serviceScope?.trim() ||
+    pmDisplayData?.specialRequirements?.trim() ||
+    bid.description?.trim() ||
+    "—";
+
   // ── PM extra fields ────────────────────────────────────────────────────────
   const pmServiceScope =
-    (typeData?.serviceScope || typeData?.scope || "")?.trim() || "";
+    (pmDisplayData?.serviceScope || pmDisplayData?.scope || "")?.trim() || "";
   const hasPMServiceScope = Boolean(pmServiceScope);
   const pmPricingModelMap: Record<string, string> = {
     per_unit: "Per Unit",
@@ -1332,8 +1409,8 @@ export const prepareQuoteDataForPDF = (
     annual_contract: "Annual Contract",
   };
   const pmPricingModelLabel =
-    pmPricingModelMap[typeData?.pricingModel as string] ||
-    typeData?.pricingModel ||
+    pmPricingModelMap[pmDisplayData?.pricingModel as string] ||
+    pmDisplayData?.pricingModel ||
     "";
 
   // ── Conditional section visibility ────────────────────────────────────────
@@ -1366,6 +1443,7 @@ export const prepareQuoteDataForPDF = (
     email: primaryContact?.email ?? "—",
     clientAddress: clientAddress || "—",
     proposalNote,
+    proposalValidityNote,
     workItems: buildQuoteWorkItems(scopeText === "—" ? null : scopeText),
     materialsCost,
     laborCost,
@@ -1382,6 +1460,8 @@ export const prepareQuoteDataForPDF = (
     isSurvey: jobType === "survey",
     isService: jobType === "service",
     isPM: jobType === "preventative_maintenance",
+    showPdfServiceDetail,
+    showPdfPmDetail,
 
     // Shared enrichment
     projectTimeline,
@@ -1452,6 +1532,13 @@ export const prepareQuoteDataForPDF = (
     hasCrewSummary,
     scheduledDateLabel,
     hasScheduledDate,
+
+    serviceFrequencyDisplay,
+    serviceCoverageDisplay,
+    servicePaymentDisplay,
+    serviceIncludedHtml,
+    hasServiceIncludedHtml,
+    pmReportedIssueGrid,
 
     // PM
     pmTypeLabel,

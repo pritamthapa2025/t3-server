@@ -340,9 +340,12 @@ export class NotificationController {
 
       await notificationService.updatePreferences(userId, req.body);
 
+      const data = await notificationService.getPreferences(userId);
+
       res.json({
         success: true,
         message: "Notification preferences updated",
+        data,
       });
     } catch (error) {
       logger.error("Error updating notification preferences:", error);
