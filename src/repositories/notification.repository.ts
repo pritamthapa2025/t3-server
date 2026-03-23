@@ -10,7 +10,19 @@ import {
   type NotificationDelivery,
   type NewNotificationDelivery,
 } from "../drizzle/schema/notifications.schema.js";
-import { eq, and, desc, count, isNull, gte, lte } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  asc,
+  count,
+  isNull,
+  gte,
+  lte,
+  or,
+  ilike,
+  type SQL,
+} from "drizzle-orm";
 import { logger } from "../utils/logger.js";
 import type {
   NotificationFilters,
@@ -412,14 +424,159 @@ export class NotificationRepository {
   }
 
   /**
-   * Get all notification rules
+   * Lookup rule by event type regardless of enabled (for logging / diagnostics).
+   */
+  async getRuleByEventTypeRegardlessOfEnabled(
+    eventType: string,
+  ): Promise<NotificationRule | null> {
+    try {
+      const [rule] = await db
+        .select()
+        .from(notificationRules)
+        .where(eq(notificationRules.eventType, eventType))
+        .limit(1);
+      return rule || null;
+    } catch (error) {
+      logger.error("Error getting notification rule by event type:", error);
+      throw error;
+    }
+  }
+
+  async getRuleById(ruleId: string): Promise<NotificationRule | null> {
+    try {
+      const [rule] = await db
+        .select()
+        .from(notificationRules)
+        .where(eq(notificationRules.id, ruleId))
+        .limit(1);
+      return rule || null;
+    } catch (error) {
+      logger.error("Error getting notification rule by id:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all notification rules (no filters; prefer getRulesPage for admin UI).
    */
   async getAllRules(): Promise<NotificationRule[]> {
     try {
-      const rules = await db.select().from(notificationRules);
+      const rules = await db
+        .select()
+        .from(notificationRules)
+        .orderBy(
+          asc(notificationRules.category),
+          asc(notificationRules.eventType),
+        );
       return rules;
     } catch (error) {
       logger.error("Error getting all notification rules:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Paginated notification rules with optional search and filters.
+   * Search matches eventType or description (case-insensitive).
+   */
+  async getRulesPage(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: string;
+    enabled?: boolean;
+    priority?: string;
+  }): Promise<{
+    rules: NotificationRule[];
+    total: number;
+    enabledCount: number;
+    disabledCount: number;
+  }> {
+    try {
+      const page = Math.max(1, params.page ?? 1);
+      const limit = Math.min(100, Math.max(1, params.limit ?? 20));
+      const offset = (page - 1) * limit;
+
+      const conditions: SQL[] = [];
+      const q = params.search?.trim();
+      if (q) {
+        const pattern = `%${q}%`;
+        conditions.push(
+          or(
+            ilike(notificationRules.eventType, pattern),
+            ilike(notificationRules.description, pattern),
+          )!,
+        );
+      }
+      if (params.category) {
+        conditions.push(eq(notificationRules.category, params.category));
+      }
+      if (params.enabled !== undefined) {
+        conditions.push(eq(notificationRules.enabled, params.enabled));
+      }
+      if (params.priority) {
+        conditions.push(eq(notificationRules.priority, params.priority));
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      const orderBy = [
+        asc(notificationRules.category),
+        asc(notificationRules.eventType),
+      ];
+
+      const rules = whereClause
+        ? await db
+            .select()
+            .from(notificationRules)
+            .where(whereClause)
+            .orderBy(...orderBy)
+            .limit(limit)
+            .offset(offset)
+        : await db
+            .select()
+            .from(notificationRules)
+            .orderBy(...orderBy)
+            .limit(limit)
+            .offset(offset);
+
+      const countBase = db.select({ value: count() }).from(notificationRules);
+      const [totalRow] = whereClause
+        ? await countBase.where(whereClause)
+        : await countBase;
+      const total = Number(totalRow?.value ?? 0);
+
+      const [enabledRow] = whereClause
+        ? await db
+            .select({ value: count() })
+            .from(notificationRules)
+            .where(and(whereClause, eq(notificationRules.enabled, true)))
+        : await db
+            .select({ value: count() })
+            .from(notificationRules)
+            .where(eq(notificationRules.enabled, true));
+      const enabledCount = Number(enabledRow?.value ?? 0);
+
+      const [disabledRow] = whereClause
+        ? await db
+            .select({ value: count() })
+            .from(notificationRules)
+            .where(and(whereClause, eq(notificationRules.enabled, false)))
+        : await db
+            .select({ value: count() })
+            .from(notificationRules)
+            .where(eq(notificationRules.enabled, false));
+      const disabledCount = Number(disabledRow?.value ?? 0);
+
+      return {
+        rules,
+        total,
+        enabledCount,
+        disabledCount,
+      };
+    } catch (error) {
+      logger.error("Error getting paginated notification rules:", error);
       throw error;
     }
   }
@@ -460,16 +617,52 @@ export class NotificationRepository {
   }
 
   /**
+   * Normalize PATCH body: only known columns, coerce `enabled` from string/boolean.
+   */
+  private buildRuleUpdatePayload(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = { updatedAt: new Date() };
+    const keys = [
+      "enabled",
+      "description",
+      "priority",
+      "recipientRoles",
+      "channels",
+      "conditions",
+      "category",
+      "eventType",
+    ] as const;
+
+    for (const key of keys) {
+      if (!(key in data) || data[key] === undefined) continue;
+      const v = data[key];
+      if (key === "enabled") {
+        if (typeof v === "boolean") {
+          out[key] = v;
+        } else if (v === "true" || v === 1 || v === "1") {
+          out[key] = true;
+        } else if (v === "false" || v === 0 || v === "0") {
+          out[key] = false;
+        } else {
+          out[key] = Boolean(v);
+        }
+        continue;
+      }
+      out[key] = v;
+    }
+    return out;
+  }
+
+  /**
    * Update notification rule
    */
-  async updateRule(
-    ruleId: string,
-    data: Partial<NotificationRule>
-  ): Promise<void> {
+  async updateRule(ruleId: string, data: Partial<NotificationRule>): Promise<void> {
     try {
+      const payload = this.buildRuleUpdatePayload(data as Record<string, unknown>);
       await db
         .update(notificationRules)
-        .set({ ...data, updatedAt: new Date() })
+        .set(payload as any)
         .where(eq(notificationRules.id, ruleId));
     } catch (error) {
       logger.error("Error updating notification rule:", error);

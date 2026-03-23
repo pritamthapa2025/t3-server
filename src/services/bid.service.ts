@@ -997,20 +997,22 @@ export const updateBid = async (
   }>,
   clientUpdatedAt?: string,
 ) => {
-  if (clientUpdatedAt) {
-    const [current] = await db
-      .select({ updatedAt: bidsTable.updatedAt })
-      .from(bidsTable)
-      .where(
-        and(
-          eq(bidsTable.id, id),
-          eq(bidsTable.organizationId, organizationId),
-          eq(bidsTable.isDeleted, false),
-        ),
-      )
-      .limit(1);
-    if (!current) return null;
-    if (isStale(current.updatedAt, clientUpdatedAt)) return STALE_DATA;
+  const [beforeRow] = await db
+    .select({ status: bidsTable.status, updatedAt: bidsTable.updatedAt })
+    .from(bidsTable)
+    .where(
+      and(
+        eq(bidsTable.id, id),
+        eq(bidsTable.organizationId, organizationId),
+        eq(bidsTable.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (!beforeRow) return null;
+
+  if (clientUpdatedAt && isStale(beforeRow.updatedAt, clientUpdatedAt)) {
+    return STALE_DATA;
   }
 
   const toLocalDateString = (date: Date): string => {
@@ -1094,8 +1096,18 @@ export const updateBid = async (
 
   if (!bid) return null;
 
+  // Only notify on real transitions — clients often PATCH the same status again (e.g. won after job create),
+  // which must not re-fire bid_won / other status alerts.
+  const previousStatus = beforeRow.status ?? null;
+  const newStatus =
+    typeof data.status === "string" && data.status.length > 0
+      ? data.status
+      : null;
+  const statusTransitioned =
+    newStatus !== null && newStatus !== previousStatus;
+
   // Fire status-based notifications (fire-and-forget)
-  if (data.status) {
+  if (statusTransitioned && newStatus) {
     void (async () => {
       try {
         const { NotificationService } =
@@ -1111,7 +1123,7 @@ export const updateBid = async (
           entityName,
         };
 
-        if (data.status === "sent") {
+        if (newStatus === "sent") {
           // Notify client's primary contact that a bid has been sent to them
           await svc.triggerNotification({
             type: "bid_sent_to_client",
@@ -1122,21 +1134,21 @@ export const updateBid = async (
               clientId: organizationId, // routes to primary contact in clientContacts
             },
           });
-        } else if (data.status === "won") {
+        } else if (newStatus === "won") {
           await svc.triggerNotification({
             type: "bid_won",
             category: "job",
             priority: "high",
             data: baseData,
           });
-        } else if (data.status === "expired") {
+        } else if (newStatus === "expired") {
           await svc.triggerNotification({
             type: "bid_expired",
             category: "job",
             priority: "medium",
             data: baseData,
           });
-        } else if (data.status === "pending") {
+        } else if (newStatus === "pending") {
           await svc.triggerNotification({
             type: "bid_requires_approval",
             category: "job",

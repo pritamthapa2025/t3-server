@@ -574,8 +574,9 @@ export function generateNotificationMessage(
         break;
 
       case "account_locked":
-        message = "Your T3 Mechanical account has been temporarily locked due to multiple failed login attempts. Please contact your administrator to unlock your account and verify your identity before trying again.";
-        shortMessage = "Your account has been locked";
+        message =
+          "Your T3 Mechanical sign-in verification was locked after too many incorrect codes. Request a new login code from the sign-in page, or contact your administrator if you need help.";
+        shortMessage = "Sign-in verification temporarily locked";
         break;
 
       // ── Jobs ─────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { NotificationService } from "../services/notification.service.js";
 import { logger } from "../utils/logger.js";
+import { asSingleString } from "../utils/request-helpers.js";
+import { isMandatoryNotificationEventType } from "../constants/mandatory-notification-rules.js";
+import { MandatoryNotificationRuleError } from "../utils/mandatory-notification-rule.error.js";
 import type { NotificationFilters } from "../types/notification.types.js";
 
 const notificationService = new NotificationService();
@@ -401,13 +404,53 @@ export class NotificationController {
     next: NextFunction
   ): Promise<void> {
     try {
-      // TODO: Add admin role check here
+      const pageRaw = asSingleString(req.query.page);
+      const limitRaw = asSingleString(req.query.limit);
+      const page = Math.max(1, parseInt(pageRaw ?? "1", 10) || 1);
+      const limit = Math.min(
+        100,
+        Math.max(1, parseInt(limitRaw ?? "20", 10) || 20),
+      );
 
-      const rules = await notificationService.getAllRules();
+      const search = asSingleString(req.query.search);
+      const category = asSingleString(req.query.category);
+      const priority = asSingleString(req.query.priority);
+      const enabledRaw = asSingleString(req.query.enabled);
+      let enabled: boolean | undefined;
+      if (enabledRaw === "true") enabled = true;
+      else if (enabledRaw === "false") enabled = false;
+
+      const trimmedSearch = search?.trim();
+      const { rules, total, enabledCount, disabledCount } =
+        await notificationService.getRulesPage({
+          page,
+          limit,
+          ...(trimmedSearch ? { search: trimmedSearch } : {}),
+          ...(category ? { category } : {}),
+          ...(priority ? { priority } : {}),
+          ...(enabled !== undefined ? { enabled } : {}),
+        });
+
+      const rulesWithMandatory = rules.map((r) => ({
+        ...r,
+        mandatory: isMandatoryNotificationEventType(r.eventType),
+      }));
+
+      const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
       res.json({
         success: true,
-        data: rules,
+        data: {
+          rules: rulesWithMandatory,
+          total,
+          page,
+          limit,
+          totalPages,
+          summary: {
+            enabled: enabledCount,
+            disabled: disabledCount,
+          },
+        },
       });
     } catch (error) {
       logger.error("Error getting notification rules:", error);
@@ -468,6 +511,13 @@ export class NotificationController {
         message: "Notification rule updated",
       });
     } catch (error) {
+      if (error instanceof MandatoryNotificationRuleError) {
+        res.status(error.statusCode).json({
+          success: false,
+          message: error.message,
+        });
+        return;
+      }
       logger.error("Error updating notification rule:", error);
       next(error);
     }

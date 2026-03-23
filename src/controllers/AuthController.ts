@@ -160,6 +160,30 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
     const result: OTPVerifyResult = await verify2FACode(email, codeString);
     if (result === "locked") {
+      void (async () => {
+        try {
+          const lockedUser = await getUserByEmail(email);
+          if (!lockedUser) return;
+          const { NotificationService } =
+            await import("../services/notification.service.js");
+          await new NotificationService().triggerNotification({
+            type: "account_locked",
+            category: "system",
+            priority: "high",
+            data: {
+              userId: lockedUser.id,
+              entityType: "User",
+              entityId: lockedUser.id,
+              entityName: lockedUser.fullName || lockedUser.email,
+            },
+          });
+        } catch (err: unknown) {
+          logger.warn(
+            `Failed to send account_locked notification: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
+
       return res.status(400).json({
         success: false,
         message: "Too many failed attempts. Please request a new 2FA code.",

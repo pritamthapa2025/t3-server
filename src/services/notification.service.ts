@@ -14,6 +14,8 @@ import {
   generateActionUrl,
 } from "../utils/notification-helpers.js";
 import { logger } from "../utils/logger.js";
+import { isMandatoryNotificationEventType } from "../constants/mandatory-notification-rules.js";
+import { MandatoryNotificationRuleError } from "../utils/mandatory-notification-rule.error.js";
 import type {
   NotificationEvent,
   NotificationFilters,
@@ -48,13 +50,23 @@ export class NotificationService {
     try {
       logger.info(`📢 Triggering notification event: ${event.type}`);
 
-      // 1. Get notification rule for this event type
+      // 1. Get notification rule for this event type (only enabled rules)
       const rule = await this.repository.getRuleByEventType(event.type);
 
-      if (!rule || !rule.enabled) {
-        logger.warn(
-          `No active notification rule found for event type: ${event.type}`,
-        );
+      if (!rule) {
+        const anyRule =
+          await this.repository.getRuleByEventTypeRegardlessOfEnabled(
+            event.type,
+          );
+        if (anyRule && !anyRule.enabled) {
+          logger.info(
+            `[Notification] Skipped ${event.type}: rule exists but is disabled (ruleId=${anyRule.id})`,
+          );
+        } else {
+          logger.warn(
+            `No notification rule found for event type: ${event.type} (seed or create rule in admin)`,
+          );
+        }
         return { createdCount: 0, reason: "no_rule" };
       }
 
@@ -324,6 +336,20 @@ export class NotificationService {
   }
 
   /**
+   * Paginated rules for admin (search + filters).
+   */
+  async getRulesPage(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    category?: string;
+    enabled?: boolean;
+    priority?: string;
+  }) {
+    return await this.repository.getRulesPage(params);
+  }
+
+  /**
    * Create notification rule (admin only)
    */
   async createRule(data: {
@@ -343,6 +369,24 @@ export class NotificationService {
    * Update notification rule (admin only)
    */
   async updateRule(ruleId: string, data: any) {
+    if (data && typeof data === "object" && "enabled" in data) {
+      const v = (data as { enabled: unknown }).enabled;
+      const disabling =
+        v === false ||
+        v === "false" ||
+        v === 0 ||
+        v === "0" ||
+        (typeof v === "string" && v.toLowerCase() === "false");
+      if (disabling) {
+        const existing = await this.repository.getRuleById(ruleId);
+        if (
+          existing?.eventType &&
+          isMandatoryNotificationEventType(existing.eventType)
+        ) {
+          throw new MandatoryNotificationRuleError();
+        }
+      }
+    }
     await this.repository.updateRule(ruleId, data);
   }
 

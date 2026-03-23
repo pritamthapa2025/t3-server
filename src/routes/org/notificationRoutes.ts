@@ -20,14 +20,14 @@ router.patch("/notifications/:id/read", notificationController.markAsRead.bind(n
 router.patch("/notifications/mark-all-read", notificationController.markAllAsRead.bind(notificationController));
 router.delete("/notifications/:id", notificationController.deleteNotification.bind(notificationController));
 
-// Admin routes (Executive/Manager only)
-const managerOrAbove = requireAnyRole("Executive", "Manager");
-router.get("/notifications-admin/rules", managerOrAbove, notificationController.getRules.bind(notificationController));
-router.post("/notifications-admin/rules", managerOrAbove, notificationController.createRule.bind(notificationController));
-router.patch("/notifications-admin/rules/:id", managerOrAbove, notificationController.updateRule.bind(notificationController));
-router.get("/notifications-admin/:id/delivery-logs", managerOrAbove, notificationController.getDeliveryLogs.bind(notificationController));
+// Admin routes (Executive only — platform-wide notification rules)
+const executiveOnly = requireAnyRole("Executive");
+router.get("/notifications-admin/rules", executiveOnly, notificationController.getRules.bind(notificationController));
+router.post("/notifications-admin/rules", executiveOnly, notificationController.createRule.bind(notificationController));
+router.patch("/notifications-admin/rules/:id", executiveOnly, notificationController.updateRule.bind(notificationController));
+router.get("/notifications-admin/:id/delivery-logs", executiveOnly, notificationController.getDeliveryLogs.bind(notificationController));
 
-// Internal trigger route (Executive/Manager only)
-router.post("/notifications/trigger", managerOrAbove, notificationController.triggerNotification.bind(notificationController));
+// Internal trigger route (Executive only)
+router.post("/notifications/trigger", executiveOnly, notificationController.triggerNotification.bind(notificationController));
 
 export default router;
