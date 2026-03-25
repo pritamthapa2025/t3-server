@@ -2,12 +2,14 @@
  * Scheduled / Cron Notification Service
  *
  * All time-based notification checks that are triggered by cron endpoints.
- * Each exported function returns a summary { processed, errors } that the
- * cron route handler forwards to the caller.
+ * Each exported function returns a summary { processed, errors } (logged when
+ * cron jobs run in the background from cron routes).
  *
  * Rules:
- * - Max BATCH_SIZE records processed per cron run (oldest/most-urgent first).
- *   Remaining records are picked up on the next scheduled run.
+ * - Max BATCH_SIZE records processed per cron run (oldest/most-urgent first) for
+ *   most jobs. Remaining records are picked up on the next scheduled run.
+ * - Clock in/out reminders: no row cap; deliveries run in concurrency windows
+ *   (see CLOCK_REMINDER_CONCURRENCY) to limit SMTP/SMS load.
  * - Failures are logged and counted — never retried.
  */
 
@@ -44,6 +46,8 @@ const digestEmailSvc = new NotificationEmailService();
 
 /** Maximum records to process per cron run (for per-record functions). */
 const BATCH_SIZE = 5;
+/** Parallel clock_reminder triggerNotification calls per window (SMTP / provider safety). */
+const CLOCK_REMINDER_CONCURRENCY = 5;
 /** Maximum rows rendered in a single digest email. */
 const DIGEST_LIMIT = 50;
 
@@ -52,6 +56,33 @@ type CronResult = { processed: number; errors: number };
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Run async work for each item in fixed-size concurrent windows (sequential windows,
+ * parallel within a window). Aggregates processed/errors; logs per-item failures.
+ */
+async function runInConcurrencyWindows<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<unknown>,
+  logFailure: (item: T, err: unknown) => void,
+): Promise<{ processed: number; errors: number }> {
+  let processed = 0;
+  let errors = 0;
+  for (let i = 0; i < items.length; i += concurrency) {
+    const window = items.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(window.map((item) => worker(item)));
+    for (let j = 0; j < settled.length; j++) {
+      const r = settled[j]!;
+      if (r.status === "fulfilled") processed++;
+      else {
+        errors++;
+        logFailure(window[j]!, r.reason);
+      }
+    }
+  }
+  return { processed, errors };
+}
 
 function todayStr(): string {
   return new Date().toISOString().split("T")[0]!;
@@ -477,10 +508,10 @@ export const notifyInvoiceOverdue30Days = () => notifyInvoiceOverdueDays(30);
 
 /**
  * Remind employees who have clocked in today but have not yet clocked out
- * (clockOut is null) after a configurable cutoff hour (default: 18:00).
- * Also runs a morning check for employees with NO timesheet for today at all
- * (clockType = "in").
- * Processes at most BATCH_SIZE employees per run.
+ * (clockOut is null), or (morning) active employees with NO timesheet for today
+ * (clockType = "in"). There is no per-run row cap — all matches are processed.
+ * Deliveries use CLOCK_REMINDER_CONCURRENCY parallel calls per batch to limit
+ * SMTP/SMS load.
  * Recommended schedule: twice daily — morning (09:30) for missing clock-in,
  * evening (18:30) for missing clock-out.
  */
@@ -492,7 +523,6 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
     const today = todayStr();
 
     if (clockType === "out") {
-      // Find employees who clocked IN today but have no clockOut yet
       const openShifts = await db
         .select({
           employeeId: timesheets.employeeId,
@@ -505,13 +535,14 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
             eq(timesheets.sheetDate, today),
             isNull(timesheets.clockOut),
           ),
-        )
-        .limit(BATCH_SIZE);
+        );
 
-      for (const ts of openShifts) {
-        if (!ts.employeeId) continue;
-        try {
-          await svc.triggerNotification({
+      const rows = openShifts.filter((ts) => ts.employeeId != null);
+      const batch = await runInConcurrencyWindows(
+        rows,
+        CLOCK_REMINDER_CONCURRENCY,
+        (ts) =>
+          svc.triggerNotification({
             type: "clock_reminder",
             category: "timesheet",
             priority: "medium",
@@ -522,15 +553,16 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
               entityName: String(ts.employeeId),
               clockType: "out",
             },
-          });
-          processed++;
-        } catch (err) {
-          logger.error(`[CronNotif] clock_reminder(out) failed for employee ${ts.employeeId}:`, err);
-          errors++;
-        }
-      }
+          }),
+        (ts, err) =>
+          logger.error(
+            `[CronNotif] clock_reminder(out) failed for employee ${ts.employeeId}:`,
+            err,
+          ),
+      );
+      processed += batch.processed;
+      errors += batch.errors;
     } else {
-      // Find active employees with NO timesheet for today — limit to BATCH_SIZE
       const allActiveEmployees = await db
         .select({ id: employees.id })
         .from(employees)
@@ -548,13 +580,13 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
 
       const clockedInIds = new Set(todaySheets.map((r) => r.employeeId).filter(Boolean));
 
-      const unclockedIn = allActiveEmployees
-        .filter((emp) => !clockedInIds.has(emp.id))
-        .slice(0, BATCH_SIZE);
+      const unclockedIn = allActiveEmployees.filter((emp) => !clockedInIds.has(emp.id));
 
-      for (const emp of unclockedIn) {
-        try {
-          await svc.triggerNotification({
+      const batch = await runInConcurrencyWindows(
+        unclockedIn,
+        CLOCK_REMINDER_CONCURRENCY,
+        (emp) =>
+          svc.triggerNotification({
             type: "clock_reminder",
             category: "timesheet",
             priority: "medium",
@@ -565,13 +597,12 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
               entityName: String(emp.id),
               clockType: "in",
             },
-          });
-          processed++;
-        } catch (err) {
-          logger.error(`[CronNotif] clock_reminder(in) failed for employee ${emp.id}:`, err);
-          errors++;
-        }
-      }
+          }),
+        (emp, err) =>
+          logger.error(`[CronNotif] clock_reminder(in) failed for employee ${emp.id}:`, err),
+      );
+      processed += batch.processed;
+      errors += batch.errors;
     }
   } catch (err) {
     logger.error("[CronNotif] notifyClockReminder query failed:", err);

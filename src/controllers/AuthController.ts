@@ -31,7 +31,7 @@ import {
 import {
   getUserByEmail,
   getUserById,
-  getUserByIdForProfile,
+  getMeProfileBundle,
   updatePassword,
   markSetupTokenUsed,
 } from "../services/auth.service.js";
@@ -336,55 +336,35 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get full user data for profile
-    const user = await getUserByIdForProfile(req.user.id);
-    if (!user) {
+    const row = await getMeProfileBundle(req.user.id);
+    if (!row) {
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
-    // Fetch user's role
-    const [userRole] = await db
-      .select({
-        roleName: roles.name,
-      })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .where(eq(userRoles.userId, user.id))
-      .limit(1);
-
-    // Fetch employee data if user is an employee
-    const [employeeData] = await db
-      .select({
-        id: employees.id,
-        employeeId: employees.employeeId,
-      })
-      .from(employees)
-      .where(eq(employees.userId, user.id))
-      .limit(1);
-
-    logger.info("Current user retrieved successfully");
     return res.status(200).json({
       success: true,
       message: "User retrieved successfully",
       data: {
-        id: user.id,
-        name: user.fullName,
-        email: user.email,
-        phone: user.phone || null,
-        profilePicture: user.profilePicture || null,
-        isActive: user.isActive,
-        isVerified: user.isVerified,
-        role: userRole?.roleName || null,
-        lastLogin: user.lastLogin,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        ...(employeeData && {
-          employeeTableId: employeeData.id,
-          employeeId: employeeData.employeeId,
-        }),
+        id: row.id,
+        name: row.fullName,
+        email: row.email,
+        phone: row.phone || null,
+        profilePicture: row.profilePicture || null,
+        isActive: row.isActive,
+        isVerified: row.isVerified,
+        role: row.roleName || null,
+        lastLogin: row.lastLogin,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        ...(row.employeeTableId != null
+          ? {
+              employeeTableId: row.employeeTableId,
+              employeeId: row.employeeCode ?? null,
+            }
+          : {}),
       },
     });
   } catch (err: any) {

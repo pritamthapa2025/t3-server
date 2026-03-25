@@ -20,6 +20,7 @@ import {
 } from "../drizzle/schema/capacity.schema.js";
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -486,7 +487,7 @@ export const getResourceAllocations = async (
       employeeId: resourceAllocations.employeeId,
       employeeName: users.fullName,
       jobId: resourceAllocations.jobId,
-      jobName: jobs.name,
+      jobName: sql<string>`COALESCE(${bidsTable.projectName}, ${jobs.jobNumber})`,
       taskId: resourceAllocations.taskId,
       plannedStartTime: resourceAllocations.plannedStartTime,
       plannedEndTime: resourceAllocations.plannedEndTime,
@@ -506,6 +507,7 @@ export const getResourceAllocations = async (
     .innerJoin(employees, eq(resourceAllocations.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .leftJoin(jobs, eq(resourceAllocations.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
     .leftJoin(
       createdByUser,
       eq(resourceAllocations.createdBy, createdByUser.id),
