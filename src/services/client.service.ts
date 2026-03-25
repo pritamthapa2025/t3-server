@@ -4,7 +4,6 @@ import {
   and,
   desc,
   asc,
-  max,
   sql,
   or,
   ilike,
@@ -514,129 +513,97 @@ export const getOrganizationDashboard = async (organizationId: string) => {
   }
 };
 
-// Generate Client ID using PostgreSQL sequence (thread-safe)
-// Format: CL-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
-export const generateClientId = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+/**
+ * Business rule: any varchar display number with a global (or composite) UNIQUE constraint must be
+ * allocated using all table rows including is_deleted = true, unless the DB uses a partial unique index.
+ * Prefer advisory lock + MAX(suffix) in the same transaction as INSERT.
+ *
+ * Serialize client display-id allocation (CL-YYYY-NNNN). Must match insert in the same transaction.
+ * `client_id` is unique on org.organizations for all rows including soft-deleted, so the next number
+ * must be derived from every row for that year prefix — not from nextval alone and not excluding deleted.
+ */
+const CLIENT_ID_DISPLAY_LOCK_KEY = 918_273_645;
+
+/** Format: CL-2025-0001 (4 digits minimum; padding grows past 9999). */
+async function allocateNextClientDisplayId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${CLIENT_ID_DISPLAY_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH client_numbers AS (
+        SELECT
+          CAST(SUBSTRING(client_id FROM 'CL-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.organizations
+        WHERE client_id ~ '^CL-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM client_numbers
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const clientId = `CL-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    // Try to use PostgreSQL sequence for atomic ID generation (thread-safe)
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.client_id_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(
+        `SELECT setval('org.client_id_seq', ${nextIdNumber}, true)`,
+      ),
     );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `CL-${year}-${String(nextNumber).padStart(padding, "0")}`;
-  } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet or has issues
-    console.warn(
-      "Client ID sequence not found or error occurred, using fallback method:",
-      error,
-    );
-
-    // Find the maximum numeric value from existing client IDs for current year
-    try {
-      const maxNumResult = await db.execute<{ max_num: string | null }>(
-        sql.raw(`
-          WITH client_numbers AS (
-            SELECT 
-              CASE 
-                WHEN client_id ~ '^CL-${year}-\\d+$' THEN
-                  CAST(SUBSTRING(client_id FROM 'CL-${year}-(\\d+)') AS INTEGER)
-                WHEN client_id ~ '^CL-\\d+$' THEN
-                  CAST(SUBSTRING(client_id FROM 'CL-(\\d+)') AS INTEGER)
-                WHEN client_id ~ '^CLT-\\d+$' THEN
-                  CAST(SUBSTRING(client_id FROM 'CLT-(\\d+)') AS INTEGER)
-                ELSE NULL
-              END AS num_value
-            FROM org.organizations
-            WHERE is_deleted = false
-              AND (client_id ~ '^CL-${year}-\\d+$' OR client_id ~ '^CL-\\d+$' OR client_id ~ '^CLT-\\d+$')
-          )
-          SELECT COALESCE(MAX(num_value), 0) as max_num
-          FROM client_numbers
-        `),
-      );
-
-      const maxNum = maxNumResult.rows[0]?.max_num;
-      const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
-
-      // Use 4 digits minimum, auto-expand when exceeds 9999
-      const padding = Math.max(4, nextIdNumber.toString().length);
-      return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
-    } catch (sqlError) {
-      // If SQL extraction fails, fall back to simple string comparison
-      console.warn("SQL extraction failed, using simple fallback:", sqlError);
-
-      const clientIdResult = await db
-        .select({ maxId: max(organizations.clientId) })
-        .from(organizations)
-        .where(eq(organizations.isDeleted, false));
-
-      const maxId = clientIdResult[0]?.maxId;
-      let nextIdNumber = 1;
-
-      // Handle CL-YEAR-, CL- and CLT- formats for backward compatibility
-      if (maxId && typeof maxId === "string") {
-        let numericPart: string | null = null;
-
-        if (maxId.startsWith(`CL-${year}-`)) {
-          numericPart = maxId.replace(`CL-${year}-`, "");
-        } else if (maxId.startsWith("CL-")) {
-          numericPart = maxId.replace("CL-", "");
-        } else if (maxId.startsWith("CLT-")) {
-          numericPart = maxId.replace("CLT-", "");
-        }
-
-        if (numericPart) {
-          const parsedNumber = parseInt(numericPart, 10);
-          if (!isNaN(parsedNumber)) {
-            nextIdNumber = parsedNumber + 1;
-          }
-        }
-      }
-
-      // Use 4 digits minimum, auto-expand when exceeds 9999
-      const padding = Math.max(4, nextIdNumber.toString().length);
-      return `CL-${year}-${nextIdNumber.toString().padStart(padding, "0")}`;
-    }
+  } catch {
+    // Sequence may be missing in some DBs; display id is still correct.
   }
+
+  return clientId;
+}
+
+/** Reserved for tests or tooling; uses same rules as createClient (includes deleted rows). */
+export const generateClientId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  return db.transaction(async (tx) => allocateNextClientDisplayId(tx, year));
 };
 
 export const createClient = async (
   data: CreateClientRequest & { createdBy: string },
 ): Promise<Client | null> => {
-  // Generate unique client ID using thread-safe method
-  const clientId = await generateClientId();
+  const year = new Date().getFullYear();
 
-  const result = await db
-    .insert(organizations)
-    .values({
-      clientId,
-      name: data.name,
-      clientTypeId: data.clientTypeId,
-      status: (data.status as any) || "prospect",
-      website: data.website,
-      streetAddress: data.streetAddress,
-      city: data.city,
-      state: data.state,
-      zipCode: data.zipCode,
-      taxId: data.taxId,
-      industryClassificationId: data.industryClassificationId,
-      createdBy: data.createdBy,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .returning();
+  const client = await db.transaction(async (tx) => {
+    const clientId = await allocateNextClientDisplayId(tx, year);
 
-  if (!Array.isArray(result) || result.length === 0) return null;
+    const result = await tx
+      .insert(organizations)
+      .values({
+        clientId,
+        name: data.name,
+        clientTypeId: data.clientTypeId,
+        status: (data.status as any) || "prospect",
+        website: data.website,
+        streetAddress: data.streetAddress,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+        taxId: data.taxId,
+        industryClassificationId: data.industryClassificationId,
+        createdBy: data.createdBy,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
 
-  const client = result[0] as any;
+    if (!Array.isArray(result) || result.length === 0) return null;
+    return result[0] as any;
+  });
 
-  // Get createdBy user name
+  if (!client) return null;
+
   let createdByName: string | null = null;
   if (client.createdBy) {
     const [creator] = await db

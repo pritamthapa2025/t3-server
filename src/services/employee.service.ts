@@ -660,47 +660,49 @@ export const getEmployeeById = async (id: number) => {
   };
 };
 
-// Generate Employee ID using PostgreSQL sequence (thread-safe)
-// Format: T3-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
-export const generateEmployeeId = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+/** `employee_id` display string is unique including soft-deleted employees. */
+const EMPLOYEE_DISPLAY_ID_LOCK_KEY = 918_273_650;
+
+async function allocateNextEmployeeDisplayId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${EMPLOYEE_DISPLAY_ID_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(employee_id FROM 'T3-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.employees
+        WHERE employee_id ~ '^T3-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const employeeId = `T3-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    // Use PostgreSQL sequence for atomic ID generation (thread-safe)
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.employee_id_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(`SELECT setval('org.employee_id_seq', ${nextIdNumber}, true)`),
     );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
-  } catch (error) {
-    // Fallback: find next ID by max existing number for this year (includes deleted so we never reuse)
-    console.warn(
-      "Employee ID sequence not found, using fallback method:",
-      error,
-    );
-
-    const prefix = `T3-${year}-`;
-    const [maxRow] = await db
-      .select({
-        maxNum:
-          sql<string>`COALESCE(MAX(CAST(SUBSTRING(${employees.employeeId} FROM '([0-9]+)$') AS INTEGER)), 0)`.as(
-            "max_num",
-          ),
-      })
-      .from(employees)
-      .where(sql`${employees.employeeId} LIKE ${prefix + "%"}`);
-
-    const maxNum =
-      maxRow?.maxNum != null ? parseInt(String(maxRow.maxNum), 10) : 0;
-    const nextNumber = maxNum + 1;
-
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `T3-${year}-${String(nextNumber).padStart(padding, "0")}`;
+  } catch {
+    // Sequence may be missing
   }
+
+  return employeeId;
+}
+
+// Format: T3-2025-0001 (max over all rows including soft-deleted)
+export const generateEmployeeId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  return db.transaction(async (tx) => allocateNextEmployeeDisplayId(tx, year));
 };
 
 /**
@@ -794,9 +796,6 @@ export const createEmployee = async (data: {
   reportsTo?: string;
   startDate?: Date;
 }) => {
-  // Always auto-generate employeeId - never accept from external input
-  const employeeId = await generateEmployeeId();
-
   let payType: string | null = null;
   let hourlyRate: string | null = null;
   if (data.positionId) {
@@ -805,21 +804,27 @@ export const createEmployee = async (data: {
     hourlyRate = defaults.hourlyRate;
   }
 
-  const [employee] = await db
-    .insert(employees)
-    .values({
-      userId: data.userId,
-      employeeId: employeeId,
-      departmentId: data.departmentId || null,
-      positionId: data.positionId || null,
-      reportsTo: data.reportsTo || null,
-      startDate: data.startDate || null,
-      payType: payType ?? undefined,
-      hourlyRate: hourlyRate ?? undefined,
-    })
-    .returning();
+  const year = new Date().getFullYear();
 
-  // Fire new_employee_onboarded Push notification (fire-and-forget)
+  const { row, employeeId } = await db.transaction(async (tx) => {
+    const idStr = await allocateNextEmployeeDisplayId(tx, year);
+    const [row] = await tx
+      .insert(employees)
+      .values({
+        userId: data.userId,
+        employeeId: idStr,
+        departmentId: data.departmentId || null,
+        positionId: data.positionId || null,
+        reportsTo: data.reportsTo || null,
+        startDate: data.startDate || null,
+        payType: payType ?? undefined,
+        hourlyRate: hourlyRate ?? undefined,
+      })
+      .returning();
+    if (!row) throw new Error("Failed to create employee");
+    return { row, employeeId: idStr };
+  });
+
   void (async () => {
     try {
       const { NotificationService } = await import("./notification.service.js");
@@ -829,7 +834,7 @@ export const createEmployee = async (data: {
         priority: "medium",
         data: {
           entityType: "Employee",
-          entityId: String(employee?.id),
+          entityId: String(row.id),
           entityName: employeeId,
         },
       });
@@ -838,7 +843,7 @@ export const createEmployee = async (data: {
     }
   })();
 
-  return employee;
+  return row;
 };
 
 export const updateEmployee = async (

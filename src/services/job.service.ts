@@ -2221,8 +2221,7 @@ const generateJobNumber = async (organizationId: string): Promise<string> => {
       .where(
         and(
           eq(bidsTable.organizationId, organizationId),
-          eq(jobs.isDeleted, false),
-          sql`${jobs.jobNumber} ~ ${`^JOB-${year}-\\d+$`}`, // Only count job numbers for current year
+          sql`${jobs.jobNumber} ~ ${`^JOB-${year}-\\d+$`}`, // Include soft-deleted jobs so display numbers do not reuse
         ),
       );
 

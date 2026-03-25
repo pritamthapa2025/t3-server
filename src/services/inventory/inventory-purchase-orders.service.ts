@@ -1,4 +1,4 @@
-import { count, eq, and, desc, ilike, gte, lte } from "drizzle-orm";
+import { count, eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -18,24 +18,38 @@ import {
 // Helper Functions
 // ============================
 
+const PO_NUMBER_LOCK_KEY = 918_273_651;
+type InventoryTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function allocateNextPONumber(
+  tx: InventoryTx,
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${PO_NUMBER_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(po_number FROM 'PO-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.inventory_purchase_orders
+        WHERE po_number ~ '^PO-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextNum = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const suffix = nextNum.toString().padStart(4, "0");
+  return `PO-${year}-${suffix}`;
+}
+
 export const generatePONumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
-  const prefix = `PO-${year}-`;
-
-  const lastPO = await db
-    .select({ poNumber: inventoryPurchaseOrders.poNumber })
-    .from(inventoryPurchaseOrders)
-    .where(ilike(inventoryPurchaseOrders.poNumber, `${prefix}%`))
-    .orderBy(desc(inventoryPurchaseOrders.poNumber))
-    .limit(1);
-
-  if (lastPO.length === 0) {
-    return `${prefix}0001`;
-  }
-
-  const lastNumber = parseInt(lastPO[0]!.poNumber.split("-").pop() || "0");
-  const nextNumber = (lastNumber + 1).toString().padStart(4, "0");
-  return `${prefix}${nextNumber}`;
+  return db.transaction(async (tx) => allocateNextPONumber(tx, year));
 };
 
 // ============================
@@ -155,46 +169,53 @@ export const getPurchaseOrderById = async (id: string) => {
 };
 
 export const createPurchaseOrder = async (data: any, userId: string) => {
-  const poNumber = await generatePONumber();
+  const year = new Date().getFullYear();
 
-  const [newPO] = await db
-    .insert(inventoryPurchaseOrders)
-    .values({
-      poNumber,
-      title: data.title || null,
-      supplierId: data.supplierId,
-      orderDate: data.orderDate || new Date().toISOString().split("T")[0], // Required field
-      expectedDeliveryDate: data.expectedDeliveryDate || null,
-      shipToLocationId: data.shipToLocationId,
-      status: "draft",
-      subtotal: data.subtotal || "0",
-      taxAmount: data.taxAmount || "0",
-      shippingCost: data.shippingCost || "0",
-      totalAmount: data.totalAmount || "0",
-      notes: data.notes,
-      isDeleted: false,
-      createdBy: userId,
-    })
-    .returning();
+  const newPO = await db.transaction(async (tx) => {
+    const poNumber = await allocateNextPONumber(tx, year);
 
-  // Create PO line items
-  if (data.items && data.items.length > 0) {
-    const itemsToInsert = data.items.map((item: any) => ({
-      purchaseOrderId: newPO!.id,
-      itemId: item.itemId,
-      quantityOrdered: item.quantityOrdered,
-      quantityReceived: "0",
-      unitCost: item.unitCost,
-      lineTotal: (
-        parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)
-      ).toString(),
-      notes: item.notes,
-    }));
+    const [po] = await tx
+      .insert(inventoryPurchaseOrders)
+      .values({
+        poNumber,
+        title: data.title || null,
+        supplierId: data.supplierId,
+        orderDate: data.orderDate || new Date().toISOString().split("T")[0],
+        expectedDeliveryDate: data.expectedDeliveryDate || null,
+        shipToLocationId: data.shipToLocationId,
+        status: "draft",
+        subtotal: data.subtotal || "0",
+        taxAmount: data.taxAmount || "0",
+        shippingCost: data.shippingCost || "0",
+        totalAmount: data.totalAmount || "0",
+        notes: data.notes,
+        isDeleted: false,
+        createdBy: userId,
+      })
+      .returning();
 
-    await db.insert(inventoryPurchaseOrderItems).values(itemsToInsert);
-  }
+    if (!po) throw new Error("Failed to create purchase order");
 
-  return newPO!;
+    if (data.items && data.items.length > 0) {
+      const itemsToInsert = data.items.map((item: any) => ({
+        purchaseOrderId: po.id,
+        itemId: item.itemId,
+        quantityOrdered: item.quantityOrdered,
+        quantityReceived: "0",
+        unitCost: item.unitCost,
+        lineTotal: (
+          parseFloat(item.quantityOrdered) * parseFloat(item.unitCost)
+        ).toString(),
+        notes: item.notes,
+      }));
+
+      await tx.insert(inventoryPurchaseOrderItems).values(itemsToInsert);
+    }
+
+    return po;
+  });
+
+  return newPO;
 };
 
 export const updatePurchaseOrder = async (id: string, data: any) => {

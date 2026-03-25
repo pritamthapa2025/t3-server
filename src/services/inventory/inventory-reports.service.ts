@@ -1,4 +1,4 @@
-import { count, eq, and, desc, ilike, sql } from "drizzle-orm";
+import { count, eq, and, desc, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -253,26 +253,38 @@ export const triggerAlertCheck = async () => {
 // Inventory Counts
 // ============================
 
+const COUNT_NUMBER_LOCK_KEY = 918_273_653;
+type CountTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function allocateNextCountNumber(
+  tx: CountTx,
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${COUNT_NUMBER_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(count_number FROM 'CNT-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.inventory_counts
+        WHERE count_number ~ '^CNT-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextNum = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const suffix = nextNum.toString().padStart(4, "0");
+  return `CNT-${year}-${suffix}`;
+}
+
 export const generateCountNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
-  const prefix = `CNT-${year}-`;
-
-  const lastCount = await db
-    .select({ countNumber: inventoryCounts.countNumber })
-    .from(inventoryCounts)
-    .where(ilike(inventoryCounts.countNumber, `${prefix}%`))
-    .orderBy(desc(inventoryCounts.countNumber))
-    .limit(1);
-
-  if (lastCount.length === 0) {
-    return `${prefix}0001`;
-  }
-
-  const lastNumber = parseInt(
-    lastCount[0]!.countNumber.split("-").pop() || "0",
-  );
-  const nextNumber = (lastNumber + 1).toString().padStart(4, "0");
-  return `${prefix}${nextNumber}`;
+  return db.transaction(async (tx) => allocateNextCountNumber(tx, year));
 };
 
 export const getCounts = async (params?: { page?: number; limit?: number }) => {
@@ -328,21 +340,26 @@ export const getCountById = async (id: string) => {
 };
 
 export const createCount = async (data: any, _userId: string) => {
-  const countNumber = await generateCountNumber();
+  const year = new Date().getFullYear();
 
-  const [newCount] = await db
-    .insert(inventoryCounts)
-    .values({
-      countNumber,
-      countType: data.countType || "cycle", // Required field
-      locationId: data.locationId,
-      countDate: data.countDate || new Date().toISOString().split("T")[0], // Required field
-      status: "planned",
-      notes: data.notes,
-    })
-    .returning();
+  const newCount = await db.transaction(async (tx) => {
+    const countNumber = await allocateNextCountNumber(tx, year);
+    const [row] = await tx
+      .insert(inventoryCounts)
+      .values({
+        countNumber,
+        countType: data.countType || "cycle",
+        locationId: data.locationId,
+        countDate: data.countDate || new Date().toISOString().split("T")[0],
+        status: "planned",
+        notes: data.notes,
+      })
+      .returning();
+    if (!row) throw new Error("Failed to create inventory count");
+    return row;
+  });
 
-  return newCount!;
+  return newCount;
 };
 
 export const updateCount = async (

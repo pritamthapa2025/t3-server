@@ -349,54 +349,49 @@ export const getComplianceCaseById = async (id: string) => {
   };
 };
 
-// Generate Case Number using PostgreSQL sequence (thread-safe)
-// Format: CASE-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
-export const generateCaseNumber = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+/** `case_number` is globally unique including soft-deleted rows. */
+const CASE_NUMBER_DISPLAY_LOCK_KEY = 918_273_647;
+
+async function allocateNextCaseNumber(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${CASE_NUMBER_DISPLAY_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(case_number FROM 'CASE-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.employee_compliance_cases
+        WHERE case_number ~ '^CASE-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const caseNumber = `CASE-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    // Use PostgreSQL sequence for atomic ID generation
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.case_number_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(`SELECT setval('org.case_number_seq', ${nextIdNumber}, true)`),
     );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
-  } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet
-    console.warn(
-      "Case number sequence not found, using fallback method:",
-      error,
-    );
-
-    const result = await db
-      .select({ caseNumber: employeeComplianceCases.caseNumber })
-      .from(employeeComplianceCases)
-      .where(
-        and(
-          eq(employeeComplianceCases.isDeleted, false),
-          sql`${employeeComplianceCases.caseNumber} ~ ${`^CASE-${year}-\\d+$`}`,
-        ),
-      )
-      .orderBy(desc(employeeComplianceCases.caseNumber))
-      .limit(1);
-
-    let nextNumber = 1;
-    if (result.length && result[0]?.caseNumber) {
-      const lastCaseNumber = result[0].caseNumber;
-      const match = lastCaseNumber.match(/^CASE-\d+-(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1]!) + 1;
-      }
-    }
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `CASE-${year}-${String(nextNumber).padStart(padding, "0")}`;
+  } catch {
+    // Sequence may be missing
   }
+
+  return caseNumber;
+}
+
+// Format: CASE-2025-0001 (max over all rows including soft-deleted)
+export const generateCaseNumber = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  return db.transaction(async (tx) => allocateNextCaseNumber(tx, year));
 };
 
 // Create Compliance Case
@@ -404,12 +399,10 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   // Validate organizationId (client ID) - only include if it's a valid UUID
   const validatedOrgId = validateOrganizationId(data.organizationId);
 
-  // Always auto-generate case number - never accept from external input
-  const caseNumber = await generateCaseNumber();
+  const year = new Date().getFullYear();
 
   const insertData: any = {
     employeeId: data.employeeId,
-    caseNumber: caseNumber,
     type: data.type,
     severity: data.severity,
     status: data.status || "open",
@@ -444,14 +437,18 @@ export const createComplianceCase = async (data: CreateComplianceCaseData) => {
   if (data.evidencePhotos) insertData.evidencePhotos = data.evidencePhotos;
   if (data.createdBy) insertData.createdBy = data.createdBy;
 
-  const result = await db
-    .insert(employeeComplianceCases)
-    .values(insertData)
-    .returning();
+  const inserted = await db.transaction(async (tx) => {
+    insertData.caseNumber = await allocateNextCaseNumber(tx, year);
+    const result = await tx
+      .insert(employeeComplianceCases)
+      .values(insertData)
+      .returning();
+    const row = result[0];
+    if (!row) throw new Error("Failed to create compliance case");
+    return row;
+  });
 
   // Return enriched data with names (following cursor rule)
-  const inserted = result[0];
-  if (!inserted) throw new Error("Failed to create compliance case");
   const complianceCase = await getComplianceCaseById(inserted.id);
 
   // Fire notifications (fire-and-forget)

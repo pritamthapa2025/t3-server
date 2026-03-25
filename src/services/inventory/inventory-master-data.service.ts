@@ -1,4 +1,4 @@
-import { count, eq, and, ilike, desc, sql } from "drizzle-orm";
+import { count, eq, and, ilike, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventorySuppliers,
@@ -67,62 +67,50 @@ export const getSupplierById = async (id: string) => {
   return supplier || null;
 };
 
-// Generate next supplier code using PostgreSQL sequence
-// Format: SUP-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
-// This is THREAD-SAFE and prevents race conditions
-const generateSupplierCode = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+const SUPPLIER_CODE_LOCK_KEY = 918_273_648;
+const LOCATION_CODE_LOCK_KEY = 918_273_649;
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function allocateNextSupplierCode(tx: Tx, year: number): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${SUPPLIER_CODE_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(supplier_code FROM 'SUP-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.inventory_suppliers
+        WHERE supplier_code ~ '^SUP-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const code = `SUP-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    // Use PostgreSQL sequence for atomic ID generation
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.supplier_code_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(`SELECT setval('org.supplier_code_seq', ${nextIdNumber}, true)`),
     );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
-  } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet
-    console.warn(
-      "Supplier code sequence not found, using fallback method:",
-      error,
-    );
-
-    const result = await db
-      .select({ supplierCode: inventorySuppliers.supplierCode })
-      .from(inventorySuppliers)
-      .where(
-        and(
-          eq(inventorySuppliers.isDeleted, false),
-          sql`${inventorySuppliers.supplierCode} ~ ${`^SUP-${year}-\\d+$`}`,
-        ),
-      )
-      .orderBy(desc(inventorySuppliers.supplierCode))
-      .limit(1);
-
-    let nextNumber = 1;
-    if (result.length && result[0]?.supplierCode) {
-      const lastSupplierCode = result[0].supplierCode;
-      const match = lastSupplierCode.match(/^SUP-\d+-(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1]!) + 1;
-      }
-    }
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `SUP-${year}-${nextNumber.toString().padStart(padding, "0")}`;
+  } catch {
+    // Sequence may be missing
   }
-};
+
+  return code;
+}
 
 export const createSupplier = async (data: any) => {
-  // Auto-generate supplier code
-  const supplierCode = await generateSupplierCode();
+  const year = new Date().getFullYear();
 
-  const [newSupplier] = await db
+  const newSupplier = await db.transaction(async (tx) => {
+    const supplierCode = await allocateNextSupplierCode(tx, year);
+    const inserted = await tx
     .insert(inventorySuppliers)
     .values({
       supplierCode: supplierCode,
@@ -150,8 +138,13 @@ export const createSupplier = async (data: any) => {
       isDeleted: false,
     })
     .returning();
+    const rows = inserted as unknown as Record<string, unknown>[];
+    const row = rows[0] as (typeof inventorySuppliers)["$inferSelect"] | undefined;
+    if (!row) throw new Error("Failed to create supplier");
+    return row;
+  });
 
-  return newSupplier!;
+  return newSupplier;
 };
 
 export const updateSupplier = async (id: string, data: any) => {
@@ -192,56 +185,38 @@ export const deleteSupplier = async (id: string) => {
 // Locations
 // ============================
 
-// Generate next location code using PostgreSQL sequence
-// Format: LOC-2025-000001 (6 digits, auto-expands to 7, 8, 9+ as needed)
-// This is THREAD-SAFE and prevents race conditions
-const generateLocationCode = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+async function allocateNextLocationCode(tx: Tx, year: number): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${LOCATION_CODE_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(location_code FROM 'LOC-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.inventory_locations
+        WHERE location_code ~ '^LOC-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const code = `LOC-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    // Use PostgreSQL sequence for atomic ID generation
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.location_code_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(`SELECT setval('org.location_code_seq', ${nextIdNumber}, true)`),
     );
-
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
-  } catch (error) {
-    // Fallback to old method if sequence doesn't exist yet
-    console.warn(
-      "Location code sequence not found, using fallback method:",
-      error,
-    );
-
-    const result = await db
-      .select({ locationCode: inventoryLocations.locationCode })
-      .from(inventoryLocations)
-      .where(
-        and(
-          eq(inventoryLocations.isDeleted, false),
-          sql`${inventoryLocations.locationCode} ~ ${`^LOC-${year}-\\d+$`}`,
-        ),
-      )
-      .orderBy(desc(inventoryLocations.locationCode))
-      .limit(1);
-
-    let nextNumber = 1;
-    if (result.length && result[0]?.locationCode) {
-      const lastLocationCode = result[0].locationCode;
-      const match = lastLocationCode.match(/^LOC-\d+-(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1]!) + 1;
-      }
-    }
-
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `LOC-${year}-${nextNumber.toString().padStart(padding, "0")}`;
+  } catch {
+    // Sequence may be missing
   }
-};
+
+  return code;
+}
 
 export const getLocations = async (
   offset: number,
@@ -304,28 +279,34 @@ export const getLocationById = async (id: string) => {
 };
 
 export const createLocation = async (data: any) => {
-  // Always auto-generate location code - never accept from external input
-  const locationCode = await generateLocationCode();
+  const year = new Date().getFullYear();
 
-  const [newLocation] = (await db
-    .insert(inventoryLocations)
-    .values({
-      locationCode: locationCode,
-      name: data.name,
-      locationType: data.locationType,
-      parentLocationId: data.parentLocationId,
-      streetAddress: data.streetAddress,
-      city: data.city,
-      state: data.state,
-      zipCode: data.zipCode,
-      capacity: data.capacity,
-      capacityUnit: data.capacityUnit,
-      managerId: data.managerId,
-      accessInstructions: data.accessInstructions,
-      notes: data.notes,
-      isDeleted: false,
-    })
-    .returning()) as any;
+  const newLocation = await db.transaction(async (tx) => {
+    const locationCode = await allocateNextLocationCode(tx, year);
+    const inserted = await tx
+      .insert(inventoryLocations)
+      .values({
+        locationCode: locationCode,
+        name: data.name,
+        locationType: data.locationType,
+        parentLocationId: data.parentLocationId,
+        streetAddress: data.streetAddress,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+        capacity: data.capacity,
+        capacityUnit: data.capacityUnit,
+        managerId: data.managerId,
+        accessInstructions: data.accessInstructions,
+        notes: data.notes,
+        isDeleted: false,
+      })
+      .returning();
+    const rows = inserted as unknown as Record<string, unknown>[];
+    const row = rows[0] as (typeof inventoryLocations)["$inferSelect"] | undefined;
+    if (!row) throw new Error("Failed to create location");
+    return row;
+  });
 
   return newLocation;
 };

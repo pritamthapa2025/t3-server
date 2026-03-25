@@ -1,4 +1,4 @@
-import { count, eq, and, desc, ilike, gte, lte } from "drizzle-orm";
+import { count, eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
 import {
   inventoryItems,
@@ -15,29 +15,41 @@ import { calculateStockStatus } from "./inventory-items.service.js";
 // Helper Functions
 // ============================
 
+const TXN_NUMBER_LOCK_KEY = 918_273_652;
+type InvTxnTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function allocateNextTransactionNumber(
+  tx: InvTxnTx,
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${TXN_NUMBER_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(transaction_number FROM 'TXN-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.inventory_transactions
+        WHERE transaction_number ~ '^TXN-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextNum = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const suffix = nextNum.toString().padStart(4, "0");
+  return `TXN-${year}-${suffix}`;
+}
+
 /**
- * Generate unique transaction number
+ * Generate unique transaction number (serializes with createTransaction when used inside tx)
  */
 export const generateTransactionNumber = async (): Promise<string> => {
   const year = new Date().getFullYear();
-  const prefix = `TXN-${year}-`;
-
-  const lastTransaction = await db
-    .select({ transactionNumber: inventoryTransactions.transactionNumber })
-    .from(inventoryTransactions)
-    .where(ilike(inventoryTransactions.transactionNumber, `${prefix}%`))
-    .orderBy(desc(inventoryTransactions.transactionNumber))
-    .limit(1);
-
-  if (lastTransaction.length === 0) {
-    return `${prefix}0001`;
-  }
-
-  const lastNumber = parseInt(
-    lastTransaction[0]!.transactionNumber.split("-").pop() || "0",
-  );
-  const nextNumber = (lastNumber + 1).toString().padStart(4, "0");
-  return `${prefix}${nextNumber}`;
+  return db.transaction(async (tx) => allocateNextTransactionNumber(tx, year));
 };
 
 /**
@@ -322,7 +334,8 @@ export const createTransaction = async (data: any, userId: string) => {
   // This ensures atomicity: either ALL operations succeed or ALL fail
   // Also enables row-level locking to prevent race conditions
   return await db.transaction(async (tx) => {
-    const transactionNumber = await generateTransactionNumber();
+    const year = new Date().getFullYear();
+    const transactionNumber = await allocateNextTransactionNumber(tx, year);
 
     // 🔒 Get item with FOR UPDATE lock to prevent concurrent modifications
     const item = await tx

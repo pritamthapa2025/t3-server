@@ -269,103 +269,106 @@ export const updateVehicleSettings = async (
   return getVehicleSettings(id);
 };
 
-// Generate Vehicle ID using PostgreSQL sequence (thread-safe)
-// Format: VEH-2025-0001 (4 digits, auto-expands to 5, 6+ as needed)
-export const generateVehicleId = async (): Promise<string> => {
-  const year = new Date().getFullYear();
+/** `vehicle_id` is unique including soft-deleted rows; next number must consider all rows. */
+const VEHICLE_ID_DISPLAY_LOCK_KEY = 918_273_646;
+
+async function allocateNextVehicleDisplayId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  year: number,
+): Promise<string> {
+  await tx.execute(
+    sql.raw(`SELECT pg_advisory_xact_lock(${VEHICLE_ID_DISPLAY_LOCK_KEY})`),
+  );
+
+  const maxNumResult = await tx.execute<{ max_num: string | null }>(
+    sql.raw(`
+      WITH nums AS (
+        SELECT CAST(SUBSTRING(vehicle_id FROM 'VEH-${year}-(\\d+)') AS INTEGER) AS num_value
+        FROM org.vehicles
+        WHERE vehicle_id ~ '^VEH-${year}-\\d+$'
+      )
+      SELECT COALESCE(MAX(num_value), 0)::text AS max_num
+      FROM nums
+    `),
+  );
+
+  const maxNum = maxNumResult.rows[0]?.max_num;
+  const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
+  const padding = Math.max(4, nextIdNumber.toString().length);
+  const vehicleId = `VEH-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
   try {
-    const result = await db.execute<{ nextval: string }>(
-      sql.raw(`SELECT nextval('org.vehicle_id_seq')::text as nextval`),
+    await tx.execute(
+      sql.raw(`SELECT setval('org.vehicle_id_seq', ${nextIdNumber}, true)`),
     );
-    const nextNumber = parseInt(result.rows[0]?.nextval || "1");
-    // Use 4 digits minimum, auto-expand when exceeds 9999
-    const padding = Math.max(4, nextNumber.toString().length);
-    return `VEH-${year}-${String(nextNumber).padStart(padding, "0")}`;
-  } catch (error) {
-    console.warn(
-      "Vehicle ID sequence not found or error occurred, using fallback method:",
-      error,
-    );
-    try {
-      const maxNumResult = await db.execute<{ max_num: string | null }>(
-        sql.raw(`
-          SELECT COALESCE(
-            MAX(CAST(SUBSTRING(vehicle_id FROM 'VEH-${year}-(\\d+)') AS INTEGER)),
-            0
-          ) as max_num
-          FROM org.vehicles
-          WHERE vehicle_id ~ '^VEH-${year}-\\d+$'
-            AND is_deleted = false
-        `),
-      );
-      const maxNum = maxNumResult.rows[0]?.max_num;
-      const nextIdNumber = maxNum ? parseInt(maxNum, 10) + 1 : 1;
-      // Use 4 digits minimum, auto-expand when exceeds 9999
-      const padding = Math.max(4, nextIdNumber.toString().length);
-      return `VEH-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
-    } catch (sqlError) {
-      console.warn("Vehicle ID fallback failed:", sqlError);
-      const fallbackNum = Date.now() % 10000;
-      const padding = Math.max(4, fallbackNum.toString().length);
-      return `VEH-${year}-${String(fallbackNum).padStart(padding, "0")}`;
-    }
+  } catch {
+    // Sequence may be missing
   }
+
+  return vehicleId;
+}
+
+// Format: VEH-2025-0001 (includes soft-deleted rows in max; same rules as createVehicle)
+export const generateVehicleId = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  return db.transaction(async (tx) => allocateNextVehicleDisplayId(tx, year));
 };
 
 // Create Vehicle
 export const createVehicle = async (data: CreateVehicleData) => {
-  // Always auto-generate vehicleId - ignore any value from input
-  const vehicleId = await generateVehicleId();
-  const insertData: any = {
-    vehicleId,
-    make: data.make,
-    model: data.model,
-    year: data.year,
-    licensePlate: data.licensePlate,
-    type: data.type,
-    status: data.status || "active",
-    mileage: data.mileage || "0",
-  };
+  const year = new Date().getFullYear();
 
-  // Optional fields
-  if (data.color) insertData.color = data.color;
-  if (data.vin) insertData.vin = data.vin;
-  if (data.assignedToEmployeeId)
-    insertData.assignedToEmployeeId = data.assignedToEmployeeId;
-  if (data.fuelLevel) insertData.fuelLevel = data.fuelLevel;
-  if (data.purchaseDate) insertData.purchaseDate = data.purchaseDate;
-  if (data.purchaseCost) insertData.purchaseCost = data.purchaseCost;
-  if (data.dealer) insertData.dealer = data.dealer;
-  if (data.monthlyPayment) insertData.monthlyPayment = data.monthlyPayment;
-  if (data.loanBalance) insertData.loanBalance = data.loanBalance;
-  if (data.estimatedValue) insertData.estimatedValue = data.estimatedValue;
-  if (data.insuranceProvider)
-    insertData.insuranceProvider = data.insuranceProvider;
-  if (data.insurancePolicyNumber)
-    insertData.insurancePolicyNumber = data.insurancePolicyNumber;
-  if (data.insuranceCoverage)
-    insertData.insuranceCoverage = data.insuranceCoverage;
-  if (data.insuranceExpiration)
-    insertData.insuranceExpiration = data.insuranceExpiration;
-  if (data.insuranceAnnualPremium)
-    insertData.insuranceAnnualPremium = data.insuranceAnnualPremium;
-  if (data.registrationState)
-    insertData.registrationState = data.registrationState;
-  if (data.registrationNumber)
-    insertData.registrationNumber = data.registrationNumber;
-  if (data.registrationExpiration)
-    insertData.registrationExpiration = data.registrationExpiration;
-  if (data.mileageRate) insertData.mileageRate = data.mileageRate;
-  if (data.vehicleDayRate) insertData.vehicleDayRate = data.vehicleDayRate;
-  if (data.mpg) insertData.mpg = data.mpg;
-  if (data.image) insertData.image = data.image;
+  const inserted = await db.transaction(async (tx) => {
+    const vehicleId = await allocateNextVehicleDisplayId(tx, year);
+    const row: any = {
+      vehicleId,
+      make: data.make,
+      model: data.model,
+      year: data.year,
+      licensePlate: data.licensePlate,
+      type: data.type,
+      status: data.status || "active",
+      mileage: data.mileage || "0",
+    };
 
-  const result = await db.insert(vehicles).values(insertData).returning();
+    if (data.color) row.color = data.color;
+    if (data.vin) row.vin = data.vin;
+    if (data.assignedToEmployeeId)
+      row.assignedToEmployeeId = data.assignedToEmployeeId;
+    if (data.fuelLevel) row.fuelLevel = data.fuelLevel;
+    if (data.purchaseDate) row.purchaseDate = data.purchaseDate;
+    if (data.purchaseCost) row.purchaseCost = data.purchaseCost;
+    if (data.dealer) row.dealer = data.dealer;
+    if (data.monthlyPayment) row.monthlyPayment = data.monthlyPayment;
+    if (data.loanBalance) row.loanBalance = data.loanBalance;
+    if (data.estimatedValue) row.estimatedValue = data.estimatedValue;
+    if (data.insuranceProvider)
+      row.insuranceProvider = data.insuranceProvider;
+    if (data.insurancePolicyNumber)
+      row.insurancePolicyNumber = data.insurancePolicyNumber;
+    if (data.insuranceCoverage)
+      row.insuranceCoverage = data.insuranceCoverage;
+    if (data.insuranceExpiration)
+      row.insuranceExpiration = data.insuranceExpiration;
+    if (data.insuranceAnnualPremium)
+      row.insuranceAnnualPremium = data.insuranceAnnualPremium;
+    if (data.registrationState)
+      row.registrationState = data.registrationState;
+    if (data.registrationNumber)
+      row.registrationNumber = data.registrationNumber;
+    if (data.registrationExpiration)
+      row.registrationExpiration = data.registrationExpiration;
+    if (data.mileageRate) row.mileageRate = data.mileageRate;
+    if (data.vehicleDayRate) row.vehicleDayRate = data.vehicleDayRate;
+    if (data.mpg) row.mpg = data.mpg;
+    if (data.image) row.image = data.image;
 
-  // Return enriched data with names (following cursor rule)
-  const inserted = result[0];
-  if (!inserted) throw new Error("Failed to create vehicle");
+    const result = await tx.insert(vehicles).values(row).returning();
+    const created = result[0];
+    if (!created) throw new Error("Failed to create vehicle");
+    return created;
+  });
+
   return await getVehicleById(inserted.id);
 };
 
