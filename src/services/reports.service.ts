@@ -50,6 +50,19 @@ interface TimesheetReportFilter extends DateRangeFilter {
   managerId?: number | undefined;
 }
 
+/** Query/body dates arrive as ISO date strings; normalize before Date math. */
+function coerceFilterDate(
+  value: string | Date | undefined,
+  fallback: Date,
+): Date {
+  if (value === undefined || value === "") return fallback;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? fallback : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
 interface FleetReportFilter extends DateRangeFilter {
   vehicleId?: string | undefined;
   location?: string | undefined;
@@ -1233,10 +1246,8 @@ export const getAttendanceReport = async (
     .groupBy(employees.id, users.fullName);
 
   // Calculate working days in period for absence calculation
-  const startDate = filters?.startDate
-    ? (filters.startDate as any)
-    : new Date();
-  const endDate = filters?.endDate ? (filters.endDate as any) : new Date();
+  const startDate = coerceFilterDate(filters?.startDate, new Date());
+  const endDate = coerceFilterDate(filters?.endDate, new Date());
   const workingDays = Math.ceil(
     (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
   );

@@ -1413,7 +1413,10 @@ export const getAssignableTechniciansForJob = async (jobId: string) => {
     .map((m) => ({
       id: m.employee!.id,
       userId: m.employee!.userId ?? null,
-      name: m.employeeName ?? m.employee!.employeeId ?? `Employee ${m.employee!.id}`,
+      name:
+        m.employeeName ??
+        m.employee!.employeeId ??
+        `Employee ${m.employee!.id}`,
       positionName: m.position?.name ?? null,
       role: m.role ?? null,
     }));
@@ -1893,7 +1896,10 @@ export const userHasAccessToJob = async (
     const [dispatchRow] = await db
       .select({ id: dispatchAssignments.id })
       .from(dispatchAssignments)
-      .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+      .innerJoin(
+        dispatchTasks,
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+      )
       .where(
         and(
           eq(dispatchTasks.jobId, jobId),
