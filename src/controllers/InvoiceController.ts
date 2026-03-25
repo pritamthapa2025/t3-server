@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { asSingleString } from "../utils/request-helpers.js";
+import { asSingleString, asStringArray } from "../utils/request-helpers.js";
 import * as invoicingService from "../services/invoicing.service.js";
 import { logger } from "../utils/logger.js";
 import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
@@ -28,13 +28,18 @@ export const getInvoices = async (req: Request, res: Response) => {
     const options: {
       page?: number;
       limit?: number;
-      status?: string;
+      status?: string | string[];
       search?: string;
       startDate?: string;
       endDate?: string;
       dueDateStart?: string;
       dueDateEnd?: string;
       jobId?: string;
+      clientId?: string;
+      bidId?: string;
+      invoiceType?: string;
+      sortBy?: "invoiceDate" | "dueDate" | "totalAmount" | "createdAt";
+      sortOrder?: "asc" | "desc";
     } = {};
 
     if (req.query.page) {
@@ -43,8 +48,9 @@ export const getInvoices = async (req: Request, res: Response) => {
     if (req.query.limit) {
       options.limit = parseInt(req.query.limit as string, 10);
     }
-    if (req.query.status) {
-      options.status = req.query.status as string;
+    const statusList = asStringArray(req.query.status);
+    if (statusList) {
+      options.status = statusList.length === 1 ? statusList[0]! : statusList;
     }
     if (req.query.search) {
       options.search = req.query.search as string;
@@ -61,8 +67,26 @@ export const getInvoices = async (req: Request, res: Response) => {
     if (req.query.dueDateEnd) {
       options.dueDateEnd = req.query.dueDateEnd as string;
     }
-    if (req.query.jobId) {
-      options.jobId = req.query.jobId as string;
+    const jobId = asSingleString(req.query.jobId);
+    if (jobId) options.jobId = jobId;
+    const clientId = asSingleString(req.query.clientId);
+    if (clientId) options.clientId = clientId;
+    const bidId = asSingleString(req.query.bidId);
+    if (bidId) options.bidId = bidId;
+    const invoiceType = asSingleString(req.query.invoiceType);
+    if (invoiceType) options.invoiceType = invoiceType;
+    const sortBy = asSingleString(req.query.sortBy);
+    if (
+      sortBy === "invoiceDate" ||
+      sortBy === "dueDate" ||
+      sortBy === "totalAmount" ||
+      sortBy === "createdAt"
+    ) {
+      options.sortBy = sortBy;
+    }
+    const sortOrder = asSingleString(req.query.sortOrder);
+    if (sortOrder === "asc" || sortOrder === "desc") {
+      options.sortOrder = sortOrder;
     }
 
     const organizationId = req.query.organizationId as string | undefined;

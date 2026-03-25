@@ -101,13 +101,21 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
 
     const filters = {
       status: req.query.status as string,
+      /** Comma-separated; OR match (e.g. draft,submitted). Takes precedence over status. */
+      statuses: req.query.statuses as string | undefined,
       expenseType: req.query.expenseType as string,
+      /** Comma-separated expense_type_enum values. Takes precedence over expenseType. */
+      expenseTypes: req.query.expenseTypes as string | undefined,
       paymentMethod: req.query.paymentMethod as string,
+      /** Comma-separated payment_method_enum values. Takes precedence over paymentMethod. */
+      paymentMethods: req.query.paymentMethods as string | undefined,
       employeeId: req.query.employeeId
         ? parseInt(req.query.employeeId as string)
         : undefined,
       category: req.query.category as string,
       jobId: req.query.jobId as string,
+      /** Comma-separated job UUIDs. Takes precedence over jobId. */
+      jobIds: req.query.jobIds as string | undefined,
       bidId: req.query.bidId as string,
       vendor: req.query.vendor as string,
       startDate: req.query.startDate as string,
@@ -129,6 +137,8 @@ export const getExpensesHandler = async (req: Request, res: Response) => {
             ? false
             : undefined,
       search: req.query.search as string,
+      minAmount: req.query.minAmount as string | undefined,
+      maxAmount: req.query.maxAmount as string | undefined,
       sortBy: req.query.sortBy as string,
       sortOrder: req.query.sortOrder as "asc" | "desc",
       includeDeleted: req.query.includeDeleted === "true",

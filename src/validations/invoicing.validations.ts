@@ -107,7 +107,9 @@ export const getInvoicesQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? parseInt(val, 10) : 10)),
-  status: invoiceStatusEnum.optional(),
+  status: z
+    .union([invoiceStatusEnum, z.array(invoiceStatusEnum).min(1)])
+    .optional(),
   invoiceType: invoiceTypeEnum.optional(),
   clientId: uuidString.optional(),
   jobId: uuidString.optional(),

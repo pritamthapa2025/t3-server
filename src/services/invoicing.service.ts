@@ -2,9 +2,12 @@ import {
   count,
   eq,
   desc,
+  asc,
   and,
   or,
   like,
+  ilike,
+  exists,
   gte,
   lte,
   sql,
@@ -25,6 +28,32 @@ import { organizations } from "../drizzle/schema/client.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+
+/** Escape %, _, \\ for ILIKE patterns (PostgreSQL default escape \\). */
+function escapeIlikePattern(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+async function getJobIdsForOrganization(orgId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(
+      and(eq(bidsTable.organizationId, orgId), eq(jobs.isDeleted, false)),
+    );
+  return rows.map((r) => r.id);
+}
+
+function intersectJobIds(
+  current: string[] | null,
+  next: string[],
+): string[] {
+  if (next.length === 0) return [];
+  if (current === null) return next;
+  const set = new Set(next);
+  return current.filter((id) => set.has(id));
+}
 
 // ============================
 // Helper Functions
@@ -237,18 +266,33 @@ export const getInvoices = async (
   options?: {
     page?: number;
     limit?: number;
-    status?: string;
+    status?: string | string[];
     search?: string;
     startDate?: string;
     endDate?: string;
     dueDateStart?: string;
     dueDateEnd?: string;
     jobId?: string;
+    clientId?: string;
+    bidId?: string;
+    invoiceType?: string;
+    sortBy?: "invoiceDate" | "dueDate" | "totalAmount" | "createdAt";
+    sortOrder?: "asc" | "desc";
   },
 ) => {
   const page = options?.page || 1;
   const limit = Math.min(options?.limit || 10, 100);
   const offset = (page - 1) * limit;
+
+  const emptyPage = {
+    invoices: [] as any[],
+    pagination: {
+      page: 1,
+      limit,
+      total: 0,
+      totalPages: 0,
+    },
+  };
 
   // Auto-mark overdue invoices on every list fetch (no cron needed)
   const today = new Date().toISOString().split("T")[0];
@@ -273,9 +317,20 @@ export const getInvoices = async (
 
   let whereConditions: any[] = [eq(invoices.isDeleted, false)];
 
-  // Filter by status
+  // Filter by status (single or multiple)
   if (options?.status) {
-    whereConditions.push(eq(invoices.status, options.status as any));
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
+    if (statuses.length === 1) {
+      whereConditions.push(eq(invoices.status, statuses[0] as any));
+    } else {
+      whereConditions.push(inArray(invoices.status, statuses as any));
+    }
+  }
+
+  if (options?.invoiceType) {
+    whereConditions.push(eq(invoices.invoiceType, options.invoiceType as any));
   }
 
   // Filter by date range (invoice date)
@@ -294,50 +349,80 @@ export const getInvoices = async (
     whereConditions.push(lte(invoices.dueDate, options.dueDateEnd));
   }
 
-  // Filter by jobId
+  // Scope by organization (tenant), client org, bid, and/or single job — intersect job ID sets
+  let scopedJobIds: string[] | null = null;
+  if (organizationId) {
+    scopedJobIds = await getJobIdsForOrganization(organizationId);
+    if (scopedJobIds.length === 0) return emptyPage;
+  }
+  if (options?.clientId) {
+    const clientJobs = await getJobIdsForOrganization(options.clientId);
+    scopedJobIds = intersectJobIds(scopedJobIds, clientJobs);
+    if (scopedJobIds.length === 0) return emptyPage;
+  }
+  if (options?.bidId) {
+    const bidJobs = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.bidId, options.bidId), eq(jobs.isDeleted, false)));
+    scopedJobIds = intersectJobIds(
+      scopedJobIds,
+      bidJobs.map((r) => r.id),
+    );
+    if (scopedJobIds.length === 0) return emptyPage;
+  }
   if (options?.jobId) {
-    whereConditions.push(eq(invoices.jobId, options.jobId));
+    scopedJobIds = intersectJobIds(scopedJobIds, [options.jobId]);
+    if (scopedJobIds.length === 0) return emptyPage;
+  }
+  if (scopedJobIds !== null) {
+    whereConditions.push(inArray(invoices.jobId, scopedJobIds));
   }
 
-  // Filter by search (invoice number or billing address)
-  if (options?.search) {
+  // Case-insensitive search: invoice #, billing fields, client (organization) name
+  const q = options?.search?.trim();
+  if (q) {
+    const pattern = `%${escapeIlikePattern(q)}%`;
     whereConditions.push(
       or(
-        like(invoices.invoiceNumber, `%${options.search}%`),
-        like(invoices.billingAddressLine1, `%${options.search}%`),
-        like(invoices.billingCity, `%${options.search}%`),
+        ilike(invoices.invoiceNumber, pattern),
+        ilike(invoices.billingAddressLine1, pattern),
+        ilike(invoices.billingAddressLine2, pattern),
+        ilike(invoices.billingCity, pattern),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(jobs)
+            .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+            .innerJoin(
+              organizations,
+              eq(bidsTable.organizationId, organizations.id),
+            )
+            .where(
+              and(
+                eq(invoices.jobId, jobs.id),
+                eq(jobs.isDeleted, false),
+                ilike(organizations.name, pattern),
+              ),
+            ),
+        ),
       ),
     );
   }
 
-  // Filter by organizationId through job → bid → organizationId
-  if (organizationId) {
-    // Get job IDs for this organization through job → bid relationship
-    const jobIdsResult = await db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-      .where(eq(bidsTable.organizationId, organizationId));
-
-    const jobIds = jobIdsResult.map((j) => j.id);
-
-    if (jobIds.length > 0) {
-      whereConditions.push(inArray(invoices.jobId, jobIds));
-    } else {
-      // If no jobs found for this organization, return empty result
-      return {
-        invoices: [],
-        pagination: {
-          page: 1,
-          limit,
-          total: 0,
-          totalPages: 0,
-        },
-      };
-    }
-  }
-
   const whereClause = and(...whereConditions);
+
+  const sortOrder = options?.sortOrder === "asc" ? "asc" : "desc";
+  const sortColumn =
+    options?.sortBy === "invoiceDate"
+      ? invoices.invoiceDate
+      : options?.sortBy === "dueDate"
+        ? invoices.dueDate
+        : options?.sortBy === "totalAmount"
+          ? invoices.totalAmount
+          : invoices.createdAt;
+  const orderClause =
+    sortOrder === "asc" ? asc(sortColumn) : desc(sortColumn);
 
   // Aliases for joining users table multiple times
   const createdByUser = alias(users, "created_by_user");
@@ -361,7 +446,7 @@ export const getInvoices = async (
       .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
       .leftJoin(organizations, eq(bidsTable.organizationId, organizations.id))
       .where(whereClause)
-      .orderBy(desc(invoices.createdAt))
+      .orderBy(orderClause)
       .limit(limit)
       .offset(offset),
     db.select({ count: count() }).from(invoices).where(whereClause),
@@ -1145,7 +1230,7 @@ export const getInvoiceKPIs = async (
   options: {
     startDate?: string;
     endDate?: string;
-    status?: string;
+    status?: string | string[];
     jobId?: string;
   },
 ) => {
@@ -1204,7 +1289,14 @@ export const getInvoiceKPIs = async (
   }
 
   if (options.status) {
-    whereConditions.push(eq(invoices.status, options.status as any));
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
+    if (statuses.length === 1) {
+      whereConditions.push(eq(invoices.status, statuses[0] as any));
+    } else {
+      whereConditions.push(inArray(invoices.status, statuses as any));
+    }
   }
 
   // Get current UTC date string for overdue calculation

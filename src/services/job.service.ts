@@ -256,24 +256,30 @@ export const getJobs = async (
   const totalCount = totalCountResult[0]?.count || 0;
 
   // Map jobs and add bid priority, name, organization info, and totalPrice from bid_financial_breakdown
-  const jobsList = jobsData.map((item) => ({
-    ...item.job,
-    priority: item.bid.priority, // Use bid priority instead of job priority
-    name: item.bid.projectName, // Derive name from bid.projectName
-    organizationId: item.bid.organizationId, // Include organization info
-    totalPrice: item.totalPrice ?? null,
-    jobAmount: item.actualTotalPrice ?? null,
-    createdByName: item.createdByName || null, // Include created by name
-    organizationName: item.organizationName ?? null,
-    organizationLocation:
-      item.organizationCity && item.organizationState
-        ? `${item.organizationCity}, ${item.organizationState}`
-        : (item.organizationCity ?? item.organizationState ?? null),
-    organizationStreetAddress: item.organizationStreetAddress ?? null,
-    organizationCity: item.organizationCity ?? null,
-    organizationState: item.organizationState ?? null,
-    organizationZipCode: item.organizationZipCode ?? null,
-  }));
+  const jobsList = await enrichJobsListWithProgress(
+    jobsData.map((item) => ({
+      ...item.job,
+      priority: item.bid.priority, // Use bid priority instead of job priority
+      name: item.bid.projectName, // Derive name from bid.projectName
+      organizationId: item.bid.organizationId, // Include organization info
+      totalPrice: item.totalPrice ?? null,
+      jobAmount: item.actualTotalPrice ?? null,
+      createdByName: item.createdByName || null, // Include created by name
+      organizationName: item.organizationName ?? null,
+      organizationLocation:
+        item.organizationCity && item.organizationState
+          ? `${item.organizationCity}, ${item.organizationState}`
+          : (item.organizationCity ?? item.organizationState ?? null),
+      organizationStreetAddress: item.organizationStreetAddress ?? null,
+      organizationCity: item.organizationCity ?? null,
+      organizationState: item.organizationState ?? null,
+      organizationZipCode: item.organizationZipCode ?? null,
+    })),
+    (row) => {
+      const p = row.jobAmount ?? row.totalPrice;
+      return p != null && p !== "" ? String(p) : null;
+    },
+  );
   return {
     jobs: jobsList,
     totalCount,
@@ -362,20 +368,26 @@ export const getJobsByOrganizationId = async (
 
   const totalCount = totalCountResult[0]?.count || 0;
 
-  const jobsList = jobsData.map((item) => ({
-    ...item.job,
-    priority: item.bid.priority,
-    name: item.bid.projectName,
-    organizationId: item.bid.organizationId,
-    totalPrice: item.totalPrice ?? null,
-    contractValue: item.actualTotalPrice ?? null,
-    createdByName: item.createdByName ?? null,
-    organizationName: item.organizationName ?? null,
-    organizationLocation:
-      item.organizationCity && item.organizationState
-        ? `${item.organizationCity}, ${item.organizationState}`
-        : (item.organizationCity ?? item.organizationState ?? null),
-  }));
+  const jobsList = await enrichJobsListWithProgress(
+    jobsData.map((item) => ({
+      ...item.job,
+      priority: item.bid.priority,
+      name: item.bid.projectName,
+      organizationId: item.bid.organizationId,
+      totalPrice: item.totalPrice ?? null,
+      contractValue: item.actualTotalPrice ?? null,
+      createdByName: item.createdByName ?? null,
+      organizationName: item.organizationName ?? null,
+      organizationLocation:
+        item.organizationCity && item.organizationState
+          ? `${item.organizationCity}, ${item.organizationState}`
+          : (item.organizationCity ?? item.organizationState ?? null),
+    })),
+    (row) => {
+      const p = row.contractValue ?? row.totalPrice;
+      return p != null && p !== "" ? String(p) : null;
+    },
+  );
 
   return {
     jobs: jobsList,
@@ -4720,6 +4732,74 @@ export const deleteJobDocument = async (
 
   return document;
 };
+
+/**
+ * Batch-compute task + payment progress for many jobs (same rules as getJobProgressPercentages).
+ * Used by list endpoints to avoid stale `completionPercentage` on the job row for UI progress.
+ */
+async function enrichJobsListWithProgress<T extends { id: string }>(
+  rows: T[],
+  getActualTotalPrice: (row: T) => string | null,
+): Promise<
+  Array<T & { paymentProgressPercent: number; taskProgressPercent: number }>
+> {
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+
+  const [taskAgg, invoiceAgg] = await Promise.all([
+    db
+      .select({
+        jobId: jobTasks.jobId,
+        total: count(),
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${jobTasks.status} = 'done')`,
+      })
+      .from(jobTasks)
+      .where(and(inArray(jobTasks.jobId, ids), eq(jobTasks.isDeleted, false)))
+      .groupBy(jobTasks.jobId),
+    db
+      .select({
+        jobId: invoices.jobId,
+        totalPaid: sql<string>`COALESCE(SUM(${invoices.amountPaid}), 0)`,
+      })
+      .from(invoices)
+      .where(and(inArray(invoices.jobId, ids), eq(invoices.isDeleted, false)))
+      .groupBy(invoices.jobId),
+  ]);
+
+  const taskByJob = new Map(
+    taskAgg.map((r) => [
+      r.jobId,
+      {
+        taskTotal: Number(r.total ?? 0),
+        taskCompleted: Number(r.completed ?? 0),
+      },
+    ]),
+  );
+  const paidByJob = new Map(
+    invoiceAgg.map((r) => [r.jobId, parseFloat(r.totalPaid ?? "0")]),
+  );
+
+  return rows.map((row) => {
+    const t = taskByJob.get(row.id);
+    const taskTotal = t?.taskTotal ?? 0;
+    const taskCompleted = t?.taskCompleted ?? 0;
+    const taskProgressPercent =
+      taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 0;
+
+    const totalPaid = paidByJob.get(row.id) ?? 0;
+    const priceStr = getActualTotalPrice(row);
+    const denom = priceStr ? parseFloat(priceStr) : 0;
+    const paymentProgressPercent =
+      denom > 0 ? Math.round((totalPaid / denom) * 100) : 0;
+
+    return {
+      ...row,
+      paymentProgressPercent,
+      taskProgressPercent,
+    };
+  });
+}
 
 /**
  * Get payment and task progress percentages for a job.

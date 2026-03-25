@@ -92,6 +92,94 @@ export function generateExpenseNumber(): string {
   return `EXP-${year}-${r.toString().padStart(5, "0")}`;
 }
 
+/** Matches org.expense_type_enum */
+const EXPENSE_TYPE_VALUES = new Set<string>([
+  "travel",
+  "meals",
+  "accommodation",
+  "fuel",
+  "vehicle_maintenance",
+  "equipment",
+  "materials",
+  "tools",
+  "permits",
+  "licenses",
+  "insurance",
+  "professional_services",
+  "subcontractor",
+  "office_supplies",
+  "utilities",
+  "marketing",
+  "training",
+  "software",
+  "subscriptions",
+  "other",
+  "job_labor",
+  "job_material",
+  "job_service",
+  "job_travel",
+  "fleet_repair",
+  "fleet_maintenance",
+  "fleet_fuel",
+  "fleet_purchase",
+  "inventory_purchase",
+  "manual",
+]);
+
+const EXPENSE_STATUS_VALUES = new Set<string>([
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "paid",
+  "reimbursed",
+  "cancelled",
+]);
+
+const PAYMENT_METHOD_VALUES = new Set<string>([
+  "cash",
+  "personal_card",
+  "company_card",
+  "check",
+  "bank_transfer",
+  "petty_cash",
+  "other",
+]);
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function splitCsv(raw: unknown): string[] {
+  if (raw === undefined || raw === null || raw === "") return [];
+  if (Array.isArray(raw)) {
+    return raw.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
+  }
+  return String(raw)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseEnumCsv<T extends string>(
+  raw: unknown,
+  allowed: Set<string>,
+): T[] {
+  const uniq = new Set<string>();
+  for (const part of splitCsv(raw)) {
+    if (allowed.has(part)) uniq.add(part);
+  }
+  return [...uniq] as T[];
+}
+
+function parseJobIdsCsv(raw: unknown): string[] {
+  return splitCsv(raw).filter((id) => UUID_RE.test(id));
+}
+
+/** Strip ILIKE wildcards from user input to avoid injection / full scans */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.trim().replace(/[%_\\]/g, "");
+}
+
 export async function getExpenses(
   organizationId: string | undefined,
   offset: number,
@@ -100,7 +188,14 @@ export async function getExpenses(
 ) {
   const whereConditions = [eq(expenses.isDeleted, false)];
   // organization_id not on org.expenses; scope via employee/category/job if needed
-  if (filters?.status) {
+
+  const statusIn = parseEnumCsv<(typeof expenses.$inferSelect)["status"]>(
+    filters?.statuses,
+    EXPENSE_STATUS_VALUES,
+  );
+  if (statusIn.length > 0) {
+    whereConditions.push(inArray(expenses.status, statusIn));
+  } else if (filters?.status) {
     whereConditions.push(
       eq(
         expenses.status,
@@ -108,7 +203,14 @@ export async function getExpenses(
       ),
     );
   }
-  if (filters?.expenseType) {
+
+  const expenseTypesIn = parseEnumCsv<(typeof expenses.$inferSelect)["expenseType"]>(
+    filters?.expenseTypes,
+    EXPENSE_TYPE_VALUES,
+  );
+  if (expenseTypesIn.length > 0) {
+    whereConditions.push(inArray(expenses.expenseType, expenseTypesIn));
+  } else if (filters?.expenseType) {
     whereConditions.push(
       eq(
         expenses.expenseType,
@@ -116,7 +218,13 @@ export async function getExpenses(
       ),
     );
   }
-  if (filters?.paymentMethod) {
+
+  const paymentMethodsIn = parseEnumCsv<
+    (typeof expenses.$inferSelect)["paymentMethod"]
+  >(filters?.paymentMethods, PAYMENT_METHOD_VALUES);
+  if (paymentMethodsIn.length > 0) {
+    whereConditions.push(inArray(expenses.paymentMethod, paymentMethodsIn));
+  } else if (filters?.paymentMethod) {
     whereConditions.push(
       eq(
         expenses.paymentMethod,
@@ -124,6 +232,29 @@ export async function getExpenses(
       ),
     );
   }
+
+  const jobIdsIn = parseJobIdsCsv(filters?.jobIds);
+  if (jobIdsIn.length > 0) {
+    whereConditions.push(inArray(expenses.jobId, jobIdsIn));
+  } else if (filters?.jobId) {
+    whereConditions.push(eq(expenses.jobId, filters.jobId as string));
+  }
+
+  if (filters?.search && String(filters.search).trim()) {
+    const safe = sanitizeSearchTerm(String(filters.search));
+    if (safe.length > 0) {
+      const pattern = `%${safe}%`;
+      whereConditions.push(
+        or(
+          sql`${expenses.title} ILIKE ${pattern}`,
+          sql`COALESCE(${expenses.description}, '') ILIKE ${pattern}`,
+          sql`COALESCE(${expenses.vendor}, '') ILIKE ${pattern}`,
+          sql`${expenses.expenseNumber} ILIKE ${pattern}`,
+        )!,
+      );
+    }
+  }
+
   if (filters?.vendor) {
     whereConditions.push(
       sql`LOWER(${expenses.vendor}) LIKE LOWER(${`%${filters.vendor}%`})`,
@@ -136,9 +267,6 @@ export async function getExpenses(
         filters.category as typeof expenses.$inferSelect.category,
       ),
     );
-  }
-  if (filters?.jobId) {
-    whereConditions.push(eq(expenses.jobId, filters.jobId as string));
   }
   if (filters?.sourceId) {
     whereConditions.push(eq(expenses.sourceId, filters.sourceId as string));
@@ -154,6 +282,23 @@ export async function getExpenses(
   }
   if (filters?.endDate) {
     whereConditions.push(lte(expenses.expenseDate, filters.endDate as string));
+  }
+
+  const minAmt = filters?.minAmount != null && String(filters.minAmount) !== ""
+    ? Number(filters.minAmount)
+    : NaN;
+  const maxAmt = filters?.maxAmount != null && String(filters.maxAmount) !== ""
+    ? Number(filters.maxAmount)
+    : NaN;
+  if (Number.isFinite(minAmt)) {
+    whereConditions.push(
+      sql`CAST(${expenses.amount} AS NUMERIC) >= ${minAmt}`,
+    );
+  }
+  if (Number.isFinite(maxAmt)) {
+    whereConditions.push(
+      sql`CAST(${expenses.amount} AS NUMERIC) <= ${maxAmt}`,
+    );
   }
 
   // If filtering by employeeId, we need to join through createdBy → users → employees
