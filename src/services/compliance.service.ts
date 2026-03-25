@@ -22,6 +22,7 @@ import {
 import { employees, departments } from "../drizzle/schema/org.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 import type {
   CreateComplianceCaseData,
   UpdateComplianceCaseData,
@@ -377,13 +378,12 @@ async function allocateNextCaseNumber(
   const padding = Math.max(4, nextIdNumber.toString().length);
   const caseNumber = `CASE-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(`SELECT setval('org.case_number_seq', ${nextIdNumber}, true)`),
-    );
-  } catch {
-    // Sequence may be missing
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_case_number_setval",
+    "org.case_number_seq",
+    nextIdNumber,
+  );
 
   return caseNumber;
 }

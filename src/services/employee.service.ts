@@ -13,6 +13,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 import {
   employees,
   departments,
@@ -688,13 +689,12 @@ async function allocateNextEmployeeDisplayId(
   const padding = Math.max(4, nextIdNumber.toString().length);
   const employeeId = `T3-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(`SELECT setval('org.employee_id_seq', ${nextIdNumber}, true)`),
-    );
-  } catch {
-    // Sequence may be missing
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_employee_id_setval",
+    "org.employee_id_seq",
+    nextIdNumber,
+  );
 
   return employeeId;
 }

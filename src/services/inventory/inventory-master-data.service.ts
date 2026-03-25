@@ -1,5 +1,6 @@
 import { count, eq, and, ilike, sql } from "drizzle-orm";
 import { db } from "../../config/db.js";
+import { trySetvalInTransaction } from "../../utils/try-setval-in-transaction.js";
 import {
   inventorySuppliers,
   inventoryLocations,
@@ -94,13 +95,12 @@ async function allocateNextSupplierCode(tx: Tx, year: number): Promise<string> {
   const padding = Math.max(4, nextIdNumber.toString().length);
   const code = `SUP-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(`SELECT setval('org.supplier_code_seq', ${nextIdNumber}, true)`),
-    );
-  } catch {
-    // Sequence may be missing
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_supplier_code_setval",
+    "org.supplier_code_seq",
+    nextIdNumber,
+  );
 
   return code;
 }
@@ -207,13 +207,12 @@ async function allocateNextLocationCode(tx: Tx, year: number): Promise<string> {
   const padding = Math.max(4, nextIdNumber.toString().length);
   const code = `LOC-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(`SELECT setval('org.location_code_seq', ${nextIdNumber}, true)`),
-    );
-  } catch {
-    // Sequence may be missing
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_location_code_setval",
+    "org.location_code_seq",
+    nextIdNumber,
+  );
 
   return code;
 }

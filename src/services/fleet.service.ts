@@ -1,5 +1,6 @@
 import { db } from "../config/db.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 import {
   vehicles,
   maintenanceRecords,
@@ -297,13 +298,12 @@ async function allocateNextVehicleDisplayId(
   const padding = Math.max(4, nextIdNumber.toString().length);
   const vehicleId = `VEH-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(`SELECT setval('org.vehicle_id_seq', ${nextIdNumber}, true)`),
-    );
-  } catch {
-    // Sequence may be missing
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_vehicle_id_setval",
+    "org.vehicle_id_seq",
+    nextIdNumber,
+  );
 
   return vehicleId;
 }

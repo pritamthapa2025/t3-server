@@ -53,6 +53,7 @@ import {
 import { invoices, creditNotes } from "../drizzle/schema/invoicing.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 
 // Import types
 import type {
@@ -551,15 +552,12 @@ async function allocateNextClientDisplayId(
   const padding = Math.max(4, nextIdNumber.toString().length);
   const clientId = `CL-${year}-${String(nextIdNumber).padStart(padding, "0")}`;
 
-  try {
-    await tx.execute(
-      sql.raw(
-        `SELECT setval('org.client_id_seq', ${nextIdNumber}, true)`,
-      ),
-    );
-  } catch {
-    // Sequence may be missing in some DBs; display id is still correct.
-  }
+  await trySetvalInTransaction(
+    tx,
+    "sp_client_id_setval",
+    "org.client_id_seq",
+    nextIdNumber,
+  );
 
   return clientId;
 }
