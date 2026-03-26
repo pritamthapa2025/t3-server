@@ -152,9 +152,12 @@ export const updateUserSchema = z.object({
           z.null(),
         ])
         .optional(),
+      /** Set by userRoutes when multipart includes a profilePicture file (not in JSON clients). */
+      __profilePictureUpload: z.literal("1").optional(),
     })
     .refine(
       (data) =>
+        data.__profilePictureUpload === "1" ||
         data.fullName !== undefined ||
         data.email !== undefined ||
         data.phone !== undefined ||

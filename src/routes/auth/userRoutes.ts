@@ -87,6 +87,10 @@ router
           if (err) {
             return handleMulterError(err, req, res, next);
           }
+          // Lets Zod accept "file only" updates without sending dummy fields (e.g. empty phone).
+          if (req.file) {
+            req.body = { ...req.body, __profilePictureUpload: "1" };
+          }
           next();
         });
       } else {

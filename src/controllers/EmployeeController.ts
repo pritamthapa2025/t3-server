@@ -21,7 +21,6 @@ import {
   deleteUser,
   getUserById,
   getUserByEmail,
-  reactivateUser,
   updateUser,
 } from "../services/user.service.js";
 import { getDepartmentById } from "../services/department.service.js";
@@ -309,27 +308,29 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       branchName,
     } = employeeData;
 
-    // If no userId but email provided, check for existing user (e.g. re-adding employee after delete)
-    let existingUserByEmail: Awaited<ReturnType<typeof getUserByEmail>> = null;
+    // Reject duplicate email before any upload or DB writes (including soft-deleted accounts)
     if (!userId && email) {
-      existingUserByEmail = await getUserByEmail(email);
-    }
-
-    // Pre-validate unique fields before attempting to create (only when not reusing existing user)
-    const uniqueFieldChecks = [];
-    if (!userId && email && !existingUserByEmail) {
-      uniqueFieldChecks.push({
-        field: "email",
-        value: email,
-        checkFunction: () => checkEmailExists(email),
-        message: `An account with email '${email}' already exists`,
-      });
-    }
-
-    // Validate all unique fields
-    const validationErrors = await validateUniqueFields(uniqueFieldChecks);
-    if (validationErrors.length > 0) {
-      return res.status(409).json(buildConflictResponse(validationErrors));
+      const userWithEmail = await getUserByEmail(email);
+      if (userWithEmail) {
+        const accountStatus = {
+          isDeleted: Boolean(userWithEmail.isDeleted),
+          isActive: Boolean(userWithEmail.isActive),
+        };
+        if (userWithEmail.isDeleted) {
+          return res.status(409).json({
+            success: false,
+            code: "EMAIL_ACCOUNT_SOFT_DELETED",
+            message: `This email belongs to a soft-deleted user account. Status: isDeleted=true, isActive=${userWithEmail.isActive}. Restore that account or use a different email before adding an employee.`,
+            accountStatus,
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: "EMAIL_ALREADY_EXISTS",
+          message: `This email is already in use. Status: isDeleted=false, isActive=${userWithEmail.isActive}.`,
+          accountStatus,
+        });
+      }
     }
 
     // Handle file upload if provided
@@ -395,7 +396,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
-    // Resolve user: use provided userId, existing user by email (re-add employee), or create new user
+    // Resolve user: explicit userId (advanced) or create a new user
     if (userId) {
       // Validate existing user
       const existingUser = await getUserById(userId);
@@ -405,15 +406,6 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
           message: "Invalid userId provided",
         });
       }
-    } else if (existingUserByEmail) {
-      // Re-use existing user (e.g. re-adding employee after their employee record was deleted)
-      if (existingUserByEmail.isDeleted) {
-        await reactivateUser(existingUserByEmail.id);
-      }
-      if (fullName && fullName !== existingUserByEmail.fullName) {
-        await updateUser(existingUserByEmail.id, { fullName });
-      }
-      // createdUser stays null; we don't send setup email for re-used accounts
     } else {
       // Create new user
       if (!fullName || !email) {
@@ -449,7 +441,12 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
       }
     }
 
-    const finalUserId = userId || existingUserByEmail?.id || createdUser!.id;
+    const finalUserId = userId || createdUser!.id;
+
+    // New users receive profilePicture on createUser. Explicit userId + file: persist here.
+    if (uploadedFileUrl && !createdUser) {
+      await updateUser(finalUserId, { profilePicture: uploadedFileUrl });
+    }
 
     // Assign role to user if roleId is provided
     if (roleId !== undefined && roleId !== null) {
