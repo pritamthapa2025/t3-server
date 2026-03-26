@@ -30,6 +30,7 @@ import {
   getMeProfileBundle,
   updatePassword,
   markSetupTokenUsed,
+  updateUserLastLogin,
 } from "../services/auth.service.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { logger } from "../utils/logger.js";
@@ -71,6 +72,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
         }
 
         const token = generateToken(user.id);
+        await updateUserLastLogin(user.id);
 
         logger.info("Login successful via trusted device", { userId: user.id });
         return res.status(200).json({
@@ -195,6 +197,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
     }
 
     const token = generateToken(user.id);
+    await updateUserLastLogin(user.id);
 
     // Handle "Remember Device" functionality
     let deviceTokenSet = false;

@@ -125,6 +125,7 @@ import {
   createBidDesignBuildFile,
   deleteBidDesignBuildFile,
 } from "../services/bid.service.js";
+import { appendJobHistoryForBid } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import {
   prepareQuoteDataForPDF,
@@ -4461,6 +4462,13 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
       performedBy: userId!,
     });
 
+    await appendJobHistoryForBid(bidId!, {
+      action: "media_uploaded",
+      newValue: uploadedMedia.map((m) => m?.fileName ?? "").join(", "),
+      description: `${uploadedMedia.length} media file(s) uploaded: ${uploadedMedia.map((m) => m?.fileName ?? "").join(", ")}`,
+      createdBy: userId!,
+    });
+
     return res.status(201).json({
       success: true,
       data: uploadedMedia,
@@ -4703,6 +4711,12 @@ export const updateBidMediaHandler = async (req: Request, res: Response) => {
       performedBy: userId,
     });
 
+    await appendJobHistoryForBid(bidId!, {
+      action: "media_updated",
+      description: `Media file "${updatedMedia.fileName}" was updated`,
+      createdBy: userId,
+    });
+
     return res.status(200).json({
       success: true,
       data: updatedMedia,
@@ -4766,6 +4780,12 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
       action: "media_deleted",
       description: `Media file "${existingMedia.fileName}" was deleted`,
       performedBy: userId,
+    });
+
+    await appendJobHistoryForBid(bidId!, {
+      action: "media_deleted",
+      description: `Media file "${existingMedia.fileName}" was deleted`,
+      createdBy: userId,
     });
 
     return res.status(200).json({

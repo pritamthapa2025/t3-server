@@ -1111,15 +1111,13 @@ export const removeJobTeamMemberHandler = async (
       });
     }
 
-    // Create history entry - temporarily disabled until we implement proper organizationId fetching
-    // TODO: Get organizationId from job data for history entry
-    // await createJobHistoryEntry({
-    //   jobId: jobId!,
-    //   organizationId: jobOrganizationId,
-    //   action: "team_member_removed",
-    //   description: "Team member was removed",
-    //   createdBy: performedBy,
-    // });
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "team_member_removed",
+      newValue: String(employeeId),
+      description: "Team member was removed",
+      createdBy: _performedBy,
+    });
 
     logger.info("Job team member removed successfully");
     return res.status(200).json({
@@ -3056,6 +3054,20 @@ export const createJobSurveyHandler = async (req: Request, res: Response) => {
         message: "Job not found",
       });
     }
+
+    const surveyLabel =
+      survey.buildingNumber ||
+      survey.unitLocation ||
+      survey.serialNumber ||
+      "Survey record";
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "survey_added",
+      newValue: surveyLabel,
+      description: `Survey added${survey.buildingNumber ? ` — ${survey.buildingNumber}` : ""}`,
+      createdBy: userId,
+    });
+
     logger.info("Job survey created successfully");
     return res.status(201).json({ success: true, data: survey });
   } catch (error: any) {
@@ -3097,6 +3109,20 @@ export const updateJobSurveyHandler = async (req: Request, res: Response) => {
         message: "Survey not found",
       });
     }
+
+    const surveyLabel =
+      survey.buildingNumber ||
+      survey.unitLocation ||
+      survey.serialNumber ||
+      "Survey record";
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "survey_updated",
+      newValue: surveyLabel,
+      description: "Survey was updated",
+      createdBy: userId,
+    });
+
     logger.info("Job survey updated successfully");
     return res.status(200).json({ success: true, data: survey });
   } catch (error: any) {
@@ -3136,6 +3162,14 @@ export const deleteJobSurveyHandler = async (req: Request, res: Response) => {
         message: "Survey not found",
       });
     }
+
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "survey_deleted",
+      description: "Survey was deleted",
+      createdBy: userId,
+    });
+
     logger.info("Job survey deleted successfully");
     return res.status(200).json({
       success: true,
@@ -3701,6 +3735,13 @@ export const updateJobDocumentHandler = async (req: Request, res: Response) => {
         message: "Document not found or failed to update",
       });
     }
+
+    await createJobHistoryEntry({
+      jobId: jobId!,
+      action: "document_updated",
+      description: `Document "${updatedDocument.fileName}" was updated`,
+      createdBy: userId,
+    });
 
     logger.info(`Job document ${documentId} updated successfully`);
     return res.status(200).json({
@@ -4636,6 +4677,15 @@ export const updateJobLogHandler = async (req: Request, res: Response) => {
     const log = await updateJobLog(logId!, req.body);
     if (!log)
       return res.status(404).json({ success: false, message: "Log not found" });
+
+    const jobIdStr = asSingleString(req.params.jobId);
+    await createJobHistoryEntry({
+      jobId: jobIdStr!,
+      action: "field_log_updated",
+      description: "Field log was updated",
+      createdBy: userId,
+    });
+
     return res.status(200).json({ success: true, data: log });
   } catch (error) {
     logger.logApiError("Job log error", error, req);
@@ -4655,6 +4705,15 @@ export const deleteJobLogHandler = async (req: Request, res: Response) => {
     const log = await deleteJobLog(logId!);
     if (!log)
       return res.status(404).json({ success: false, message: "Log not found" });
+
+    const jobIdStr = asSingleString(req.params.jobId);
+    await createJobHistoryEntry({
+      jobId: jobIdStr!,
+      action: "field_log_deleted",
+      description: "Field log was deleted",
+      createdBy: userId,
+    });
+
     return res
       .status(200)
       .json({ success: true, message: "Field log deleted" });

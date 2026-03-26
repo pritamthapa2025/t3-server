@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
@@ -125,6 +125,19 @@ export const updatePassword = async (userId: string, passwordHash: string) => {
   await db
     .update(users)
     .set({ passwordHash, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+};
+
+/** Persist last successful sign-in time (password + 2FA or trusted device). */
+export const updateUserLastLogin = async (userId: string) => {
+  const now = new Date();
+  await db
+    .update(users)
+    .set({
+      // Naive `timestamp`: UTC clock reading, no timezone stored in the column
+      lastLogin: sql`(now() AT TIME ZONE 'UTC')`,
+      updatedAt: now,
+    })
     .where(eq(users.id, userId));
 };
 

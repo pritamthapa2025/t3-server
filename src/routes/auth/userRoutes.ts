@@ -28,7 +28,10 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     // Accept only image files
-    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+    if (
+      file.mimetype.startsWith("image/") &&
+      file.mimetype !== "image/svg+xml"
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed"));
@@ -52,7 +55,6 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
 
 // Authentication will be applied per route instead of globally to avoid conflicts
 
-
 router
   .route("/users")
   .get(authenticate, validate(getUsersQuerySchema), getUsersHandler)
@@ -73,7 +75,7 @@ router
       }
     },
     validate(createUserSchema),
-    createUserHandler
+    createUserHandler,
   );
 router
   .route("/users/:id")
@@ -99,7 +101,7 @@ router
       }
     },
     validate(updateUserSchema),
-    updateUserHandler
+    updateUserHandler,
   )
   .delete(authenticate, validate(deleteUserSchema), deleteUserHandler);
 

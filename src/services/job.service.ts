@@ -3245,6 +3245,33 @@ export const createJobHistoryEntry = async (data: {
   return historyEntry;
 };
 
+/** If a job exists for this bid, mirror bid-side activity into org.job_history (e.g. media from job UI). */
+export const appendJobHistoryForBid = async (
+  bidId: string,
+  entry: {
+    action: string;
+    description?: string;
+    oldValue?: string;
+    newValue?: string;
+    createdBy: string;
+  },
+) => {
+  const [jobRow] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.bidId, bidId), eq(jobs.isDeleted, false)))
+    .limit(1);
+  if (!jobRow) return;
+  await createJobHistoryEntry({
+    jobId: jobRow.id,
+    action: entry.action,
+    createdBy: entry.createdBy,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+    ...(entry.oldValue !== undefined ? { oldValue: entry.oldValue } : {}),
+    ...(entry.newValue !== undefined ? { newValue: entry.newValue } : {}),
+  });
+};
+
 // ============================
 // Job Tasks Operations
 // ============================

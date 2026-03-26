@@ -49,7 +49,8 @@ export const users = auth.table(
     isActive: boolean("is_active").default(true),
     isVerified: boolean("is_verified").default(false),
     isDeleted: boolean("is_deleted").default(false),
-    lastLogin: timestamp("last_login"),
+    /** Stored as PostgreSQL `timestamp without time zone` (naive UTC wall time). */
+    lastLogin: timestamp("last_login", { withTimezone: false }),
 
     // Password change tracking
     passwordChangedAt: timestamp("password_changed_at"),

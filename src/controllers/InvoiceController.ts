@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { asSingleString, asStringArray } from "../utils/request-helpers.js";
 import * as invoicingService from "../services/invoicing.service.js";
+import { createJobHistoryEntry } from "../services/job.service.js";
 import { logger } from "../utils/logger.js";
 import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import {
@@ -17,6 +18,28 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { clientContacts } from "../drizzle/schema/client.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
+
+async function logJobInvoiceHistory(
+  invoice: { jobId?: string | null; invoiceNumber?: string | null } | null | undefined,
+  userId: string,
+  action: string,
+  description: string,
+  newValue?: string | null,
+) {
+  const jobId = invoice?.jobId;
+  if (!jobId) return;
+  try {
+    await createJobHistoryEntry({
+      jobId,
+      action,
+      description,
+      ...(newValue != null && newValue !== "" ? { newValue } : {}),
+      createdBy: userId,
+    });
+  } catch (e) {
+    logger.error("Failed to write job history for invoice action", e);
+  }
+}
 
 /**
  * Get invoices with pagination and filtering
@@ -189,6 +212,14 @@ export const createInvoice = async (req: Request, res: Response) => {
       },
     );
 
+    await logJobInvoiceHistory(
+      invoice,
+      userId,
+      "invoice_created",
+      `Invoice ${invoice?.invoiceNumber ?? result.invoiceId} was created`,
+      invoice?.invoiceNumber ?? null,
+    );
+
     logger.info(`Invoice ${result.invoiceId} created successfully`);
     res.status(201).json({
       success: true,
@@ -267,6 +298,14 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    await logJobInvoiceHistory(
+      invoice,
+      userId,
+      "invoice_updated",
+      `Invoice ${invoice.invoiceNumber ?? id} was updated`,
+      invoice.invoiceNumber ?? null,
+    );
+
     logger.info(`Invoice ${id} updated successfully`);
     res.json({
       success: true,
@@ -325,6 +364,14 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     }
 
     await invoicingService.deleteInvoice(id, organizationId, userId);
+
+    await logJobInvoiceHistory(
+      existingInvoice,
+      userId,
+      "invoice_deleted",
+      `Invoice ${existingInvoice.invoiceNumber ?? id} was deleted`,
+      existingInvoice.invoiceNumber ?? null,
+    );
 
     logger.info(`Invoice ${id} deleted successfully`);
     res.json({
@@ -1582,6 +1629,14 @@ export const markInvoiceAsPaid = async (req: Request, res: Response) => {
       userId,
     );
 
+    await logJobInvoiceHistory(
+      invoice,
+      userId,
+      "invoice_marked_paid",
+      `Invoice ${invoice?.invoiceNumber ?? id} was marked as paid`,
+      invoice?.invoiceNumber ?? null,
+    );
+
     logger.info(`Invoice ${id} marked as paid`);
     res.json({
       success: true,
@@ -1644,6 +1699,14 @@ export const voidInvoice = async (req: Request, res: Response) => {
       organizationId,
       req.body,
       userId,
+    );
+
+    await logJobInvoiceHistory(
+      invoice,
+      userId,
+      "invoice_voided",
+      `Invoice ${invoice?.invoiceNumber ?? id} was voided`,
+      invoice?.invoiceNumber ?? null,
     );
 
     logger.info(`Invoice ${id} voided successfully`);
@@ -2356,6 +2419,20 @@ export const createInvoicePayment = async (
         message: "Invoice not found",
       });
     }
+
+    const inv = await invoicingService.getInvoiceById(invoiceId, organizationId, {
+      includeLineItems: false,
+      includePayments: false,
+      includeDocuments: false,
+      includeHistory: false,
+    });
+    await logJobInvoiceHistory(
+      inv,
+      userId,
+      "invoice_payment_recorded",
+      `Payment recorded for invoice ${inv?.invoiceNumber ?? invoiceId}`,
+      inv?.invoiceNumber ?? null,
+    );
 
     logger.info(`Payment created for invoice: ${invoiceId}`);
     return res.status(201).json({
