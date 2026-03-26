@@ -14,46 +14,39 @@ import {
 // ============================
 
 export const getDashboardSummary = async () => {
-  // Get total items count
-  const totalItems = await db
-    .select({ count: count() })
-    .from(inventoryItems)
-    .where(eq(inventoryItems.isDeleted, false));
+  const notDeleted = eq(inventoryItems.isDeleted, false);
 
-  // Get items by status
-  const lowStockItems = await db
-    .select({ count: count() })
-    .from(inventoryItems)
-    .where(
-      and(
-        eq(inventoryItems.status, "low_stock"),
-        eq(inventoryItems.isDeleted, false),
+  const [
+    totalItems,
+    lowStockItems,
+    outOfStockItems,
+    totalValue,
+    unresolvedAlerts,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(inventoryItems).where(notDeleted),
+    db
+      .select({ count: count() })
+      .from(inventoryItems)
+      .where(
+        and(eq(inventoryItems.status, "low_stock"), notDeleted),
       ),
-    );
-
-  const outOfStockItems = await db
-    .select({ count: count() })
-    .from(inventoryItems)
-    .where(
-      and(
-        eq(inventoryItems.status, "out_of_stock"),
-        eq(inventoryItems.isDeleted, false),
+    db
+      .select({ count: count() })
+      .from(inventoryItems)
+      .where(
+        and(eq(inventoryItems.status, "out_of_stock"), notDeleted),
       ),
-    );
-
-  // Get total inventory value
-  const totalValue = await db
-    .select({
-      value: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
-    })
-    .from(inventoryItems)
-    .where(eq(inventoryItems.isDeleted, false));
-
-  // Get unresolved alerts
-  const unresolvedAlerts = await db
-    .select({ count: count() })
-    .from(inventoryStockAlerts)
-    .where(eq(inventoryStockAlerts.isResolved, false));
+    db
+      .select({
+        value: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
+      })
+      .from(inventoryItems)
+      .where(notDeleted),
+    db
+      .select({ count: count() })
+      .from(inventoryStockAlerts)
+      .where(eq(inventoryStockAlerts.isResolved, false)),
+  ]);
 
   return {
     totalItems: totalItems[0]?.count ?? 0,

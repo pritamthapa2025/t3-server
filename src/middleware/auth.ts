@@ -1,7 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../utils/jwt.js";
 import { isTokenBlacklisted } from "../utils/tokenBlacklist.js";
-import { getUserByIdForAuth } from "../services/auth.service.js";
+import {
+  getMeProfileBundle,
+  mapProfileToAuthGate,
+  type AuthMeProfileRow,
+} from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
 
 // Timeout wrapper for database queries to prevent hanging
@@ -21,7 +25,8 @@ const withTimeout = <T>(
 // Optimized LRU (Least Recently Used) cache with automatic eviction
 // Configurable via environment variables
 interface CachedUser {
-  user: Awaited<ReturnType<typeof getUserByIdForAuth>>;
+  /** Full profile row — GET /auth/me can reuse without a second query. */
+  principal: AuthMeProfileRow;
   expiresAt: number;
   lastAccessed: number; // For LRU tracking
 }
@@ -316,21 +321,8 @@ export const authenticate = async (
       });
     }
 
-    // Check token blacklist (revoked on logout).
-    // Only tokens that carry a jti are checked; old tokens without jti are
-    // allowed through for a graceful rollover period.
     const jti = decoded.jti;
-    if (jti) {
-      const revoked = await isTokenBlacklisted(jti);
-      if (revoked) {
-        return res.status(401).json({
-          success: false,
-          message: "Authorization denied. Token has been revoked.",
-        });
-      }
-    }
 
-    // Basic UUID format validation to prevent unnecessary database queries
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
@@ -344,88 +336,43 @@ export const authenticate = async (
       });
     }
 
-    // Check cache first (if enabled)
-    let user: Awaited<ReturnType<typeof getUserByIdForAuth>> | null;
+    let principal: AuthMeProfileRow | null = null;
     let dbTime = 0;
 
-    if (CACHE_ENABLED) {
-      const cacheStart = Date.now();
-      const cached = authCache.get(userId);
-      const cacheTime = Date.now() - cacheStart;
-
-      if (cached) {
-        // Use cached user (already validated for expiration in get())
-        user = cached.user;
-        if (process.env.NODE_ENV === "development") {
-          console.log(
-            `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
-              req.originalUrl || req.url
-            }]`,
-          );
-        }
-      } else {
-        // Fetch user from database with timeout
-        const dbStart = Date.now();
-        try {
-          user = await withTimeout(
-            getUserByIdForAuth(userId),
-            DB_QUERY_TIMEOUT,
-            "Database query timeout",
-          );
-          dbTime = Date.now() - dbStart;
-
-          if (user) {
-            // Cache the user data (LRU will auto-evict if needed)
-            authCache.set(userId, {
-              user,
-              expiresAt: Date.now() + CACHE_TTL,
-              lastAccessed: Date.now(),
-            });
-          }
+    const loadPrincipal = async (): Promise<AuthMeProfileRow | null> => {
+      if (CACHE_ENABLED) {
+        const cacheStart = Date.now();
+        const cached = authCache.get(userId);
+        const cacheTime = Date.now() - cacheStart;
+        if (cached) {
           if (process.env.NODE_ENV === "development") {
             console.log(
-              `✅ Auth: from db (${dbTime}ms) [${req.method} ${
+              `✅ Auth: from cache (${cacheTime}ms) [${req.method} ${
                 req.originalUrl || req.url
               }]`,
             );
           }
-        } catch (dbError: any) {
-          dbTime = Date.now() - dbStart;
-          logger.error(
-            `Database query failed or timed out after ${dbTime}ms:`,
-            {
-              ...dbError,
-              userId,
-              method: req.method,
-              url: req.originalUrl,
-              userAgent: req.headers["user-agent"],
-              cacheEnabled: CACHE_ENABLED,
-              queryTimeout: DB_QUERY_TIMEOUT,
-              poolStatus: {
-                total: (req as any).__dbPoolTotal,
-                idle: (req as any).__dbPoolIdle,
-                waiting: (req as any).__dbPoolWaiting,
-              },
-            },
-          );
-          // Re-throw to be caught by outer catch block
-          throw new Error(
-            dbError.message?.includes("timeout")
-              ? "Database connection timeout. Please try again."
-              : "Database error during authentication",
-          );
+          return cached.principal;
         }
       }
-    } else {
-      // Cache disabled - always fetch from DB with timeout
+
       const dbStart = Date.now();
       try {
-        user = await withTimeout(
-          getUserByIdForAuth(userId),
+        const row = await withTimeout(
+          getMeProfileBundle(userId),
           DB_QUERY_TIMEOUT,
-          `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`,
+          CACHE_ENABLED
+            ? "Database query timeout"
+            : `Database auth query timeout after ${DB_QUERY_TIMEOUT}ms for user ${userId}`,
         );
         dbTime = Date.now() - dbStart;
+        if (row && CACHE_ENABLED) {
+          authCache.set(userId, {
+            principal: row,
+            expiresAt: Date.now() + CACHE_TTL,
+            lastAccessed: Date.now(),
+          });
+        }
         if (process.env.NODE_ENV === "development") {
           console.log(
             `✅ Auth: from db (${dbTime}ms) [${req.method} ${
@@ -433,6 +380,7 @@ export const authenticate = async (
             }]`,
           );
         }
+        return row;
       } catch (dbError: any) {
         dbTime = Date.now() - dbStart;
         logger.error(`Database query failed or timed out after ${dbTime}ms:`, {
@@ -443,18 +391,37 @@ export const authenticate = async (
           userAgent: req.headers["user-agent"],
           cacheEnabled: CACHE_ENABLED,
           queryTimeout: DB_QUERY_TIMEOUT,
+          poolStatus: {
+            total: (req as any).__dbPoolTotal,
+            idle: (req as any).__dbPoolIdle,
+            waiting: (req as any).__dbPoolWaiting,
+          },
         });
-        // Re-throw to be caught by outer catch block
         throw new Error(
           dbError.message?.includes("timeout")
             ? "Database connection timeout. Please try again."
             : "Database error during authentication",
         );
       }
+    };
+
+    if (jti) {
+      const [revoked, loaded] = await Promise.all([
+        isTokenBlacklisted(jti),
+        loadPrincipal(),
+      ]);
+      if (revoked) {
+        return res.status(401).json({
+          success: false,
+          message: "Authorization denied. Token has been revoked.",
+        });
+      }
+      principal = loaded;
+    } else {
+      principal = await loadPrincipal();
     }
 
-    if (!user) {
-      // Remove from cache if user not found
+    if (!principal) {
       if (CACHE_ENABLED) {
         authCache.delete(userId);
       }
@@ -464,29 +431,28 @@ export const authenticate = async (
       });
     }
 
-    if (!user.isActive) {
+    if (!principal.isActive) {
       return res.status(403).json({
         success: false,
         message: "Access denied. Your account is inactive.",
       });
     }
 
-    // Check if user is deleted (handle null as not deleted)
-    if (user.isDeleted === true) {
+    if (principal.isDeleted === true) {
       return res.status(403).json({
         success: false,
         message: "Access denied. Your account has been deleted.",
       });
     }
 
-    // Attach user info to request object
+    const gate = mapProfileToAuthGate(principal);
+    req.authPrincipal = principal;
     req.user = {
-      id: user.id,
-      ...(user.email && { email: user.email }),
-      ...(user.employeeId && { employeeId: user.employeeId }),
+      id: gate.id,
+      ...(gate.email && { email: gate.email }),
+      ...(gate.employeeId != null && { employeeId: gate.employeeId }),
     };
 
-    // Proceed to next middleware/route handler
     next();
   } catch (error: any) {
     logger.logApiError("Authentication error", error, req);

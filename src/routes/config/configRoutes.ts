@@ -8,14 +8,16 @@ const router: IRouter = Router();
  * No authentication required - this is for initial client setup
  */
 router.get("/client", (req: Request, res: Response) => {
-  const protocol = req.protocol; // http or https
-  const host = req.get("host"); // e.g., "api.example.com:4000" or "localhost:4000"
-  
-  // Construct the Socket.IO server URL based on the request
-  // This ensures the client connects to the correct backend server
+  const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol =
+    forwardedProto && ["http", "https"].includes(forwardedProto)
+      ? forwardedProto
+      : req.protocol;
+  const forwardedHost = req.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || req.get("host") || "localhost";
+
   const socketUrl = `${protocol}://${host}`;
-  
-  // Allow override via environment variable (useful for proxy/load balancer setups)
+
   const configuredSocketUrl = process.env.SOCKET_IO_URL || socketUrl;
 
   res.json({

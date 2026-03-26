@@ -863,97 +863,96 @@ export async function deleteExpenseReceipt(
 // ============================
 
 export async function getExpensesKPIs() {
-  // Total expenses amount (sum of all expenses)
-  const [totalExpensesRow] = await db
-    .select({
-      totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(eq(expenses.isDeleted, false));
-
-  // Materials & Equipment (expenseType: materials, equipment, tools)
-  const [materialsRow] = await db
-    .select({
-      totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(
-      and(
-        eq(expenses.isDeleted, false),
-        or(
-          eq(expenses.expenseType, "materials"),
-          eq(expenses.expenseType, "equipment"),
-          eq(expenses.expenseType, "tools"),
-          eq(expenses.expenseType, "job_material"),
+  const [
+    [totalExpensesRow],
+    [materialsRow],
+    [laborRow],
+    [travelRow],
+    [operatingRow],
+  ] = await Promise.all([
+    db
+      .select({
+        totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(eq(expenses.isDeleted, false)),
+    db
+      .select({
+        totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.isDeleted, false),
+          or(
+            eq(expenses.expenseType, "materials"),
+            eq(expenses.expenseType, "equipment"),
+            eq(expenses.expenseType, "tools"),
+            eq(expenses.expenseType, "job_material"),
+          ),
         ),
       ),
-    );
-
-  // Labor Costs (expenseType: job_labor, subcontractor, professional_services)
-  const [laborRow] = await db
-    .select({
-      totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(
-      and(
-        eq(expenses.isDeleted, false),
-        or(
-          eq(expenses.expenseType, "job_labor"),
-          eq(expenses.expenseType, "subcontractor"),
-          eq(expenses.expenseType, "professional_services"),
+    db
+      .select({
+        totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.isDeleted, false),
+          or(
+            eq(expenses.expenseType, "job_labor"),
+            eq(expenses.expenseType, "subcontractor"),
+            eq(expenses.expenseType, "professional_services"),
+          ),
         ),
       ),
-    );
-
-  // Travel & Fleet (expenseType: travel, fuel, vehicle_maintenance, job_travel, fleet_*)
-  const [travelRow] = await db
-    .select({
-      totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(
-      and(
-        eq(expenses.isDeleted, false),
-        or(
-          eq(expenses.expenseType, "travel"),
-          eq(expenses.expenseType, "fuel"),
-          eq(expenses.expenseType, "vehicle_maintenance"),
-          eq(expenses.expenseType, "job_travel"),
-          eq(expenses.expenseType, "fleet_repair"),
-          eq(expenses.expenseType, "fleet_maintenance"),
-          eq(expenses.expenseType, "fleet_fuel"),
-          eq(expenses.expenseType, "fleet_purchase"),
+    db
+      .select({
+        totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.isDeleted, false),
+          or(
+            eq(expenses.expenseType, "travel"),
+            eq(expenses.expenseType, "fuel"),
+            eq(expenses.expenseType, "vehicle_maintenance"),
+            eq(expenses.expenseType, "job_travel"),
+            eq(expenses.expenseType, "fleet_repair"),
+            eq(expenses.expenseType, "fleet_maintenance"),
+            eq(expenses.expenseType, "fleet_fuel"),
+            eq(expenses.expenseType, "fleet_purchase"),
+          ),
         ),
       ),
-    );
-
-  // Operating Expenses (all other types: utilities, insurance, permits, licenses, office_supplies, etc.)
-  const [operatingRow] = await db
-    .select({
-      totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(
-      and(
-        eq(expenses.isDeleted, false),
-        or(
-          eq(expenses.expenseType, "meals"),
-          eq(expenses.expenseType, "accommodation"),
-          eq(expenses.expenseType, "permits"),
-          eq(expenses.expenseType, "licenses"),
-          eq(expenses.expenseType, "insurance"),
-          eq(expenses.expenseType, "office_supplies"),
-          eq(expenses.expenseType, "utilities"),
-          eq(expenses.expenseType, "marketing"),
-          eq(expenses.expenseType, "training"),
-          eq(expenses.expenseType, "software"),
-          eq(expenses.expenseType, "subscriptions"),
-          eq(expenses.expenseType, "other"),
-          eq(expenses.expenseType, "manual"),
+    db
+      .select({
+        totalAmount: sql<string>`COALESCE(SUM(CAST(${expenses.amountInBaseCurrency} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.isDeleted, false),
+          or(
+            eq(expenses.expenseType, "meals"),
+            eq(expenses.expenseType, "accommodation"),
+            eq(expenses.expenseType, "permits"),
+            eq(expenses.expenseType, "licenses"),
+            eq(expenses.expenseType, "insurance"),
+            eq(expenses.expenseType, "office_supplies"),
+            eq(expenses.expenseType, "utilities"),
+            eq(expenses.expenseType, "marketing"),
+            eq(expenses.expenseType, "training"),
+            eq(expenses.expenseType, "software"),
+            eq(expenses.expenseType, "subscriptions"),
+            eq(expenses.expenseType, "other"),
+            eq(expenses.expenseType, "manual"),
+          ),
         ),
       ),
-    );
+  ]);
 
   const totalExpenses = Number(totalExpensesRow?.totalAmount || 0);
   const materialsExpenses = Number(materialsRow?.totalAmount || 0);

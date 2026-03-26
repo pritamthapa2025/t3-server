@@ -78,6 +78,7 @@ export const dispatchTasks = org.table(
     index("idx_dispatch_tasks_start_time").on(table.startTime),
     index("idx_dispatch_tasks_end_time").on(table.endTime),
     index("idx_dispatch_tasks_is_deleted").on(table.isDeleted),
+    index("idx_dispatch_tasks_deleted_status").on(table.isDeleted, table.status),
     // Composite index for date range queries
     index("idx_dispatch_tasks_date_range").on(table.startTime, table.endTime),
   ],

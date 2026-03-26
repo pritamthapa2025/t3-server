@@ -68,6 +68,11 @@ export const timesheets = org.table(
     index("idx_timesheets_approved_by").on(table.approvedBy),
     index("idx_timesheets_rejected_by").on(table.rejectedBy),
     index("idx_timesheets_is_deleted").on(table.isDeleted),
+    index("idx_timesheets_deleted_date_status").on(
+      table.isDeleted,
+      table.sheetDate,
+      table.status,
+    ),
     index("idx_timesheets_deleted_at").on(table.deletedAt),
   ]
 );

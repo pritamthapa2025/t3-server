@@ -12,6 +12,41 @@ import { invoiceSettings } from "../drizzle/schema/settings.schema.js";
 import { positions } from "../drizzle/schema/org.schema.js";
 import { eq, and, desc, asc, count } from "drizzle-orm";
 
+/** Short TTL read cache for settings GETs (cleared on any settings write). */
+const SETTINGS_READ_CACHE_TTL_MS = parseInt(
+  process.env.SETTINGS_READ_CACHE_TTL_MS || "30000",
+  10,
+);
+
+const settingsReadCache = new Map<
+  string,
+  { expiresAt: number; data: unknown }
+>();
+
+export function bumpSettingsReadCache(): void {
+  settingsReadCache.clear();
+}
+
+async function cachedSettingsRead<T>(
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  if (SETTINGS_READ_CACHE_TTL_MS <= 0) {
+    return loader();
+  }
+  const now = Date.now();
+  const hit = settingsReadCache.get(key);
+  if (hit && hit.expiresAt > now) {
+    return hit.data as T;
+  }
+  const data = await loader();
+  settingsReadCache.set(key, {
+    expiresAt: now + SETTINGS_READ_CACHE_TTL_MS,
+    data,
+  });
+  return data;
+}
+
 /**
  * ============================================================================
  * GENERAL TAB - GENERAL SETTINGS (Company Info + Announcements)
@@ -19,18 +54,19 @@ import { eq, and, desc, asc, count } from "drizzle-orm";
  */
 
 export const getGeneralSettings = async () => {
-  const [settings] = await db.select().from(generalSettings).limit(1);
+  return cachedSettingsRead("general", async () => {
+    const [settings] = await db.select().from(generalSettings).limit(1);
 
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(generalSettings)
-      .values({})
-      .returning();
-    return newSettings;
-  }
+    if (!settings) {
+      const [newSettings] = await db
+        .insert(generalSettings)
+        .values({})
+        .returning();
+      return newSettings;
+    }
 
-  return settings;
+    return settings;
+  });
 };
 
 export const updateGeneralSettings = async (data: any, userId?: string) => {
@@ -47,6 +83,7 @@ export const updateGeneralSettings = async (data: any, userId?: string) => {
     .where(eq(generalSettings.id, existing.id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -57,24 +94,25 @@ export const updateGeneralSettings = async (data: any, userId?: string) => {
  */
 
 export const getLaborRates = async () => {
-  // Join with positions to get position details
-  const rates = await db
-    .select({
-      id: laborRateTemplates.id,
-      positionId: laborRateTemplates.positionId,
-      position: positions.name, // Position name as string (matches frontend)
-      defaultDays: laborRateTemplates.defaultDays,
-      defaultHoursPerDay: laborRateTemplates.defaultHoursPerDay,
-      defaultCostRate: laborRateTemplates.defaultCostRate,
-      defaultBillableRate: laborRateTemplates.defaultBillableRate,
-      createdAt: laborRateTemplates.createdAt,
-      updatedAt: laborRateTemplates.updatedAt,
-    })
-    .from(laborRateTemplates)
-    .leftJoin(positions, eq(laborRateTemplates.positionId, positions.id))
-    .orderBy(positions.name);
+  return cachedSettingsRead("laborRates", async () => {
+    const rates = await db
+      .select({
+        id: laborRateTemplates.id,
+        positionId: laborRateTemplates.positionId,
+        position: positions.name,
+        defaultDays: laborRateTemplates.defaultDays,
+        defaultHoursPerDay: laborRateTemplates.defaultHoursPerDay,
+        defaultCostRate: laborRateTemplates.defaultCostRate,
+        defaultBillableRate: laborRateTemplates.defaultBillableRate,
+        createdAt: laborRateTemplates.createdAt,
+        updatedAt: laborRateTemplates.updatedAt,
+      })
+      .from(laborRateTemplates)
+      .leftJoin(positions, eq(laborRateTemplates.positionId, positions.id))
+      .orderBy(positions.name);
 
-  return rates;
+    return rates;
+  });
 };
 
 export const getLaborRateByPosition = async (positionId: number) => {
@@ -140,6 +178,7 @@ export const updateLaborRate = async (
     .returning();
 
   if (!updated) return null;
+  bumpSettingsReadCache();
   return await getLaborRateById(id);
 };
 
@@ -149,6 +188,7 @@ export const deleteLaborRate = async (id: string) => {
     .delete(laborRateTemplates)
     .where(eq(laborRateTemplates.id, id))
     .returning({ id: laborRateTemplates.id });
+  if (deleted != null) bumpSettingsReadCache();
   return deleted != null;
 };
 
@@ -169,6 +209,7 @@ export const createLaborRateTemplateForPosition = async (
       updatedBy: userId,
     })
     .returning();
+  if (client === db) bumpSettingsReadCache();
   return created;
 };
 
@@ -180,7 +221,6 @@ export const upsertLaborRate = async (
   const existing = await getLaborRateByPosition(positionId);
 
   if (existing) {
-    // Update existing
     const [updated] = await db
       .update(laborRateTemplates)
       .set({
@@ -190,34 +230,32 @@ export const upsertLaborRate = async (
       })
       .where(eq(laborRateTemplates.positionId, positionId))
       .returning();
+    bumpSettingsReadCache();
     return updated;
-  } else {
-    // Insert new
-    const [created] = await db
-      .insert(laborRateTemplates)
-      .values({
-        positionId,
-        ...data,
-        updatedBy: userId,
-      })
-      .returning();
-    return created;
   }
+  const [created] = await db
+    .insert(laborRateTemplates)
+    .values({
+      positionId,
+      ...data,
+      updatedBy: userId,
+    })
+    .returning();
+  bumpSettingsReadCache();
+  return created;
 };
 
 export const bulkApplyLaborRates = async (data: any, userId?: string) => {
-  // Get all active positions
   const allPositions = await db
     .select()
     .from(positions)
     .where(eq(positions.isActive, true));
 
-  const results = [];
-  for (const position of allPositions) {
-    const result = await upsertLaborRate(position.id, data, userId);
-    results.push(result);
-  }
+  const results = await Promise.all(
+    allPositions.map((position) => upsertLaborRate(position.id, data, userId)),
+  );
 
+  bumpSettingsReadCache();
   return {
     message: `Labor rate defaults applied to ${results.length} positions`,
     count: results.length,
@@ -231,18 +269,19 @@ export const bulkApplyLaborRates = async (data: any, userId?: string) => {
  */
 
 export const getVehicleTravelDefaults = async () => {
-  const [settings] = await db.select().from(vehicleTravelDefaults).limit(1);
+  return cachedSettingsRead("vehicleTravelDefaults", async () => {
+    const [settings] = await db.select().from(vehicleTravelDefaults).limit(1);
 
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(vehicleTravelDefaults)
-      .values({})
-      .returning();
-    return newSettings;
-  }
+    if (!settings) {
+      const [newSettings] = await db
+        .insert(vehicleTravelDefaults)
+        .values({})
+        .returning();
+      return newSettings;
+    }
 
-  return settings;
+    return settings;
+  });
 };
 
 export const updateVehicleTravelDefaults = async (
@@ -262,6 +301,7 @@ export const updateVehicleTravelDefaults = async (
     .where(eq(vehicleTravelDefaults.id, existing.id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -278,33 +318,37 @@ export const getTravelOrigins = async (params?: {
 }) => {
   const page = params?.page ?? 1;
   const limit = params?.limit ?? 50;
-  const offset = (page - 1) * limit;
+  const cacheKey = `travelOrigins:${page}:${limit}:${params?.isActive ?? "all"}`;
 
-  const conditions = [eq(travelOrigins.isDeleted, false)];
-  if (params?.isActive !== undefined) {
-    conditions.push(eq(travelOrigins.isActive, params.isActive));
-  }
+  return cachedSettingsRead(cacheKey, async () => {
+    const offset = (page - 1) * limit;
 
-  const [totalResult, origins] = await Promise.all([
-    db
-      .select({ count: count() })
-      .from(travelOrigins)
-      .where(and(...conditions)),
-    db
-      .select()
-      .from(travelOrigins)
-      .where(and(...conditions))
-      .orderBy(desc(travelOrigins.isDefault), travelOrigins.name)
-      .limit(limit)
-      .offset(offset),
-  ]);
+    const conditions = [eq(travelOrigins.isDeleted, false)];
+    if (params?.isActive !== undefined) {
+      conditions.push(eq(travelOrigins.isActive, params.isActive));
+    }
 
-  return {
-    data: origins,
-    total: totalResult[0]?.count ?? 0,
-    page,
-    limit,
-  };
+    const [totalResult, origins] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(travelOrigins)
+        .where(and(...conditions)),
+      db
+        .select()
+        .from(travelOrigins)
+        .where(and(...conditions))
+        .orderBy(desc(travelOrigins.isDefault), travelOrigins.name)
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    return {
+      data: origins,
+      total: totalResult[0]?.count ?? 0,
+      page,
+      limit,
+    };
+  });
 };
 
 export const getTravelOriginById = async (id: string) => {
@@ -346,6 +390,7 @@ export const createTravelOrigin = async (data: any, userId?: string) => {
     })
     .returning();
 
+  bumpSettingsReadCache();
   return created;
 };
 
@@ -388,6 +433,7 @@ export const updateTravelOrigin = async (
     .where(eq(travelOrigins.id, id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -400,23 +446,23 @@ export const deleteTravelOrigin = async (id: string) => {
     })
     .where(eq(travelOrigins.id, id));
 
+  bumpSettingsReadCache();
   return { success: true };
 };
 
 export const setDefaultTravelOrigin = async (id: string) => {
-  // First, unset all defaults
   await db
     .update(travelOrigins)
     .set({ isDefault: false, updatedAt: new Date() })
     .where(eq(travelOrigins.isDefault, true));
 
-  // Then set the new default
   const [updated] = await db
     .update(travelOrigins)
     .set({ isDefault: true, updatedAt: new Date() })
     .where(eq(travelOrigins.id, id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -427,18 +473,19 @@ export const setDefaultTravelOrigin = async (id: string) => {
  */
 
 export const getOperatingExpenseDefaults = async () => {
-  const [settings] = await db.select().from(operatingExpenseDefaults).limit(1);
+  return cachedSettingsRead("operatingExpenseDefaults", async () => {
+    const [settings] = await db.select().from(operatingExpenseDefaults).limit(1);
 
-  // If no settings exist, create default
-  if (!settings) {
-    const [newSettings] = await db
-      .insert(operatingExpenseDefaults)
-      .values({})
-      .returning();
-    return newSettings;
-  }
+    if (!settings) {
+      const [newSettings] = await db
+        .insert(operatingExpenseDefaults)
+        .values({})
+        .returning();
+      return newSettings;
+    }
 
-  return settings;
+    return settings;
+  });
 };
 
 export const updateOperatingExpenseDefaults = async (
@@ -458,6 +505,7 @@ export const updateOperatingExpenseDefaults = async (
     .where(eq(operatingExpenseDefaults.id, existing.id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -468,16 +516,18 @@ export const updateOperatingExpenseDefaults = async (
  */
 
 export const getProposalBasisTemplates = async () => {
-  const templates = await db
-    .select()
-    .from(proposalBasisTemplates)
-    .where(eq(proposalBasisTemplates.isDeleted, false))
-    .orderBy(
-      asc(proposalBasisTemplates.sortOrder),
-      asc(proposalBasisTemplates.label),
-    );
+  return cachedSettingsRead("proposalBasisTemplates", async () => {
+    const templates = await db
+      .select()
+      .from(proposalBasisTemplates)
+      .where(eq(proposalBasisTemplates.isDeleted, false))
+      .orderBy(
+        asc(proposalBasisTemplates.sortOrder),
+        asc(proposalBasisTemplates.label),
+      );
 
-  return templates;
+    return templates;
+  });
 };
 
 export const getProposalBasisTemplateById = async (id: string) => {
@@ -508,6 +558,7 @@ export const createProposalBasisTemplate = async (
     })
     .returning();
 
+  bumpSettingsReadCache();
   return created;
 };
 
@@ -526,6 +577,7 @@ export const updateProposalBasisTemplate = async (
     .where(eq(proposalBasisTemplates.id, id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -538,6 +590,7 @@ export const deleteProposalBasisTemplate = async (id: string) => {
     })
     .where(eq(proposalBasisTemplates.id, id));
 
+  bumpSettingsReadCache();
   return { success: true };
 };
 
@@ -548,17 +601,19 @@ export const deleteProposalBasisTemplate = async (id: string) => {
  */
 
 export const getTermsConditionsTemplates = async () => {
-  const templates = await db
-    .select()
-    .from(termsConditionsTemplates)
-    .where(eq(termsConditionsTemplates.isDeleted, false))
-    .orderBy(
-      desc(termsConditionsTemplates.isDefault),
-      asc(termsConditionsTemplates.sortOrder),
-      asc(termsConditionsTemplates.label),
-    );
+  return cachedSettingsRead("termsConditionsTemplates", async () => {
+    const templates = await db
+      .select()
+      .from(termsConditionsTemplates)
+      .where(eq(termsConditionsTemplates.isDeleted, false))
+      .orderBy(
+        desc(termsConditionsTemplates.isDefault),
+        asc(termsConditionsTemplates.sortOrder),
+        asc(termsConditionsTemplates.label),
+      );
 
-  return templates;
+    return templates;
+  });
 };
 
 export const getTermsConditionsTemplateById = async (id: string) => {
@@ -589,6 +644,7 @@ export const createTermsConditionsTemplate = async (
     })
     .returning();
 
+  bumpSettingsReadCache();
   return created;
 };
 
@@ -607,6 +663,7 @@ export const updateTermsConditionsTemplate = async (
     .where(eq(termsConditionsTemplates.id, id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -619,23 +676,23 @@ export const deleteTermsConditionsTemplate = async (id: string) => {
     })
     .where(eq(termsConditionsTemplates.id, id));
 
+  bumpSettingsReadCache();
   return { success: true };
 };
 
 export const setDefaultTermsConditionsTemplate = async (id: string) => {
-  // First, unset all defaults
   await db
     .update(termsConditionsTemplates)
     .set({ isDefault: false, updatedAt: new Date() })
     .where(eq(termsConditionsTemplates.isDefault, true));
 
-  // Then set the new default
   const [updated] = await db
     .update(termsConditionsTemplates)
     .set({ isDefault: true, updatedAt: new Date() })
     .where(eq(termsConditionsTemplates.id, id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated;
 };
 
@@ -646,13 +703,15 @@ export const setDefaultTermsConditionsTemplate = async (id: string) => {
  */
 
 export const getInvoiceSettings = async () => {
-  const [row] = await db.select().from(invoiceSettings).limit(1);
+  return cachedSettingsRead("invoiceSettings", async () => {
+    const [row] = await db.select().from(invoiceSettings).limit(1);
 
-  if (row) return row;
+    if (row) return row;
 
-  const [inserted] = await db.insert(invoiceSettings).values({}).returning();
+    const [inserted] = await db.insert(invoiceSettings).values({}).returning();
 
-  return inserted ?? null;
+    return inserted ?? null;
+  });
 };
 
 export const updateInvoiceSettings = async (
@@ -690,5 +749,6 @@ export const updateInvoiceSettings = async (
     .where(eq(invoiceSettings.id, existing.id))
     .returning();
 
+  bumpSettingsReadCache();
   return updated ?? null;
 };

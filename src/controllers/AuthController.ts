@@ -1,12 +1,8 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
 import { comparePassword, hashPassword } from "../utils/hash.js";
 import { generateToken, verifyToken } from "../utils/jwt.js";
-import { db } from "../config/db.js";
-import { userRoles, roles } from "../drizzle/schema/auth.schema.js";
-import { employees } from "../drizzle/schema/org.schema.js";
 
 import {
   generate2FACode,
@@ -66,27 +62,13 @@ export const loginUserHandler = async (req: Request, res: Response) => {
       const trustedUserId = await validateDeviceToken(deviceToken);
       
       if (trustedUserId === user.id) {
-        // Device is trusted, skip 2FA and login directly
-
-        // Fetch user's role
-        const [userRole] = await db
-          .select({
-            roleName: roles.name,
-          })
-          .from(userRoles)
-          .innerJoin(roles, eq(userRoles.roleId, roles.id))
-          .where(eq(userRoles.userId, user.id))
-          .limit(1);
-
-        // Fetch employee data if user is an employee
-        const [employeeData] = await db
-          .select({
-            id: employees.id,
-            employeeId: employees.employeeId,
-          })
-          .from(employees)
-          .where(eq(employees.userId, user.id))
-          .limit(1);
+        const profile = await getMeProfileBundle(user.id);
+        if (!profile) {
+          return res.status(401).json({
+            success: false,
+            message: ErrorMessages.invalidCredentials(),
+          });
+        }
 
         const token = generateToken(user.id);
 
@@ -101,10 +83,10 @@ export const loginUserHandler = async (req: Request, res: Response) => {
               id: user.id,
               name: user.fullName,
               email: user.email,
-              role: userRole?.roleName || null,
-              ...(employeeData && {
-                employeeTableId: employeeData.id,
-                employeeId: employeeData.employeeId,
+              role: profile.roleName || null,
+              ...(profile.employeeTableId != null && {
+                employeeTableId: profile.employeeTableId,
+                employeeId: profile.employeeCode ?? null,
               }),
             },
             trustedDevice: true,
@@ -204,25 +186,13 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch user's role
-    const [userRole] = await db
-      .select({
-        roleName: roles.name,
-      })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .where(eq(userRoles.userId, user.id))
-      .limit(1);
-
-    // Fetch employee data if user is an employee
-    const [employeeData] = await db
-      .select({
-        id: employees.id,
-        employeeId: employees.employeeId,
-      })
-      .from(employees)
-      .where(eq(employees.userId, user.id))
-      .limit(1);
+    const profile = await getMeProfileBundle(user.id);
+    if (!profile) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired 2FA code. Please request a new code if needed.",
+      });
+    }
 
     const token = generateToken(user.id);
 
@@ -270,10 +240,10 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           id: user.id,
           name: user.fullName,
           email: user.email,
-          role: userRole?.roleName || null,
-          ...(employeeData && {
-            employeeTableId: employeeData.id,
-            employeeId: employeeData.employeeId,
+          role: profile.roleName || null,
+          ...(profile.employeeTableId != null && {
+            employeeTableId: profile.employeeTableId,
+            employeeId: profile.employeeCode ?? null,
           }),
         },
         deviceRemembered: deviceTokenSet,
@@ -328,7 +298,6 @@ export const resend2FAHandler = async (req: Request, res: Response) => {
 
 export const getCurrentUserHandler = async (req: Request, res: Response) => {
   try {
-    // User is already authenticated by middleware and attached to req.user
     if (!req.user?.id) {
       return res.status(401).json({
         success: false,
@@ -336,7 +305,8 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const row = await getMeProfileBundle(req.user.id);
+    const row =
+      req.authPrincipal ?? (await getMeProfileBundle(req.user.id));
     if (!row) {
       return res.status(404).json({
         success: false,
@@ -398,8 +368,9 @@ export const requestPasswordResetHandler = async (
     // Store the OTP with email as key (same system as 2FA)
     await store2FACode(`reset_${email}`, resetOTP);
 
-    // Send the password reset OTP via email
-    await sendPasswordResetOTP(user.email, resetOTP);
+    sendPasswordResetOTP(user.email, resetOTP).catch((err) => {
+      logger.logApiError("Failed to send password reset email", err, req);
+    });
 
     // Also send OTP via SMS if user has a phone number (fire-and-forget)
     void (async () => {

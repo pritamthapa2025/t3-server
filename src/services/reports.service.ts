@@ -116,32 +116,14 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
     (s) => new Date(s + "T00:00:00Z"),
   );
 
-  // 1. Total Revenue - sum of invoices in date range
   const revenueConditions = [
     eq(invoices.isDeleted, false),
     ...dateRangeConditions(filters, invoices.invoiceDate),
   ];
-  const revenueQuery = await db
-    .select({
-      totalRevenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
-    })
-    .from(invoices)
-    .where(and(...revenueConditions));
-
-  // 2. Total Cost = expenseCost + payroll
-  // Expense cost includes all org.expenses in date range: job expenses (materials, equipment, transportation, permits, subcontractor, utilities, tools, safety equipment, other), fleet expenses, inventory/purchase order expenses, and manual expenses. Labour is in payroll only.
   const expenseCostConditions = [
     eq(expenses.isDeleted, false),
     ...dateRangeConditions(filters, expenses.expenseDate),
   ];
-  const costQuery = await db
-    .select({
-      totalCost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
-    })
-    .from(expenses)
-    .where(and(...expenseCostConditions));
-
-  // Payroll (gross pay) in date range - by pay date or scheduled date
   const payrollConditions = [eq(payrollEntries.isDeleted, false)];
   if (filters?.startDate) {
     payrollConditions.push(
@@ -153,12 +135,69 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
       sql`COALESCE(${payrollEntries.paidDate}, ${payrollEntries.scheduledDate}) <= ${filters.endDate}`,
     );
   }
-  const payrollQuery = await db
-    .select({
-      totalPayroll: sql<string>`COALESCE(SUM(CAST(${payrollEntries.grossPay} AS NUMERIC)), 0)`,
-    })
-    .from(payrollEntries)
-    .where(and(...payrollConditions));
+  const invoiceStatsConditions = [
+    eq(invoices.isDeleted, false),
+    ...dateRangeConditions(filters, invoices.invoiceDate),
+  ];
+
+  const [
+    revenueQuery,
+    costQuery,
+    payrollQuery,
+    completedJobsQuery,
+    invoiceStatsQuery,
+    fleetStatsQuery,
+    inventoryValueQuery,
+  ] = await Promise.all([
+    db
+      .select({
+        totalRevenue: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+      })
+      .from(invoices)
+      .where(and(...revenueConditions)),
+    db
+      .select({
+        totalCost: sql<string>`COALESCE(SUM(CAST(${expenses.amount} AS NUMERIC)), 0)`,
+      })
+      .from(expenses)
+      .where(and(...expenseCostConditions)),
+    db
+      .select({
+        totalPayroll: sql<string>`COALESCE(SUM(CAST(${payrollEntries.grossPay} AS NUMERIC)), 0)`,
+      })
+      .from(payrollEntries)
+      .where(and(...payrollConditions)),
+    db
+      .select({ count: count() })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.status, "completed"),
+          eq(jobs.isDeleted, false),
+          ...jobDateConditions,
+        ),
+      ),
+    db
+      .select({
+        totalInvoiced: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
+        totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
+      })
+      .from(invoices)
+      .where(and(...invoiceStatsConditions)),
+    db
+      .select({
+        total: count(),
+        operational: sql<number>`COUNT(CASE WHEN ${vehicles.status} = 'active' THEN 1 END)`,
+      })
+      .from(vehicles)
+      .where(and(eq(vehicles.isDeleted, false))),
+    db
+      .select({
+        totalValue: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
+      })
+      .from(inventoryItems)
+      .where(and(eq(inventoryItems.isDeleted, false))),
+  ]);
 
   const totalRevenue = parseFloat(revenueQuery[0]?.totalRevenue || "0");
   const expenseCost = parseFloat(costQuery[0]?.totalCost || "0");
@@ -166,44 +205,10 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
   const totalCost = expenseCost + totalPayroll;
   const profit = totalRevenue - totalCost;
 
-  // 3. Jobs Completed - in date range
-  const completedJobsQuery = await db
-    .select({ count: count() })
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.status, "completed"),
-        eq(jobs.isDeleted, false),
-        ...jobDateConditions,
-      ),
-    );
-
-  // 4. Invoice Collection Rate - in date range
-  const invoiceStatsConditions = [
-    eq(invoices.isDeleted, false),
-    ...dateRangeConditions(filters, invoices.invoiceDate),
-  ];
-  const invoiceStatsQuery = await db
-    .select({
-      totalInvoiced: sql<string>`COALESCE(SUM(CAST(${invoices.totalAmount} AS NUMERIC)), 0)`,
-      totalPaid: sql<string>`COALESCE(SUM(CAST(${invoices.amountPaid} AS NUMERIC)), 0)`,
-    })
-    .from(invoices)
-    .where(and(...invoiceStatsConditions));
-
   const totalInvoiced = parseFloat(invoiceStatsQuery[0]?.totalInvoiced || "0");
   const totalPaid = parseFloat(invoiceStatsQuery[0]?.totalPaid || "0");
   const invoiceCollectionRate =
     totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0;
-
-  // 5. Fleet Availability
-  const fleetStatsQuery = await db
-    .select({
-      total: count(),
-      operational: sql<number>`COUNT(CASE WHEN ${vehicles.status} = 'active' THEN 1 END)`,
-    })
-    .from(vehicles)
-    .where(and(eq(vehicles.isDeleted, false)));
 
   const totalVehicles = fleetStatsQuery[0]?.total || 0;
   const operationalVehicles = fleetStatsQuery[0]?.operational || 0;
@@ -212,74 +217,58 @@ export const getCompanySummaryKPIs = async (filters?: DateRangeFilter) => {
       ? Math.round((operationalVehicles / totalVehicles) * 100)
       : 0;
 
-  // 6. Inventory Valuation
-  const inventoryValueQuery = await db
-    .select({
-      totalValue: sql<string>`COALESCE(SUM(CAST(${inventoryItems.quantityOnHand} AS NUMERIC) * CAST(${inventoryItems.unitCost} AS NUMERIC)), 0)`,
-    })
-    .from(inventoryItems)
-    .where(and(eq(inventoryItems.isDeleted, false)));
-
-  // 7. Technician Efficiency (timesheet hours; job count from jobs) - in date range
   const timesheetDateConditions = dateRangeConditions(
     filters,
     timesheetEntries.sheetDate,
   );
-  const [hoursRow] = await db
-    .select({
-      totalHours: sql<number>`COALESCE(SUM(CAST(${timesheetEntries.totalHours} AS NUMERIC) + COALESCE(CAST(${timesheetEntries.overtimeHours} AS NUMERIC), 0)), 0)`,
-    })
-    .from(timesheetEntries)
-    .where(
-      timesheetDateConditions.length > 0
-        ? and(...timesheetDateConditions)
-        : sql`1=1`,
-    );
-  const [jobsRow] = await db
-    .select({ completedJobs: sql<number>`COUNT(${jobs.id})` })
-    .from(jobs)
-    .where(and(eq(jobs.isDeleted, false), ...jobDateConditions));
-  const technicianEfficiencyQuery = [
-    {
-      totalHours: hoursRow?.totalHours ?? 0,
-      completedJobs: jobsRow?.completedJobs ?? 0,
-    },
-  ];
+  const [[hoursRow], [jobsRow], activeJobsQuery, clientCountQuery, employeeCountQuery] =
+    await Promise.all([
+      db
+        .select({
+          totalHours: sql<number>`COALESCE(SUM(CAST(${timesheetEntries.totalHours} AS NUMERIC) + COALESCE(CAST(${timesheetEntries.overtimeHours} AS NUMERIC), 0)), 0)`,
+        })
+        .from(timesheetEntries)
+        .where(
+          timesheetDateConditions.length > 0
+            ? and(...timesheetDateConditions)
+            : sql`1=1`,
+        ),
+      db
+        .select({ completedJobs: sql<number>`COUNT(${jobs.id})` })
+        .from(jobs)
+        .where(and(eq(jobs.isDeleted, false), ...jobDateConditions)),
+      db
+        .select({ count: count() })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.isDeleted, false),
+            inArray(jobs.status, ["scheduled", "in_progress", "on_hold"]),
+            ...jobDateConditions,
+          ),
+        ),
+      db
+        .select({
+          count: sql<number>`COUNT(DISTINCT ${bidsTable.organizationId})`,
+        })
+        .from(jobs)
+        .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+        .where(and(eq(jobs.isDeleted, false), ...jobDateConditions)),
+      db
+        .select({ count: count() })
+        .from(employees)
+        .where(eq(employees.isDeleted, false)),
+    ]);
 
-  const totalHours = technicianEfficiencyQuery[0]?.totalHours || 0;
-  const completedJobs = technicianEfficiencyQuery[0]?.completedJobs || 0;
-  // Simple efficiency metric: assume 8 hours per job is 100% efficient
+  const totalHours = hoursRow?.totalHours ?? 0;
+  const completedJobs = jobsRow?.completedJobs ?? 0;
   const technicianEfficiency =
     totalHours > 0
       ? Math.min(Math.round(((completedJobs * 8) / totalHours) * 100), 100)
       : 95;
 
-  // 8. Active Jobs - jobs not yet completed (scheduled, in_progress, on_hold)
-  const activeJobsQuery = await db
-    .select({ count: count() })
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.isDeleted, false),
-        inArray(jobs.status, ["scheduled", "in_progress", "on_hold"]),
-        ...jobDateConditions,
-      ),
-    );
   const activeJobs = activeJobsQuery[0]?.count ?? 0;
-
-  // 9. Client Count - distinct organizations with jobs in date range
-  const clientCountQuery = await db
-    .select({ count: sql<number>`COUNT(DISTINCT ${bidsTable.organizationId})` })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(and(eq(jobs.isDeleted, false), ...jobDateConditions));
   const clientCount = Number(clientCountQuery[0]?.count ?? 0);
-
-  // 10. Employee Count - total active employees
-  const employeeCountQuery = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(eq(employees.isDeleted, false));
   const employeeCount = employeeCountQuery[0]?.count ?? 0;
 
   // 11. Revenue Growth - (current - previous period) / previous * 100 when date range provided

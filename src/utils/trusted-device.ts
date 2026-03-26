@@ -101,11 +101,14 @@ export async function validateDeviceToken(deviceToken: string): Promise<string |
 
     if (!device) return null;
 
-    // Update last used timestamp
-    await db
+    void db
       .update(trustedDevices)
       .set({ lastUsedAt: now, updatedAt: now })
-      .where(eq(trustedDevices.id, device.id));
+      .where(eq(trustedDevices.id, device.id))
+      .then(
+        () => undefined,
+        (err) => logger.error("Error updating trusted device lastUsedAt", { err }),
+      );
 
     return device.userId;
   } catch (error) {

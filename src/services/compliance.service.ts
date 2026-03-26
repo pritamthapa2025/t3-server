@@ -69,60 +69,63 @@ export const getDashboardKPIs = async (filters: {
       : []),
   ];
 
-  // Active Cases
-  const activeCasesResult = await db
-    .select({ count: count() })
-    .from(employeeComplianceCases)
-    .where(
-      and(
-        ...conditions,
-        or(
-          eq(employeeComplianceCases.status, "open"),
-          eq(employeeComplianceCases.status, "investigating"),
+  const [
+    activeCasesResult,
+    highSeverityResult,
+    suspendedStaffResult,
+    avgResolutionResult,
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(employeeComplianceCases)
+      .where(
+        and(
+          ...conditions,
+          or(
+            eq(employeeComplianceCases.status, "open"),
+            eq(employeeComplianceCases.status, "investigating"),
+          ),
         ),
       ),
-    );
-
-  // High Severity Cases
-  const highSeverityResult = await db
-    .select({ count: count() })
-    .from(employeeComplianceCases)
-    .where(
-      and(
-        ...conditions,
-        or(
-          eq(employeeComplianceCases.severity, "high"),
-          eq(employeeComplianceCases.severity, "critical"),
+    db
+      .select({ count: count() })
+      .from(employeeComplianceCases)
+      .where(
+        and(
+          ...conditions,
+          or(
+            eq(employeeComplianceCases.severity, "high"),
+            eq(employeeComplianceCases.severity, "critical"),
+          ),
         ),
       ),
-    );
-
-  // Suspended Staff (employees with critical violations)
-  const suspendedStaffResult = await db
-    .select({ count: count() })
-    .from(employeeViolationHistory)
-    .innerJoin(employees, eq(employeeViolationHistory.employeeId, employees.id))
-    .where(
-      and(
-        eq(employeeViolationHistory.isDeleted, false),
-        eq(employeeViolationHistory.severity, "critical"),
-        eq(employeeViolationHistory.isResolved, false),
+    db
+      .select({ count: count() })
+      .from(employeeViolationHistory)
+      .innerJoin(
+        employees,
+        eq(employeeViolationHistory.employeeId, employees.id),
+      )
+      .where(
+        and(
+          eq(employeeViolationHistory.isDeleted, false),
+          eq(employeeViolationHistory.severity, "critical"),
+          eq(employeeViolationHistory.isResolved, false),
+        ),
       ),
-    );
-
-  // Average Resolution Time (in days)
-  const avgResolutionResult = await db
-    .select({
-      avgDays: sql<number>`AVG(resolved_date - opened_on)`,
-    })
-    .from(employeeComplianceCases)
-    .where(
-      and(
-        ...conditions,
-        eq(employeeComplianceCases.status, "resolved"),
-        isNotNull(employeeComplianceCases.resolvedDate),
+    db
+      .select({
+        avgDays: sql<number>`AVG(resolved_date - opened_on)`,
+      })
+      .from(employeeComplianceCases)
+      .where(
+        and(
+          ...conditions,
+          eq(employeeComplianceCases.status, "resolved"),
+          isNotNull(employeeComplianceCases.resolvedDate),
+        ),
       ),
-    );
+  ]);
 
   return {
     activeCases: activeCasesResult[0]?.count || 0,

@@ -20,10 +20,18 @@ type ModuleType = (typeof permissionModuleEnum.enumValues)[number];
  * Handles complex permission checking based on features, UI elements, and data filtering
  */
 
-/**
- * Get user's role information with employee context
- */
-export const getUserRoleWithContext = async (userId: string) => {
+type UserRoleContext = {
+  roleId: number;
+  roleName: string;
+  roleDescription: string | null;
+  employeeId: number | null;
+  departmentId: number | null;
+  positionId: number | null;
+};
+
+async function fetchUserRoleWithContextFromDb(
+  userId: string,
+): Promise<UserRoleContext | null> {
   const [result] = await db
     .select({
       roleId: roles.id,
@@ -40,7 +48,62 @@ export const getUserRoleWithContext = async (userId: string) => {
     .limit(1);
 
   return result || null;
+}
+
+const ROLE_CONTEXT_CACHE_TTL_MS = parseInt(
+  process.env.ROLE_CONTEXT_CACHE_TTL_MS || "60000",
+  10,
+);
+const roleContextCache = new Map<
+  string,
+  { expiresAt: number; value: UserRoleContext | null }
+>();
+const roleContextInflight = new Map<
+  string,
+  Promise<UserRoleContext | null>
+>();
+
+/**
+ * Role + employee context — deduped in-flight and TTL-cached so parallel
+ * module permission loads (UI / nav) only hit the DB once per user.
+ */
+export const getUserRoleWithContext = async (
+  userId: string,
+): Promise<UserRoleContext | null> => {
+  const now = Date.now();
+  const cached = roleContextCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  let inflight = roleContextInflight.get(userId);
+  if (!inflight) {
+    inflight = fetchUserRoleWithContextFromDb(userId)
+      .then((value) => {
+        roleContextCache.set(userId, {
+          expiresAt: Date.now() + ROLE_CONTEXT_CACHE_TTL_MS,
+          value,
+        });
+        roleContextInflight.delete(userId);
+        return value;
+      })
+      .catch((err) => {
+        roleContextInflight.delete(userId);
+        throw err;
+      });
+    roleContextInflight.set(userId, inflight);
+  }
+  return inflight;
 };
+
+const HAS_FEATURE_ACCESS_CACHE_TTL_MS = parseInt(
+  process.env.HAS_FEATURE_ACCESS_CACHE_TTL_MS || "20000",
+  10,
+);
+const hasFeatureAccessCache = new Map<
+  string,
+  { expiresAt: number; accessLevel: string | null }
+>();
 
 /**
  * Check if user has access to a specific feature
@@ -54,6 +117,15 @@ export const hasFeatureAccess = async (
   module: string,
   featureCode: string
 ): Promise<string | null> => {
+  if (HAS_FEATURE_ACCESS_CACHE_TTL_MS > 0) {
+    const key = `${userId}::${module}::${featureCode}`;
+    const now = Date.now();
+    const hit = hasFeatureAccessCache.get(key);
+    if (hit && hit.expiresAt > now) {
+      return hit.accessLevel;
+    }
+  }
+
   const moduleTyped = module as ModuleType;
   const result = await db
     .select({
@@ -76,7 +148,17 @@ export const hasFeatureAccess = async (
     )
     .limit(1);
 
-  return result[0]?.accessLevel || null;
+  const level = result[0]?.accessLevel || null;
+
+  if (HAS_FEATURE_ACCESS_CACHE_TTL_MS > 0) {
+    const key = `${userId}::${module}::${featureCode}`;
+    hasFeatureAccessCache.set(key, {
+      expiresAt: Date.now() + HAS_FEATURE_ACCESS_CACHE_TTL_MS,
+      accessLevel: level,
+    });
+  }
+
+  return level;
 };
 
 /**
@@ -134,15 +216,15 @@ export const canPerformAction = async (
   }
 };
 
-/**
- * Get all features accessible to a user for a specific module
- */
-export const getUserModuleFeatures = async (
-  userId: string,
-  module: string
-) => {
+/** Short-lived cache for module feature lists (e.g. authorizeModule / settings). */
+const MODULE_FEATURES_CACHE_TTL_MS = parseInt(
+  process.env.MODULE_FEATURES_CACHE_TTL_MS || "60000",
+  10,
+);
+
+async function loadUserModuleFeaturesFromDb(userId: string, module: string) {
   const moduleTyped = module as ModuleType;
-  const result = await db
+  return db
     .select({
       featureCode: features.featureCode,
       featureName: features.featureName,
@@ -163,8 +245,36 @@ export const getUserModuleFeatures = async (
         eq(roleFeatures.isActive, true)
       )
     );
+}
 
-  return result;
+type UserModuleFeatureRow = Awaited<
+  ReturnType<typeof loadUserModuleFeaturesFromDb>
+>[number];
+
+const moduleFeaturesCache = new Map<
+  string,
+  { expiresAt: number; rows: UserModuleFeatureRow[] }
+>();
+
+/**
+ * Get all features accessible to a user for a specific module
+ */
+export const getUserModuleFeatures = async (
+  userId: string,
+  module: string
+) => {
+  const key = `${userId}::${module}`;
+  const now = Date.now();
+  const hit = moduleFeaturesCache.get(key);
+  if (hit && hit.expiresAt > now) {
+    return hit.rows;
+  }
+  const rows = await loadUserModuleFeaturesFromDb(userId, module);
+  moduleFeaturesCache.set(key, {
+    expiresAt: now + MODULE_FEATURES_CACHE_TTL_MS,
+    rows,
+  });
+  return rows;
 };
 
 /**
@@ -389,12 +499,12 @@ export const checkMultiplePermissions = async (
   userId: string,
   permissions: Array<{ module: string; feature: string }>
 ): Promise<Record<string, string | null>> => {
-  const results: Record<string, string | null> = {};
-
-  for (const perm of permissions) {
-    const key = `${perm.module}:${perm.feature}`;
-    results[key] = await hasFeatureAccess(userId, perm.module, perm.feature);
-  }
-
-  return results;
+  const entries = await Promise.all(
+    permissions.map(async (perm) => {
+      const key = `${perm.module}:${perm.feature}`;
+      const value = await hasFeatureAccess(userId, perm.module, perm.feature);
+      return [key, value] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
 };

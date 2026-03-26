@@ -21,6 +21,7 @@ import {
   inArray,
   lte,
   gte,
+  gt,
   isNull,
   sql,
   lt,
@@ -127,6 +128,28 @@ async function isCoolingDown(
 
   if (!row) return false;
   return row.nextAllowedAt > new Date();
+}
+
+/** Entity IDs still in cooldown (one query instead of N per-row checks). */
+async function getCoolingDownEntityIdSet(
+  eventType: string,
+  entityType: string,
+  entityIds: string[],
+  at: Date = new Date(),
+): Promise<Set<string>> {
+  if (entityIds.length === 0) return new Set();
+  const rows = await db
+    .select({ entityId: notificationCooldowns.entityId })
+    .from(notificationCooldowns)
+    .where(
+      and(
+        eq(notificationCooldowns.eventType, eventType),
+        eq(notificationCooldowns.entityType, entityType),
+        inArray(notificationCooldowns.entityId, entityIds),
+        gt(notificationCooldowns.nextAllowedAt, at),
+      ),
+    );
+  return new Set(rows.map((r) => r.entityId));
 }
 
 /**
@@ -331,9 +354,16 @@ export async function notifyJobOverdue(): Promise<CronResult> {
       .orderBy(asc(jobs.scheduledEndDate))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "job_overdue",
+      "Job",
+      raw.map((j) => j.id),
+      now,
+    );
+
     for (const job of raw) {
       try {
-        if (await isCoolingDown("job_overdue", "Job", job.id)) continue;
+        if (cooling.has(job.id)) continue;
         const dueDate = job.scheduledEndDate ? new Date(job.scheduledEndDate) : null;
         const daysOverdue = dueDate
           ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
@@ -563,20 +593,23 @@ export async function notifyClockReminder(clockType: "in" | "out" = "out"): Prom
       processed += batch.processed;
       errors += batch.errors;
     } else {
-      const allActiveEmployees = await db
-        .select({ id: employees.id })
-        .from(employees)
-        .where(
-          and(
-            isNull(employees.terminationDate),
-            not(inArray(employees.status as any, ["terminated", "suspended"])),
+      const [allActiveEmployees, todaySheets] = await Promise.all([
+        db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(
+            and(
+              isNull(employees.terminationDate),
+              not(inArray(employees.status as any, ["terminated", "suspended"])),
+            ),
           ),
-        );
-
-      const todaySheets = await db
-        .select({ employeeId: timesheets.employeeId })
-        .from(timesheets)
-        .where(and(eq(timesheets.sheetDate, today), eq(timesheets.isDeleted, false)));
+        db
+          .select({ employeeId: timesheets.employeeId })
+          .from(timesheets)
+          .where(
+            and(eq(timesheets.sheetDate, today), eq(timesheets.isDeleted, false)),
+          ),
+      ]);
 
       const clockedInIds = new Set(todaySheets.map((r) => r.employeeId).filter(Boolean));
 
@@ -721,9 +754,16 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
       .orderBy(asc(vehicles.nextServiceDue))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "maintenance_overdue",
+      "Vehicle",
+      raw.map((v) => v.id),
+      now,
+    );
+
     for (const v of raw) {
       try {
-        if (await isCoolingDown("maintenance_overdue", "Vehicle", v.id)) continue;
+        if (cooling.has(v.id)) continue;
         const dueDate = v.nextServiceDue ? new Date(v.nextServiceDue) : null;
         const daysOverdue = dueDate
           ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
@@ -792,9 +832,16 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
       .orderBy(asc(vehicles.nextInspectionDue))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "safety_inspection_expired",
+      "Vehicle",
+      raw.map((v) => v.id),
+      now,
+    );
+
     for (const v of raw) {
       try {
-        if (await isCoolingDown("safety_inspection_expired", "Vehicle", v.id)) continue;
+        if (cooling.has(v.id)) continue;
         const expiredDate = v.nextInspectionDue ? new Date(v.nextInspectionDue) : null;
         const daysExpired = expiredDate
           ? Math.floor((now.getTime() - expiredDate.getTime()) / 86_400_000)
@@ -863,9 +910,15 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
       .orderBy(asc(vehicles.registrationExpiration))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "vehicle_registration_expiring",
+      "Vehicle",
+      raw.map((v) => v.id),
+    );
+
     for (const v of raw) {
       try {
-        if (await isCoolingDown("vehicle_registration_expiring", "Vehicle", v.id)) continue;
+        if (cooling.has(v.id)) continue;
         const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
         await svc.triggerNotification({
           type: "vehicle_registration_expiring",
@@ -929,9 +982,15 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
       .orderBy(asc(vehicles.insuranceExpiration))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "vehicle_insurance_expiring",
+      "Vehicle",
+      raw.map((v) => v.id),
+    );
+
     for (const v of raw) {
       try {
-        if (await isCoolingDown("vehicle_insurance_expiring", "Vehicle", v.id)) continue;
+        if (cooling.has(v.id)) continue;
         const entityName = `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
         await svc.triggerNotification({
           type: "vehicle_insurance_expiring",
@@ -991,9 +1050,15 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
       )
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "performance_review_due",
+      "Employee",
+      raw.map((e) => String(e.id)),
+    );
+
     for (const emp of raw) {
       try {
-        if (await isCoolingDown("performance_review_due", "Employee", String(emp.id))) continue;
+        if (cooling.has(String(emp.id))) continue;
         const entityName = emp.employeeId ?? `Employee #${emp.id}`;
         await svc.triggerNotification({
           type: "performance_review_due",
@@ -1129,9 +1194,16 @@ export async function notifyPurchaseOrderDelayed(): Promise<CronResult> {
       .orderBy(asc(inventoryPurchaseOrders.expectedDeliveryDate))
       .limit(BATCH_SIZE);
 
+    const cooling = await getCoolingDownEntityIdSet(
+      "purchase_order_delayed",
+      "PurchaseOrder",
+      raw.map((po) => po.id),
+      now,
+    );
+
     for (const po of raw) {
       try {
-        if (await isCoolingDown("purchase_order_delayed", "PurchaseOrder", po.id)) continue;
+        if (cooling.has(po.id)) continue;
         const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : null;
         const daysDelayed = expectedDate
           ? Math.floor((now.getTime() - expectedDate.getTime()) / 86_400_000)

@@ -29,32 +29,31 @@ export const getDashboardKPIs = async (
   _organizationId: string | undefined,
   _date?: string,
 ) => {
-  // Get employee availability counts by status
-  const statusCounts = await db
-    .select({
-      status: employeeAvailability.currentStatus,
-      count: count(),
-    })
-    .from(employeeAvailability)
-    .innerJoin(employees, eq(employeeAvailability.employeeId, employees.id))
-    .where(
-      and(
-        eq(employees.isDeleted, false),
-        // Note: Organization filtering temporarily removed until schema is clarified
+  const [statusCounts, totalResult] = await Promise.all([
+    db
+      .select({
+        status: employeeAvailability.currentStatus,
+        count: count(),
+      })
+      .from(employeeAvailability)
+      .innerJoin(employees, eq(employeeAvailability.employeeId, employees.id))
+      .where(
+        and(
+          eq(employees.isDeleted, false),
+          // Note: Organization filtering temporarily removed until schema is clarified
+        ),
+      )
+      .groupBy(employeeAvailability.currentStatus),
+    db
+      .select({ count: count() })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isDeleted, false),
+          // Note: Organization filtering temporarily removed until schema is clarified
+        ),
       ),
-    )
-    .groupBy(employeeAvailability.currentStatus);
-
-  // Get total technicians count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(
-      and(
-        eq(employees.isDeleted, false),
-        // Note: Organization filtering temporarily removed until schema is clarified
-      ),
-    );
+  ]);
 
   const totalTechnicians = totalResult[0]?.count || 0;
 

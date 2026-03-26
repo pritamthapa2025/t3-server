@@ -147,6 +147,7 @@ export const invoices: any = org.table(
     index("idx_invoices_invoice_date").on(table.invoiceDate),
     index("idx_invoices_due_date").on(table.dueDate),
     index("idx_invoices_is_deleted").on(table.isDeleted),
+    index("idx_invoices_is_deleted_status").on(table.isDeleted, table.status),
     index("idx_invoices_deleted_at").on(table.deletedAt),
     index("idx_invoices_created_at").on(table.createdAt),
     index("idx_invoices_recurring").on(

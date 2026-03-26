@@ -57,37 +57,34 @@ export const getJobFinancialSummaries = async (
     );
   }
 
-  const summaries = await db
-    .select({
-      job: jobs,
-      bid: bidsTable,
-      financialBreakdown: bidFinancialBreakdown,
-    })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .leftJoin(bidFinancialBreakdown, eq(bidsTable.id, bidFinancialBreakdown.bidId))
-    .where(
-      and(
-        whereCondition,
-        eq(bidsTable.organizationId, organizationId)
+  const [summaries, totalCountResult] = await Promise.all([
+    db
+      .select({
+        job: jobs,
+        bid: bidsTable,
+        financialBreakdown: bidFinancialBreakdown,
+      })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .leftJoin(
+        bidFinancialBreakdown,
+        eq(bidsTable.id, bidFinancialBreakdown.bidId),
       )
-    )
-    .orderBy(desc(jobs.updatedAt))
-    .limit(limit)
-    .offset(offset);
+      .where(
+        and(whereCondition, eq(bidsTable.organizationId, organizationId)),
+      )
+      .orderBy(desc(jobs.updatedAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(whereCondition, eq(bidsTable.organizationId, organizationId)),
+      ),
+  ]);
 
-  // Get total count
-  const totalCountResult = await db
-    .select({ count: count() })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        whereCondition,
-        eq(bidsTable.organizationId, organizationId)
-      )
-    );
-  
   const totalCount = totalCountResult[0]?.count || 0;
 
   return {
@@ -109,60 +106,57 @@ export const getJobFinancialSummaries = async (
 // ============================
 
 export const getFinancialOverview = async (organizationId: string) => {
-  // Get total contract values from jobs
-  const contractSummary = await db
-    .select({
-      totalJobs: count(jobs.id),
-      totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
-      avgContractValue: sql<string>`COALESCE(AVG(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
-    })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(jobs.isDeleted, false)
-      )
-    );
-
-  // Get bid amounts for comparison (using actualTotalPrice from bid_financial_breakdown)
-  const bidSummary = await db
-    .select({
-      totalBids: count(bidsTable.id),
-      totalBidAmount: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
-      avgBidAmount: sql<string>`COALESCE(AVG(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
-    })
-    .from(bidsTable)
-    .leftJoin(
-      bidFinancialBreakdown,
-      and(
-        eq(bidsTable.id, bidFinancialBreakdown.bidId),
-        eq(bidFinancialBreakdown.isDeleted, false),
+  const [contractSummary, bidSummary, jobsByStatus] = await Promise.all([
+    db
+      .select({
+        totalJobs: count(jobs.id),
+        totalContractValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
+        avgContractValue: sql<string>`COALESCE(AVG(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
+      })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(
+          eq(bidsTable.organizationId, organizationId),
+          eq(jobs.isDeleted, false),
+        ),
       ),
-    )
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(bidsTable.isDeleted, false)
+    db
+      .select({
+        totalBids: count(bidsTable.id),
+        totalBidAmount: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
+        avgBidAmount: sql<string>`COALESCE(AVG(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
+      })
+      .from(bidsTable)
+      .leftJoin(
+        bidFinancialBreakdown,
+        and(
+          eq(bidsTable.id, bidFinancialBreakdown.bidId),
+          eq(bidFinancialBreakdown.isDeleted, false),
+        ),
       )
-    );
-
-  // Get jobs by status for revenue pipeline
-  const jobsByStatus = await db
-    .select({
-      status: jobs.status,
-      count: count(jobs.id),
-      totalValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
-    })
-    .from(jobs)
-    .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
-    .where(
-      and(
-        eq(bidsTable.organizationId, organizationId),
-        eq(jobs.isDeleted, false)
+      .where(
+        and(
+          eq(bidsTable.organizationId, organizationId),
+          eq(bidsTable.isDeleted, false),
+        ),
+      ),
+    db
+      .select({
+        status: jobs.status,
+        count: count(jobs.id),
+        totalValue: sql<string>`COALESCE(SUM(CAST(${bidsTable.actualTotalPrice} AS NUMERIC)), 0)`,
+      })
+      .from(jobs)
+      .innerJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(
+        and(
+          eq(bidsTable.organizationId, organizationId),
+          eq(jobs.isDeleted, false),
+        ),
       )
-    )
-    .groupBy(jobs.status);
+      .groupBy(jobs.status),
+  ]);
 
   return {
     contracts: contractSummary[0] || {

@@ -165,20 +165,16 @@ export const getPayrollEntries = async (
     );
   }
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(payrollEntries)
-    .leftJoin(payrollRuns, eq(payrollEntries.payrollRunId, payrollRuns.id))
-    .leftJoin(employees, eq(payrollEntries.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(and(...whereConditions));
-
-  const total = totalResult[0]?.count || 0;
-
-  // Get paginated data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(payrollEntries)
+      .leftJoin(payrollRuns, eq(payrollEntries.payrollRunId, payrollRuns.id))
+      .leftJoin(employees, eq(payrollEntries.employeeId, employees.id))
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(and(...whereConditions)),
+    db
+      .select({
       // Payroll Entry Data
       id: payrollEntries.id,
       entryNumber: payrollEntries.entryNumber,
@@ -243,7 +239,10 @@ export const getPayrollEntries = async (
     .where(and(...whereConditions))
     .orderBy(desc(payrollEntries.createdAt))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data: data.map((entry) => ({
@@ -652,17 +651,13 @@ export const getPayrollRuns = async (
     whereConditions.push(eq(payrollRuns.status, filters.status as any));
   }
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(payrollRuns)
-    .where(and(...whereConditions));
-
-  const total = totalResult[0]?.count || 0;
-
-  // Get data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(payrollRuns)
+      .where(and(...whereConditions)),
+    db
+      .select({
       id: payrollRuns.id,
       runNumber: payrollRuns.runNumber,
       runType: payrollRuns.runType,
@@ -695,7 +690,10 @@ export const getPayrollRuns = async (
     .where(and(...whereConditions))
     .orderBy(desc(payrollRuns.createdAt))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data: data.map((run) => ({

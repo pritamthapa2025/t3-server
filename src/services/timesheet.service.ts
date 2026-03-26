@@ -1613,92 +1613,73 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
   kpiEndUTC.setUTCDate(kpiStartUTC.getUTCDate() + 6);
   const endDateStr = kpiEndUTC.toISOString().split("T")[0];
 
-  // 1. Technicians: Total active employees vs employees with timesheets
-  const [totalEmployeesResult] = await db
-    .select({ count: count() })
-    .from(employees)
-    .innerJoin(users, eq(employees.userId, users.id))
-    .where(
-      and(
-        eq(employees.isDeleted, false),
-        eq(employees.status, "available"), // Only count available employees
+  const weekRange = and(
+    sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
+    eq(employees.isDeleted, false),
+    eq(timesheets.isDeleted, false),
+  );
+
+  const [
+    [totalEmployeesResult],
+    employeesWithTimesheetsData,
+    hoursResult,
+    [pendingApprovalsResult],
+    [rejectedEntriesResult],
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(employees)
+      .innerJoin(users, eq(employees.userId, users.id))
+      .where(
+        and(
+          eq(employees.isDeleted, false),
+          eq(employees.status, "available"),
+        ),
       ),
-    );
+    db
+      .select({ employeeId: timesheets.employeeId })
+      .from(timesheets)
+      .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+      .where(weekRange),
+    db
+      .select({
+        totalHours: sum(timesheets.totalHours),
+        overtimeHours: sum(timesheets.overtimeHours),
+      })
+      .from(timesheets)
+      .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+      .where(weekRange),
+    db
+      .select({ count: count() })
+      .from(timesheets)
+      .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+      .where(
+        and(
+          weekRange,
+          or(
+            eq(timesheets.status, "pending"),
+            eq(timesheets.status, "submitted"),
+          )!,
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(timesheets)
+      .innerJoin(employees, eq(timesheets.employeeId, employees.id))
+      .where(and(weekRange, eq(timesheets.status, "rejected"))),
+  ]);
 
   const totalEmployees = totalEmployeesResult?.count || 0;
-
-  // Count distinct employees with timesheets in the week
-  const employeesWithTimesheetsData = await db
-    .select({ employeeId: timesheets.employeeId })
-    .from(timesheets)
-    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
-    .where(
-      and(
-        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false),
-        eq(timesheets.isDeleted, false),
-      ),
-    );
-
-  // Get unique employee IDs
   const uniqueEmployeeIds = new Set(
     employeesWithTimesheetsData.map((row) => row.employeeId),
   );
   const employeesWithTimesheets = uniqueEmployeeIds.size;
 
-  // 2. Tracked Hours: Sum of totalHours + overtimeHours for the week
-  const hoursResult = await db
-    .select({
-      totalHours: sum(timesheets.totalHours),
-      overtimeHours: sum(timesheets.overtimeHours),
-    })
-    .from(timesheets)
-    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
-    .where(
-      and(
-        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false),
-        eq(timesheets.isDeleted, false),
-      ),
-    );
-
   const totalHours = parseFloat(hoursResult[0]?.totalHours || "0");
   const overtimeHours = parseFloat(hoursResult[0]?.overtimeHours || "0");
   const trackedHours = totalHours + overtimeHours;
 
-  // 3. Pending Approvals: Count of timesheets with status "pending" or "submitted"
-  const [pendingApprovalsResult] = await db
-    .select({ count: count() })
-    .from(timesheets)
-    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
-    .where(
-      and(
-        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false),
-        eq(timesheets.isDeleted, false),
-        or(
-          eq(timesheets.status, "pending"),
-          eq(timesheets.status, "submitted"),
-        )!,
-      ),
-    );
-
   const pendingApprovals = pendingApprovalsResult?.count || 0;
-
-  // 4. Rejected Entries: Count of timesheets with status "rejected"
-  const [rejectedEntriesResult] = await db
-    .select({ count: count() })
-    .from(timesheets)
-    .innerJoin(employees, eq(timesheets.employeeId, employees.id))
-    .where(
-      and(
-        sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
-        eq(employees.isDeleted, false),
-        eq(timesheets.isDeleted, false),
-        eq(timesheets.status, "rejected"),
-      ),
-    );
-
   const rejectedEntries = rejectedEntriesResult?.count || 0;
 
   return {

@@ -796,6 +796,8 @@ export async function purgeExpiredDeletedFiles(): Promise<{
     { table: employeeDocuments, source: "employee_documents", pathField: "filePath" },
   ];
 
+  const purgeRowConcurrency = 8;
+
   for (const entry of tables) {
     try {
       const rows: Array<{ id: string; path: string | null }> = await db
@@ -811,20 +813,28 @@ export async function purgeExpiredDeletedFiles(): Promise<{
           ),
         );
 
-      for (const row of rows) {
-        try {
-          if (row.path) {
-            await deleteFromSpaces(row.path);
+      for (let j = 0; j < rows.length; j += purgeRowConcurrency) {
+        const window = rows.slice(j, j + purgeRowConcurrency);
+        const settled = await Promise.allSettled(
+          window.map(async (row) => {
+            if (row.path) {
+              await deleteFromSpaces(row.path);
+            }
+            await db.delete(entry.table).where(eq(entry.table.id, row.id));
+          }),
+        );
+        for (let k = 0; k < settled.length; k++) {
+          const row = window[k]!;
+          const r = settled[k]!;
+          if (r.status === "fulfilled") {
+            purged++;
+            details.push(`Purged ${entry.source}:${row.id}`);
+          } else {
+            errors++;
+            details.push(
+              `Error purging ${entry.source}:${row.id} – ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+            );
           }
-
-          await db.delete(entry.table).where(eq(entry.table.id, row.id));
-          purged++;
-          details.push(`Purged ${entry.source}:${row.id}`);
-        } catch (err) {
-          errors++;
-          details.push(
-            `Error purging ${entry.source}:${row.id} – ${err instanceof Error ? err.message : String(err)}`,
-          );
         }
       }
     } catch (err) {

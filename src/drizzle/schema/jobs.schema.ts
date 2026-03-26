@@ -82,6 +82,7 @@ export const jobs: any = org.table(
     index("idx_jobs_status").on(table.status),
     index("idx_jobs_scheduled_start").on(table.scheduledStartDate),
     index("idx_jobs_is_deleted").on(table.isDeleted),
+    index("idx_jobs_is_deleted_status").on(table.isDeleted, table.status),
   ],
 );
 

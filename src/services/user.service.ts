@@ -20,17 +20,18 @@ export const getUsers = async (
     );
   }
 
-  const result = await db
-    .select()
-    .from(users)
-    .where(and(...whereConditions))
-    .limit(limit)
-    .offset(offset);
-
-  const total = await db
-    .select({ count: count() })
-    .from(users)
-    .where(and(...whereConditions));
+  const [result, total] = await Promise.all([
+    db
+      .select()
+      .from(users)
+      .where(and(...whereConditions))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(users)
+      .where(and(...whereConditions)),
+  ]);
 
   const totalCount = total[0]?.count ?? 0;
 

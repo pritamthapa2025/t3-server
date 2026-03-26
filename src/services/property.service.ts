@@ -147,48 +147,42 @@ export const getProperties = async (
     );
   }
 
-  // Get properties with basic info
-  const propertiesResult = await db
-    .select({
-      // Property data
-      id: properties.id,
-      propertyName: properties.propertyName,
-      propertyCode: properties.propertyCode,
-      propertyType: properties.propertyType,
-      status: properties.status,
-      addressLine1: properties.addressLine1,
-      addressLine2: properties.addressLine2,
-      city: properties.city,
-      state: properties.state,
-      zipCode: properties.zipCode,
-      squareFootage: properties.squareFootage,
-      numberOfFloors: properties.numberOfFloors,
-      yearBuilt: properties.yearBuilt,
-      tags: properties.tags,
-      createdBy: properties.createdBy,
-      createdAt: properties.createdAt,
-
-      // Client/Organization
-      organizationId: organizations.id,
-      organizationName: organizations.name,
-
-      // Created by user name
-      createdByName: users.fullName,
-    })
-    .from(properties)
-    .leftJoin(organizations, eq(properties.organizationId, organizations.id))
-    .leftJoin(users, eq(properties.createdBy, users.id))
-    .where(and(...whereConditions))
-    .orderBy(desc(properties.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(properties)
-    .leftJoin(organizations, eq(properties.organizationId, organizations.id))
-    .where(and(...whereConditions));
+  const [propertiesResult, totalResult] = await Promise.all([
+    db
+      .select({
+        id: properties.id,
+        propertyName: properties.propertyName,
+        propertyCode: properties.propertyCode,
+        propertyType: properties.propertyType,
+        status: properties.status,
+        addressLine1: properties.addressLine1,
+        addressLine2: properties.addressLine2,
+        city: properties.city,
+        state: properties.state,
+        zipCode: properties.zipCode,
+        squareFootage: properties.squareFootage,
+        numberOfFloors: properties.numberOfFloors,
+        yearBuilt: properties.yearBuilt,
+        tags: properties.tags,
+        createdBy: properties.createdBy,
+        createdAt: properties.createdAt,
+        organizationId: organizations.id,
+        organizationName: organizations.name,
+        createdByName: users.fullName,
+      })
+      .from(properties)
+      .leftJoin(organizations, eq(properties.organizationId, organizations.id))
+      .leftJoin(users, eq(properties.createdBy, users.id))
+      .where(and(...whereConditions))
+      .orderBy(desc(properties.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(properties)
+      .leftJoin(organizations, eq(properties.organizationId, organizations.id))
+      .where(and(...whereConditions)),
+  ]);
 
   const total = totalResult[0]?.count ?? 0;
 

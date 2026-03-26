@@ -43,20 +43,19 @@ export const getDepartments = async (
   whereConditions.push(eq(departments.isDeleted, false));
   const finalWhereClause = and(...whereConditions);
 
-  // Get all departments (excluding soft deleted)
-  const departmentsList = await db
-    .select()
-    .from(departments)
-    .where(finalWhereClause)
-    .limit(limit)
-    .offset(offset);
+  const [departmentsList, total] = await Promise.all([
+    db
+      .select()
+      .from(departments)
+      .where(finalWhereClause)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(departments)
+      .where(finalWhereClause),
+  ]);
 
-  const total = await db
-    .select({ count: count() })
-    .from(departments)
-    .where(finalWhereClause);
-
-  // Get current month date range for utilisation calculation
   const currentDate = new Date();
   const startOfMonth = new Date(
     currentDate.getFullYear(),
@@ -68,77 +67,156 @@ export const getDepartments = async (
     currentDate.getMonth() + 1,
     0,
   );
+  const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
+  const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
 
-  // Process each department to get comprehensive metrics
-  const departmentsWithMetrics = await Promise.all(
-    departmentsList.map(async (dept) => {
-      // Get all employees in this department
-      const deptEmployees = await db
-        .select({
-          employee: {
-            id: employees.id,
-            status: employees.status,
-            performance: employees.performance,
-            positionId: employees.positionId,
-            hourlyRate: employees.hourlyRate,
-            salary: employees.salary,
-          },
-          user: {
-            id: users.id,
-            fullName: users.fullName,
-            isActive: users.isActive,
-          },
-          position: {
-            id: positions.id,
-            name: positions.name,
-          },
-        })
-        .from(employees)
-        .leftJoin(users, eq(employees.userId, users.id))
-        .leftJoin(positions, eq(employees.positionId, positions.id))
-        .where(
-          and(
-            eq(employees.departmentId, dept.id),
-            eq(employees.isDeleted, false),
-          ),
-        );
+  const totalCount = total[0]?.count ?? 0;
 
-      // Get all positions in this department with pay information
-      // Handle null isDeleted values (for rows created before migration)
-      const deptPositions = await db
-        .select({
+  if (departmentsList.length === 0) {
+    return {
+      data: [],
+      total: totalCount,
+      pagination: {
+        page: Math.floor(offset / limit) + 1,
+        limit: limit,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    };
+  }
+
+  const deptIds = departmentsList.map((d) => d.id);
+
+  const [allDeptEmployees, allDeptPositions] = await Promise.all([
+    db
+      .select({
+        departmentId: employees.departmentId,
+        employee: {
+          id: employees.id,
+          status: employees.status,
+          performance: employees.performance,
+          positionId: employees.positionId,
+          hourlyRate: employees.hourlyRate,
+          salary: employees.salary,
+        },
+        user: {
+          id: users.id,
+          fullName: users.fullName,
+          isActive: users.isActive,
+        },
+        position: {
           id: positions.id,
           name: positions.name,
-          description: positions.description,
-          payRate: positions.payRate,
-          payType: positions.payType,
-          currency: positions.currency,
-        })
-        .from(positions)
-        .where(
-          and(
-            eq(positions.departmentId, dept.id),
-            or(isNull(positions.isDeleted), eq(positions.isDeleted, false)),
-          ),
-        );
+        },
+      })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .leftJoin(positions, eq(employees.positionId, positions.id))
+      .where(
+        and(
+          inArray(employees.departmentId, deptIds),
+          eq(employees.isDeleted, false),
+        ),
+      ),
+    db
+      .select({
+        departmentId: positions.departmentId,
+        id: positions.id,
+        name: positions.name,
+        description: positions.description,
+        payRate: positions.payRate,
+        payType: positions.payType,
+        currency: positions.currency,
+      })
+      .from(positions)
+      .where(
+        and(
+          inArray(positions.departmentId, deptIds),
+          or(isNull(positions.isDeleted), eq(positions.isDeleted, false)),
+        ),
+      ),
+  ]);
 
-      // Calculate metrics
-      // Filter to only active employees (matching the KPI logic)
-      const activeEmployees = deptEmployees.filter(
-        (e) => e.user?.isActive === true,
-      );
-      // Total should only count active employees (not inactive users)
-      const totalPeople = activeEmployees.length;
-      const inFieldCount = activeEmployees.filter(
-        (e) => e.employee.status === "in_field",
-      ).length;
-      const availableCount = activeEmployees.filter(
-        (e) => e.employee.status === "available",
-      ).length;
+  const employeesByDept = new Map<
+    number,
+    (typeof allDeptEmployees)[number][]
+  >();
+  for (const row of allDeptEmployees) {
+    const did = row.departmentId;
+    if (did == null) continue;
+    const list = employeesByDept.get(did) ?? [];
+    list.push(row);
+    employeesByDept.set(did, list);
+  }
 
-      // Role breakdown (only for active employees)
-      const roleCounts: Record<string, number> = {};
-      activeEmployees.forEach((e) => {
+  const positionsByDept = new Map<
+    number,
+    {
+      id: number;
+      name: string;
+      description: string | null;
+      payRate: string | null;
+      payType: string | null;
+      currency: string | null;
+    }[]
+  >();
+  for (const row of allDeptPositions) {
+    const did = row.departmentId;
+    if (did == null) continue;
+    const { departmentId: _d, ...pos } = row;
+    const list = positionsByDept.get(did) ?? [];
+    list.push(pos);
+    positionsByDept.set(did, list);
+  }
+
+  const activeEmployeeIds = [
+    ...new Set(
+      allDeptEmployees
+        .filter((e) => e.user?.isActive === true)
+        .map((e) => e.employee.id),
+    ),
+  ];
+
+  const hoursByEmployeeId = new Map<number, number>();
+  if (activeEmployeeIds.length > 0) {
+    const hourRows = await db
+      .select({
+        employeeId: timesheets.employeeId,
+        totalHours: sql<number>`COALESCE(SUM(CAST(${timesheets.totalHours} AS NUMERIC)), 0)`,
+      })
+      .from(timesheets)
+      .where(
+        and(
+          inArray(timesheets.employeeId, activeEmployeeIds),
+          gte(timesheets.sheetDate, startOfMonthStr),
+          lte(timesheets.sheetDate, endOfMonthStr),
+          sql`${timesheets.status} IN ('submitted', 'approved')`,
+        ),
+      )
+      .groupBy(timesheets.employeeId);
+    for (const r of hourRows) {
+      if (r.employeeId != null) {
+        hoursByEmployeeId.set(r.employeeId, Number(r.totalHours ?? 0));
+      }
+    }
+  }
+
+  const departmentsWithMetrics = departmentsList.map((dept) => {
+    const deptEmployees = employeesByDept.get(dept.id) ?? [];
+    const deptPositions = positionsByDept.get(dept.id) ?? [];
+
+    const activeEmployees = deptEmployees.filter(
+      (e) => e.user?.isActive === true,
+    );
+    const totalPeople = activeEmployees.length;
+    const inFieldCount = activeEmployees.filter(
+      (e) => e.employee.status === "in_field",
+    ).length;
+    const availableCount = activeEmployees.filter(
+      (e) => e.employee.status === "available",
+    ).length;
+
+    const roleCounts: Record<string, number> = {};
+    activeEmployees.forEach((e) => {
         const positionName = e.position?.name?.toLowerCase() || "";
         let role = "Office Staff";
 
@@ -181,27 +259,9 @@ export const getDepartments = async (
             e.position?.name?.toLowerCase().includes("lead"),
         ) || activeEmployees[0];
 
-      // Calculate utilisation (based on timesheets this month)
       let totalHours = 0;
-      if (activeEmployees.length > 0) {
-        const employeeIds = activeEmployees.map((e) => e.employee.id);
-        const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
-        const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
-        const timesheetData = await db
-          .select({
-            totalHours: sql<number>`COALESCE(SUM(CAST(${timesheets.totalHours} AS NUMERIC)), 0)`,
-          })
-          .from(timesheets)
-          .where(
-            and(
-              or(...employeeIds.map((id) => eq(timesheets.employeeId, id)))!,
-              gte(timesheets.sheetDate, startOfMonthStr),
-              lte(timesheets.sheetDate, endOfMonthStr),
-              sql`${timesheets.status} IN ('submitted', 'approved')`,
-            ),
-          );
-
-        totalHours = Number(timesheetData[0]?.totalHours || 0);
+      for (const e of activeEmployees) {
+        totalHours += hoursByEmployeeId.get(e.employee.id) ?? 0;
       }
 
       const expectedHours = activeEmployees.length * 160; // 160 hours per month (40 hours/week * 4 weeks)
@@ -427,10 +487,7 @@ export const getDepartments = async (
           operatingConditions: "Business Hours", // Default - can be enhanced
         },
       };
-    }),
-  );
-
-  const totalCount = total[0]?.count ?? 0;
+  });
 
   return {
     data: departmentsWithMetrics,

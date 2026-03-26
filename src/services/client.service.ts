@@ -128,23 +128,23 @@ export const getClients = async (
         ) ?? whereCondition;
     }
 
-    const orgsData = await db
-      .select({
-        organization: organizations,
-        clientType: clientTypes,
-      })
-      .from(organizations)
-      .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
-      .where(whereCondition)
-      .orderBy(desc(organizations.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    // Get total count
-    const totalCountResult = await db
-      .select({ count: count() })
-      .from(organizations)
-      .where(whereCondition);
+    const [orgsData, totalCountResult] = await Promise.all([
+      db
+        .select({
+          organization: organizations,
+          clientType: clientTypes,
+        })
+        .from(organizations)
+        .leftJoin(clientTypes, eq(organizations.clientTypeId, clientTypes.id))
+        .where(whereCondition)
+        .orderBy(desc(organizations.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: count() })
+        .from(organizations)
+        .where(whereCondition),
+    ]);
 
     const totalCount = totalCountResult[0]?.count || 0;
 
@@ -1139,20 +1139,18 @@ export const getOrganizationProperties = async (
       ) ?? whereCondition;
   }
 
-  const propertiesData = await db
-    .select({
-      property: properties,
-    })
-    .from(properties)
-    .where(whereCondition)
-    .orderBy(desc(properties.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const countResult = await db
-    .select({ count: count() })
-    .from(properties)
-    .where(whereCondition);
+  const [propertiesData, countResult] = await Promise.all([
+    db
+      .select({
+        property: properties,
+      })
+      .from(properties)
+      .where(whereCondition)
+      .orderBy(desc(properties.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: count() }).from(properties).where(whereCondition),
+  ]);
   const totalCount = countResult[0]?.count || 0;
 
   return {
@@ -1189,18 +1187,19 @@ export const getClientContacts = async (
     );
   }
 
-  const contactsData = await db
-    .select()
-    .from(clientContacts)
-    .where(whereCondition)
-    .orderBy(desc(clientContacts.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const totalCountResult = await db
-    .select({ count: count() })
-    .from(clientContacts)
-    .where(whereCondition);
+  const [contactsData, totalCountResult] = await Promise.all([
+    db
+      .select()
+      .from(clientContacts)
+      .where(whereCondition)
+      .orderBy(desc(clientContacts.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(clientContacts)
+      .where(whereCondition),
+  ]);
 
   const totalCount = totalCountResult[0]?.count || 0;
 
@@ -1272,42 +1271,35 @@ export const getClientNotes = async (
   offset: number = 0,
   limit: number = 50,
 ): Promise<NoteListResult> => {
-  const notesData = await db
-    .select({
-      id: clientNotes.id,
-      organizationId: clientNotes.organizationId,
-      subject: clientNotes.subject,
-      content: clientNotes.content,
-      createdBy: clientNotes.createdBy,
-      createdAt: clientNotes.createdAt,
-      updatedAt: clientNotes.updatedAt,
-      isDeleted: clientNotes.isDeleted,
-      createdByName: notesCreatedByUser.fullName,
-    })
-    .from(clientNotes)
-    .leftJoin(
-      notesCreatedByUser,
-      eq(clientNotes.createdBy, notesCreatedByUser.id),
-    )
-    .where(
-      and(
-        eq(clientNotes.organizationId, organizationId),
-        eq(clientNotes.isDeleted, false),
-      ),
-    )
-    .orderBy(desc(clientNotes.createdAt))
-    .limit(limit)
-    .offset(offset);
+  const notesWhere = and(
+    eq(clientNotes.organizationId, organizationId),
+    eq(clientNotes.isDeleted, false),
+  );
 
-  const totalCountResult = await db
-    .select({ count: count() })
-    .from(clientNotes)
-    .where(
-      and(
-        eq(clientNotes.organizationId, organizationId),
-        eq(clientNotes.isDeleted, false),
-      ),
-    );
+  const [notesData, totalCountResult] = await Promise.all([
+    db
+      .select({
+        id: clientNotes.id,
+        organizationId: clientNotes.organizationId,
+        subject: clientNotes.subject,
+        content: clientNotes.content,
+        createdBy: clientNotes.createdBy,
+        createdAt: clientNotes.createdAt,
+        updatedAt: clientNotes.updatedAt,
+        isDeleted: clientNotes.isDeleted,
+        createdByName: notesCreatedByUser.fullName,
+      })
+      .from(clientNotes)
+      .leftJoin(
+        notesCreatedByUser,
+        eq(clientNotes.createdBy, notesCreatedByUser.id),
+      )
+      .where(notesWhere)
+      .orderBy(desc(clientNotes.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: count() }).from(clientNotes).where(notesWhere),
+  ]);
 
   return {
     notes: notesData as any[],
@@ -1387,22 +1379,23 @@ export const getClientDocuments = async (
     eq(clientDocuments.isDeleted, false),
   );
 
-  const documentsData = await db
-    .select({
-      document: clientDocuments,
-      uploadedByName: users.fullName,
-    })
-    .from(clientDocuments)
-    .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
-    .where(whereCondition)
-    .orderBy(desc(clientDocuments.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const totalCountResult = await db
-    .select({ count: count() })
-    .from(clientDocuments)
-    .where(whereCondition);
+  const [documentsData, totalCountResult] = await Promise.all([
+    db
+      .select({
+        document: clientDocuments,
+        uploadedByName: users.fullName,
+      })
+      .from(clientDocuments)
+      .leftJoin(users, eq(clientDocuments.uploadedBy, users.id))
+      .where(whereCondition)
+      .orderBy(desc(clientDocuments.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(clientDocuments)
+      .where(whereCondition),
+  ]);
 
   return {
     documents: documentsData.map((doc) => ({

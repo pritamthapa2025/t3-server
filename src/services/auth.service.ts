@@ -42,36 +42,6 @@ export const getUserById = async (userId: string) => {
   return user || null;
 };
 
-// Lightweight user fetch for authentication (only needed fields, no password)
-export const getUserByIdForAuth = async (userId: string) => {
-  const [row] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      fullName: users.fullName,
-      isActive: users.isActive,
-      isDeleted: users.isDeleted,
-      employeePk: employees.id,
-      employeeNumber: employees.employeeId,
-    })
-    .from(users)
-    .leftJoin(employees, eq(employees.userId, users.id))
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  if (!row) return null;
-
-  return {
-    id: row.id,
-    email: row.email,
-    fullName: row.fullName,
-    isActive: row.isActive,
-    isDeleted: row.isDeleted,
-    employeeId: row.employeePk ?? null,
-    employeeNumber: row.employeeNumber ?? null,
-  };
-};
-
 // Full user fetch for profile (all fields except password)
 export const getUserByIdForProfile = async (userId: string) => {
   const [user] = await db
@@ -108,6 +78,7 @@ export const getMeProfileBundle = async (userId: string) => {
       profilePicture: users.profilePicture,
       isActive: users.isActive,
       isVerified: users.isVerified,
+      isDeleted: users.isDeleted,
       lastLogin: users.lastLogin,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -123,6 +94,30 @@ export const getMeProfileBundle = async (userId: string) => {
     .limit(1);
 
   return row ?? null;
+};
+
+/** Full row from getMeProfileBundle — used by auth middleware cache and GET /auth/me. */
+export type AuthMeProfileRow = NonNullable<
+  Awaited<ReturnType<typeof getMeProfileBundle>>
+>;
+
+/** Map profile bundle to the slim shape sockets and auth gates use (no second DB round-trip). */
+export const mapProfileToAuthGate = (row: AuthMeProfileRow) => ({
+  id: row.id,
+  email: row.email,
+  fullName: row.fullName,
+  isActive: row.isActive,
+  isDeleted: row.isDeleted,
+  employeeId: row.employeeTableId ?? null,
+  employeeNumber: row.employeeCode ?? null,
+});
+
+/**
+ * Same single query as GET /auth/me — one round-trip for sockets and auth gate checks.
+ */
+export const getUserByIdForAuth = async (userId: string) => {
+  const row = await getMeProfileBundle(userId);
+  return row ? mapProfileToAuthGate(row) : null;
 };
 
 // Update user password

@@ -9,6 +9,7 @@ import {
   getButtonPermissions,
   filterDataByFieldPermissions,
 } from "../services/uiPermissions.service.js";
+import { hasFeatureAccess } from "../services/featurePermission.service.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -276,16 +277,16 @@ export const checkFeatureAccessHandler = async (req: Request, res: Response) => 
       });
     }
 
-    const config = await getModuleUIConfig(req.user.id, module);
-    const featureAccess = config.features.find(f => f.featureCode === feature);
+    const accessLevel = await hasFeatureAccess(req.user.id, module, feature);
+    const hasAccess = Boolean(accessLevel && accessLevel !== "none");
 
     return res.json({
       success: true,
       data: {
         module,
         feature,
-        hasAccess: featureAccess?.available || false,
-        accessLevel: featureAccess?.accessLevel || "none",
+        hasAccess,
+        accessLevel: accessLevel || "none",
       },
     });
   } catch (error) {

@@ -2469,139 +2469,110 @@ export const deleteVehicleDocument = async (id: string) => {
 
 export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
   const conditions = [eq(vehicles.isDeleted, false)];
-
-  // Total Vehicles
-  const totalVehiclesResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(and(...conditions));
-
-  // Active Vehicles
-  const activeVehiclesResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(and(...conditions, eq(vehicles.status, "active")));
-
-  // In Maintenance
-  const inMaintenanceResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(and(...conditions, eq(vehicles.status, "in_maintenance")));
-
-  // Out of Service
-  const outOfServiceResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(and(...conditions, eq(vehicles.status, "out_of_service")));
-
-  // Upcoming Maintenance (next 30 days)
   const thirtyDaysFromNow = new Date();
   thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-  const upcomingMaintenanceResult = await db
-    .select({ count: count() })
-    .from(maintenanceRecords)
-    .where(
-      and(
-        eq(maintenanceRecords.isDeleted, false),
-        eq(maintenanceRecords.status, "scheduled"),
-        gte(
-          maintenanceRecords.scheduledDate,
-          new Date().toISOString().split("T")[0]!,
-        ),
-        lte(
-          maintenanceRecords.scheduledDate,
-          thirtyDaysFromNow.toISOString().split("T")[0]!,
-        ),
-      ),
-    );
-
-  // Overdue Maintenance
-  const overdueMaintenanceResult = await db
-    .select({ count: count() })
-    .from(maintenanceRecords)
-    .where(
-      and(
-        eq(maintenanceRecords.isDeleted, false),
-        or(
-          eq(maintenanceRecords.status, "overdue"),
-          eq(maintenanceRecords.status, "scheduled"),
-        ),
-        lte(
-          maintenanceRecords.scheduledDate,
-          new Date().toISOString().split("T")[0]!,
-        ),
-      ),
-    );
-
-  // Upcoming Inspections (next 30 days)
-  const upcomingInspectionsResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(
-      and(
-        ...conditions,
-        isNotNull(vehicles.nextInspectionDue),
-        gte(
-          vehicles.nextInspectionDue,
-          new Date().toISOString().split("T")[0]!,
-        ),
-        lte(
-          vehicles.nextInspectionDue,
-          thirtyDaysFromNow.toISOString().split("T")[0]!,
-        ),
-      ),
-    );
-
-  // Overdue Inspections
-  const overdueInspectionsResult = await db
-    .select({ count: count() })
-    .from(vehicles)
-    .where(
-      and(
-        ...conditions,
-        isNotNull(vehicles.nextInspectionDue),
-        lte(
-          vehicles.nextInspectionDue,
-          new Date().toISOString().split("T")[0]!,
-        ),
-      ),
-    );
-
-  // Total Maintenance Cost (last 12 months)
+  const todayStr = new Date().toISOString().split("T")[0]!;
+  const thirtyStr = thirtyDaysFromNow.toISOString().split("T")[0]!;
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const totalMaintenanceCostResult = await db
-    .select({
-      total: sql<string>`COALESCE(SUM(${maintenanceRecords.cost}), 0)`,
-    })
-    .from(maintenanceRecords)
-    .where(
-      and(
-        eq(maintenanceRecords.isDeleted, false),
-        eq(maintenanceRecords.status, "completed"),
-        gte(maintenanceRecords.date, oneYearAgo.toISOString().split("T")[0]!),
-      ),
-    );
-
-  // Total Fuel Cost (last 12 months)
-  const totalFuelCostResult = await db
-    .select({
-      total: sql<string>`COALESCE(SUM(${fuelRecords.totalCost}), 0)`,
-    })
-    .from(fuelRecords)
-    .where(
-      and(
-        eq(fuelRecords.isDeleted, false),
-        gte(fuelRecords.date, oneYearAgo.toISOString().split("T")[0]!),
-      ),
-    );
-
-  // Average MPG (last 12 months)
-  // Calculate MPG for each fuel record: (current_odometer - previous_odometer) / gallons
-  // Then average all MPG values
   const oneYearAgoDate = oneYearAgo.toISOString().split("T")[0]!;
-  const avgMPGResult = await db.execute<{ avgMPG: string }>(
-    sql`
+
+  const [
+    totalVehiclesResult,
+    activeVehiclesResult,
+    inMaintenanceResult,
+    outOfServiceResult,
+    upcomingMaintenanceResult,
+    overdueMaintenanceResult,
+    upcomingInspectionsResult,
+    overdueInspectionsResult,
+    totalMaintenanceCostResult,
+    totalFuelCostResult,
+    avgMPGResult,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(vehicles).where(and(...conditions)),
+    db
+      .select({ count: count() })
+      .from(vehicles)
+      .where(and(...conditions, eq(vehicles.status, "active"))),
+    db
+      .select({ count: count() })
+      .from(vehicles)
+      .where(and(...conditions, eq(vehicles.status, "in_maintenance"))),
+    db
+      .select({ count: count() })
+      .from(vehicles)
+      .where(and(...conditions, eq(vehicles.status, "out_of_service"))),
+    db
+      .select({ count: count() })
+      .from(maintenanceRecords)
+      .where(
+        and(
+          eq(maintenanceRecords.isDeleted, false),
+          eq(maintenanceRecords.status, "scheduled"),
+          gte(maintenanceRecords.scheduledDate, todayStr),
+          lte(maintenanceRecords.scheduledDate, thirtyStr),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(maintenanceRecords)
+      .where(
+        and(
+          eq(maintenanceRecords.isDeleted, false),
+          or(
+            eq(maintenanceRecords.status, "overdue"),
+            eq(maintenanceRecords.status, "scheduled"),
+          ),
+          lte(maintenanceRecords.scheduledDate, todayStr),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(vehicles)
+      .where(
+        and(
+          ...conditions,
+          isNotNull(vehicles.nextInspectionDue),
+          gte(vehicles.nextInspectionDue, todayStr),
+          lte(vehicles.nextInspectionDue, thirtyStr),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(vehicles)
+      .where(
+        and(
+          ...conditions,
+          isNotNull(vehicles.nextInspectionDue),
+          lte(vehicles.nextInspectionDue, todayStr),
+        ),
+      ),
+    db
+      .select({
+        total: sql<string>`COALESCE(SUM(${maintenanceRecords.cost}), 0)`,
+      })
+      .from(maintenanceRecords)
+      .where(
+        and(
+          eq(maintenanceRecords.isDeleted, false),
+          eq(maintenanceRecords.status, "completed"),
+          gte(maintenanceRecords.date, oneYearAgoDate),
+        ),
+      ),
+    db
+      .select({
+        total: sql<string>`COALESCE(SUM(${fuelRecords.totalCost}), 0)`,
+      })
+      .from(fuelRecords)
+      .where(
+        and(
+          eq(fuelRecords.isDeleted, false),
+          gte(fuelRecords.date, oneYearAgoDate),
+        ),
+      ),
+    db.execute<{ avgMPG: string }>(
+      sql`
       SELECT COALESCE(AVG(mpg), 0) as "avgMPG"
       FROM (
         SELECT 
@@ -2612,7 +2583,8 @@ export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
       ) subquery
       WHERE mpg IS NOT NULL AND mpg > 0
     `,
-  );
+    ),
+  ]);
 
   return {
     totalVehicles: totalVehiclesResult[0]?.count || 0,

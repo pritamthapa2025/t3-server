@@ -2,6 +2,7 @@ import {
   count,
   eq,
   desc,
+  asc,
   and,
   or,
   sql,
@@ -108,69 +109,75 @@ export const getEmployees = async (
 
   const whereClause = and(...conditions);
 
-  // Get employees with all related data for table view
-  const result = await db
-    .select({
-      // Employee data
-      id: employees.id,
-      employeeId: employees.employeeId,
-      status: employees.status,
-      performance: employees.performance,
-      violations: employees.violations,
-      startDate: employees.startDate,
-
-      // User data
-      userId: users.id,
-      fullName: users.fullName,
-      email: users.email,
-      phone: users.phone,
-      profilePicture: users.profilePicture,
-      isActive: users.isActive,
-      lastLogin: users.lastLogin,
-
-      // Department data
-      departmentId: departments.id,
-      departmentName: departments.name,
-
-      // Position data (Job Title)
-      positionId: positions.id,
-      positionName: positions.name,
-    })
-    .from(employees)
-    .leftJoin(users, eq(employees.userId, users.id))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(positions, eq(employees.positionId, positions.id))
-    .where(whereClause)
-    .limit(limit)
-    .offset(offset);
-
-  // Get total count for pagination (includes same joins for search filter)
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employees)
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(whereClause);
+  const [result, totalResult] = await Promise.all([
+    db
+      .select({
+        id: employees.id,
+        employeeId: employees.employeeId,
+        status: employees.status,
+        performance: employees.performance,
+        violations: employees.violations,
+        startDate: employees.startDate,
+        userId: users.id,
+        fullName: users.fullName,
+        email: users.email,
+        phone: users.phone,
+        profilePicture: users.profilePicture,
+        isActive: users.isActive,
+        lastLogin: users.lastLogin,
+        departmentId: departments.id,
+        departmentName: departments.name,
+        positionId: positions.id,
+        positionName: positions.name,
+      })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .leftJoin(departments, eq(employees.departmentId, departments.id))
+      .leftJoin(positions, eq(employees.positionId, positions.id))
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(employees)
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(whereClause),
+  ]);
 
   const total = totalResult[0]?.count ?? 0;
 
-  // For each employee, get additional calculated data
-  const employeesWithDetails = await Promise.all(
-    result.map(async (emp) => {
-      // Get latest performance review for rating
-      const latestReview = await db
-        .select({
-          averageScore: employeeReviews.averageScore,
-          reviewDate: employeeReviews.reviewDate,
-        })
-        .from(employeeReviews)
-        .where(eq(employeeReviews.employeeId, emp.id))
-        .orderBy(desc(employeeReviews.reviewDate))
-        .limit(1);
+  const empIds = result.map((e) => e.id);
+  const latestReviewByEmpId = new Map<
+    number,
+    { averageScore: string | null; reviewDate: Date | null }
+  >();
+  if (empIds.length > 0) {
+    const reviewRows = await db
+      .select({
+        employeeId: employeeReviews.employeeId,
+        averageScore: employeeReviews.averageScore,
+        reviewDate: employeeReviews.reviewDate,
+      })
+      .from(employeeReviews)
+      .where(
+        and(
+          inArray(employeeReviews.employeeId, empIds),
+          eq(employeeReviews.isDeleted, false),
+        ),
+      )
+      .orderBy(asc(employeeReviews.employeeId), desc(employeeReviews.reviewDate));
+    for (const r of reviewRows) {
+      if (!latestReviewByEmpId.has(r.employeeId)) {
+        latestReviewByEmpId.set(r.employeeId, r);
+      }
+    }
+  }
 
-      // Calculate overall rating from performance and reviews
-      const reviewScore = latestReview[0]?.averageScore
-        ? parseFloat(latestReview[0].averageScore)
-        : null;
+  const employeesWithDetails = result.map((emp) => {
+    const latestReview = latestReviewByEmpId.get(emp.id);
+    const reviewScore = latestReview?.averageScore
+      ? parseFloat(latestReview.averageScore)
+      : null;
       const performanceScore = emp.performance || 0;
 
       let overallRating: string | null = null;
@@ -241,8 +248,7 @@ export const getEmployees = async (
         startDate: emp.startDate,
         // TODO: Add current client assignments here
       };
-    }),
-  );
+  });
 
   return {
     data: employeesWithDetails,
@@ -716,44 +722,43 @@ export const getEmployeeKPIs = async (): Promise<{
   timesheetViolations: number;
 }> => {
   const notDeleted = eq(employees.isDeleted, false);
-
-  const [totalRow] = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(notDeleted);
-  const totalEmployees = Number(totalRow?.count ?? 0);
-
-  const activeStatuses = ["available", "on_leave", "in_field"] as const;
-  const [activeRow] = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(and(notDeleted, inArray(employees.status, activeStatuses)));
-  const activeEmployees = Number(activeRow?.count ?? 0);
-
-  const [inFieldRow] = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(and(notDeleted, eq(employees.status, "in_field")));
-  const inField = Number(inFieldRow?.count ?? 0);
-
-  // Attendance: count of employees who have at least one timesheet submitted today
   const todayStr = new Date().toISOString().split("T")[0]!;
-  const [attendanceRow] = await db
-    .select({ count: sql<number>`count(distinct ${timesheets.employeeId})` })
-    .from(timesheets)
-    .where(
-      and(
-        eq(timesheets.sheetDate, todayStr),
-        inArray(timesheets.status, ["submitted", "approved"]),
-      ),
-    );
-  const attendance = Number(attendanceRow?.count ?? 0);
+  const activeStatuses = ["available", "on_leave", "in_field"] as const;
 
-  // Timesheet violations: sum of violations across all active employees
-  const [violationsRow] = await db
-    .select({ total: sql<number>`coalesce(sum(${employees.violations}), 0)` })
-    .from(employees)
-    .where(notDeleted);
+  const [[totalRow], [activeRow], [inFieldRow], [attendanceRow], [violationsRow]] =
+    await Promise.all([
+      db.select({ count: count() }).from(employees).where(notDeleted),
+      db
+        .select({ count: count() })
+        .from(employees)
+        .where(and(notDeleted, inArray(employees.status, activeStatuses))),
+      db
+        .select({ count: count() })
+        .from(employees)
+        .where(and(notDeleted, eq(employees.status, "in_field"))),
+      db
+        .select({
+          count: sql<number>`count(distinct ${timesheets.employeeId})`,
+        })
+        .from(timesheets)
+        .where(
+          and(
+            eq(timesheets.sheetDate, todayStr),
+            inArray(timesheets.status, ["submitted", "approved"]),
+          ),
+        ),
+      db
+        .select({
+          total: sql<number>`coalesce(sum(${employees.violations}), 0)`,
+        })
+        .from(employees)
+        .where(notDeleted),
+    ]);
+
+  const totalEmployees = Number(totalRow?.count ?? 0);
+  const activeEmployees = Number(activeRow?.count ?? 0);
+  const inField = Number(inFieldRow?.count ?? 0);
+  const attendance = Number(attendanceRow?.count ?? 0);
   const timesheetViolations = Number(violationsRow?.total ?? 0);
 
   return {

@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema/org.schema.js";
 import { NotificationService } from "./notification.service.js";
 import { logger } from "../utils/logger.js";
+import { cachedOrgAggregate } from "../utils/org-aggregate-cache.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -1164,70 +1165,69 @@ export const getEmployeesWithAssignedTasks = async (
 // Dispatch KPIs
 // ============================
 
-export const getDispatchKPIs = async () => {
-  // Active tasks (status: assigned, in_progress)
-  const [activeTasksRow] = await db
-    .select({ count: count() })
-    .from(dispatchTasks)
-    .where(
-      and(
-        eq(dispatchTasks.isDeleted, false),
-        or(
-          eq(dispatchTasks.status, "assigned"),
-          eq(dispatchTasks.status, "in_progress"),
-        ),
-      ),
-    );
-
-  // Completed today (status: completed and endTime is today) — UTC-safe naive boundaries
+const computeDispatchKPIs = async () => {
   const _todayStr = new Date().toISOString().split("T")[0];
   const today = naiveDT(`${_todayStr}T00:00:00`);
   const tomorrow = naiveDT(`${_todayStr}T23:59:59`);
-
-  const [completedTodayRow] = await db
-    .select({ count: count() })
-    .from(dispatchTasks)
-    .where(
-      and(
-        eq(dispatchTasks.isDeleted, false),
-        eq(dispatchTasks.status, "completed"),
-        gte(dispatchTasks.endTime, today),
-        lte(dispatchTasks.endTime, tomorrow),
-      ),
-    );
-
-  // Available technicians (employees with status = 'available')
-  const [availableTechniciansRow] = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(
-      and(eq(employees.isDeleted, false), eq(employees.status, "available")),
-    );
-
-  // In field (employees with status = 'in_field')
-  const [inFieldRow] = await db
-    .select({ count: count() })
-    .from(employees)
-    .where(
-      and(eq(employees.isDeleted, false), eq(employees.status, "in_field")),
-    );
-
-  // Overdue tasks (endTime < now and status not completed/cancelled)
   const now = new Date();
-  const [overdueTasksRow] = await db
-    .select({ count: count() })
-    .from(dispatchTasks)
-    .where(
-      and(
-        eq(dispatchTasks.isDeleted, false),
-        lte(dispatchTasks.endTime, now),
-        or(
-          eq(dispatchTasks.status, "pending"),
-          eq(dispatchTasks.status, "assigned"),
-          eq(dispatchTasks.status, "in_progress"),
+
+  const [
+    [activeTasksRow],
+    [completedTodayRow],
+    [availableTechniciansRow],
+    [inFieldRow],
+    [overdueTasksRow],
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(dispatchTasks)
+      .where(
+        and(
+          eq(dispatchTasks.isDeleted, false),
+          or(
+            eq(dispatchTasks.status, "assigned"),
+            eq(dispatchTasks.status, "in_progress"),
+          ),
         ),
       ),
-    );
+    db
+      .select({ count: count() })
+      .from(dispatchTasks)
+      .where(
+        and(
+          eq(dispatchTasks.isDeleted, false),
+          eq(dispatchTasks.status, "completed"),
+          gte(dispatchTasks.endTime, today),
+          lte(dispatchTasks.endTime, tomorrow),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(employees)
+      .where(
+        and(eq(employees.isDeleted, false), eq(employees.status, "available")),
+      ),
+    db
+      .select({ count: count() })
+      .from(employees)
+      .where(
+        and(eq(employees.isDeleted, false), eq(employees.status, "in_field")),
+      ),
+    db
+      .select({ count: count() })
+      .from(dispatchTasks)
+      .where(
+        and(
+          eq(dispatchTasks.isDeleted, false),
+          lte(dispatchTasks.endTime, now),
+          or(
+            eq(dispatchTasks.status, "pending"),
+            eq(dispatchTasks.status, "assigned"),
+            eq(dispatchTasks.status, "in_progress"),
+          ),
+        ),
+      ),
+  ]);
 
   return {
     activeTasks: activeTasksRow?.count || 0,
@@ -1237,6 +1237,9 @@ export const getDispatchKPIs = async () => {
     overdueTasks: overdueTasksRow?.count || 0,
   };
 };
+
+export const getDispatchKPIs = async () =>
+  cachedOrgAggregate("dispatch-kpis", computeDispatchKPIs);
 
 // ===========================================================================
 // Bulk Delete

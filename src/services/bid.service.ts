@@ -14,6 +14,7 @@ import {
   isNotNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
+import { cachedOrgAggregate } from "../utils/org-aggregate-cache.js";
 import {
   bidsTable,
   bidFinancialBreakdown,
@@ -4192,60 +4193,59 @@ export const deleteBidMedia = async (mediaId: string) => {
 // Bids KPIs
 // ============================
 
-export const getBidsKPIs = async () => {
-  // Total bid value (sum of all actualTotalPrice from bid_financial_breakdown)
-  const [totalBidValueRow] = await db
-    .select({
-      totalBidValue: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
-    })
-    .from(bidsTable)
-    .leftJoin(
-      bidFinancialBreakdown,
-      and(
-        eq(bidsTable.id, bidFinancialBreakdown.bidId),
-        eq(bidFinancialBreakdown.isDeleted, false),
-      ),
-    )
-    .where(eq(bidsTable.isDeleted, false));
-
-  // Active bids (status: submitted, in_progress)
-  const [activeBidsRow] = await db
-    .select({ count: count() })
-    .from(bidsTable)
-    .where(
-      and(
-        eq(bidsTable.isDeleted, false),
-        or(
-          eq(bidsTable.status, "submitted"),
-          eq(bidsTable.status, "in_progress"),
+const computeBidsKPIs = async () => {
+  const [
+    [totalBidValueRow],
+    [activeBidsRow],
+    [pendingBidsRow],
+    [wonBidsRow],
+    [avgProfitMarginRow],
+  ] = await Promise.all([
+    db
+      .select({
+        totalBidValue: sql<string>`COALESCE(SUM(CAST(${bidFinancialBreakdown.actualTotalPrice} AS NUMERIC)), 0)`,
+      })
+      .from(bidsTable)
+      .leftJoin(
+        bidFinancialBreakdown,
+        and(
+          eq(bidsTable.id, bidFinancialBreakdown.bidId),
+          eq(bidFinancialBreakdown.isDeleted, false),
+        ),
+      )
+      .where(eq(bidsTable.isDeleted, false)),
+    db
+      .select({ count: count() })
+      .from(bidsTable)
+      .where(
+        and(
+          eq(bidsTable.isDeleted, false),
+          or(
+            eq(bidsTable.status, "submitted"),
+            eq(bidsTable.status, "in_progress"),
+          ),
         ),
       ),
-    );
-
-  // Draft bids (awaiting executive approval when created by manager)
-  const [pendingBidsRow] = await db
-    .select({ count: count() })
-    .from(bidsTable)
-    .where(and(eq(bidsTable.isDeleted, false), eq(bidsTable.status, "draft")));
-
-  // Won bids (status: accepted, won)
-  const [wonBidsRow] = await db
-    .select({ count: count() })
-    .from(bidsTable)
-    .where(
-      and(
-        eq(bidsTable.isDeleted, false),
-        or(eq(bidsTable.status, "accepted"), eq(bidsTable.status, "won")),
+    db
+      .select({ count: count() })
+      .from(bidsTable)
+      .where(and(eq(bidsTable.isDeleted, false), eq(bidsTable.status, "draft"))),
+    db
+      .select({ count: count() })
+      .from(bidsTable)
+      .where(
+        and(
+          eq(bidsTable.isDeleted, false),
+          or(eq(bidsTable.status, "accepted"), eq(bidsTable.status, "won")),
+        ),
       ),
-    );
-
-  // Average profit margin
-  const [avgProfitMarginRow] = await db
-    .select({
-      avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
-    })
-    .from(bidsTable)
-    .where(eq(bidsTable.isDeleted, false));
+    db
+      .select({
+        avgProfitMargin: sql<string>`COALESCE(AVG(CAST(${bidsTable.profitMargin} AS NUMERIC)), 0)`,
+      })
+      .from(bidsTable)
+      .where(eq(bidsTable.isDeleted, false)),
+  ]);
 
   return {
     totalBidValue: Number(totalBidValueRow?.totalBidValue || 0),
@@ -4257,6 +4257,9 @@ export const getBidsKPIs = async () => {
     ),
   };
 };
+
+export const getBidsKPIs = async () =>
+  cachedOrgAggregate("bids-kpis", computeBidsKPIs);
 
 // Get KPIs for a specific bid
 export const getBidKPIs = async (bidId: string) => {
@@ -4337,23 +4340,27 @@ export const expireExpiredBids = async (): Promise<{
   let expired = 0;
   let errors = 0;
 
-  for (const bid of expiredBids) {
-    try {
-      await updateBid(bid.id, bid.organizationId, { status: "expired" });
-      if (systemUserId) {
-        await createBidHistoryEntry({
-          bidId: bid.id,
-          action: "status_changed",
-          oldValue: bid.status,
-          newValue: "expired",
-          description: "Bid automatically expired (end date passed)",
-          performedBy: systemUserId,
-        });
-      }
-      expired++;
-    } catch {
-      errors++;
-      // Log but continue with other bids
+  const expireConcurrency = 6;
+  for (let i = 0; i < expiredBids.length; i += expireConcurrency) {
+    const chunk = expiredBids.slice(i, i + expireConcurrency);
+    const settled = await Promise.allSettled(
+      chunk.map(async (bid) => {
+        await updateBid(bid.id, bid.organizationId, { status: "expired" });
+        if (systemUserId) {
+          await createBidHistoryEntry({
+            bidId: bid.id,
+            action: "status_changed",
+            oldValue: bid.status,
+            newValue: "expired",
+            description: "Bid automatically expired (end date passed)",
+            performedBy: systemUserId,
+          });
+        }
+      }),
+    );
+    for (const r of settled) {
+      if (r.status === "fulfilled") expired++;
+      else errors++;
     }
   }
 

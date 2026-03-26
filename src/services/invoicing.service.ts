@@ -464,26 +464,31 @@ export const getInvoices = async (
     };
   });
 
-  // Get line items for each invoice
-  const invoicesWithLineItems = await Promise.all(
-    invoicesList.map(async (invoice: any) => {
-      const lineItems = await db
-        .select()
-        .from(invoiceLineItems)
-        .where(
-          and(
-            eq(invoiceLineItems.invoiceId, invoice.id),
-            eq(invoiceLineItems.isDeleted, false),
-          ),
-        )
-        .orderBy(invoiceLineItems.sortOrder);
+  const invoiceIds = invoicesList.map((inv: { id: string }) => inv.id);
+  type LineItemRow = typeof invoiceLineItems.$inferSelect;
+  const lineItemsByInvoiceId = new Map<string, LineItemRow[]>();
+  if (invoiceIds.length > 0) {
+    const allLineItems = await db
+      .select()
+      .from(invoiceLineItems)
+      .where(
+        and(
+          inArray(invoiceLineItems.invoiceId, invoiceIds),
+          eq(invoiceLineItems.isDeleted, false),
+        ),
+      )
+      .orderBy(invoiceLineItems.sortOrder);
+    for (const li of allLineItems) {
+      const list = lineItemsByInvoiceId.get(li.invoiceId) ?? [];
+      list.push(li);
+      lineItemsByInvoiceId.set(li.invoiceId, list);
+    }
+  }
 
-      return {
-        ...invoice,
-        lineItems,
-      };
-    }),
-  );
+  const invoicesWithLineItems = invoicesList.map((invoice: any) => ({
+    ...invoice,
+    lineItems: lineItemsByInvoiceId.get(invoice.id) ?? [],
+  }));
 
   const total = totalResult[0]?.count || 0;
   const totalPages = Math.ceil(total / limit);

@@ -64,19 +64,15 @@ export const getEmployeeCompensations = async (
     whereConditions.push(eq(employeeCompensation.isActive, filters.isActive));
   }
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employeeCompensation)
-    .leftJoin(employees, eq(employeeCompensation.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(and(...whereConditions));
-
-  const total = totalResult[0]?.count || 0;
-
-  // Get paginated data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(employeeCompensation)
+      .leftJoin(employees, eq(employeeCompensation.employeeId, employees.id))
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(and(...whereConditions)),
+    db
+      .select({
       // Compensation Data
       id: employeeCompensation.id,
       baseSalary: employeeCompensation.baseSalary,
@@ -116,7 +112,10 @@ export const getEmployeeCompensations = async (
     .where(and(...whereConditions))
     .orderBy(desc(employeeCompensation.effectiveDate))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data,
@@ -309,22 +308,18 @@ export const getEmployeeCompensationHistory = async (
   offset: number,
   limit: number
 ) => {
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employeeCompensation)
-    .where(
-      and(
-        eq(employeeCompensation.employeeId, employeeId),
-        eq(employeeCompensation.isDeleted, false)
-      )
-    );
+  const histWhere = and(
+    eq(employeeCompensation.employeeId, employeeId),
+    eq(employeeCompensation.isDeleted, false),
+  );
 
-  const total = totalResult[0]?.count || 0;
-
-  // Get history data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(employeeCompensation)
+      .where(histWhere),
+    db
+      .select({
       id: employeeCompensation.id,
       baseSalary: employeeCompensation.baseSalary,
       hourlyRate: employeeCompensation.hourlyRate,
@@ -338,15 +333,13 @@ export const getEmployeeCompensationHistory = async (
       updatedAt: employeeCompensation.updatedAt,
     })
     .from(employeeCompensation)
-    .where(
-      and(
-        eq(employeeCompensation.employeeId, employeeId),
-        eq(employeeCompensation.isDeleted, false)
-      )
-    )
+    .where(histWhere)
     .orderBy(desc(employeeCompensation.effectiveDate))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data,
@@ -385,17 +378,13 @@ export const getPayPeriods = async (
     whereConditions.push(eq(payPeriods.status, filters.status as any));
   }
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(payPeriods)
-    .where(and(...whereConditions));
-
-  const total = totalResult[0]?.count || 0;
-
-  // Get data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(payPeriods)
+      .where(and(...whereConditions)),
+    db
+      .select({
       id: payPeriods.id,
       periodNumber: payPeriods.periodNumber,
       frequency: payPeriods.frequency,
@@ -419,7 +408,10 @@ export const getPayPeriods = async (
     .where(and(...whereConditions))
     .orderBy(desc(payPeriods.startDate))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data,
@@ -674,19 +666,15 @@ export const getEmployeeBenefits = async (
     whereConditions.push(eq(employeeBenefits.isActive, filters.isActive));
   }
 
-  // Get total count
-  const totalResult = await db
-    .select({ count: count() })
-    .from(employeeBenefits)
-    .leftJoin(employees, eq(employeeBenefits.employeeId, employees.id))
-    .leftJoin(users, eq(employees.userId, users.id))
-    .where(and(...whereConditions));
-
-  const total = totalResult[0]?.count || 0;
-
-  // Get data
-  const data = await db
-    .select({
+  const [totalResult, data] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(employeeBenefits)
+      .leftJoin(employees, eq(employeeBenefits.employeeId, employees.id))
+      .leftJoin(users, eq(employees.userId, users.id))
+      .where(and(...whereConditions)),
+    db
+      .select({
       id: employeeBenefits.id,
       benefitType: employeeBenefits.benefitType,
       planName: employeeBenefits.planName,
@@ -709,7 +697,10 @@ export const getEmployeeBenefits = async (
     .where(and(...whereConditions))
     .orderBy(desc(employeeBenefits.effectiveDate))
     .limit(limit)
-    .offset(offset);
+    .offset(offset),
+  ]);
+
+  const total = totalResult[0]?.count || 0;
 
   return {
     data,
