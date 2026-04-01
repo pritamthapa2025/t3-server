@@ -5,7 +5,7 @@ import {
 } from "../drizzle/schema/dispatch.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
-import { users } from "../drizzle/schema/auth.schema.js";
+import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import {
   employees,
   departments,
@@ -232,9 +232,24 @@ export const getDispatchTaskById = async (id: string) => {
   };
 };
 
-// Format a raw datetime string (no Date object) for display in notifications.
-// Parses "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS" without any timezone conversion.
-const parseRawDTParts = (raw: string) => {
+// Format datetime values for notifications.
+// Supports Date objects and common string formats:
+// - "YYYY-MM-DDTHH:mm:ss"
+// - "YYYY-MM-DD HH:mm:ss"
+// Falls back safely when parsing fails.
+const parseRawDTParts = (raw: unknown) => {
+  const asDate = raw instanceof Date ? raw : new Date(String(raw));
+  if (!Number.isNaN(asDate.getTime())) {
+    return {
+      year: asDate.getFullYear(),
+      month: asDate.getMonth() + 1,
+      day: asDate.getDate(),
+      hours: asDate.getHours(),
+      minutes: asDate.getMinutes(),
+    };
+  }
+
+  // Fallback for naive string formats when Date parsing fails
   const normalized = String(raw).replace(" ", "T");
   const [datePart = "", timePart = ""] = normalized.split("T");
   const [year = 0, month = 0, day = 0] = datePart.split("-").map(Number);
@@ -255,12 +270,14 @@ const MONTHS_SHORT = [
   "Nov",
   "Dec",
 ];
-const formatRawDateStr = (raw: string): string => {
+const formatRawDateStr = (raw: unknown): string => {
   const { year, month, day } = parseRawDTParts(raw);
+  if (!year || !month || !day) return "N/A";
   return `${MONTHS_SHORT[month - 1] ?? ""} ${day}, ${year}`;
 };
-const formatRawTimeStr = (raw: string): string => {
+const formatRawTimeStr = (raw: unknown): string => {
   const { hours, minutes } = parseRawDTParts(raw);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return "N/A";
   const period = hours >= 12 ? "PM" : "AM";
   const displayHour = hours % 12 === 0 ? 12 : hours % 12;
   return `${displayHour}:${String(minutes).padStart(2, "0")} ${period}`;
@@ -282,13 +299,17 @@ async function fireDispatchAssignmentNotifications(
     const task = await getDispatchTaskById(taskId);
     if (!task) return;
 
-    // 2. Load the related job (jobNumber)
+    // 2. Load the related job (jobNumber + site address for directions)
     const [jobRow] = await db
-      .select({ jobNumber: jobs.jobNumber })
+      .select({ jobNumber: jobs.jobNumber, siteAddress: jobs.siteAddress })
       .from(jobs)
       .where(eq(jobs.id, task.jobId))
       .limit(1);
     const jobNumber = jobRow?.jobNumber ?? task.jobId;
+    const jobSiteAddress = jobRow?.siteAddress?.trim() || "";
+    const directionsUrl = jobSiteAddress
+      ? `https://maps.google.com/?q=${encodeURIComponent(jobSiteAddress)}`
+      : "";
 
     // 3. Resolve employee names + user UUIDs for the assigned technicians
     const empRows = await db
@@ -323,6 +344,8 @@ async function fireDispatchAssignmentNotifications(
       date: dateStr,
       startTime: startTimeStr,
       endTime: endTimeStr,
+      jobSiteAddress,
+      directionsUrl,
       assignedTechs: assignedTechNames,
       tasks: [task.title],
       description: task.description ?? "",
@@ -333,6 +356,8 @@ async function fireDispatchAssignmentNotifications(
     const message =
       `You have been assigned to ${task.title} (${jobNumber}) ` +
       `on ${dateStr} from ${startTimeStr} to ${endTimeStr}. ` +
+      (jobSiteAddress ? `Location: ${jobSiteAddress}. ` : "") +
+      (directionsUrl ? `Directions: ${directionsUrl}. ` : "") +
       `Assigned techs: ${techList}. ` +
       (task.description ? `Description: ${task.description}` : "");
     const shortMessage = `New dispatch assignment: ${task.title} (${jobNumber})`;
@@ -363,14 +388,21 @@ async function fireDispatchAssignmentNotifications(
 
 // Create Dispatch Task
 export const createDispatchTask = async (data: CreateDispatchTaskData) => {
+  const startTime = naiveDT(data.startTime);
+  // endTime is optional from API; default to start + estimatedDuration (or 120 min).
+  const fallbackDurationMinutes = data.estimatedDuration ?? 120;
+  const computedEndTime = data.endTime
+    ? naiveDT(data.endTime)
+    : new Date(startTime.getTime() + fallbackDurationMinutes * 60 * 1000);
+
   const insertData: any = {
     jobId: data.jobId,
     title: data.title,
     taskType: data.taskType,
     priority: data.priority || "medium",
     status: data.status || "pending",
-    startTime: naiveDT(data.startTime),
-    endTime: naiveDT(data.endTime),
+    startTime,
+    endTime: computedEndTime,
     // Derive date-only from the startTime string directly
     date: String(data.startTime).split("T")[0],
   };
@@ -394,7 +426,7 @@ export const createDispatchTask = async (data: CreateDispatchTaskData) => {
     await createDispatchAssignment({
       taskId: inserted.id,
       technicianId,
-    });
+    }, { suppressNotification: true });
   }
 
   // Fire "New Dispatch Assignment" notifications to each assigned technician
@@ -485,7 +517,10 @@ export const updateDispatchTask = async (
         ),
       );
     for (const technicianId of data.technicianIds) {
-      await createDispatchAssignment({ taskId: id, technicianId });
+      await createDispatchAssignment(
+        { taskId: id, technicianId },
+        { suppressNotification: true },
+      );
     }
 
     // Notify only techs that were just added
@@ -626,6 +661,7 @@ export const getDispatchAssignmentById = async (id: string) => {
 // Create Dispatch Assignment
 export const createDispatchAssignment = async (
   data: CreateDispatchAssignmentData,
+  options?: { suppressNotification?: boolean },
 ) => {
   const insertData: any = {
     taskId: data.taskId,
@@ -644,42 +680,45 @@ export const createDispatchAssignment = async (
   const assignment = result[0];
 
   // Fire technician_assigned_to_dispatch notification (fire-and-forget)
-  void (async () => {
-    try {
-      const [empData] = await db
-        .select({ userId: employees.userId })
-        .from(employees)
-        .where(eq(employees.id, data.technicianId))
-        .limit(1);
+  // unless suppressed by higher-level flows that already send richer notifications.
+  if (!options?.suppressNotification) {
+    void (async () => {
+      try {
+        const [empData] = await db
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, data.technicianId))
+          .limit(1);
 
-      if (!empData?.userId) return;
+        if (!empData?.userId) return;
 
-      // Get task info for entity name
-      const [taskData] = await db
-        .select({ title: dispatchTasks.title, id: dispatchTasks.id })
-        .from(dispatchTasks)
-        .where(eq(dispatchTasks.id, data.taskId))
-        .limit(1);
+        // Get task info for entity name
+        const [taskData] = await db
+          .select({ title: dispatchTasks.title, id: dispatchTasks.id })
+          .from(dispatchTasks)
+          .where(eq(dispatchTasks.id, data.taskId))
+          .limit(1);
 
-      const { NotificationService } = await import("./notification.service.js");
-      await new NotificationService().triggerNotification({
-        type: "technician_assigned_to_dispatch",
-        category: "dispatch",
-        priority: "high",
-        data: {
-          entityType: "Dispatch",
-          entityId: data.taskId,
-          entityName: taskData?.title || `Dispatch Task #${data.taskId}`,
-          assignedTechnicianId: empData.userId,
-        },
-      });
-    } catch (err) {
-      console.error(
-        "[Notification] technician_assigned_to_dispatch failed:",
-        err,
-      );
-    }
-  })();
+        const { NotificationService } = await import("./notification.service.js");
+        await new NotificationService().triggerNotification({
+          type: "technician_assigned_to_dispatch",
+          category: "dispatch",
+          priority: "high",
+          data: {
+            entityType: "Dispatch",
+            entityId: data.taskId,
+            entityName: taskData?.title || `Dispatch Task #${data.taskId}`,
+            assignedTechnicianId: empData.userId,
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[Notification] technician_assigned_to_dispatch failed:",
+          err,
+        );
+      }
+    })();
+  }
 
   return assignment;
 };
@@ -958,6 +997,7 @@ export const getAvailableEmployeesForDispatch = async (
       employeeName: users.fullName,
       email: users.email,
       phone: users.phone,
+      roleName: roles.name,
       departmentName: departments.name,
       positionName: positions.name,
     })
@@ -987,6 +1027,7 @@ export const getAvailableEmployeesForDispatch = async (
     employeeName: row.employeeName ?? null,
     email: row.email ?? null,
     phone: row.phone ?? null,
+    roleName: row.roleName ?? null,
     departmentName: row.departmentName ?? null,
     positionName: row.positionName ?? null,
   }));
@@ -1016,6 +1057,10 @@ export const getEmployeesWithAssignedTasks = async (
   filters?: { status?: string; onlyForEmployeeId?: number; search?: string },
 ) => {
   const employeeConditions = [eq(employees.isDeleted, false)];
+  // Endpoint contract: include only users whose auth role is Technician or Manager.
+  employeeConditions.push(
+    or(eq(roles.name, "Technician"), eq(roles.name, "Manager"))!,
+  );
   if (filters?.onlyForEmployeeId != null) {
     employeeConditions.push(eq(employees.id, filters.onlyForEmployeeId));
   }
@@ -1036,6 +1081,8 @@ export const getEmployeesWithAssignedTasks = async (
     .select({ count: count() })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .where(and(...employeeConditions));
 
   const total = totalResult[0]?.count || 0;
@@ -1063,6 +1110,8 @@ export const getEmployeesWithAssignedTasks = async (
     })
     .from(employees)
     .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
     .leftJoin(positions, eq(employees.positionId, positions.id))
     .where(and(...employeeConditions))

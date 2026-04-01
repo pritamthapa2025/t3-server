@@ -607,6 +607,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
       // Employee fields (employeeId excluded as per user request)
       departmentId,
       positionId,
+      applyPositionPayDefaults,
       reportsTo,
       roleId,
       status,
@@ -731,6 +732,9 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
     if (departmentId !== undefined)
       employeeUpdateData.departmentId = departmentId;
     if (positionId !== undefined) employeeUpdateData.positionId = positionId;
+    if (applyPositionPayDefaults !== undefined) {
+      employeeUpdateData.applyPositionPayDefaults = applyPositionPayDefaults;
+    }
     if (reportsTo !== undefined) employeeUpdateData.reportsTo = reportsTo;
     if (status !== undefined) employeeUpdateData.status = status;
     if (startDate !== undefined)

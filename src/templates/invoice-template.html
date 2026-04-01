@@ -592,28 +592,13 @@
           </tr>
         </thead>
         <tbody>
+          {{#each lineItems}}
           <tr>
-            <td>{{invoiceDate}}</td>
-            <td>Materials</td>
-            <td>$ {{materialsCost}}</td>
+            <td>{{this.date}}</td>
+            <td>{{this.description}}</td>
+            <td>$ {{this.totalPrice}}</td>
           </tr>
-          <tr>
-            <td>{{invoiceDate}}</td>
-            <td>Labour</td>
-            <td>$ {{laborCost}}</td>
-          </tr>
-          <tr>
-            <td>{{invoiceDate}}</td>
-            <td>Travel</td>
-            <td>$ {{travelCost}}</td>
-          </tr>
-          {{#if hasOperatingExpenses}}
-          <tr>
-            <td>{{invoiceDate}}</td>
-            <td>Operating Expenses</td>
-            <td>$ {{operatingExpensesCost}}</td>
-          </tr>
-          {{/if}}
+          {{/each}}
         </tbody>
       </table>
 
@@ -622,7 +607,7 @@
         <div class="balance-row">
           <span class="balance-label">BALANCE DUE</span>
           <span class="dollar">$</span>
-          <span class="balance-amount">{{totalAmount}}</span>
+          <span class="balance-amount">{{balanceDue}}</span>
         </div>
       </div>
 

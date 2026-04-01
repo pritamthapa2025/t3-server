@@ -43,6 +43,20 @@ export interface PresignedUploadResult {
 }
 
 /**
+ * Resolve a stored file path/key into a public absolute URL.
+ * Accepts either an absolute URL or a bucket key like "bid-media/file.png".
+ */
+export const resolveStorageUrl = (filePathOrUrl?: string | null): string => {
+  if (!filePathOrUrl) return "";
+  if (/^https?:\/\//i.test(filePathOrUrl)) return filePathOrUrl;
+
+  const key = filePathOrUrl.replace(/^\/+/, "");
+  return spacesCdnUrl
+    ? `${spacesCdnUrl.replace(/\/$/, "")}/${key}`
+    : `https://${spacesBucket}.${spacesRegion}.digitaloceanspaces.com/${key}`;
+};
+
+/**
  * Upload a file to Digital Ocean Spaces with timeout protection
  * @param file - The file buffer or stream
  * @param originalName - Original filename

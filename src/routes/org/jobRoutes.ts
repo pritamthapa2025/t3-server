@@ -92,6 +92,7 @@ import {
   getJobDocumentsHandler,
   createJobDocumentsHandler,
   getJobDocumentByIdHandler,
+  downloadJobDocumentHandler,
   updateJobDocumentHandler,
   deleteJobDocumentHandler,
   getJobWithAllDataHandler,
@@ -688,6 +689,13 @@ router
     updateJobDocumentHandler,
   )
   .delete(editJob, validate(deleteJobDocumentSchema), deleteJobDocumentHandler);
+
+router.get(
+  "/jobs/:jobId/documents/:documentId/download",
+  viewJobs,
+  validate(getJobDocumentByIdSchema),
+  downloadJobDocumentHandler,
+);
 
 // Bulk delete jobs (Executive only)
 router.post(

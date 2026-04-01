@@ -55,6 +55,53 @@ function intersectJobIds(
   return current.filter((id) => set.has(id));
 }
 
+const toNaiveDate = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === "string") return value.split(/[T ]/)[0] ?? value;
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(value);
+};
+
+const toNaiveDateTime = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const cleaned = value.replace("T", " ").replace(/Z$/i, "");
+    const [datePart, timePart = "00:00:00"] = cleaned.split(" ");
+    return `${datePart} ${timePart.slice(0, 8)}`;
+  }
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    const h = String(value.getHours()).padStart(2, "0");
+    const min = String(value.getMinutes()).padStart(2, "0");
+    const s = String(value.getSeconds()).padStart(2, "0");
+    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+  }
+  return String(value);
+};
+
+const serializeInvoiceTimestamps = (invoice: any) => ({
+  ...invoice,
+  invoiceDate: toNaiveDate(invoice.invoiceDate),
+  dueDate: toNaiveDate(invoice.dueDate),
+  sentDate: toNaiveDateTime(invoice.sentDate),
+  paidDate: toNaiveDateTime(invoice.paidDate),
+  lastReminderDate: toNaiveDateTime(invoice.lastReminderDate),
+  recurringStartDate: toNaiveDateTime(invoice.recurringStartDate),
+  recurringEndDate: toNaiveDateTime(invoice.recurringEndDate),
+  nextInvoiceDate: toNaiveDateTime(invoice.nextInvoiceDate),
+  approvedAt: toNaiveDateTime(invoice.approvedAt),
+  deletedAt: toNaiveDateTime(invoice.deletedAt),
+  createdAt: toNaiveDateTime(invoice.createdAt),
+  updatedAt: toNaiveDateTime(invoice.updatedAt),
+});
+
 // ============================
 // Helper Functions
 // ============================
@@ -457,7 +504,7 @@ export const getInvoices = async (
     const { createdByName, approvedByName, organizationName, ...invoice } =
       item.invoice;
     return {
-      ...invoice,
+      ...serializeInvoiceTimestamps(invoice),
       createdByName: createdByName ?? null,
       approvedByName: approvedByName ?? null,
       organizationName: organizationName ?? null,
@@ -568,7 +615,7 @@ export const getInvoiceById = async (
   const { createdByName, approvedByName, ...invoiceData } = invoiceWithNames;
 
   const result: any = {
-    ...invoiceData,
+    ...serializeInvoiceTimestamps(invoiceData),
     createdByName: createdByName ?? null,
     approvedByName: approvedByName ?? null,
     organizationId: invoiceOrganizationId,
@@ -596,12 +643,23 @@ export const getInvoiceById = async (
         amount: payments.amount,
         paymentDate: payments.paymentDate,
         paymentMethod: payments.paymentMethod,
+        referenceNumber: payments.referenceNumber,
+        notes: payments.notes,
+        createdAt: payments.createdAt,
+        updatedAt: payments.updatedAt,
       })
       .from(payments)
       .where(
         and(eq(payments.invoiceId, invoiceId), eq(payments.isDeleted, false)),
       )
       .orderBy(desc(payments.paymentDate));
+
+    result.payments = result.payments.map((payment: any) => ({
+      ...payment,
+      paymentDate: toNaiveDate(payment.paymentDate),
+      createdAt: toNaiveDateTime(payment.createdAt),
+      updatedAt: toNaiveDateTime(payment.updatedAt),
+    }));
   }
 
   if (options?.includeDocuments !== false) {
@@ -622,6 +680,7 @@ export const getInvoiceById = async (
 
     result.documents = documentsResult.map((doc) => ({
       ...doc.document,
+      createdAt: toNaiveDateTime(doc.document.createdAt),
       uploadedByName: doc.uploadedByName || null,
     }));
   }
@@ -632,6 +691,11 @@ export const getInvoiceById = async (
       .from(invoiceHistory)
       .where(eq(invoiceHistory.invoiceId, invoiceId))
       .orderBy(desc(invoiceHistory.createdAt));
+
+    result.history = result.history.map((entry: any) => ({
+      ...entry,
+      createdAt: toNaiveDateTime(entry.createdAt),
+    }));
   }
 
   return result;
@@ -760,6 +824,10 @@ export const createInvoice = async (data: {
     // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber(organizationId);
 
+    const totalAmountValue = parseFloat(data.totalAmount || "0");
+    const amountPaidValue = parseFloat(data.amountPaid || "0");
+    const computedBalanceDue = Math.max(0, totalAmountValue - amountPaidValue);
+
     // Create invoice
     const invoiceResult = await tx
       .insert(invoices)
@@ -782,9 +850,10 @@ export const createInvoice = async (data: {
         discountAmount: data.discountAmount || "0",
         discountType: data.discountType || null,
         discountValue: data.discountValue || null,
-        totalAmount: data.totalAmount || "0",
-        amountPaid: data.amountPaid || "0",
-        balanceDue: data.balanceDue || "0",
+        totalAmount: totalAmountValue.toFixed(2),
+        amountPaid: amountPaidValue.toFixed(2),
+        // Keep invoice math consistent regardless of incoming payload.
+        balanceDue: computedBalanceDue.toFixed(2),
         purchaseOrderIds: data.purchaseOrderIds ?? null,
         isLabor: data.isLabor ?? false,
         isTravel: data.isTravel ?? false,
@@ -1487,6 +1556,9 @@ export const getPaymentsByInvoice = async (
 
   return paymentsResult.map((p) => ({
     ...p,
+    paymentDate: toNaiveDate(p.paymentDate),
+    createdAt: toNaiveDateTime(p.createdAt),
+    updatedAt: toNaiveDateTime(p.updatedAt),
     createdByName: p.createdByName ?? null,
   }));
 };
@@ -1669,6 +1741,9 @@ export const getPaymentByIdForInvoice = async (
 
   return {
     ...payment,
+    paymentDate: toNaiveDate(payment.paymentDate),
+    createdAt: toNaiveDateTime(payment.createdAt),
+    updatedAt: toNaiveDateTime(payment.updatedAt),
     createdByName: payment.createdByName ?? null,
   };
 };

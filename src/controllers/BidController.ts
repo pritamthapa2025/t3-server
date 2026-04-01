@@ -42,7 +42,7 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
-import { uploadToSpaces } from "../services/storage.service.js";
+import { uploadToSpaces, resolveStorageUrl } from "../services/storage.service.js";
 import { getUserRoles } from "../services/role.service.js";
 import {
   getBids,
@@ -3808,7 +3808,7 @@ export const previewBidDocumentHandler = async (
         .json({ success: false, message: "Document not found" });
     }
 
-    const previewUrl = document.filePath;
+    const previewUrl = resolveStorageUrl(document.filePath);
     if (!previewUrl) {
       return res
         .status(404)
@@ -4610,7 +4610,7 @@ export const previewBidMediaHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Media not found" });
     }
 
-    const previewUrl = media.fileUrl || media.filePath;
+    const previewUrl = resolveStorageUrl(media.fileUrl || media.filePath);
     if (!previewUrl) {
       return res
         .status(404)
@@ -4628,6 +4628,116 @@ export const previewBidMediaHandler = async (req: Request, res: Response) => {
         fileSize: media.fileSize,
       },
     });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const downloadBidDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "documentId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const documentId = asSingleString(req.params.documentId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+
+    const document = await getBidDocumentById(documentId!);
+    if (!document || document.bidId !== bidId) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Document not found" });
+    }
+
+    const downloadUrl = resolveStorageUrl(document.filePath);
+    if (!downloadUrl) {
+      return res
+        .status(404)
+        .json({ success: false, message: "File URL not available" });
+    }
+
+    const upstream = await globalThis.fetch(downloadUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to fetch file from storage",
+      });
+    }
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const safeName = (document.fileName || "document-file").replace(/"/g, "");
+
+    res.setHeader(
+      "Content-Type",
+      document.fileType || "application/octet-stream",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeName}"`,
+    );
+    return res.status(200).send(buffer);
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const downloadBidMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "mediaId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const mediaId = asSingleString(req.params.mediaId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+
+    const media = await getBidMediaById(mediaId!);
+    if (!media || media.bidId !== bidId) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Media not found" });
+    }
+
+    const downloadUrl = resolveStorageUrl(media.fileUrl || media.filePath);
+    if (!downloadUrl) {
+      return res
+        .status(404)
+        .json({ success: false, message: "File URL not available" });
+    }
+
+    const upstream = await globalThis.fetch(downloadUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to fetch file from storage",
+      });
+    }
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const safeName = (media.fileName || "media-file").replace(/"/g, "");
+
+    res.setHeader("Content-Type", media.fileType || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeName}"`,
+    );
+    return res.status(200).send(buffer);
   } catch (error) {
     logger.logApiError("Bid error", error, req);
     return res

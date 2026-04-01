@@ -57,6 +57,7 @@ import {
   getBidDocumentsHandler,
   getBidDocumentByIdHandler,
   previewBidDocumentHandler,
+  downloadBidDocumentHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
   getBidDocumentTagsHandler,
@@ -71,6 +72,7 @@ import {
   getBidMediaHandler,
   getBidMediaByIdHandler,
   previewBidMediaHandler,
+  downloadBidMediaHandler,
   updateBidMediaHandler,
   deleteBidMediaHandler,
   downloadBidQuotePDF,
@@ -623,6 +625,12 @@ router.get(
   previewBidDocumentHandler,
 );
 
+router.get(
+  "/bids/:bidId/documents/:documentId/download",
+  validate(previewBidDocumentSchema),
+  downloadBidDocumentHandler,
+);
+
 // Document tags: list tags for a document; link tag (by id or create by name)
 router
   .route("/bids/:bidId/documents/:documentId/tags")
@@ -675,6 +683,12 @@ router.get(
   "/bids/:bidId/media/:mediaId/preview",
   validate(previewBidMediaSchema),
   previewBidMediaHandler,
+);
+
+router.get(
+  "/bids/:bidId/media/:mediaId/download",
+  validate(previewBidMediaSchema),
+  downloadBidMediaHandler,
 );
 
 // Quote PDF routes — use module-level auth so managers can download quotes

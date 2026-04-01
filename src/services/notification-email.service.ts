@@ -105,7 +105,11 @@ export class NotificationEmailService {
             ([label, value]) => `
         <tr>
           <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #555555; white-space: nowrap; width: 38%; border-bottom: 1px solid #F0F0F0;">${label}</td>
-          <td style="padding: 10px 14px; font-size: 13px; color: #111111; border-bottom: 1px solid #F0F0F0;">${value}</td>
+          <td style="padding: 10px 14px; font-size: 13px; color: #111111; border-bottom: 1px solid #F0F0F0;">${
+            String(value).startsWith("http://") || String(value).startsWith("https://")
+              ? `<a href="${value}" target="_blank" rel="noopener noreferrer" style="color:#46931f; text-decoration:underline;">Open link</a>`
+              : value
+          }</td>
         </tr>`,
           )
           .join("")

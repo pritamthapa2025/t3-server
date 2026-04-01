@@ -41,6 +41,7 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
+import { resolveStorageUrl } from "../services/storage.service.js";
 import {
   getJobs,
   getJobById,
@@ -3356,6 +3357,14 @@ export const updateJobExpenseHandler = async (req: Request, res: Response) => {
       }
     }
 
+    // Allow file-only multipart updates, but reject truly empty requests.
+    if (!req.file && Object.keys(req.body ?? {}).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one field is required to update",
+      });
+    }
+
     const job = await getJobById(jobId!);
     if (!job) {
       return res.status(404).json({ success: false, message: "Job not found" });
@@ -3647,6 +3656,76 @@ export const getJobDocumentByIdHandler = async (
       success: true,
       data: document,
     });
+  } catch (error) {
+    logger.logApiError("Job error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const downloadJobDocumentHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["jobId", "documentId"])) return;
+
+    const jobId = asSingleString(req.params.jobId);
+    const documentId = asSingleString(req.params.documentId);
+
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+
+    const job = await getJobById(jobId!);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    const { getBidDocumentById } = await import("../services/bid.service.js");
+    const document = await getBidDocumentById(documentId!);
+    if (!document || document.bidId !== job.bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const downloadUrl = resolveStorageUrl(document.filePath);
+    if (!downloadUrl) {
+      return res.status(404).json({
+        success: false,
+        message: "File URL not available",
+      });
+    }
+
+    const upstream = await globalThis.fetch(downloadUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to fetch file from storage",
+      });
+    }
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const safeName = (document.fileName || "document-file").replace(/"/g, "");
+
+    res.setHeader(
+      "Content-Type",
+      document.fileType || "application/octet-stream",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeName}"`,
+    );
+    return res.status(200).send(buffer);
   } catch (error) {
     logger.logApiError("Job error", error, req);
     return res.status(500).json({

@@ -86,6 +86,60 @@ const approvedByUser = alias(users, "approved_by_user");
 const rejectedByUser = alias(users, "rejected_by_user");
 const uploadedByUser = alias(users, "uploaded_by_user");
 
+const toNaiveDate = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === "string") return value.split(/[T ]/)[0] ?? value;
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(value);
+};
+
+const toNaiveDateTime = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const cleaned = value.replace("T", " ").replace(/Z$/i, "");
+    const [datePart, timePart = "00:00:00"] = cleaned.split(" ");
+    return `${datePart} ${timePart.slice(0, 8)}`;
+  }
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    const h = String(value.getHours()).padStart(2, "0");
+    const min = String(value.getMinutes()).padStart(2, "0");
+    const s = String(value.getSeconds()).padStart(2, "0");
+    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+  }
+  return String(value);
+};
+
+const serializeExpenseRecord = <T extends Record<string, unknown>>(record: T): T =>
+  ({
+    ...record,
+    expenseDate: toNaiveDate(record.expenseDate),
+    submittedDate: toNaiveDateTime(record.submittedDate),
+    approvedDate: toNaiveDateTime(record.approvedDate),
+    paidDate: toNaiveDateTime(record.paidDate),
+    deletedAt: toNaiveDateTime(record.deletedAt),
+    createdAt: toNaiveDateTime(record.createdAt),
+    updatedAt: toNaiveDateTime(record.updatedAt),
+  }) as T;
+
+const serializeExpenseReceiptRecord = <T extends Record<string, unknown>>(
+  record: T,
+): T =>
+  ({
+    ...record,
+    receiptDate: toNaiveDate(record.receiptDate),
+    deletedAt: toNaiveDateTime(record.deletedAt),
+    createdAt: toNaiveDateTime(record.createdAt),
+    updatedAt: toNaiveDateTime(record.updatedAt),
+  }) as T;
+
 export function generateExpenseNumber(): string {
   const year = new Date().getFullYear();
   const r = Math.floor(Math.random() * 99999) + 1;
@@ -326,7 +380,7 @@ export async function getExpenses(
 
     const total = totalRow?.total ?? 0;
     return {
-      data,
+      data: data.map((row) => serializeExpenseRecord(row)),
       total,
       pagination: {
         page: Math.floor(offset / limit) + 1,
@@ -352,7 +406,7 @@ export async function getExpenses(
 
   const total = totalRow?.total ?? 0;
   return {
-    data,
+    data: data.map((row) => serializeExpenseRecord(row)),
     total,
     pagination: {
       page: Math.floor(offset / limit) + 1,
@@ -390,12 +444,12 @@ export async function getExpenseById(
   if (!row) return null;
 
   const { createdByName, approvedByName, rejectedByName, ...record } = row;
-  return {
+  return serializeExpenseRecord({
     ...record,
     createdByName: createdByName ?? null,
     approvedByName: approvedByName ?? null,
     rejectedByName: rejectedByName ?? null,
-  };
+  });
 }
 
 export async function createExpense(
@@ -433,7 +487,7 @@ export async function createExpense(
     } as typeof expenses.$inferInsert)
     .returning();
   const row = Array.isArray(result) ? result[0] : undefined;
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 /** Default expense category (enum value). Used by fleet, inventory, job flows. */
@@ -517,7 +571,7 @@ export async function createExpenseFromSource(data: {
       }),
     } as typeof expenses.$inferInsert)
     .returning({ id: expenses.id });
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 export async function updateExpense(
@@ -550,7 +604,7 @@ export async function updateExpense(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 export async function deleteExpense(
@@ -570,7 +624,7 @@ export async function deleteExpense(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 export async function submitExpense(
@@ -593,7 +647,7 @@ export async function submitExpense(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 export async function approveExpense(
@@ -613,7 +667,7 @@ export async function approveExpense(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+  return row ? serializeExpenseRecord(row) : null;
 }
 
 export async function rejectExpense(
@@ -678,7 +732,12 @@ export async function getExpenseReceipts(
       .offset(offset),
   ]);
 
-  return { data, total: totalResult[0]?.count ?? 0, page, limit };
+  return {
+    data: data.map((row) => serializeExpenseReceiptRecord(row)),
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
+  };
 }
 
 export async function getExpenseReceiptById(
@@ -704,10 +763,10 @@ export async function getExpenseReceiptById(
   if (!row) return null;
 
   const { uploadedByName, ...record } = row;
-  return {
+  return serializeExpenseReceiptRecord({
     ...record,
     uploadedByName: uploadedByName ?? null,
-  };
+  });
 }
 
 export async function createExpenseReceipt(
@@ -756,7 +815,7 @@ export async function createExpenseReceipt(
       .set({ hasReceipt: true, updatedAt: new Date() })
       .where(and(eq(expenses.id, expenseId), eq(expenses.isDeleted, false)));
   }
-  return receipt ?? null;
+  return receipt ? serializeExpenseReceiptRecord(receipt) : null;
 }
 
 export async function updateExpenseReceipt(
@@ -816,7 +875,7 @@ export async function updateExpenseReceipt(
       ),
     )
     .returning();
-  return receipt ?? null;
+  return receipt ? serializeExpenseReceiptRecord(receipt) : null;
 }
 
 export async function deleteExpenseReceipt(
@@ -855,7 +914,7 @@ export async function deleteExpenseReceipt(
         .where(and(eq(expenses.id, expenseId), eq(expenses.isDeleted, false)));
     }
   }
-  return receipt ?? null;
+  return receipt ? serializeExpenseReceiptRecord(receipt) : null;
 }
 
 // ============================

@@ -580,14 +580,22 @@ export const prepareInvoiceDataForPDF = (
     paymentTerms: invoice.paymentTerms,
 
     // Line Items (with date for docs template)
-    lineItems: lineItems.map((item) => ({
+    lineItems: lineItems.map((item) => {
+      const quantity = Number(item.quantity) || 0;
+      const quotedPrice = Number(item.quotedPrice || 0);
+      const billedTotal =
+        item.billedTotal !== undefined && item.billedTotal !== null
+          ? Number(item.billedTotal)
+          : quantity * quotedPrice;
+      return {
       date: invoiceDateStr,
-      description: item.description || "",
+      description: item.title || item.description || "",
       details: item.details || "",
-      quantity: Number(item.quantity) || 0,
-      quotedPrice: Number(item.quotedPrice || 0).toFixed(2),
-      totalPrice: Number(item.totalPrice || 0).toFixed(2),
-    })),
+      quantity,
+      quotedPrice: quotedPrice.toFixed(2),
+      totalPrice: billedTotal.toFixed(2),
+    };
+    }),
 
     // Financial breakdown (from bid)
     materialsCost: financialBreakdown?.materialsEquipment
@@ -607,15 +615,10 @@ export const prepareInvoiceDataForPDF = (
       Number(financialBreakdown.operatingExpenses) > 0,
     ),
 
-    // Totals - use financial breakdown if available, otherwise use invoice totals
-    subtotal: financialBreakdown
-      ? (
-          Number(financialBreakdown.materialsEquipment || 0) +
-          Number(financialBreakdown.labor || 0) +
-          Number(financialBreakdown.travel || 0) +
-          Number(financialBreakdown.operatingExpenses || 0)
-        ).toFixed(2)
-      : Number(invoice.lineItemSubTotal || 0).toFixed(2),
+    // Totals - always use invoice values so PDF matches invoice detail.
+    subtotal: Number(invoice.lineItemSubTotal || invoice.jobSubtotal || 0).toFixed(
+      2,
+    ),
     discountAmount: invoice.discountAmount
       ? Number(invoice.discountAmount).toFixed(2)
       : "0.00",
@@ -626,26 +629,11 @@ export const prepareInvoiceDataForPDF = (
     ...(invoice.taxRate && {
       taxRate: (Number(invoice.taxRate) * 100).toFixed(2),
     }),
-    totalAmount: financialBreakdown
-      ? (
-          Number(financialBreakdown.materialsEquipment || 0) +
-          Number(financialBreakdown.labor || 0) +
-          Number(financialBreakdown.travel || 0) +
-          Number(financialBreakdown.operatingExpenses || 0)
-        ).toFixed(2)
-      : Number(invoice.totalAmount || 0).toFixed(2),
+    totalAmount: Number(invoice.totalAmount || 0).toFixed(2),
     amountPaid: invoice.amountPaid
       ? Number(invoice.amountPaid).toFixed(2)
       : undefined,
-    balanceDue: financialBreakdown
-      ? (
-          Number(financialBreakdown.materialsEquipment || 0) +
-          Number(financialBreakdown.labor || 0) +
-          Number(financialBreakdown.travel || 0) +
-          Number(financialBreakdown.operatingExpenses || 0) -
-          Number(invoice.amountPaid || 0)
-        ).toFixed(2)
-      : Number(invoice.balanceDue || invoice.totalAmount || 0).toFixed(2),
+    balanceDue: Number(invoice.balanceDue || invoice.totalAmount || 0).toFixed(2),
 
     // Notes
     notes: invoice.notes,

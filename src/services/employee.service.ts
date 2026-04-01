@@ -874,6 +874,7 @@ export const updateEmployee = async (
     userId?: string;
     departmentId?: number;
     positionId?: number;
+    applyPositionPayDefaults?: boolean;
     reportsTo?: string;
     status?: "available" | "on_leave" | "in_field" | "terminated" | "suspended";
     startDate?: Date | null;
@@ -916,8 +917,9 @@ export const updateEmployee = async (
   }
   if (data.positionId !== undefined) {
     updateData.positionId = data.positionId || null;
-    // When position is set or changed, copy pay defaults from the new position
-    if (data.positionId != null) {
+    // Keep any custom employee compensation on position change by default.
+    // Only copy position defaults when explicitly requested.
+    if (data.positionId != null && data.applyPositionPayDefaults === true) {
       const defaults = await getPayDefaultsFromPosition(data.positionId);
       updateData.payType = defaults.payType;
       updateData.hourlyRate = defaults.hourlyRate;

@@ -1217,22 +1217,18 @@ export const updateJobExpenseSchema = z.object({
     jobId: uuidSchema,
     expenseId: uuidSchema,
   }),
-  body: z
-    .object({
-      expenseType: jobExpenseTypeSchema.optional(),
-      category: expenseCategoryEnum.optional(),
-      description: z.string().min(1).optional(),
-      quantity: z.coerce.number().int().min(1).optional(),
-      amount: numericStringSchema.optional(),
-      expenseDate: z.string().date().optional(),
-      vendorName: z.string().max(255).optional(),
-      invoiceNumber: z.string().max(100).optional(),
-      receiptPath: z.string().max(500).optional(),
-      approvedBy: uuidSchema.optional(),
-    })
-    .refine((b) => Object.keys(b).length > 0, {
-      message: "At least one field is required to update",
-    }),
+  body: z.object({
+    expenseType: jobExpenseTypeSchema.optional(),
+    category: expenseCategoryEnum.optional(),
+    description: z.string().min(1).optional(),
+    quantity: z.coerce.number().int().min(1).optional(),
+    amount: numericStringSchema.optional(),
+    expenseDate: z.string().date().optional(),
+    vendorName: z.string().max(255).optional(),
+    invoiceNumber: z.string().max(100).optional(),
+    receiptPath: z.string().max(500).optional(),
+    approvedBy: uuidSchema.optional(),
+  }),
 });
 
 export const deleteJobExpenseSchema = z.object({

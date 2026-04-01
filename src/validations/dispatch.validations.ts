@@ -55,7 +55,7 @@ export const createDispatchTaskSchema = z.object({
       .enum(["pending", "assigned", "in_progress", "completed", "cancelled"])
       .optional(),
     startTime: z.string(),
-    endTime: z.string(),
+    endTime: z.string().optional(),
     estimatedDuration: z.number().int().positive().optional(),
     linkedJobTaskIds: z.array(uuidSchema).optional(),
     technicianIds: z.array(z.number().int().positive()).optional(),

@@ -132,6 +132,7 @@ export const updateEmployeeSchema = z.object({
         coerceOptionalInt,
         z.number().int().positive().nullable().optional(),
       ),
+      applyPositionPayDefaults: z.boolean().optional(),
       reportsTo: uuidSchema.optional().nullable(),
       status: z.string().optional(),
       startDate: z.union([z.string(), z.date()]).optional().nullable(),
@@ -161,6 +162,7 @@ export const updateEmployeeSchema = z.object({
         data.userId !== undefined ||
         data.departmentId !== undefined ||
         data.positionId !== undefined ||
+        data.applyPositionPayDefaults !== undefined ||
         data.reportsTo !== undefined ||
         data.status !== undefined ||
         data.startDate !== undefined ||

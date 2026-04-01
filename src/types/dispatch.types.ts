@@ -32,7 +32,7 @@ export interface CreateDispatchTaskData {
   priority?: "low" | "medium" | "high" | "emergency";
   status?: "pending" | "assigned" | "in_progress" | "completed" | "cancelled";
   startTime: string;
-  endTime: string;
+  endTime?: string;
   estimatedDuration?: number;
   linkedJobTaskIds?: string[];
   /** Create dispatch_assignments for these employee IDs */
