@@ -28,6 +28,12 @@ import { organizations } from "../drizzle/schema/client.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import {
+  formatNaiveDateForJson,
+  formatNaiveDateTimeForJson,
+  formatInstantIsoForJson,
+  businessTodayLocalDateString,
+} from "../utils/naive-datetime.js";
 
 /** Escape %, _, \\ for ILIKE patterns (PostgreSQL default escape \\). */
 function escapeIlikePattern(raw: string): string {
@@ -55,51 +61,20 @@ function intersectJobIds(
   return current.filter((id) => set.has(id));
 }
 
-const toNaiveDate = (value: unknown): string | null => {
-  if (!value) return null;
-  if (typeof value === "string") return value.split(/[T ]/)[0] ?? value;
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(value);
-};
-
-const toNaiveDateTime = (value: unknown): string | null => {
-  if (!value) return null;
-  if (typeof value === "string") {
-    const cleaned = value.replace("T", " ").replace(/Z$/i, "");
-    const [datePart, timePart = "00:00:00"] = cleaned.split(" ");
-    return `${datePart} ${timePart.slice(0, 8)}`;
-  }
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    const h = String(value.getHours()).padStart(2, "0");
-    const min = String(value.getMinutes()).padStart(2, "0");
-    const s = String(value.getSeconds()).padStart(2, "0");
-    return `${y}-${m}-${d} ${h}:${min}:${s}`;
-  }
-  return String(value);
-};
-
 const serializeInvoiceTimestamps = (invoice: any) => ({
   ...invoice,
-  invoiceDate: toNaiveDate(invoice.invoiceDate),
-  dueDate: toNaiveDate(invoice.dueDate),
-  sentDate: toNaiveDateTime(invoice.sentDate),
-  paidDate: toNaiveDateTime(invoice.paidDate),
-  lastReminderDate: toNaiveDateTime(invoice.lastReminderDate),
-  recurringStartDate: toNaiveDateTime(invoice.recurringStartDate),
-  recurringEndDate: toNaiveDateTime(invoice.recurringEndDate),
-  nextInvoiceDate: toNaiveDateTime(invoice.nextInvoiceDate),
-  approvedAt: toNaiveDateTime(invoice.approvedAt),
-  deletedAt: toNaiveDateTime(invoice.deletedAt),
-  createdAt: toNaiveDateTime(invoice.createdAt),
-  updatedAt: toNaiveDateTime(invoice.updatedAt),
+  invoiceDate: formatNaiveDateForJson(invoice.invoiceDate),
+  dueDate: formatNaiveDateForJson(invoice.dueDate),
+  sentDate: formatNaiveDateTimeForJson(invoice.sentDate),
+  paidDate: formatNaiveDateTimeForJson(invoice.paidDate),
+  lastReminderDate: formatNaiveDateTimeForJson(invoice.lastReminderDate),
+  recurringStartDate: formatNaiveDateTimeForJson(invoice.recurringStartDate),
+  recurringEndDate: formatNaiveDateTimeForJson(invoice.recurringEndDate),
+  nextInvoiceDate: formatNaiveDateTimeForJson(invoice.nextInvoiceDate),
+  approvedAt: formatInstantIsoForJson(invoice.approvedAt),
+  deletedAt: formatInstantIsoForJson(invoice.deletedAt),
+  createdAt: formatInstantIsoForJson(invoice.createdAt),
+  updatedAt: formatInstantIsoForJson(invoice.updatedAt),
 });
 
 // ============================
@@ -306,7 +281,9 @@ const createInvoiceHistoryEntry = async (
 // ============================
 
 /**
- * Get invoices with line items and pagination
+ * Get invoices with line items and pagination.
+ * Query: `page` (default 1), `limit` (default 10, max 100). Response includes
+ * `pagination: { page, limit, total, totalPages }` for list UIs (e.g. job invoicing tab).
  */
 export const getInvoices = async (
   organizationId?: string,
@@ -342,7 +319,7 @@ export const getInvoices = async (
   };
 
   // Auto-mark overdue invoices on every list fetch (no cron needed)
-  const today = new Date().toISOString().split("T")[0];
+  const today = businessTodayLocalDateString();
   await db
     .update(invoices)
     .set({ status: "overdue" as any })
@@ -656,9 +633,9 @@ export const getInvoiceById = async (
 
     result.payments = result.payments.map((payment: any) => ({
       ...payment,
-      paymentDate: toNaiveDate(payment.paymentDate),
-      createdAt: toNaiveDateTime(payment.createdAt),
-      updatedAt: toNaiveDateTime(payment.updatedAt),
+      paymentDate: formatNaiveDateForJson(payment.paymentDate),
+      createdAt: formatInstantIsoForJson(payment.createdAt),
+      updatedAt: formatInstantIsoForJson(payment.updatedAt),
     }));
   }
 
@@ -680,7 +657,7 @@ export const getInvoiceById = async (
 
     result.documents = documentsResult.map((doc) => ({
       ...doc.document,
-      createdAt: toNaiveDateTime(doc.document.createdAt),
+      createdAt: formatInstantIsoForJson(doc.document.createdAt),
       uploadedByName: doc.uploadedByName || null,
     }));
   }
@@ -694,7 +671,7 @@ export const getInvoiceById = async (
 
     result.history = result.history.map((entry: any) => ({
       ...entry,
-      createdAt: toNaiveDateTime(entry.createdAt),
+      createdAt: formatInstantIsoForJson(entry.createdAt),
     }));
   }
 
@@ -1199,7 +1176,7 @@ export const markInvoiceAsPaid = async (
   data: { paidDate?: string; notes?: string },
   performedBy: string,
 ) => {
-  const paidDateStr = data.paidDate || new Date().toISOString().split("T")[0];
+  const paidDateStr = data.paidDate || businessTodayLocalDateString();
 
   const [inv] = await db
     .select({ totalAmount: invoices.totalAmount })
@@ -1373,8 +1350,7 @@ export const getInvoiceKPIs = async (
     }
   }
 
-  // Get current UTC date string for overdue calculation
-  const today = new Date();
+  const todayStr = businessTodayLocalDateString();
 
   // Get all KPIs in parallel
   const [summary, overdueResult] = await Promise.all([
@@ -1398,7 +1374,7 @@ export const getInvoiceKPIs = async (
       .where(
         and(
           ...whereConditions,
-          lte(invoices.dueDate, today.toISOString().split("T")[0]!),
+          lte(invoices.dueDate, todayStr),
           sql`${invoices.status} NOT IN ('paid', 'cancelled', 'void')`,
         ),
       ),
@@ -1556,9 +1532,9 @@ export const getPaymentsByInvoice = async (
 
   return paymentsResult.map((p) => ({
     ...p,
-    paymentDate: toNaiveDate(p.paymentDate),
-    createdAt: toNaiveDateTime(p.createdAt),
-    updatedAt: toNaiveDateTime(p.updatedAt),
+    paymentDate: formatNaiveDateForJson(p.paymentDate),
+    createdAt: formatInstantIsoForJson(p.createdAt),
+    updatedAt: formatInstantIsoForJson(p.updatedAt),
     createdByName: p.createdByName ?? null,
   }));
 };
@@ -1741,9 +1717,9 @@ export const getPaymentByIdForInvoice = async (
 
   return {
     ...payment,
-    paymentDate: toNaiveDate(payment.paymentDate),
-    createdAt: toNaiveDateTime(payment.createdAt),
-    updatedAt: toNaiveDateTime(payment.updatedAt),
+    paymentDate: formatNaiveDateForJson(payment.paymentDate),
+    createdAt: formatInstantIsoForJson(payment.createdAt),
+    updatedAt: formatInstantIsoForJson(payment.updatedAt),
     createdByName: payment.createdByName ?? null,
   };
 };

@@ -13,6 +13,10 @@ import {
   createExpenseFromSource,
   getDefaultExpenseCategory,
 } from "../../services/expense.service.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../../utils/naive-datetime.js";
 
 // ============================
 // Helper Functions
@@ -180,7 +184,7 @@ export const createPurchaseOrder = async (data: any, userId: string) => {
         poNumber,
         title: data.title || null,
         supplierId: data.supplierId,
-        orderDate: data.orderDate || new Date().toISOString().split("T")[0],
+        orderDate: data.orderDate || businessTodayLocalDateString(),
         expectedDeliveryDate: data.expectedDeliveryDate || null,
         shipToLocationId: data.shipToLocationId,
         status: "draft",
@@ -278,8 +282,10 @@ export const approvePurchaseOrder = async (
         typeof orderDate === "string"
           ? orderDate.slice(0, 10)
           : orderDate
-            ? new Date(orderDate as string | Date).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0]
+            ? formatLocalDateStringFromDate(
+                new Date(orderDate as string | Date),
+              )
+            : businessTodayLocalDateString()
       ) as string;
       await createExpenseFromSource({
         sourceId: approvedPO.id,
@@ -726,7 +732,7 @@ export const receivePartialPurchaseOrder = async (
           quantityReceived: newTotalReceived.toString(),
           actualDeliveryDate:
             receivedItem.actualDeliveryDate ||
-            new Date().toISOString().split("T")[0],
+            businessTodayLocalDateString(),
           notes: receivedItem.notes || poItem.notes,
         })
         .where(eq(inventoryPurchaseOrderItems.id, poItem.id));
@@ -788,7 +794,7 @@ export const receivePartialPurchaseOrder = async (
 
     if (allReceived) {
       newStatus = "received";
-      actualDeliveryDate = new Date().toISOString().split("T")[0];
+      actualDeliveryDate = businessTodayLocalDateString();
     } else if (someReceived) {
       newStatus = "partially_received";
     }

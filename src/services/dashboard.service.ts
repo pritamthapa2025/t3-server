@@ -1,4 +1,5 @@
 import { db } from "../config/db.js";
+import { businessTodayLocalDateString } from "../utils/naive-datetime.js";
 import { jobs, jobTeamMembers } from "../drizzle/schema/jobs.schema.js";
 import {
   dispatchTasks,
@@ -323,7 +324,7 @@ export const getActiveJobsStats = async (
 ) => {
   const rangeEnd = dateRange
     ? dateRange.endDate
-    : new Date().toISOString().split("T")[0];
+    : businessTodayLocalDateString();
   // Parse year/month from YYYY-MM-DD string for date arithmetic
   const [_ey, _em] = String(rangeEnd).split("-").map(Number);
   const endYear = _ey ?? new Date().getUTCFullYear();
@@ -550,7 +551,7 @@ export const getTodaysDispatch = async (
   organizationId?: string,
   dateRange?: DateRangeFilter,
 ) => {
-  const today = new Date().toISOString().split("T")[0]!;
+  const today = businessTodayLocalDateString();
   const dispatchDate = dateRange ? dateRange.startDate : today;
 
   const dispatchBidOrgFilter = organizationId
@@ -728,7 +729,7 @@ export const getPerformanceOverview = async (
 ) => {
   const rangeEnd = dateRange
     ? dateRange.endDate
-    : new Date().toISOString().split("T")[0];
+    : businessTodayLocalDateString();
   // Parse year/month from YYYY-MM-DD string for date arithmetic
   const [_pey, _pem] = String(rangeEnd).split("-").map(Number);
   const endYear = _pey ?? new Date().getUTCFullYear();
@@ -1139,7 +1140,7 @@ export const deleteRevenueTarget = async (id: string, deletedBy?: string) => {
  * Managers/Executives can also call this endpoint (e.g. to inspect a technician's day).
  */
 export const getMySchedule = async (employeeId: number) => {
-  const today = new Date().toISOString().split("T")[0]!;
+  const today = businessTodayLocalDateString();
 
   const rows = await db
     .select({

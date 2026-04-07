@@ -3104,6 +3104,46 @@ export const getBidTimeline = async (bidId: string) => {
   return timeline;
 };
 
+export type BidTimelinePagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export const getBidTimelinePaginated = async (
+  bidId: string,
+  page: number,
+  limit: number,
+) => {
+  const where = and(
+    eq(bidTimeline.bidId, bidId),
+    eq(bidTimeline.isDeleted, false),
+  );
+  const countResult = await db
+    .select({ total: count() })
+    .from(bidTimeline)
+    .where(where);
+  const total = Number(countResult[0]?.total ?? 0);
+  const offset = (page - 1) * limit;
+  const data = await db
+    .select()
+    .from(bidTimeline)
+    .where(where)
+    .orderBy(asc(bidTimeline.sortOrder), asc(bidTimeline.eventDate))
+    .limit(limit)
+    .offset(offset);
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    } satisfies BidTimelinePagination,
+  };
+};
+
 export const getBidTimelineEventById = async (eventId: string) => {
   const [timelineEvent] = await db
     .select()
@@ -3531,7 +3571,8 @@ export const getBidWithAllData = async (id: string) => {
 // Bid Documents Operations
 // ============================
 
-export const getBidDocuments = async (
+/** Ordered document rows (before tags map); used for full list and pagination */
+async function fetchBidDocumentsRows(
   bidId: string,
   options?: {
     tagIds?: string[];
@@ -3540,17 +3581,20 @@ export const getBidDocuments = async (
     sortBy?: "date" | "name" | "size";
     sortOrder?: "asc" | "desc";
   },
-) => {
+): Promise<
+  {
+    document: typeof bidDocuments.$inferSelect;
+    uploadedByName: string | null;
+  }[]
+> {
   const tagIds = options?.tagIds?.filter(Boolean);
   const hasTagFilter = (tagIds?.length ?? 0) > 0;
 
-  // Build base conditions
   const conditions: any[] = [
     eq(bidDocuments.bidId, bidId),
     eq(bidDocuments.isDeleted, false),
   ];
 
-  // File type filter — map UI labels to MIME type prefixes/patterns
   if (options?.fileType) {
     const mimeMap: Record<string, string[]> = {
       pdf: ["application/pdf"],
@@ -3571,7 +3615,6 @@ export const getBidDocuments = async (
     }
   }
 
-  // Date range filter on createdAt
   if (options?.dateRange) {
     const now = new Date();
     let from: Date;
@@ -3585,7 +3628,6 @@ export const getBidDocuments = async (
     } else if (options.dateRange === "this_month") {
       from = new Date(now.getFullYear(), now.getMonth(), 1);
     } else {
-      // this_year
       from = new Date(now.getFullYear(), 0, 1);
     }
     conditions.push(sql`${bidDocuments.createdAt} >= ${from.toISOString()}`);
@@ -3593,7 +3635,6 @@ export const getBidDocuments = async (
 
   const baseConditions = and(...conditions);
 
-  // Build ORDER BY
   const sortField =
     options?.sortBy === "name"
       ? bidDocuments.fileName
@@ -3602,11 +3643,6 @@ export const getBidDocuments = async (
         : bidDocuments.createdAt;
   const orderBy =
     options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
-
-  let documentsResult: {
-    document: typeof bidDocuments.$inferSelect;
-    uploadedByName: string | null;
-  }[];
 
   if (hasTagFilter) {
     const withTagLinks = await db
@@ -3622,25 +3658,36 @@ export const getBidDocuments = async (
       .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
       .where(and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)))
       .orderBy(orderBy);
-    // Dedupe by document id (same doc can appear once per matching tag)
     const seen = new Set<string>();
-    documentsResult = withTagLinks.filter((row) => {
+    return withTagLinks.filter((row) => {
       if (seen.has(row.document.id)) return false;
       seen.add(row.document.id);
       return true;
     });
-  } else {
-    documentsResult = await db
-      .select({
-        document: bidDocuments,
-        uploadedByName: users.fullName,
-      })
-      .from(bidDocuments)
-      .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
-      .where(baseConditions)
-      .orderBy(orderBy);
   }
 
+  return db
+    .select({
+      document: bidDocuments,
+      uploadedByName: users.fullName,
+    })
+    .from(bidDocuments)
+    .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
+    .where(baseConditions)
+    .orderBy(orderBy);
+}
+
+export const getBidDocuments = async (
+  bidId: string,
+  options?: {
+    tagIds?: string[];
+    fileType?: "pdf" | "word" | "excel";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const documentsResult = await fetchBidDocumentsRows(bidId, options);
   const documentIds = documentsResult.map((r) => r.document.id);
   const documentTagsMap = await getDocumentTagsMapForDocuments(
     bidId,
@@ -3652,6 +3699,49 @@ export const getBidDocuments = async (
     uploadedByName: doc.uploadedByName || null,
     tags: documentTagsMap.get(doc.document.id) ?? [],
   }));
+};
+
+export type BidDocumentsPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export const getBidDocumentsPaginated = async (
+  bidId: string,
+  page: number,
+  limit: number,
+  options?: {
+    tagIds?: string[];
+    fileType?: "pdf" | "word" | "excel";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const rows = await fetchBidDocumentsRows(bidId, options);
+  const total = rows.length;
+  const offset = (page - 1) * limit;
+  const slice = rows.slice(offset, offset + limit);
+  const documentTagsMap = await getDocumentTagsMapForDocuments(
+    bidId,
+    slice.map((r) => r.document.id),
+  );
+  const data = slice.map((doc) => ({
+    ...doc.document,
+    uploadedByName: doc.uploadedByName || null,
+    tags: documentTagsMap.get(doc.document.id) ?? [],
+  }));
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    } satisfies BidDocumentsPagination,
+  };
 };
 
 /** Build map documentId -> tags[] for given document ids in a bid */
@@ -4001,7 +4091,7 @@ export const unlinkDocumentTag = async (
 // Bid Media Operations
 // ============================
 
-export const getBidMedia = async (
+function buildBidMediaWhereAndOrder(
   bidId: string,
   options?: {
     mediaType?: "photo" | "video" | "audio";
@@ -4009,7 +4099,7 @@ export const getBidMedia = async (
     sortBy?: "date" | "name" | "size";
     sortOrder?: "asc" | "desc";
   },
-) => {
+) {
   const conditions: any[] = [
     eq(bidMedia.bidId, bidId),
     eq(bidMedia.isDeleted, false),
@@ -4045,6 +4135,20 @@ export const getBidMedia = async (
   const orderBy =
     options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
 
+  return { where: and(...conditions), orderBy };
+}
+
+export const getBidMedia = async (
+  bidId: string,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const { where, orderBy } = buildBidMediaWhereAndOrder(bidId, options);
+
   const mediaResult = await db
     .select({
       media: bidMedia,
@@ -4052,13 +4156,68 @@ export const getBidMedia = async (
     })
     .from(bidMedia)
     .leftJoin(users, eq(bidMedia.uploadedBy, users.id))
-    .where(and(...conditions))
+    .where(where)
     .orderBy(orderBy);
 
   return mediaResult.map((item) => ({
     ...item.media,
     uploadedByName: item.uploadedByName || null,
   }));
+};
+
+export type BidMediaPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export const getBidMediaPaginated = async (
+  bidId: string,
+  page: number,
+  limit: number,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const { where, orderBy } = buildBidMediaWhereAndOrder(bidId, options);
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
+    .from(bidMedia)
+    .where(where);
+  const total = Number(countResult[0]?.total ?? 0);
+
+  const mediaResult = await db
+    .select({
+      media: bidMedia,
+      uploadedByName: users.fullName,
+    })
+    .from(bidMedia)
+    .leftJoin(users, eq(bidMedia.uploadedBy, users.id))
+    .where(where)
+    .orderBy(orderBy)
+    .limit(limit)
+    .offset(offset);
+
+  const data = mediaResult.map((item) => ({
+    ...item.media,
+    uploadedByName: item.uploadedByName || null,
+  }));
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    } satisfies BidMediaPagination,
+  };
 };
 
 export const getBidMediaById = async (mediaId: string) => {

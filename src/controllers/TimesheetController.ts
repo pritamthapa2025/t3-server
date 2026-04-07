@@ -23,6 +23,7 @@ import {
   recalcPayrollForEmployeeWeek,
 } from "../services/payroll.service.js";
 import { logger } from "../utils/logger.js";
+import { formatLocalDateStringFromDate } from "../utils/naive-datetime.js";
 import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import { getDataFilterConditions } from "../services/featurePermission.service.js";
 import { db } from "../config/db.js";
@@ -135,7 +136,7 @@ export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
       const daysToSubtract = currentDay === 0 ? 6 : currentDay - 1; // If Sunday, go back 6 days
       const monday = new Date(now);
       monday.setDate(now.getDate() - daysToSubtract);
-      startDate = monday.toISOString().split("T")[0]!;
+      startDate = formatLocalDateStringFromDate(monday);
     }
 
     // Get the current user's employee ID from the authenticated request

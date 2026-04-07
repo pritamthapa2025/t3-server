@@ -15,6 +15,7 @@ import {
   getTableColumns,
   inArray,
 } from "drizzle-orm";
+import { formatLocalDateStringFromDate } from "../utils/naive-datetime.js";
 import {
   employeeComplianceCases,
   employeeViolationHistory,
@@ -576,7 +577,7 @@ export const updateCaseStatus = async (
   if (resolvedDate)
     updateData.resolvedDate =
       resolvedDate instanceof Date
-        ? resolvedDate.toISOString().split("T")[0]
+        ? formatLocalDateStringFromDate(resolvedDate)
         : String(resolvedDate);
 
   const result = await db

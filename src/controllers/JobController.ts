@@ -3478,14 +3478,36 @@ export const getJobDocumentsHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Get bid documents using the job's bidId
-    const { getBidDocuments } = await import("../services/bid.service.js");
-    const documents = await getBidDocuments(job.bidId);
+    const { getBidDocuments, getBidDocumentsPaginated } = await import(
+      "../services/bid.service.js"
+    );
+
+    const wantsPagination =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
+    if (!wantsPagination) {
+      const documents = await getBidDocuments(job.bidId);
+      logger.info(`Job documents fetched successfully for job ${jobId}`);
+      return res.status(200).json({
+        success: true,
+        data: documents,
+      });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
+    const result = await getBidDocumentsPaginated(
+      job.bidId,
+      page,
+      limit,
+      undefined,
+    );
 
     logger.info(`Job documents fetched successfully for job ${jobId}`);
     return res.status(200).json({
       success: true,
-      data: documents,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Job error", error, req);

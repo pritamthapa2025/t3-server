@@ -17,6 +17,7 @@ dotenv.config();
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { sql } from "drizzle-orm";
+import { businessTodayLocalDateString } from "../../utils/naive-datetime.js";
 
 const { Pool } = pg;
 
@@ -24,7 +25,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
 async function run() {
-  const today = new Date().toISOString().split("T")[0]!;
+  const today = businessTodayLocalDateString();
 
   console.log("=== Job Status Migration: planned → scheduled/in_progress ===\n");
 

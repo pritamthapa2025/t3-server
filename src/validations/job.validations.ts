@@ -1246,6 +1246,10 @@ export const getJobDocumentsSchema = z.object({
   params: z.object({
     jobId: uuidSchema,
   }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).max(10_000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+  }),
 });
 
 export const createJobDocumentsSchema = z.object({

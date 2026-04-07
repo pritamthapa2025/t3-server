@@ -21,6 +21,7 @@ import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { laborRateTemplates } from "../drizzle/schema/settings.schema.js";
 import * as SettingsService from "./settings.service.js";
+import { formatLocalDateStringFromDate } from "../utils/naive-datetime.js";
 
 export const getDepartments = async (
   offset: number,
@@ -67,8 +68,8 @@ export const getDepartments = async (
     currentDate.getMonth() + 1,
     0,
   );
-  const startOfMonthStr = startOfMonth.toISOString().split("T")[0]!;
-  const endOfMonthStr = endOfMonth.toISOString().split("T")[0]!;
+  const startOfMonthStr = formatLocalDateStringFromDate(startOfMonth);
+  const endOfMonthStr = formatLocalDateStringFromDate(endOfMonth);
 
   const totalCount = total[0]?.count ?? 0;
 
@@ -531,8 +532,8 @@ export const getDepartmentById = async (id: number) => {
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 30);
-  const startDateStr = startDate.toISOString().split("T")[0];
-  const endDateStr = endDate.toISOString().split("T")[0];
+  const startDateStr = formatLocalDateStringFromDate(startDate);
+  const endDateStr = formatLocalDateStringFromDate(endDate);
 
   // OPTIMIZATION: Run all queries in parallel
   const [deptEmployees, deptPositions, teamLead] = await Promise.all([
@@ -1125,8 +1126,8 @@ export const getDepartmentKPIs = async () => {
   startDate.setDate(startDate.getDate() - 30);
 
   // Format dates as YYYY-MM-DD strings for date column comparison
-  const startDateStr = startDate.toISOString().split("T")[0];
-  const endDateStr = endDate.toISOString().split("T")[0];
+  const startDateStr = formatLocalDateStringFromDate(startDate);
+  const endDateStr = formatLocalDateStringFromDate(endDate);
 
   // OPTIMIZATION: Run all queries in parallel for maximum performance
   const [

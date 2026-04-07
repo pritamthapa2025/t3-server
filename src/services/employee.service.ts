@@ -14,6 +14,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import { businessTodayLocalDateString } from "../utils/naive-datetime.js";
 import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 import {
   employees,
@@ -739,7 +740,7 @@ export const getEmployeeKPIs = async (): Promise<{
   timesheetViolations: number;
 }> => {
   const notDeleted = eq(employees.isDeleted, false);
-  const todayStr = new Date().toISOString().split("T")[0]!;
+  const todayStr = businessTodayLocalDateString();
   const activeStatuses = ["available", "on_leave", "in_field"] as const;
 
   const [[totalRow], [activeRow], [inFieldRow], [attendanceRow], [violationsRow]] =

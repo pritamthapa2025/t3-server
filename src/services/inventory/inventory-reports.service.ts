@@ -8,6 +8,10 @@ import {
   inventoryCategories,
   inventoryLocations,
 } from "../../drizzle/schema/inventory.schema.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../../utils/naive-datetime.js";
 
 // ============================
 // Dashboard & Reports
@@ -343,7 +347,7 @@ export const createCount = async (data: any, _userId: string) => {
         countNumber,
         countType: data.countType || "cycle",
         locationId: data.locationId,
-        countDate: data.countDate || new Date().toISOString().split("T")[0],
+        countDate: data.countDate || businessTodayLocalDateString(),
         status: "planned",
         notes: data.notes,
       })
@@ -428,7 +432,7 @@ export const completeCount = async (id: string, _userId: string) => {
     await db
       .update(inventoryItems)
       .set({
-        lastCountedDate: currentDate.toISOString().split("T")[0],
+        lastCountedDate: formatLocalDateStringFromDate(currentDate),
         updatedAt: currentDate,
       })
       .where(sql`${inventoryItems.id} = ANY(${itemIds})`);

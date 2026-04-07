@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm";
 import { logger } from "../utils/logger.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import { businessTodayLocalDateString } from "../utils/naive-datetime.js";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
 import {
@@ -583,7 +584,7 @@ export const createJob = async (data: {
   // Derive status from scheduled start date when not explicitly provided:
   //   today or past  → "in_progress"
   //   future / unset → "scheduled"
-  const todayStr = new Date().toISOString().split("T")[0]!;
+  const todayStr = businessTodayLocalDateString();
   const scheduledStart = data.scheduledStartDate
     ? String(data.scheduledStartDate).split("T")[0]
     : null;
@@ -617,7 +618,7 @@ export const createJob = async (data: {
     .update(bidsTable)
     .set({
       convertedToJobId: job.id,
-      conversionDate: new Date().toISOString().split("T")[0],
+      conversionDate: businessTodayLocalDateString(),
     })
     .where(eq(bidsTable.id, data.bidId));
 
@@ -1016,7 +1017,7 @@ export const updateJob = async (
 
   // Auto-derive status from scheduledStartDate when not explicitly provided
   if (jobUpdateData.scheduledStartDate && !jobUpdateData.status) {
-    const todayStr = new Date().toISOString().split("T")[0]!;
+    const todayStr = businessTodayLocalDateString();
     const newStart = String(jobUpdateData.scheduledStartDate).split("T")[0];
     const currentStatus = jobData.job.status;
     if (newStart && newStart > todayStr && currentStatus !== "scheduled") {
@@ -1717,7 +1718,7 @@ export const removeJobTeamMember = async (
     .update(jobTeamMembers)
     .set({
       isActive: false,
-      removedDate: new Date().toISOString().split("T")[0],
+      removedDate: businessTodayLocalDateString(),
     })
     .where(
       and(
@@ -4887,9 +4888,7 @@ export const getJobInvoiceKPIs = async (jobId: string) => {
     throw new Error("Job not found");
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split("T")[0]!;
+  const todayStr = businessTodayLocalDateString();
 
   // Get all invoice metrics in parallel
   const [summaryResult, overdueResult] = await Promise.all([
@@ -5243,11 +5242,10 @@ export const getJobsKPIs = async (options?: GetJobsFilterOptions) => {
         )
         .where(and(eq(jobs.isDeleted, false), eq(bidsTable.isDeleted, false)));
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayStr = businessTodayLocalDateString();
   const overdueCondition = and(
     eq(jobs.isDeleted, false),
-    lte(jobs.scheduledEndDate, today.toISOString().split("T")[0]),
+    lte(jobs.scheduledEndDate, todayStr),
     or(
       eq(jobs.status, "scheduled"),
       eq(jobs.status, "in_progress"),

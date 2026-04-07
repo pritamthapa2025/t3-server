@@ -1,6 +1,7 @@
 import { and, count, eq, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users, roles, userRoles } from "../drizzle/schema/auth.schema.js";
+import { formatLocalDateStringFromDate } from "../utils/naive-datetime.js";
 
 export const getUsers = async (
   offset: number,
@@ -112,7 +113,7 @@ export const createUser = async (data: {
       dateOfBirth: data.dateOfBirth
         ? typeof data.dateOfBirth === "string"
           ? data.dateOfBirth
-          : data.dateOfBirth.toISOString().split("T")[0]
+          : formatLocalDateStringFromDate(data.dateOfBirth)
         : null,
       emergencyContactName: data.emergencyContactName || null,
       emergencyContactPhone: data.emergencyContactPhone || null,
@@ -171,7 +172,7 @@ export const updateUser = async (
     updateData.dateOfBirth = data.dateOfBirth
       ? typeof data.dateOfBirth === "string"
         ? data.dateOfBirth
-        : data.dateOfBirth.toISOString().split("T")[0]
+        : formatLocalDateStringFromDate(data.dateOfBirth)
       : null;
   }
   if (data.emergencyContactName !== undefined) {

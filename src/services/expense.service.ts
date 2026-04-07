@@ -20,6 +20,11 @@ import {
 } from "../drizzle/schema/expenses.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
+import {
+  formatNaiveDateForJson,
+  formatNaiveDateTimeForJson,
+  formatInstantIsoForJson,
+} from "../utils/naive-datetime.js";
 
 /** Expense category enum values with display labels (for dropdown) */
 const EXPENSE_CATEGORIES: { value: string; label: string }[] = [
@@ -86,47 +91,16 @@ const approvedByUser = alias(users, "approved_by_user");
 const rejectedByUser = alias(users, "rejected_by_user");
 const uploadedByUser = alias(users, "uploaded_by_user");
 
-const toNaiveDate = (value: unknown): string | null => {
-  if (!value) return null;
-  if (typeof value === "string") return value.split(/[T ]/)[0] ?? value;
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(value);
-};
-
-const toNaiveDateTime = (value: unknown): string | null => {
-  if (!value) return null;
-  if (typeof value === "string") {
-    const cleaned = value.replace("T", " ").replace(/Z$/i, "");
-    const [datePart, timePart = "00:00:00"] = cleaned.split(" ");
-    return `${datePart} ${timePart.slice(0, 8)}`;
-  }
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    const h = String(value.getHours()).padStart(2, "0");
-    const min = String(value.getMinutes()).padStart(2, "0");
-    const s = String(value.getSeconds()).padStart(2, "0");
-    return `${y}-${m}-${d} ${h}:${min}:${s}`;
-  }
-  return String(value);
-};
-
 const serializeExpenseRecord = <T extends Record<string, unknown>>(record: T): T =>
   ({
     ...record,
-    expenseDate: toNaiveDate(record.expenseDate),
-    submittedDate: toNaiveDateTime(record.submittedDate),
-    approvedDate: toNaiveDateTime(record.approvedDate),
-    paidDate: toNaiveDateTime(record.paidDate),
-    deletedAt: toNaiveDateTime(record.deletedAt),
-    createdAt: toNaiveDateTime(record.createdAt),
-    updatedAt: toNaiveDateTime(record.updatedAt),
+    expenseDate: formatNaiveDateForJson(record.expenseDate),
+    submittedDate: formatNaiveDateTimeForJson(record.submittedDate),
+    approvedDate: formatNaiveDateTimeForJson(record.approvedDate),
+    paidDate: formatNaiveDateTimeForJson(record.paidDate),
+    deletedAt: formatInstantIsoForJson(record.deletedAt),
+    createdAt: formatInstantIsoForJson(record.createdAt),
+    updatedAt: formatInstantIsoForJson(record.updatedAt),
   }) as T;
 
 const serializeExpenseReceiptRecord = <T extends Record<string, unknown>>(
@@ -134,10 +108,10 @@ const serializeExpenseReceiptRecord = <T extends Record<string, unknown>>(
 ): T =>
   ({
     ...record,
-    receiptDate: toNaiveDate(record.receiptDate),
-    deletedAt: toNaiveDateTime(record.deletedAt),
-    createdAt: toNaiveDateTime(record.createdAt),
-    updatedAt: toNaiveDateTime(record.updatedAt),
+    receiptDate: formatNaiveDateForJson(record.receiptDate),
+    deletedAt: formatInstantIsoForJson(record.deletedAt),
+    createdAt: formatInstantIsoForJson(record.createdAt),
+    updatedAt: formatInstantIsoForJson(record.updatedAt),
   }) as T;
 
 export function generateExpenseNumber(): string {

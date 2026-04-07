@@ -55,6 +55,10 @@ import {
   getDefaultExpenseCategory,
 } from "../services/expense.service.js";
 import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../utils/naive-datetime.js";
+import {
   uploadToSpaces,
   deleteFromSpaces,
   getPresignedUploadUrl,
@@ -306,10 +310,10 @@ export const createVehicleHandler = async (req: Request, res: Response) => {
           typeof purchaseDate === "string"
             ? purchaseDate.slice(0, 10)
             : purchaseDate
-              ? new Date(purchaseDate as string | Date)
-                  .toISOString()
-                  .split("T")[0]
-              : new Date().toISOString().split("T")[0]
+              ? formatLocalDateStringFromDate(
+                  new Date(purchaseDate as string | Date),
+                )
+              : businessTodayLocalDateString()
         ) as string;
         const executive = await isUserExecutive(req.user.id);
         await createExpenseFromSource({
@@ -725,8 +729,10 @@ export const updateMaintenanceRecordHandler = async (
           typeof rawDate === "string"
             ? rawDate.slice(0, 10)
             : rawDate
-              ? new Date(rawDate as string | Date).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0]
+              ? formatLocalDateStringFromDate(
+                  new Date(rawDate as string | Date),
+                )
+              : businessTodayLocalDateString()
         ) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,
@@ -1013,8 +1019,10 @@ export const updateRepairRecordHandler = async (
           typeof rawDate === "string"
             ? rawDate.slice(0, 10)
             : rawDate
-              ? new Date(rawDate as string | Date).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0]
+              ? formatLocalDateStringFromDate(
+                  new Date(rawDate as string | Date),
+                )
+              : businessTodayLocalDateString()
         ) as string;
         await createExpenseFromSource({
           sourceId: updatedRecord.id,

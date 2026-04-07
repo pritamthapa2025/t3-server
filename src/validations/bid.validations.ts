@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { businessTodayLocalDateString } from "../utils/naive-datetime.js";
 
 const uuidSchema = z
   .string()
@@ -569,7 +570,7 @@ export const createBidSchema = z.object({
     .refine(
       (data) => {
         if (!data.endDate) return true;
-        const today = new Date().toISOString().split("T")[0] ?? "";
+        const today = businessTodayLocalDateString();
         return today ? data.endDate >= today : true;
       },
       {
@@ -1824,6 +1825,10 @@ export const getBidTimelineSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
   }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).max(10_000).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+  }),
 });
 
 export const createBidTimelineEventSchema = z.object({
@@ -2025,6 +2030,8 @@ export const getBidDocumentsSchema = z.object({
           message: "sortOrder must be one of: asc, desc",
         })
         .optional(),
+      page: z.coerce.number().int().min(1).max(10_000).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
     })
     .optional(),
 });
@@ -2178,6 +2185,8 @@ export const getBidMediaSchema = z.object({
           message: "sortOrder must be one of: asc, desc",
         })
         .optional(),
+      page: z.coerce.number().int().min(1).max(10_000).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
     })
     .optional(),
 });

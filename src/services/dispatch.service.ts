@@ -37,18 +37,11 @@ import type {
   CreateDispatchAssignmentData,
   UpdateDispatchAssignmentData,
 } from "../types/dispatch.types.js";
+import { naiveDT, businessTodayLocalDateString } from "../utils/naive-datetime.js";
 
 // ============================
 // DISPATCH TASKS SERVICE
 // ============================
-
-/**
- * Wraps a naive datetime string ("YYYY-MM-DDTHH:mm:ss") for Drizzle's PgTimestamp columns.
- * Appending "Z" makes JS treat it as UTC, so Drizzle's .toISOString() round-trips
- * the same literal digits. PostgreSQL's TIMESTAMP WITHOUT TIME ZONE then strips the
- * offset and stores/compares exactly what the user typed — no timezone shift.
- */
-const naiveDT = (s: string): Date => new Date(s.endsWith("Z") ? s : `${s}Z`);
 
 // Alias for joining users table
 const createdByUser = alias(users, "created_by_user");
@@ -1215,7 +1208,7 @@ export const getEmployeesWithAssignedTasks = async (
 // ============================
 
 const computeDispatchKPIs = async () => {
-  const _todayStr = new Date().toISOString().split("T")[0];
+  const _todayStr = businessTodayLocalDateString();
   const today = naiveDT(`${_todayStr}T00:00:00`);
   const tomorrow = naiveDT(`${_todayStr}T23:59:59`);
   const now = new Date();

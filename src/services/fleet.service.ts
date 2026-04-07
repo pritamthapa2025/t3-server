@@ -1,4 +1,8 @@
 import { db } from "../config/db.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../utils/naive-datetime.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { trySetvalInTransaction } from "../utils/try-setval-in-transaction.js";
 import {
@@ -467,7 +471,7 @@ export const updateVehicle = async (
 
   // When assignedToEmployeeId changes: end current assignment and optionally start a new one
   if (data.assignedToEmployeeId !== undefined) {
-    const today = new Date().toISOString().split("T")[0]!;
+    const today = businessTodayLocalDateString();
     // End any active assignment for this vehicle
     await db
       .update(assignmentHistory)
@@ -2471,11 +2475,11 @@ export const getFleetDashboardKPIs = async (): Promise<FleetDashboardKPIs> => {
   const conditions = [eq(vehicles.isDeleted, false)];
   const thirtyDaysFromNow = new Date();
   thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-  const todayStr = new Date().toISOString().split("T")[0]!;
-  const thirtyStr = thirtyDaysFromNow.toISOString().split("T")[0]!;
+  const todayStr = businessTodayLocalDateString();
+  const thirtyStr = formatLocalDateStringFromDate(thirtyDaysFromNow);
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const oneYearAgoDate = oneYearAgo.toISOString().split("T")[0]!;
+  const oneYearAgoDate = formatLocalDateStringFromDate(oneYearAgo);
 
   const [
     totalVehiclesResult,

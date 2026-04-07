@@ -86,6 +86,7 @@ import {
   updateBidOperatingExpenses,
   deleteBidOperatingExpenses,
   getBidTimeline,
+  getBidTimelinePaginated,
   createBidTimelineEvent,
   updateBidTimelineEvent,
   deleteBidTimelineEvent,
@@ -100,6 +101,7 @@ import {
   getRelatedBids,
   createBidDocument,
   getBidDocuments,
+  getBidDocumentsPaginated,
   getBidDocumentById,
   updateBidDocument,
   getBidsKPIs,
@@ -115,6 +117,7 @@ import {
   unlinkDocumentTag,
   createBidMedia,
   getBidMedia,
+  getBidMediaPaginated,
   getBidMediaById,
   updateBidMedia,
   deleteBidMedia,
@@ -3035,12 +3038,28 @@ export const getBidTimelineHandler = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Bid not found" });
     }
 
-    const timeline = await getBidTimeline(bidId!);
+    const wantsPagination =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
+    if (!wantsPagination) {
+      const timeline = await getBidTimeline(bidId!);
+      logger.info("Bid timeline fetched successfully");
+      return res.status(200).json({
+        success: true,
+        data: timeline,
+      });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
+
+    const result = await getBidTimelinePaginated(bidId!, page, limit);
 
     logger.info("Bid timeline fetched successfully");
     return res.status(200).json({
       success: true,
-      data: timeline,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -3717,15 +3736,35 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
     if (req.query.sortOrder)
       options.sortOrder = req.query.sortOrder as "asc" | "desc";
 
-    const documents = await getBidDocuments(
+    const filterOpts =
+      Object.keys(options).length > 0 ? options : undefined;
+    const wantsPagination =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
+    if (!wantsPagination) {
+      const documents = await getBidDocuments(bidId!, filterOpts);
+      logger.info(`Bid documents fetched successfully for bid ${bidId}`);
+      return res.status(200).json({
+        success: true,
+        data: documents,
+      });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
+
+    const result = await getBidDocumentsPaginated(
       bidId!,
-      Object.keys(options).length ? options : undefined,
+      page,
+      limit,
+      filterOpts,
     );
 
     logger.info(`Bid documents fetched successfully for bid ${bidId}`);
     return res.status(200).json({
       success: true,
-      data: documents,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -4450,22 +4489,26 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
       });
     }
 
+    const uploadedNames = uploadedMedia.map((m) => m?.fileName ?? "").join(", ");
+    const n = uploadedMedia.length;
+    const sitePhotoUploadDesc = `${n} site photo${n === 1 ? "" : "s"} uploaded: ${uploadedNames}`;
+
     logger.info(
-      `${uploadedMedia.length} media files uploaded for bid ${bidId}`,
+      `${n} site photo(s) uploaded for bid ${bidId}`,
     );
 
     await createBidHistoryEntry({
       bidId: bidId!,
       action: "media_uploaded",
-      newValue: uploadedMedia.map((m) => m?.fileName ?? "").join(", "),
-      description: `${uploadedMedia.length} media file(s) uploaded: ${uploadedMedia.map((m) => m?.fileName ?? "").join(", ")}`,
+      newValue: uploadedNames,
+      description: sitePhotoUploadDesc,
       performedBy: userId!,
     });
 
     await appendJobHistoryForBid(bidId!, {
       action: "media_uploaded",
-      newValue: uploadedMedia.map((m) => m?.fileName ?? "").join(", "),
-      description: `${uploadedMedia.length} media file(s) uploaded: ${uploadedMedia.map((m) => m?.fileName ?? "").join(", ")}`,
+      newValue: uploadedNames,
+      description: sitePhotoUploadDesc,
       createdBy: userId!,
     });
 
@@ -4525,15 +4568,35 @@ export const getBidMediaHandler = async (req: Request, res: Response) => {
     if (req.query.sortOrder)
       options.sortOrder = req.query.sortOrder as "asc" | "desc";
 
-    const media = await getBidMedia(
+    const filterOpts =
+      Object.keys(options).length > 0 ? options : undefined;
+    const wantsPagination =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
+    if (!wantsPagination) {
+      const media = await getBidMedia(bidId!, filterOpts);
+      logger.info(`Bid media fetched successfully for bid ${bidId}`);
+      return res.status(200).json({
+        success: true,
+        data: media,
+      });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
+
+    const result = await getBidMediaPaginated(
       bidId!,
-      Object.keys(options).length ? options : undefined,
+      page,
+      limit,
+      filterOpts,
     );
 
     logger.info(`Bid media fetched successfully for bid ${bidId}`);
     return res.status(200).json({
       success: true,
-      data: media,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -4788,7 +4851,7 @@ export const updateBidMediaHandler = async (req: Request, res: Response) => {
         logger.logApiError("File upload error", uploadError, req);
         return res.status(500).json({
           success: false,
-          message: "Failed to upload new media file. Please try again.",
+          message: "Failed to upload new site photo. Please try again.",
         });
       }
     }
@@ -4808,29 +4871,29 @@ export const updateBidMediaHandler = async (req: Request, res: Response) => {
     if (!updatedMedia) {
       return res.status(404).json({
         success: false,
-        message: "Media not found",
+        message: "Site photo not found",
       });
     }
 
-    logger.info(`Bid media ${mediaId} updated successfully`);
+    logger.info(`Bid site photo ${mediaId} updated successfully`);
 
     await createBidHistoryEntry({
       bidId: bidId!,
       action: "media_updated",
-      description: `Media file "${updatedMedia.fileName}" was updated`,
+      description: `Site photo "${updatedMedia.fileName}" was updated`,
       performedBy: userId,
     });
 
     await appendJobHistoryForBid(bidId!, {
       action: "media_updated",
-      description: `Media file "${updatedMedia.fileName}" was updated`,
+      description: `Site photo "${updatedMedia.fileName}" was updated`,
       createdBy: userId,
     });
 
     return res.status(200).json({
       success: true,
       data: updatedMedia,
-      message: "Media updated successfully",
+      message: "Site photo updated successfully",
     });
   } catch (error: unknown) {
     logger.logApiError("Bid media update error", error, req);
@@ -4870,7 +4933,7 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
     if (!existingMedia || existingMedia.bidId !== bidId) {
       return res.status(404).json({
         success: false,
-        message: "Media not found",
+        message: "Site photo not found",
       });
     }
 
@@ -4879,28 +4942,28 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
     if (!deletedMedia) {
       return res.status(404).json({
         success: false,
-        message: "Media not found",
+        message: "Site photo not found",
       });
     }
 
-    logger.info(`Bid media ${mediaId} deleted successfully`);
+    logger.info(`Bid site photo ${mediaId} deleted successfully`);
 
     await createBidHistoryEntry({
       bidId: bidId!,
       action: "media_deleted",
-      description: `Media file "${existingMedia.fileName}" was deleted`,
+      description: `Site photo "${existingMedia.fileName}" was deleted`,
       performedBy: userId,
     });
 
     await appendJobHistoryForBid(bidId!, {
       action: "media_deleted",
-      description: `Media file "${existingMedia.fileName}" was deleted`,
+      description: `Site photo "${existingMedia.fileName}" was deleted`,
       createdBy: userId,
     });
 
     return res.status(200).json({
       success: true,
-      message: "Media deleted successfully",
+      message: "Site photo deleted successfully",
     });
   } catch (error) {
     logger.logApiError("Bid error", error, req);

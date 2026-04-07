@@ -20,6 +20,10 @@ import {
 } from "../drizzle/schema/timesheet.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { getUserRoles } from "./role.service.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../utils/naive-datetime.js";
 
 export const getTimesheets = async (
   offset: number,
@@ -289,7 +293,7 @@ export const updateTimesheet = async (
     // Convert sheetDate to YYYY-MM-DD string format for date column
     const sheetDateStr: string =
       data.sheetDate instanceof Date
-        ? data.sheetDate.toISOString().split("T")[0]!
+        ? formatLocalDateStringFromDate(data.sheetDate)
         : String(data.sheetDate);
     updateData.sheetDate = sheetDateStr;
   }
@@ -587,7 +591,7 @@ export const createTimesheetWithClockData = async (data: {
   // Get the sheet date (start of day)
   const sheetDate = new Date(data.clockInDate);
   sheetDate.setHours(0, 0, 0, 0);
-  const sheetDateStr = sheetDate.toISOString().split("T")[0];
+  const sheetDateStr = formatLocalDateStringFromDate(sheetDate);
 
   // Store clockIn time as string directly (HH:MM format)
   const clockInTime = data.clockInTime;
@@ -688,7 +692,7 @@ export const getWeeklyTimesheetsByEmployee = async (
   const weekStartUTC = new Date(weekStartDate + "T00:00:00Z");
   const weekEndUTC = new Date(weekStartUTC);
   weekEndUTC.setUTCDate(weekStartUTC.getUTCDate() + 6);
-  const endDateStr = weekEndUTC.toISOString().split("T")[0];
+  const endDateStr = formatLocalDateStringFromDate(weekEndUTC);
   // weekStartUTC used for weekDays loop below
 
   const offset = (page - 1) * limit;
@@ -845,7 +849,7 @@ export const getWeeklyTimesheetsByEmployee = async (
     const date = new Date(weekStartUTC);
     date.setUTCDate(weekStartUTC.getUTCDate() + i);
     weekDays.push({
-      date: date.toISOString().split("T")[0]!,
+      date: formatLocalDateStringFromDate(date),
       dayName: DAY_NAMES[date.getUTCDay()]!,
     });
   }
@@ -1100,7 +1104,7 @@ export const getWeeklyTimesheetsByEmployee = async (
   });
 
   // Convert map to array and format totals with enhanced status detection
-  const today = new Date().toISOString().split("T")[0]!;
+  const today = businessTodayLocalDateString();
 
   const formattedData = Array.from(employeeMap.values()).map((emp) => ({
     ...emp,
@@ -1181,14 +1185,14 @@ export const getMyWeeklyTimesheets = async (
       const date = new Date(startDate);
       date.setDate(startDate.getDate() + i);
       weekDays.push({
-        date: date.toISOString().split("T")[0]!,
+        date: formatLocalDateStringFromDate(date),
         dayName: date
           .toLocaleDateString("en-US", { weekday: "short" })
           .toLowerCase(),
       });
     }
 
-    const today = new Date().toISOString().split("T")[0]!;
+    const today = businessTodayLocalDateString();
 
     return {
       weekInfo: weeklyData.weekInfo,
@@ -1611,7 +1615,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
   const kpiStartUTC = new Date(weekStartDate + "T00:00:00Z");
   const kpiEndUTC = new Date(kpiStartUTC);
   kpiEndUTC.setUTCDate(kpiStartUTC.getUTCDate() + 6);
-  const endDateStr = kpiEndUTC.toISOString().split("T")[0];
+  const endDateStr = formatLocalDateStringFromDate(kpiEndUTC);
 
   const weekRange = and(
     sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
@@ -1735,7 +1739,7 @@ export const bulkDeleteTimesheets = async (
  *   "clocked_out"     – entry exists with both clockIn and clockOut
  */
 export const getClockStatus = async (employeeId: number) => {
-  const today = new Date().toISOString().split("T")[0]!; // YYYY-MM-DD
+  const today = businessTodayLocalDateString(); // YYYY-MM-DD
 
   const [entry] = await db
     .select({

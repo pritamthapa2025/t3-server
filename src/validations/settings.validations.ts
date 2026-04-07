@@ -61,14 +61,34 @@ export const bulkUpdateLaborRatesSchema = z.object({
  * ============================================================================
  */
 
+/** JSON numbers or numeric strings (Postgres numeric serialization, masked inputs). */
+function vehicleTravelOptionalNumber(opts: { min: number; max?: number }) {
+  const schema =
+    opts.max !== undefined
+      ? z.number().min(opts.min).max(opts.max).optional()
+      : z.number().min(opts.min).optional();
+
+  return z.preprocess((val: unknown) => {
+    if (val === undefined || val === null || val === "") return undefined;
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+    if (typeof val === "string") {
+      const t = val.trim().replace(/,/g, "");
+      if (t === "") return undefined;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : val;
+    }
+    return val;
+  }, schema);
+}
+
 export const updateVehicleTravelDefaultsSchema = z.object({
   body: z.object({
-    defaultMileageRate: z.number().min(0).optional(),
-    defaultVehicleDayRate: z.number().min(0).optional(),
-    defaultMarkup: z.number().min(0).max(100).optional(),
+    defaultMileageRate: vehicleTravelOptionalNumber({ min: 0 }),
+    defaultVehicleDayRate: vehicleTravelOptionalNumber({ min: 0 }),
+    defaultMarkup: vehicleTravelOptionalNumber({ min: 0, max: 100 }),
     enableFlatRate: z.boolean().optional(),
-    flatRateAmount: z.number().min(0).optional(),
-    gasPricePerGallon: z.number().min(0).optional(),
+    flatRateAmount: vehicleTravelOptionalNumber({ min: 0 }),
+    gasPricePerGallon: vehicleTravelOptionalNumber({ min: 0 }),
   }),
 });
 

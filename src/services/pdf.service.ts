@@ -103,6 +103,74 @@ export const closeBrowser = async (): Promise<void> => {
   }
 };
 
+function isTruthyTemplateCondition(value: unknown): boolean {
+  if (value === false || value === null || value === undefined) return false;
+  if (value === "") return false;
+  return true;
+}
+
+/**
+ * Expand {{#if name}}...{{/if}} with correct nesting. A non-greedy regex pairs the
+ * outer {{#if}} with the *first* {{/if}}, which breaks on nested blocks and leaks
+ * raw labels/HTML into PDF output (e.g. quote-template survey + service sections).
+ */
+function expandIfBlocks(template: string, data: Record<string, any>): string {
+  let s = template;
+
+  while (true) {
+    const openMatch = /\{\{#if\s+([^}]+)\}\}/.exec(s);
+    if (!openMatch) break;
+
+    const start = openMatch.index;
+    const condRaw = openMatch[1];
+    if (condRaw === undefined) break;
+    const condition = condRaw.trim();
+    const openTagLen = openMatch[0]?.length ?? 0;
+    const contentStart = start + openTagLen;
+    let depth = 1;
+    let pos = contentStart;
+
+    while (pos < s.length && depth > 0) {
+      const slice = s.slice(pos);
+      const nextClose = slice.indexOf("{{/if}}");
+      const nextOpen = slice.indexOf("{{#if");
+
+      if (nextClose === -1) {
+        s = s.slice(0, start) + s.slice(contentStart);
+        break;
+      }
+
+      const openBeforeClose =
+        nextOpen !== -1 && nextOpen < nextClose ? nextOpen : -1;
+
+      if (openBeforeClose !== -1) {
+        const afterOpen = slice.slice(openBeforeClose);
+        const tag = afterOpen.match(/^\{\{#if\s+[^}]+\}\}/);
+        if (!tag) {
+          pos += nextOpen + "{{#if".length;
+          continue;
+        }
+        depth += 1;
+        pos += openBeforeClose + tag[0].length;
+      } else {
+        depth -= 1;
+        if (depth === 0) {
+          const innerRaw = s.slice(contentStart, pos + nextClose);
+          const blockEnd = pos + nextClose + "{{/if}}".length;
+          const keep = isTruthyTemplateCondition(data[condition])
+            ? expandIfBlocks(innerRaw, data)
+            : "";
+          s = s.slice(0, start) + keep + s.slice(blockEnd);
+          break;
+        }
+        pos += nextClose + "{{/if}}".length;
+      }
+    }
+  }
+
+  return s;
+}
+
 /**
  * Replace template variables with actual data
  * Simple template engine - supports {{variable}} and {{#if condition}}{{/if}}
@@ -125,19 +193,8 @@ const renderTemplate = (
     },
   );
 
-  // Process {{#if condition}} blocks SECOND (before simple variable replacement
-  // so that the {{#if ...}} tokens are not consumed by the variable regex)
-  let prevRendered: string;
-  do {
-    prevRendered = rendered;
-    rendered = rendered.replace(
-      /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
-      (match, condition, content) => {
-        const value = data[condition.trim()];
-        return value && value !== "" && value !== null ? content : "";
-      },
-    );
-  } while (rendered !== prevRendered); // repeat for nested {{#if}} blocks
+  // {{#if}} with proper nesting (quote templates nest e.g. isSurvey + hasSurveyDate)
+  rendered = expandIfBlocks(rendered, data);
 
   // Replace simple variables {{variable}} LAST
   rendered = rendered.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
@@ -156,9 +213,23 @@ const renderTemplate = (
 };
 
 /**
+ * US Letter (8.5″ × 11″) — Chromium maps `format: "Letter"` to 612×792 pt (72 DPI units).
+ * Margins default to 1″ on all sides (common professional / report standard). Callers may
+ * override via `options.margin`. Text and vector graphics stay resolution-independent; raster
+ * images keep source resolution (use ≥300 DPI assets for critical print detail).
+ */
+const DEFAULT_LETTER_MARGINS = {
+  top: "1in",
+  right: "1in",
+  bottom: "1in",
+  left: "1in",
+} as const;
+
+/**
  * Generate PDF from HTML template
  */
 export interface PDFGenerationOptions {
+  /** Defaults to US Letter (8.5″ × 11″) when omitted. */
   format?: "A4" | "Letter";
   margin?: {
     top?: string;
@@ -356,7 +427,8 @@ export interface QuotePDFData {
   serviceCoverageDisplay: string;
   servicePaymentDisplay: string;
   serviceIncludedHtml: string;
-  hasServiceIncludedHtml: boolean;
+  /** Single guard for “services included” block (avoid nested {{#if}} in template). */
+  renderServiceIncludedBlock: boolean;
 
   /** PM — primary scope text for 4-column service-details grid */
   pmReportedIssueGrid: string;
@@ -376,15 +448,10 @@ export interface QuotePDFData {
   hasPMServiceScope: boolean;
   pmPricingModelLabel: string;
 
-  // Conditional section visibility
-  showExclusions: boolean;
-  showStandardWarranty: boolean;
-  showShortWarranty: boolean;
-  showServiceGuarantee: boolean;
-  customPaymentTerms: string;
-  hasCustomPaymentTerms: boolean;
-  customExclusions: string;
-  hasCustomExclusions: boolean;
+  /** Matches dashboard QuotePreview copy (single blocks, not job-type boilerplate). */
+  termsParagraph: string;
+  exclusionsBody: string;
+  warrantyBody: string;
 }
 
 /**
@@ -415,13 +482,10 @@ export const generateInvoicePDF = async (
     });
 
     const pdfOptions = {
-      format: options.format || ("A4" as const),
+      format: (options.format ?? "Letter") as "A4" | "Letter",
       printBackground: true,
       margin: {
-        top: "0.5in",
-        right: "0.5in",
-        bottom: "0.5in",
-        left: "0.5in",
+        ...DEFAULT_LETTER_MARGINS,
         ...options.margin,
       },
       displayHeaderFooter: options.displayHeaderFooter || false,
@@ -806,6 +870,7 @@ export const prepareQuoteDataForPDF = (
     scheduledDateTime?: string | null;
     paymentTerms?: string | null;
     exclusions?: string | null;
+    warrantyDetails?: string | null;
   },
   organization: {
     name?: string | null;
@@ -1070,12 +1135,12 @@ export const prepareQuoteDataForPDF = (
     scheduled_repair: "Scheduled Repair",
     diagnostic: "Diagnostic",
     installation: "Installation",
-    other: "General Service",
+    other: "Other",
   };
   const serviceTypeLabel =
     serviceTypeMap[svcDisplayData?.serviceType as string] ||
     svcDisplayData?.serviceType ||
-    "Service Call";
+    "—";
 
   const equipmentTypeMap: Record<string, string> = {
     rooftop_unit: "Rooftop Unit (RTU)",
@@ -1083,7 +1148,7 @@ export const prepareQuoteDataForPDF = (
     boiler: "Boiler",
     chiller: "Chiller",
     air_handler: "Air Handler (AHU)",
-    other: "HVAC Equipment",
+    other: "Other",
   };
   const equipmentTypeLabel =
     equipmentTypeMap[svcDisplayData?.equipmentType as string] ||
@@ -1091,13 +1156,13 @@ export const prepareQuoteDataForPDF = (
     "—";
 
   const issueCategoryMap: Record<string, string> = {
-    cooling: "Cooling System",
-    heating: "Heating System",
+    cooling: "Cooling",
+    heating: "Heating",
     ventilation: "Ventilation",
-    controls: "Controls/BMS",
+    controls: "Controls",
     electrical: "Electrical",
     plumbing: "Plumbing",
-    other: "General",
+    other: "Other",
   };
   const issueCategoryLabel =
     issueCategoryMap[svcDisplayData?.issueCategory as string] ||
@@ -1159,9 +1224,9 @@ export const prepareQuoteDataForPDF = (
       : "New PM Contract";
 
   const freqLabelMap: Record<string, string> = {
-    quarterly: "Quarterly (4 visits/year)",
-    semi_annual: "Semi-Annual (2 visits/year)",
-    annual: "Annual (1 visit/year)",
+    quarterly: "Quarterly",
+    semi_annual: "Semi-Annual",
+    annual: "Annual",
   };
   const frequencyLabel =
     freqLabelMap[pmDisplayData?.maintenanceFrequency as string] ||
@@ -1364,10 +1429,21 @@ export const prepareQuoteDataForPDF = (
   const serviceCoverageDisplay = "—";
   const servicePaymentDisplay = bid.paymentTerms?.trim() || "—";
 
-  const showPdfServiceDetail =
-    jobType === "service" || Boolean(svcDisplayData);
-  const showPdfPmDetail =
-    jobType === "preventative_maintenance" || Boolean(pmDisplayData);
+  const recordHasKeys = (v: unknown): boolean =>
+    v != null && typeof v === "object" && !Array.isArray(v)
+      ? Object.keys(v as object).length > 0
+      : false;
+
+  let showPdfServiceDetail =
+    jobType === "service" ||
+    (jobType !== "preventative_maintenance" && recordHasKeys(svcDisplayData));
+  let showPdfPmDetail =
+    jobType === "preventative_maintenance" ||
+    (jobType !== "service" && recordHasKeys(pmDisplayData));
+
+  // Primary job type wins — never show PM scope on a service bid (or vice versa).
+  if (jobType === "service") showPdfPmDetail = false;
+  if (jobType === "preventative_maintenance") showPdfServiceDetail = false;
 
   const serviceIncludedItems: string[] = [];
   if (showPdfServiceDetail) {
@@ -1379,7 +1455,8 @@ export const prepareQuoteDataForPDF = (
       );
   }
   const serviceIncludedHtml = buildChecklistHtml(serviceIncludedItems);
-  const hasServiceIncludedHtml = showPdfServiceDetail;
+  const renderServiceIncludedBlock =
+    showPdfServiceDetail && Boolean(serviceIncludedHtml.trim());
 
   const pmReportedIssueGrid =
     pmDisplayData?.serviceScope?.trim() ||
@@ -1401,20 +1478,20 @@ export const prepareQuoteDataForPDF = (
     pmDisplayData?.pricingModel ||
     "";
 
-  // ── Conditional section visibility ────────────────────────────────────────
-  const showExclusions =
-    jobType !== "survey" && jobType !== "preventative_maintenance";
-  const showStandardWarranty =
-    jobType === "general" ||
-    jobType === "plan_spec" ||
-    jobType === "design_build";
-  const showShortWarranty = jobType === "service";
-  const showServiceGuarantee = jobType === "preventative_maintenance";
+  const paymentTermsRaw = bid.paymentTerms?.trim() || "";
+  const termsParagraph = escHtml(
+    paymentTermsRaw
+      ? `Payment terms: ${paymentTermsRaw}. This quote is valid for 30 days from the date of issue.`
+      : "Payment is due within 30 days of invoice. This quote is valid for 30 days from the date of issue.",
+  );
 
-  const customPaymentTerms = bid.paymentTerms?.trim() || "";
-  const hasCustomPaymentTerms = Boolean(customPaymentTerms);
-  const customExclusions = bid.exclusions?.trim() || "";
-  const hasCustomExclusions = Boolean(customExclusions);
+  const exclusionsRaw = bid.exclusions?.trim() || "";
+  const exclusionsBody = escHtml(exclusionsRaw || "None specified.");
+
+  const warrantyRaw = bid.warrantyDetails?.trim() || "";
+  const warrantyBody = escHtml(
+    warrantyRaw || "Standard warranty applies. See contract for details.",
+  );
 
   return {
     date: fmtDate(createdDate),
@@ -1525,7 +1602,7 @@ export const prepareQuoteDataForPDF = (
     serviceCoverageDisplay,
     servicePaymentDisplay,
     serviceIncludedHtml,
-    hasServiceIncludedHtml,
+    renderServiceIncludedBlock,
     pmReportedIssueGrid,
 
     // PM
@@ -1541,15 +1618,9 @@ export const prepareQuoteDataForPDF = (
     hasPMServiceScope,
     pmPricingModelLabel,
 
-    // Visibility flags
-    showExclusions,
-    showStandardWarranty,
-    showShortWarranty,
-    showServiceGuarantee,
-    customPaymentTerms,
-    hasCustomPaymentTerms,
-    customExclusions,
-    hasCustomExclusions,
+    termsParagraph,
+    exclusionsBody,
+    warrantyBody,
   };
 };
 
@@ -1570,19 +1641,44 @@ export const generateQuotePDF = async (
     const browser = await getBrowser();
     page = await browser.newPage();
 
+    // Letter at 96 CSS px/in so layout matches ~6.5″ content width with 1″ PDF margins.
+    await page.setViewport({
+      width: 816,
+      height: 1056,
+      deviceScaleFactor: 1,
+    });
+
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
       timeout: 30000,
     });
 
+    // Fonts + logo must be ready before print (domcontentloaded alone can omit remote images).
+    try {
+      await page.evaluate(
+        () =>
+          (
+            globalThis as unknown as {
+              document: { fonts: { ready: Promise<unknown> } };
+            }
+          ).document.fonts.ready,
+      );
+      await page.waitForFunction(
+        `(() => {
+          const img = document.querySelector("img.company-logo");
+          return Boolean(img && img.complete && img.naturalWidth > 0);
+        })()`,
+        { timeout: 20000 },
+      );
+    } catch {
+      // Continue; PDF still generates without logo if CDN blocked
+    }
+
     const pdfOptions = {
-      format: (options.format || "A4") as "A4" | "Letter",
+      format: (options.format ?? "Letter") as "A4" | "Letter",
       printBackground: true,
       margin: {
-        top: "0.5in",
-        right: "0.5in",
-        bottom: "0.5in",
-        left: "0.5in",
+        ...DEFAULT_LETTER_MARGINS,
         ...options.margin,
       },
       displayHeaderFooter: options.displayHeaderFooter ?? false,
@@ -1787,16 +1883,13 @@ export const generateFinancialReportPDF = async (
     const browser = await getBrowser();
     page = await browser.newPage();
 
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30000 });
 
     const pdfBuffer = await page.pdf({
-      format: (options.format || "A4") as "A4" | "Letter",
+      format: (options.format ?? "Letter") as "A4" | "Letter",
       printBackground: true,
       margin: {
-        top: "0.5in",
-        right: "0.5in",
-        bottom: "0.5in",
-        left: "0.5in",
+        ...DEFAULT_LETTER_MARGINS,
         ...options.margin,
       },
       displayHeaderFooter: false,

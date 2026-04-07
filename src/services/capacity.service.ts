@@ -23,6 +23,10 @@ import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { alias } from "drizzle-orm/pg-core";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../utils/naive-datetime.js";
 
 // Dashboard KPIs - Status cards
 export const getDashboardKPIs = async (
@@ -89,10 +93,10 @@ export const getUtilizationMetrics = async (
     periodType: "daily" | "weekly" | "monthly" | "quarterly";
   },
 ) => {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const startDate =
-    filters.startDate ||
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const endDate = filters.endDate || new Date().toISOString().split("T")[0];
+    filters.startDate || formatLocalDateStringFromDate(thirtyDaysAgo);
+  const endDate = filters.endDate || businessTodayLocalDateString();
 
   let whereConditions = [
     eq(departmentCapacityMetrics.periodType, filters.periodType),
@@ -155,11 +159,11 @@ export const getUtilizationMetrics = async (
         and(
           gte(
             departmentCapacityMetrics.metricDate,
-            previousStartDate.toISOString().split("T")[0]!,
+            formatLocalDateStringFromDate(previousStartDate),
           ),
           lte(
             departmentCapacityMetrics.metricDate,
-            previousEndDate.toISOString().split("T")[0]!,
+            formatLocalDateStringFromDate(previousEndDate),
           ),
           eq(departmentCapacityMetrics.periodType, filters.periodType),
         ),
@@ -256,7 +260,7 @@ export const getCoverageByTeam = async (
   organizationId: string | undefined,
   date?: string | undefined,
 ) => {
-  const queryDate = date || new Date().toISOString().split("T")[0];
+  const queryDate = date || businessTodayLocalDateString();
 
   // Optimized: Run both queries in parallel for better performance
   const [teamCoverage, jobsInProgress] = await Promise.all([
@@ -675,8 +679,8 @@ export const getDepartmentCapacityOverview = async (
     periodType: "daily" | "weekly" | "monthly" | "quarterly";
   },
 ) => {
-  const startDate = filters.startDate || new Date().toISOString().split("T")[0];
-  const endDate = filters.endDate || new Date().toISOString().split("T")[0];
+  const startDate = filters.startDate || businessTodayLocalDateString();
+  const endDate = filters.endDate || businessTodayLocalDateString();
 
   let whereConditions = [
     eq(departmentCapacityMetrics.periodType, filters.periodType),

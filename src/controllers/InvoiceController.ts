@@ -476,7 +476,7 @@ const generateInvoiceHTML = (
         }
 
         @page {
-            size: A4;
+            size: letter;
             margin: 0;
         }
 
@@ -495,11 +495,11 @@ const generateInvoiceHTML = (
       }
 
       .invoice-container {
-        width: 210mm;
-        min-height: 297mm;
+        width: 100%;
+        max-width: 100%;
         margin: 0 auto;
         background: #ffffff;
-        padding: 20mm;
+        padding: 14px 12px 18px;
       }
 
       /* Header Section */
@@ -755,13 +755,13 @@ const generateInvoiceHTML = (
         }
 
         .invoice-container {
-          padding: 15mm 20mm;
+          padding: 10px 8px 14px;
           margin: 0;
         }
 
         @page {
           margin: 0;
-          size: A4;
+          size: letter;
         }
 
         .items-table tbody tr:hover {
@@ -788,7 +788,7 @@ const generateInvoiceHTML = (
       }
 
       .invoice-container {
-        padding: 18mm 20mm;
+        padding: 12px 10px 16px;
       }
 
       /* Header */
@@ -960,7 +960,7 @@ const generateInvoiceHTML = (
       /* Print tweaks */
       @media print {
         .invoice-container {
-          padding: 15mm 20mm;
+          padding: 10px 8px 14px;
         }
         .items-table tbody tr:nth-child(even) {
           background: #ffffff;

@@ -41,6 +41,10 @@ import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { NotificationService } from "./notification.service.js";
 import { NotificationEmailService } from "./notification-email.service.js";
 import { logger } from "../utils/logger.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+} from "../utils/naive-datetime.js";
 
 const svc = new NotificationService();
 const digestEmailSvc = new NotificationEmailService();
@@ -86,19 +90,19 @@ async function runInConcurrencyWindows<T>(
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
+  return businessTodayLocalDateString();
 }
 
 function daysFromNow(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() + n);
-  return d.toISOString().split("T")[0]!;
+  return formatLocalDateStringFromDate(d);
 }
 
 function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
+  return formatLocalDateStringFromDate(d);
 }
 
 // ---------------------------------------------------------------------------

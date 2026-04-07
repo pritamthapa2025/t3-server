@@ -25,6 +25,11 @@ import { timesheets } from "../drizzle/schema/timesheet.schema.js";
 import { alias } from "drizzle-orm/pg-core";
 import { logger } from "../utils/logger.js";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
+import {
+  businessTodayLocalDateString,
+  formatLocalDateStringFromDate,
+  formatUtcCalendarDateStringFromDate,
+} from "../utils/naive-datetime.js";
 
 interface PayrollDashboardFilters {
   payPeriodId?: string | undefined;
@@ -844,7 +849,7 @@ export const processPayrollRun = async (id: string, processedBy: string) => {
       .update(payrollEntries)
       .set({
         status: "processed",
-        processedDate: new Date().toISOString().split("T")[0],
+        processedDate: businessTodayLocalDateString(),
         processedBy: processedBy,
         updatedAt: new Date(),
       })
@@ -881,8 +886,8 @@ function getWeekStartEnd(date: Date): { startDate: string; endDate: string } {
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 6);
   return {
-    startDate: start.toISOString().split("T")[0]!,
-    endDate: end.toISOString().split("T")[0]!,
+    startDate: formatUtcCalendarDateStringFromDate(start),
+    endDate: formatUtcCalendarDateStringFromDate(end),
   };
 }
 
@@ -902,8 +907,8 @@ function getMonthStartEnd(date: Date): { startDate: string; endDate: string } {
   const start = new Date(Date.UTC(y, m, 1));
   const end = new Date(Date.UTC(y, m + 1, 0));
   return {
-    startDate: start.toISOString().split("T")[0]!,
-    endDate: end.toISOString().split("T")[0]!,
+    startDate: formatUtcCalendarDateStringFromDate(start),
+    endDate: formatUtcCalendarDateStringFromDate(end),
   };
 }
 
@@ -913,7 +918,7 @@ export const getOrCreatePayPeriodForMonth = async (date: Date) => {
   const periodNumber = date.getMonth() + 1; // 1–12
   // Pay date = 5th of next month
   const payDate = new Date(date.getFullYear(), date.getMonth() + 1, 5);
-  const payDateStr = payDate.toISOString().split("T")[0]!;
+  const payDateStr = formatLocalDateStringFromDate(payDate);
 
   const [existing] = await db
     .select()
@@ -953,9 +958,9 @@ export const getOrCreatePayPeriodForWeek = async (date: Date) => {
   const { startDate, endDate } = getWeekStartEnd(date);
   const periodNumber = getISOWeekNumber(new Date(startDate));
   // Pay date = Friday after week end (end + 5 days)
-  const end = new Date(endDate);
+  const end = new Date(endDate + "T12:00:00");
   end.setDate(end.getDate() + 5);
-  const payDate = end.toISOString().split("T")[0]!;
+  const payDate = formatLocalDateStringFromDate(end);
 
   const [existing] = await db
     .select()
