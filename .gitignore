@@ -7,6 +7,10 @@ node_modules/
 .env.local
 .env.*.local
 
+# Google service account keys & one-line base64 for Easy Panel (never commit)
+t3mechanical-*.json
+.google_sa_b64.txt
+
 # Build outputs
 dist/
 build/

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgSchema,
   uuid,
@@ -11,6 +12,7 @@ import {
   time,
   unique,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // Import related tables
@@ -82,7 +84,11 @@ export const bidsTable: any = org.table(
     warrantyDetails: text("warranty_details"),
     specialTerms: text("special_terms"),
     exclusions: text("exclusions"),
-    proposalBasis: text("proposal_basis"),
+    /** Ordered basis lines; each entry may include internal newlines (not separate items). */
+    proposalBasisItems: jsonb("proposal_basis_items")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     referenceDate: varchar("reference_date", { length: 50 }),
     templateSelection: varchar("template_selection", { length: 100 }),
 
@@ -128,6 +134,15 @@ export const bidsTable: any = org.table(
     deletedBy: uuid("deleted_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
+
+    /** All-day (or timed) reminder on assignee/creator calendar for bid end date. */
+    googleCalendarEndDateEventId: varchar("google_calendar_end_date_event_id", {
+      length: 512,
+    }),
+    /** User whose calendar holds `googleCalendarEndDateEventId` (for delete/update). */
+    googleCalendarEndDateOwnerUserId: uuid(
+      "google_calendar_end_date_owner_user_id",
+    ).references(() => users.id),
   },
   (table) => [
     // Unique constraint: bidNumber unique per organization
@@ -961,6 +976,45 @@ export const bidMedia = org.table(
     index("idx_bid_media_uploaded_by").on(table.uploadedBy),
     index("idx_bid_media_starred").on(table.isStarred),
     index("idx_bid_media_deleted_at").on(table.deletedAt),
+  ],
+);
+
+/**
+ * Bid walk photos — same shape as bid_media; separate gallery for pre-job walkthrough photos.
+ * Apply DB migration separately (org.bid_walk_photos).
+ */
+export const bidWalkPhotos = org.table(
+  "bid_walk_photos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
+
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    filePath: varchar("file_path", { length: 500 }).notNull(),
+    fileUrl: varchar("file_url", { length: 500 }),
+    fileType: varchar("file_type", { length: 50 }),
+    fileSize: integer("file_size"),
+    mediaType: varchar("media_type", { length: 50 }),
+    thumbnailPath: varchar("thumbnail_path", { length: 500 }),
+    thumbnailUrl: varchar("thumbnail_url", { length: 500 }),
+    caption: text("caption"),
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+
+    isStarred: boolean("is_starred").default(false),
+    isDeleted: boolean("is_deleted").default(false),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_bid_walk_photos_bid_id").on(table.bidId),
+    index("idx_bid_walk_photos_media_type").on(table.mediaType),
+    index("idx_bid_walk_photos_uploaded_by").on(table.uploadedBy),
+    index("idx_bid_walk_photos_deleted_at").on(table.deletedAt),
   ],
 );
 

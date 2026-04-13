@@ -108,6 +108,13 @@ export const createClientSchema = z.object({
       .min(1, "Company name is required and cannot be empty")
       .max(255, "Company name is too long (maximum 255 characters)")
       .trim(),
+    isDirect: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val,
+      )
+      .pipe(z.boolean())
+      .default(true),
     legalName: z
       .string()
       .max(255, "Legal name is too long (maximum 255 characters)")
@@ -262,6 +269,13 @@ export const updateClientSchema = z.object({
   body: z.object({
     // Basic Details
     name: z.string().min(1).max(255).optional(),
+    isDirect: z
+      .union([z.boolean(), z.string()])
+      .transform((val) =>
+        typeof val === "string" ? val === "true" || val === "1" : val,
+      )
+      .pipe(z.boolean())
+      .optional(),
     legalName: z.string().max(255).optional(),
     clientTypeId: z
       .union([z.number(), z.string()])

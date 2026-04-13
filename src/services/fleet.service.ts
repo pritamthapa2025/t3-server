@@ -339,6 +339,12 @@ export const createVehicle = async (data: CreateVehicleData) => {
     if (data.vin) row.vin = data.vin;
     if (data.assignedToEmployeeId)
       row.assignedToEmployeeId = data.assignedToEmployeeId;
+    if (data.assignedToEmployeeId) {
+      const due = new Date();
+      due.setDate(due.getDate() + 14);
+      row.nextInspectionDue = formatLocalDateStringFromDate(due);
+      row.nextInspectionDays = 14;
+    }
     if (data.fuelLevel) row.fuelLevel = data.fuelLevel;
     if (data.purchaseDate) row.purchaseDate = data.purchaseDate;
     if (data.purchaseCost) row.purchaseCost = data.purchaseCost;
@@ -471,6 +477,36 @@ export const updateVehicle = async (
 
   // When assignedToEmployeeId changes: end current assignment and optionally start a new one
   if (data.assignedToEmployeeId !== undefined) {
+    const [beforeAssign] = await db
+      .select({
+        assignedToEmployeeId: vehicles.assignedToEmployeeId,
+        nextInspectionDue: vehicles.nextInspectionDue,
+      })
+      .from(vehicles)
+      .where(and(eq(vehicles.id, id), eq(vehicles.isDeleted, false)))
+      .limit(1);
+
+    const oldDriverId = beforeAssign?.assignedToEmployeeId ?? null;
+
+    if (
+      oldDriverId !== null &&
+      data.assignedToEmployeeId !== oldDriverId
+    ) {
+      await db
+        .update(employees)
+        .set({
+          timesheetBlockedSafetyInspection: false,
+          timesheetSafetyBlockVehicleId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(employees.id, oldDriverId),
+            eq(employees.timesheetSafetyBlockVehicleId, id),
+          ),
+        );
+    }
+
     const today = businessTodayLocalDateString();
     // End any active assignment for this vehicle
     await db
@@ -504,6 +540,17 @@ export const updateVehicle = async (
         startDate: today,
         status: "active",
       });
+    }
+
+    if (
+      data.assignedToEmployeeId != null &&
+      beforeAssign?.nextInspectionDue == null &&
+      data.nextInspectionDue === undefined
+    ) {
+      const due = new Date();
+      due.setDate(due.getDate() + 14);
+      updateData.nextInspectionDue = formatLocalDateStringFromDate(due);
+      updateData.nextInspectionDays = 14;
     }
   }
 
@@ -1539,6 +1586,45 @@ export const createSafetyInspection = async (
   const inserted = result[0];
   if (!inserted) throw new Error("Failed to create safety inspection");
   const inspection = await getSafetyInspectionById(inserted.id);
+
+  // B14: compliant inspection advances the 14-day cycle and clears timesheet blocks tied to this vehicle.
+  // Safety inspections are recorded in org.safety_inspections; we do not duplicate as maintenance_records
+  // (maintenance_records are for service work; the inspection record is the audit trail).
+  const statusAdvancesCycle =
+    data.overallStatus === "passed" ||
+    data.overallStatus === "conditional_pass";
+  if (statusAdvancesCycle) {
+    const inspectionDateStr = String(data.date).split("T")[0]!;
+    const nextDueDate = new Date(inspectionDateStr + "T12:00:00");
+    nextDueDate.setDate(nextDueDate.getDate() + 14);
+    const nextDue = formatLocalDateStringFromDate(nextDueDate);
+    const todayStr = businessTodayLocalDateString();
+    const nextInspectionDays = Math.round(
+      (new Date(nextDue + "T12:00:00").getTime() -
+        new Date(todayStr + "T12:00:00").getTime()) /
+        86_400_000,
+    );
+
+    await db
+      .update(vehicles)
+      .set({
+        nextInspectionDue: nextDue,
+        nextInspectionDays: nextInspectionDays,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)),
+      );
+
+    await db
+      .update(employees)
+      .set({
+        timesheetBlockedSafetyInspection: false,
+        timesheetSafetyBlockVehicleId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(employees.timesheetSafetyBlockVehicleId, data.vehicleId));
+  }
 
   // Fire safety_inspection_failed notification (Email + SMS + Push) when inspection fails
   if (data.overallStatus === "failed") {

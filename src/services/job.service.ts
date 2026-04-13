@@ -113,7 +113,7 @@ export const getJobs = async (
     status?: string;
     priority?: string;
     search?: string;
-    organizationId?: string;
+    organizationIds?: string[];
     jobType?: string;
     sortBy?: string;
     propertyId?: string;
@@ -136,10 +136,12 @@ export const getJobs = async (
     );
   }
 
-  if (filters?.organizationId) {
+  if (filters?.organizationIds && filters.organizationIds.length > 0) {
     whereCondition = and(
       whereCondition,
-      eq(bidsTable.organizationId, filters.organizationId),
+      filters.organizationIds.length === 1
+        ? eq(bidsTable.organizationId, filters.organizationIds[0])
+        : inArray(bidsTable.organizationId, filters.organizationIds),
     );
   }
 

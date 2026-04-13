@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { uploadToSpaces } from "./storage.service.js";
+import { parseProposalBasisTextToItems } from "../utils/proposal-basis-storage.js";
 
 // Get current directory for template path (works from dist/ or src/)
 const __filename = fileURLToPath(import.meta.url);
@@ -249,6 +250,8 @@ export interface InvoicePDFData {
   companyCity: string;
   companyState: string;
   companyZip: string;
+  /** City, state, ZIP on one line (issuer / general settings). */
+  companyLocationLine: string;
   companyPhone: string;
   companyEmail: string;
 
@@ -270,10 +273,11 @@ export interface InvoicePDFData {
   billingCityStateZip: string;
   billingCountry: string;
 
-  // Job / scope (for docs template)
+  // Job (for docs template)
   jobType: string;
   poNumber: string;
-  serviceDescription: string;
+  /** Displayed next to SERVICE — job description or bid project name */
+  jobName: string;
 
   // Job Info (optional)
   jobId?: string;
@@ -329,8 +333,13 @@ export interface QuotePDFData {
   scope: string;
   email: string;
   clientAddress: string;
-  proposalNote: string;
+  /** Plan-spec only: “based on Plans…” narrative (shown in type section, not work table). */
+  planSpecProposalSummary: string;
+  hasPlanSpecProposalSummary: boolean;
+  /** Single footer line from Settings → General (name • address • phone • email). */
+  quoteFooterLine: string;
   workItems: Array<{ index: number; description: string }>;
+  hasWorkDescriptionRows: boolean;
   // Financial breakdown (standard)
   materialsCost: string;
   laborCost: string;
@@ -397,7 +406,6 @@ export interface QuotePDFData {
   surveyServicesHtml: string;
   surveySchedulingNotes: string;
   hasSurveySchedulingNotes: boolean;
-  surveyPricingRowsHtml: string;
   surveyDateLabel: string;
   hasSurveyDate: boolean;
   surveyPricingModelLabel: string;
@@ -412,7 +420,6 @@ export interface QuotePDFData {
   preliminaryAssessment: string;
   hasReportedIssue: boolean;
   hasPreliminaryAssessment: boolean;
-  servicePricingRowsHtml: string;
   estimatedWorkScope: string;
   hasEstimatedWorkScope: boolean;
   servicePricingNotes: string;
@@ -433,8 +440,6 @@ export interface QuotePDFData {
   /** PM — primary scope text for 4-column service-details grid */
   pmReportedIssueGrid: string;
 
-  proposalValidityNote: string;
-
   // PM specific
   pmTypeLabel: string;
   frequencyLabel: string;
@@ -443,7 +448,6 @@ export interface QuotePDFData {
   emergencyRateNote: string;
   hasEmergencyRate: boolean;
   paymentScheduleLabel: string;
-  pmPricingRowsHtml: string;
   pmServiceScope: string;
   hasPMServiceScope: boolean;
   pmPricingModelLabel: string;
@@ -475,11 +479,37 @@ export const generateInvoicePDF = async (
     const browser = await getBrowser();
     page = await browser.newPage();
 
-    // Set content and generate PDF (domcontentloaded avoids timeout on external images e.g. logo)
+    await page.setViewport({
+      width: 816,
+      height: 1056,
+      deviceScaleFactor: 1,
+    });
+
     await page.setContent(html, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
+
+    // Match quote PDF: fonts + remote logo must be ready before print.
+    try {
+      await page.evaluate(
+        () =>
+          (
+            globalThis as unknown as {
+              document: { fonts: { ready: Promise<unknown> } };
+            }
+          ).document.fonts.ready,
+      );
+      await page.waitForFunction(
+        `(() => {
+          const img = document.querySelector("img.company-logo");
+          return Boolean(img && img.complete && img.naturalWidth > 0);
+        })()`,
+        { timeout: 20000 },
+      );
+    } catch {
+      // Continue; PDF still generates if CDN blocked or no logo node
+    }
 
     const pdfOptions = {
       format: (options.format ?? "Letter") as "A4" | "Letter",
@@ -556,7 +586,98 @@ export const generateAndSaveInvoicePDF = async (
  */
 export interface PrepareInvoicePDFOptions {
   primaryContact?: { fullName?: string | null } | null;
-  job?: { jobType?: string | null; description?: string | null } | null;
+  job?: {
+    jobType?: string | null;
+    description?: string | null;
+    /** Bid `project_name` when job description is empty */
+    projectName?: string | null;
+  } | null;
+  /** Comma-separated P.O. numbers from linked inventory purchase orders */
+  poNumbersDisplay?: string | null;
+}
+
+/** Shape of `auth.general_settings` rows used for invoice header (issuer). */
+export type GeneralSettingsForInvoicePdf = {
+  companyName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+};
+
+/**
+ * Map Settings → General to the `organization`-shaped object expected by
+ * {@link prepareInvoiceDataForPDF} for the issuer (PDF header), not the client.
+ */
+export const issuerCompanyFromGeneralSettings = (
+  general: GeneralSettingsForInvoicePdf | null | undefined,
+): {
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  phone: string;
+  email: string;
+} => {
+  const g = general;
+  return {
+    name: g?.companyName?.trim() || "Company Name",
+    address: (g?.address ?? "").trim(),
+    city: (g?.city ?? "").trim(),
+    state: (g?.state ?? "").trim(),
+    zipCode: (g?.zipCode ?? "").trim(),
+    phone: (g?.phone ?? "").trim(),
+    email: (g?.email ?? "").trim(),
+  };
+};
+
+export type QuotePdfIssuerSettings = ReturnType<
+  typeof issuerCompanyFromGeneralSettings
+>;
+
+/** Strip HTML to plain text; preserves line breaks from block-level tags. */
+function stripHtmlToPlainText(raw: string | null | undefined): string {
+  if (raw == null || raw === "") return "";
+  let s = String(raw)
+    .replace(/<\/(?:p|div|h[1-6]|li|tr)\s*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#0*39;/g, "'")
+    .replace(/&quot;/gi, '"');
+  return s
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function formatQuoteIssuerAddressLine(issuer: QuotePdfIssuerSettings): string {
+  const line2 = [issuer.city, issuer.state, issuer.zipCode]
+    .filter(Boolean)
+    .join(", ");
+  return [issuer.address, line2].filter(Boolean).join(", ");
+}
+
+/** Job label on invoice PDF: plain-text job description, else bid project name. */
+function invoicePdfJobDisplayName(
+  jobDescription: string | null | undefined,
+  projectName: string | null | undefined,
+): string {
+  const stripped = jobDescription
+    ? stripHtmlToPlainText(String(jobDescription))
+    : "";
+  if (stripped) return stripped;
+  const p = projectName?.trim();
+  return p || "—";
 }
 
 /**
@@ -592,13 +713,23 @@ export const prepareInvoiceDataForPDF = (
     .filter(Boolean)
     .join(", ");
 
+  const issuerAddress =
+    (organization?.address ?? organization?.streetAddress ?? "").trim() || "";
+  const issuerCity = (organization?.city ?? "").trim();
+  const issuerState = (organization?.state ?? "").trim();
+  const issuerZip = (organization?.zipCode ?? "").trim();
+  const companyLocationLine = [issuerCity, issuerState, issuerZip]
+    .filter(Boolean)
+    .join(", ");
+
   return {
     // Company Info
     companyName: organization?.name || "Company Name",
-    companyAddress: organization?.address || "",
-    companyCity: organization?.city || "",
-    companyState: organization?.state || "",
-    companyZip: organization?.zipCode || "",
+    companyAddress: issuerAddress,
+    companyCity: issuerCity,
+    companyState: issuerState,
+    companyZip: issuerZip,
+    companyLocationLine,
     companyPhone: organization?.phone || "",
     companyEmail: organization?.email || "",
 
@@ -630,11 +761,11 @@ export const prepareInvoiceDataForPDF = (
       invoice.job?.jobType ||
       invoice.job?.description ||
       "—",
-    poNumber: invoice.poNumber?.trim() || "—",
-    serviceDescription:
-      options?.job?.description?.trim() ||
-      invoice.job?.description?.trim() ||
-      "—",
+    poNumber: (options?.poNumbersDisplay ?? "").trim() || "—",
+    jobName: invoicePdfJobDisplayName(
+      options?.job?.description ?? invoice.job?.description,
+      options?.job?.projectName ?? null,
+    ),
 
     // Job Info
     jobId: invoice.jobId,
@@ -708,23 +839,29 @@ export const prepareInvoiceDataForPDF = (
   };
 };
 
-/**
- * Build work items for quote PDF from scope of work (one line per item) or fallback
- */
-function buildQuoteWorkItems(
-  scopeOfWork: string | null | undefined,
-): Array<{ index: number; description: string }> {
-  if (!scopeOfWork || String(scopeOfWork).trim() === "") {
-    return [{ index: 1, description: "As per proposal scope." }];
-  }
-  const lines = String(scopeOfWork)
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+/** Work-items table: proposal basis only (items array, else legacy proposalBasis text). No scope. */
+function buildQuoteProposalTableItems(bid: {
+  proposalBasis?: string | null;
+  proposalBasisItems?: unknown;
+}): Array<{ index: number; description: string }> {
+  const fromItems = Array.isArray(bid.proposalBasisItems)
+    ? bid.proposalBasisItems
+        .map((x) => String(x).trim())
+        .filter((s) => s.length > 0)
+    : [];
+  const lines: string[] =
+    fromItems.length > 0
+      ? fromItems
+      : parseProposalBasisTextToItems(bid.proposalBasis?.trim() ?? "");
+
   if (lines.length === 0) {
-    return [{ index: 1, description: scopeOfWork }];
+    return [];
   }
-  return lines.map((description, i) => ({ index: i + 1, description }));
+
+  return lines.map((description, i) => ({
+    index: i + 1,
+    description: escHtml(description).replace(/\r?\n/g, "<br/>"),
+  }));
 }
 
 /** Resolve the correct total amount based on job type and type-specific pricing data */
@@ -793,18 +930,6 @@ function resolveTotal(
   return Number(breakdown?.totalPrice || 0).toFixed(2);
 }
 
-/** Build HTML rows for the pricing table from an array of {label, amount} pairs */
-function buildPricingRowsHtml(
-  rows: Array<{ label: string; amount: string }>,
-): string {
-  return rows
-    .map(
-      (row, i) =>
-        `<tr><td>${i + 1}</td><td>${escHtml(row.label)}</td><td style="text-align:right;font-weight:700;">${escHtml(row.amount)}</td></tr>`,
-    )
-    .join("");
-}
-
 /** Build a simple checklist HTML for included services */
 function buildChecklistHtml(items: string[]): string {
   if (items.length === 0) return "";
@@ -813,6 +938,60 @@ function buildChecklistHtml(items: string[]): string {
     items.map((item) => `<li>${escHtml(item)}</li>`).join("") +
     `</ul>`
   );
+}
+
+/**
+ * Exclusions as a two-column &lt;ul&gt; (compact PDF) with optional intro line.
+ * Inserts raw HTML — list items are escaped.
+ */
+function buildExclusionsHtmlForQuote(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return `<p class="exclusions-fallback">${escHtml("None specified.")}</p>`;
+  }
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) {
+    return `<p class="exclusions-fallback">${escHtml("None specified.")}</p>`;
+  }
+
+  if (lines.length === 1) {
+    return `<div class="exclusions-plain">${escHtml(lines[0]!)}</div>`;
+  }
+
+  const items: string[] = [];
+  let intro: string | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const isBulletLine = /^[-*•]\s+/.test(line);
+    const content = line.replace(/^[-*•]\s+/, "").trim();
+
+    if (i === 0 && !isBulletLine) {
+      intro = line;
+      continue;
+    }
+
+    items.push(content || line);
+  }
+
+  if (items.length === 0) {
+    return `<div class="exclusions-plain">${escHtml(trimmed).replace(/\n/g, "<br/>")}</div>`;
+  }
+
+  let html = "";
+  if (intro) {
+    html += `<p class="exclusions-intro">${escHtml(intro)}</p>`;
+  }
+  html += `<ul class="exclusions-list">`;
+  for (const it of items) {
+    html += `<li>${escHtml(it)}</li>`;
+  }
+  html += `</ul>`;
+  return html;
 }
 
 /** Format a date string/Date to a readable string, returning fallback if empty.
@@ -858,6 +1037,7 @@ export const prepareQuoteDataForPDF = (
     description?: string | null;
     referenceDate?: string | null;
     proposalBasis?: string | null;
+    proposalBasisItems?: unknown;
     assignedToName?: string | null;
     createdByName?: string | null;
     createdAt?: string | Date | null;
@@ -893,7 +1073,12 @@ export const prepareQuoteDataForPDF = (
     state?: string | null;
     zipCode?: string | null;
   } | null,
-  options?: { officeAddress?: string; officePhone?: string },
+  options?: {
+    officeAddress?: string;
+    officePhone?: string;
+    /** Settings → General — drives company name, company email, office line, footer. */
+    issuer?: QuotePdfIssuerSettings;
+  },
   typeSpecificData?: Record<string, any> | null,
   typeSpecificSecondary?: {
     serviceData?: Record<string, any> | null;
@@ -915,29 +1100,66 @@ export const prepareQuoteDataForPDF = (
   const createdDate = createdRaw ? new Date(createdRaw) : new Date();
   const endDate = bid.endDate ? new Date(bid.endDate) : null;
 
+  // Client address = client org billing / office (not the job site property).
+  const clientOrgLine2 = [
+    organization?.city,
+    organization?.state,
+    organization?.zipCode,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const clientAddressParts = [
+    organization?.streetAddress,
+    clientOrgLine2,
+  ].filter(Boolean);
+  const clientAddress =
+    clientAddressParts.length > 0 ? clientAddressParts.join(", ") : "";
+
+  const issuer = options?.issuer;
+  const issuerOfficeLine = issuer ? formatQuoteIssuerAddressLine(issuer) : "";
+  const officeAddressResolved =
+    options?.officeAddress?.trim() ||
+    issuerOfficeLine ||
+    "4749 Bennett Drive, Suite H, Livermore, CA 94551";
+  const officePhoneResolved =
+    options?.officePhone?.trim() ||
+    issuer?.phone?.trim() ||
+    "(888) 488-2312";
+  const companyNameResolved =
+    issuer?.name?.trim() || organization?.name?.trim() || "—";
+  const companyEmailResolved = issuer?.email?.trim() || "—";
+
+  const footerParts = [
+    companyNameResolved !== "—" ? companyNameResolved : "",
+    officeAddressResolved,
+    officePhoneResolved,
+    companyEmailResolved !== "—" ? companyEmailResolved : "",
+  ].filter(Boolean);
+  const quoteFooterLine = footerParts.join(" • ") || "—";
+
+  // Site = selected client property when present; else plain text from bid.siteAddress
+  const siteFromPropertyParts = [
     property?.addressLine1,
     [property?.city, property?.state, property?.zipCode]
       .filter(Boolean)
       .join(", "),
   ].filter(Boolean);
-  const clientAddress =
-    clientAddressParts.length > 0
-      ? clientAddressParts.join(", ")
-      : [
-          organization?.streetAddress,
-          [organization?.city, organization?.state, organization?.zipCode]
-            .filter(Boolean)
-            .join(", "),
-        ]
-          .filter(Boolean)
-          .join(", ") || "";
+  const siteFromProperty =
+    siteFromPropertyParts.length > 0
+      ? siteFromPropertyParts.join(", ")
+      : "";
+  const siteFromBid = stripHtmlToPlainText(bid.siteAddress?.trim() || "");
+  const siteAddressPlain = siteFromProperty || siteFromBid;
+  const siteAddress = siteAddressPlain ? escHtml(siteAddressPlain) : "—";
 
-  // Resolve the scope text — use scopeOfWork, fallback to description
-  const scopeText = bid.scopeOfWork?.trim() || bid.description?.trim() || "—";
+  // Scope — strip HTML (rich-text from UI) for PDF; escape for safe injection
+  const scopeRaw =
+    bid.scopeOfWork?.trim() || bid.description?.trim() || "";
+  const scopePlain = scopeRaw ? stripHtmlToPlainText(scopeRaw) : "";
+  const scopeText = scopePlain ? escHtml(scopePlain) : "—";
 
-  // Proposal note — customise for Plan Spec
-  let proposalNote: string;
+  // Plan Spec only — narrative for type section (not duplicated in work table / gray card)
+  let planSpecProposalSummary = "";
   if (jobType === "plan_spec" && typeData) {
     const planRev = typeData.planRevision
       ? `Rev. ${typeData.planRevision}`
@@ -950,16 +1172,10 @@ export const prepareQuoteDataForPDF = (
       typeData.addendaReceived && typeData.addendaCount
         ? `, Addendum #${typeData.addendaCount} acknowledged`
         : "";
-    proposalNote = `This proposal is based on Plans ${[planRev, planDate].filter(Boolean).join(" received ")} and Specifications ${[specRev].filter(Boolean).join(", ")}${addendaNote}.`;
-  } else {
-    const basis = bid.proposalBasis?.trim();
-    proposalNote = basis
-      ? basis
-      : "This proposal was based on the client RFP and job walk information.";
+    planSpecProposalSummary = `This proposal is based on Plans ${[planRev, planDate].filter(Boolean).join(" received ")} and Specifications ${[specRev].filter(Boolean).join(", ")}${addendaNote}.`;
   }
-
-  const proposalValidityNote =
-    "This quote is valid for 30 days from the date of issue.";
+  const hasPlanSpecProposalSummary = planSpecProposalSummary.trim().length > 0;
+  const planSpecProposalSummarySafe = escHtml(planSpecProposalSummary);
 
   // Standard financial breakdown fields
   const materialsCost = financialBreakdown?.materialsEquipment
@@ -1096,39 +1312,6 @@ export const prepareQuoteDataForPDF = (
     "";
   const hasSurveySchedulingNotes = Boolean(surveySchedulingNotes);
 
-  const surveyPricingRows: Array<{ label: string; amount: string }> = [];
-  if (jobType === "survey" && typeData) {
-    const model = typeData.pricingModel;
-    if (model === "flat_fee") {
-      surveyPricingRows.push({
-        label: "Survey Fee (Flat Rate)",
-        amount: `$${Number(typeData.flatSurveyFee || 0).toFixed(2)}`,
-      });
-    } else if (model === "per_unit") {
-      const perUnit = Number(typeData.pricePerUnit || 0);
-      const units = Number(typeData.expectedUnitsToSurvey || 0);
-      surveyPricingRows.push({
-        label: `Per-Unit Rate ($${perUnit.toFixed(2)} × ${units} units)`,
-        amount: `$${(perUnit * units).toFixed(2)}`,
-      });
-    } else {
-      // time_materials
-      const hrs = Number(typeData.estimatedHours || 0);
-      const rate = Number(typeData.hourlyRate || 0);
-      const expenses = Number(typeData.estimatedExpenses || 0);
-      surveyPricingRows.push(
-        {
-          label: `Labour (${hrs} hrs × $${rate.toFixed(2)}/hr)`,
-          amount: `$${(hrs * rate).toFixed(2)}`,
-        },
-        { label: "Site Expenses", amount: `$${expenses.toFixed(2)}` },
-      );
-    }
-    if (travelCost !== "0.00")
-      surveyPricingRows.push({ label: "Travel", amount: `$${travelCost}` });
-  }
-  const surveyPricingRowsHtml = buildPricingRowsHtml(surveyPricingRows);
-
   // ── Service fields ────────────────────────────────────────────────────────
   const serviceTypeMap: Record<string, string> = {
     emergency_repair: "Emergency Repair",
@@ -1175,47 +1358,6 @@ export const prepareQuoteDataForPDF = (
     svcDisplayData?.preliminaryAssessment?.trim() || "";
   const hasReportedIssue = Boolean(reportedIssueRaw);
   const hasPreliminaryAssessment = Boolean(preliminaryAssessment);
-
-  const servicePricingRows: Array<{ label: string; amount: string }> = [];
-  if (jobType === "service" && typeData) {
-    const model = typeData.pricingModel;
-    if (model === "flat_rate") {
-      servicePricingRows.push({
-        label: `Flat Rate Service — ${serviceTypeLabel}`,
-        amount: `$${Number(typeData.flatRatePrice || 0).toFixed(2)}`,
-      });
-    } else if (model === "diagnostic_repair") {
-      servicePricingRows.push(
-        {
-          label: "Diagnostic Fee",
-          amount: `$${Number(typeData.diagnosticFee || 0).toFixed(2)}`,
-        },
-        {
-          label: "Estimated Repair Cost",
-          amount: `$${Number(typeData.estimatedRepairCost || 0).toFixed(2)}`,
-        },
-      );
-    } else {
-      // time_materials
-      const techs = Number(typeData.numberOfTechs || 1);
-      const hrs = Number(typeData.laborHours || 0);
-      const rate = Number(typeData.laborRate || 0);
-      const mat = Number(typeData.materialsCost || 0);
-      const trav = Number(typeData.travelCost || 0);
-      const markup = Number(typeData.serviceMarkup || 0);
-      servicePricingRows.push(
-        {
-          label: `Labour (${techs} tech${techs > 1 ? "s" : ""} × ${hrs} hrs × $${rate.toFixed(2)}/hr)`,
-          amount: `$${(techs * hrs * rate).toFixed(2)}`,
-        },
-        { label: "Materials & Parts", amount: `$${mat.toFixed(2)}` },
-        { label: "Travel", amount: `$${trav.toFixed(2)}` },
-      );
-      if (markup > 0)
-        servicePricingRows.push({ label: `Markup (${markup}%)`, amount: "" });
-    }
-  }
-  const servicePricingRowsHtml = buildPricingRowsHtml(servicePricingRows);
 
   // ── PM fields ─────────────────────────────────────────────────────────────
   const pmTypeLabel =
@@ -1282,55 +1424,6 @@ export const prepareQuoteDataForPDF = (
     paymentScheduleMap[pmDisplayData?.paymentSchedule as string] ||
     pmDisplayData?.paymentSchedule ||
     "Net 30 days from date of invoice";
-
-  const freqMap2: Record<string, number> = {
-    quarterly: 4,
-    semi_annual: 2,
-    annual: 1,
-  };
-  const pmVisits = freqMap2[typeData?.maintenanceFrequency as string] ?? 0;
-  const pmPricingRows: Array<{ label: string; amount: string }> = [];
-  if (jobType === "preventative_maintenance" && typeData) {
-    const pmModel = typeData.pricingModel;
-    if (pmModel === "per_unit") {
-      const rate = Number(typeData.pricePerUnit || 0);
-      const units = Number(typeData.numberOfUnits || 0);
-      const perVisit = rate * units;
-      pmPricingRows.push({
-        label: `Per-Unit Rate ($${rate.toFixed(2)}/unit × ${units} units × ${pmVisits} visits)`,
-        amount: `$${(perVisit * pmVisits).toFixed(2)}`,
-      });
-    } else if (pmModel === "flat_rate") {
-      const perVisit = Number(typeData.flatRatePerVisit || 0);
-      pmPricingRows.push({
-        label: `Flat Rate Per Visit × ${pmVisits} visits`,
-        amount: `$${(perVisit * pmVisits).toFixed(2)}`,
-      });
-    } else if (pmModel === "annual_contract") {
-      pmPricingRows.push({
-        label: "Annual Contract Value",
-        amount: `$${Number(typeData.annualContractValue || 0).toFixed(2)}`,
-      });
-    }
-    if (typeData.includeFilterReplacement && typeData.filterReplacementCost) {
-      const frc =
-        Number(typeData.filterReplacementCost) *
-        Number(typeData.numberOfUnits || 1) *
-        pmVisits;
-      pmPricingRows.push({
-        label: `Filter Replacement (${pmUnits} units × ${pmVisits} visits)`,
-        amount: `$${frc.toFixed(2)}`,
-      });
-    }
-    if (typeData.includeCoilCleaning && typeData.coilCleaningCost) {
-      const cc = Number(typeData.coilCleaningCost) * pmVisits;
-      pmPricingRows.push({
-        label: `Coil Cleaning × ${pmVisits} visits`,
-        amount: `$${cc.toFixed(2)}`,
-      });
-    }
-  }
-  const pmPricingRowsHtml = buildPricingRowsHtml(pmPricingRows);
 
   // ── Shared enrichment fields ──────────────────────────────────────────────
   const startDate = bid.plannedStartDate
@@ -1399,11 +1492,13 @@ export const prepareQuoteDataForPDF = (
 
   // ── Service extra fields ───────────────────────────────────────────────────
   const estimatedWorkScope =
-    (
-      svcDisplayData?.estimatedWorkScope ||
-      svcDisplayData?.workScope ||
-      ""
-    )?.trim() || "";
+    stripHtmlToPlainText(
+      (
+        svcDisplayData?.estimatedWorkScope ||
+        svcDisplayData?.workScope ||
+        ""
+      )?.trim() || "",
+    ) || "";
   const hasEstimatedWorkScope = Boolean(estimatedWorkScope);
   const servicePricingNotes =
     (svcDisplayData?.pricingNotes || svcDisplayData?.notes || "")?.trim() ||
@@ -1458,15 +1553,21 @@ export const prepareQuoteDataForPDF = (
   const renderServiceIncludedBlock =
     showPdfServiceDetail && Boolean(serviceIncludedHtml.trim());
 
-  const pmReportedIssueGrid =
+  const pmGridRaw =
     pmDisplayData?.serviceScope?.trim() ||
     pmDisplayData?.specialRequirements?.trim() ||
     bid.description?.trim() ||
-    "—";
+    "";
+  const pmReportedIssueGrid = pmGridRaw
+    ? stripHtmlToPlainText(pmGridRaw) || "—"
+    : "—";
 
   // ── PM extra fields ────────────────────────────────────────────────────────
   const pmServiceScope =
-    (pmDisplayData?.serviceScope || pmDisplayData?.scope || "")?.trim() || "";
+    stripHtmlToPlainText(
+      (pmDisplayData?.serviceScope || pmDisplayData?.scope || "")?.trim() ||
+        "",
+    ) || "";
   const hasPMServiceScope = Boolean(pmServiceScope);
   const pmPricingModelMap: Record<string, string> = {
     per_unit: "Per Unit",
@@ -1486,30 +1587,35 @@ export const prepareQuoteDataForPDF = (
   );
 
   const exclusionsRaw = bid.exclusions?.trim() || "";
-  const exclusionsBody = escHtml(exclusionsRaw || "None specified.");
+  const exclusionsBody = exclusionsRaw
+    ? buildExclusionsHtmlForQuote(exclusionsRaw)
+    : buildExclusionsHtmlForQuote("");
 
   const warrantyRaw = bid.warrantyDetails?.trim() || "";
   const warrantyBody = escHtml(
     warrantyRaw || "Standard warranty applies. See contract for details.",
   );
 
+  const quoteWorkItems = buildQuoteProposalTableItems(bid);
+  const hasWorkDescriptionRows = quoteWorkItems.length > 0;
+
   return {
     date: fmtDate(createdDate),
     quoteNumber: bid.bidNumber,
     pmRepName: bid.assignedToName ?? bid.createdByName ?? "—",
-    officeAddress:
-      options?.officeAddress ??
-      "4749 Bennett Drive, Suite H, Livermore, CA 94551",
-    officePhone: options?.officePhone ?? "(888) 488-2312",
-    companyName: organization?.name ?? "—",
-    siteAddress: bid.siteAddress ?? "—",
+    officeAddress: officeAddressResolved,
+    officePhone: officePhoneResolved,
+    companyName: companyNameResolved,
+    siteAddress,
     contactName: primaryContact?.fullName ?? "—",
     scope: scopeText,
-    email: primaryContact?.email ?? "—",
+    email: companyEmailResolved,
     clientAddress: clientAddress || "—",
-    proposalNote,
-    proposalValidityNote,
-    workItems: buildQuoteWorkItems(scopeText === "—" ? null : scopeText),
+    planSpecProposalSummary: planSpecProposalSummarySafe,
+    hasPlanSpecProposalSummary,
+    quoteFooterLine,
+    workItems: quoteWorkItems,
+    hasWorkDescriptionRows,
     materialsCost,
     laborCost,
     travelCost,
@@ -1573,7 +1679,6 @@ export const prepareQuoteDataForPDF = (
     surveyServicesHtml,
     surveySchedulingNotes,
     hasSurveySchedulingNotes,
-    surveyPricingRowsHtml,
     surveyDateLabel,
     hasSurveyDate,
     surveyPricingModelLabel,
@@ -1588,7 +1693,6 @@ export const prepareQuoteDataForPDF = (
     preliminaryAssessment,
     hasReportedIssue,
     hasPreliminaryAssessment,
-    servicePricingRowsHtml,
     estimatedWorkScope,
     hasEstimatedWorkScope,
     servicePricingNotes,
@@ -1613,7 +1717,6 @@ export const prepareQuoteDataForPDF = (
     emergencyRateNote,
     hasEmergencyRate,
     paymentScheduleLabel,
-    pmPricingRowsHtml,
     pmServiceScope,
     hasPMServiceScope,
     pmPricingModelLabel,

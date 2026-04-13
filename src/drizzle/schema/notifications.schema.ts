@@ -212,6 +212,9 @@ export const notificationCooldowns = notificationSchema.table(
     nextAllowedAt: timestamp("next_allowed_at").notNull(),
     cooldownDays: integer("cooldown_days").notNull(),
 
+    /** Optional JSON for cron jobs (e.g. driver reminder counts per inspection cycle). */
+    metadata: jsonb("metadata").default({}).notNull(),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

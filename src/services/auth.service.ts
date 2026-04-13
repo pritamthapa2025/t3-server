@@ -85,6 +85,8 @@ export const getMeProfileBundle = async (userId: string) => {
       roleName: roles.name,
       employeeTableId: employees.id,
       employeeCode: employees.employeeId,
+      timesheetBlockedForSafetyInspection:
+        employees.timesheetBlockedSafetyInspection,
     })
     .from(users)
     .leftJoin(userRoles, eq(users.id, userRoles.userId))

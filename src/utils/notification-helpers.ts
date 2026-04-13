@@ -486,6 +486,11 @@ export function generateNotificationTitle(eventType: string): string {
     maintenance_due_3days: "Maintenance Due in 3 Days",
     maintenance_overdue: "Maintenance Overdue",
     safety_inspection_required: "Safety Inspection Required",
+    safety_inspection_driver_reminder: "Safety Inspection Reminder",
+    safety_inspection_assigned_escalation: "Safety Inspection — Driver Noncompliance",
+    safety_inspection_timesheet_block_escalation:
+      "Safety Inspection — Timesheet Blocked (Driver)",
+    safety_inspection_driver_timesheet_blocked: "Timesheet Blocked — Safety Inspection",
     safety_inspection_expired: "Safety Inspection Expired",
     safety_inspection_failed: "Safety Inspection Failed",
     driver_reassigned: "Driver Reassigned",
@@ -769,6 +774,47 @@ export function generateNotificationMessage(
         message = `A safety inspection is required for vehicle "${name}"${plate}. Please schedule the inspection immediately to ensure the vehicle remains compliant and safe to operate.`;
         shortMessage = `Safety inspection required: ${name}`;
         break;
+
+      case "safety_inspection_driver_reminder": {
+        const n = eventData.reminderNumber ? Number(eventData.reminderNumber) : 1;
+        const overdue =
+          eventData.daysOverdue != null && eventData.daysOverdue > 0
+            ? ` It is ${eventData.daysOverdue} day${eventData.daysOverdue !== 1 ? "s" : ""} overdue.`
+            : "";
+        message = `Reminder ${n}: your assigned vehicle "${name}"${plate} requires a completed safety inspection${dueDate ? ` (due ${dueDate})` : ""}.${overdue} Please complete the inspection in the app as soon as possible.`;
+        shortMessage = `Safety inspection reminder: ${name}`;
+        break;
+      }
+
+      case "safety_inspection_assigned_escalation": {
+        const overdue =
+          eventData.daysOverdue != null && eventData.daysOverdue > 0
+            ? `${eventData.daysOverdue} day${eventData.daysOverdue !== 1 ? "s" : ""} overdue`
+            : "overdue / due";
+        message = `The assigned driver for vehicle "${name}"${plate} has not completed a required safety inspection after repeated reminders (${overdue}). Please follow up to ensure compliance and fleet safety.`;
+        shortMessage = `Safety inspection escalation: ${name}`;
+        break;
+      }
+
+      case "safety_inspection_timesheet_block_escalation": {
+        const overdue =
+          eventData.daysOverdue != null && eventData.daysOverdue > 0
+            ? `${eventData.daysOverdue} day${eventData.daysOverdue !== 1 ? "s" : ""} overdue`
+            : "overdue / due";
+        message = `The assigned driver for vehicle "${name}"${plate} did not complete the required safety inspection after three daily reminders (${overdue}). Their timesheet entries are now blocked until a compliant inspection is submitted. Please follow up immediately.`;
+        shortMessage = `Timesheet blocked — safety inspection: ${name}`;
+        break;
+      }
+
+      case "safety_inspection_driver_timesheet_blocked": {
+        const overdue =
+          eventData.daysOverdue != null && eventData.daysOverdue > 0
+            ? ` Your inspection is ${eventData.daysOverdue} day${eventData.daysOverdue !== 1 ? "s" : ""} overdue.`
+            : "";
+        message = `You cannot clock in or create timesheet entries until you complete the required safety inspection for your assigned vehicle "${name}"${plate}.${overdue} Complete the inspection in Fleet to restore access.`;
+        shortMessage = `Timesheet blocked — complete safety inspection`;
+        break;
+      }
 
       case "safety_inspection_expired":
         message = `The safety inspection for vehicle "${name}"${plate} has expired${dueDate ? ` on ${dueDate}` : ""}. This vehicle cannot be operated until a valid inspection is completed. Please schedule an inspection immediately.`;

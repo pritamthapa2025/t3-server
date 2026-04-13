@@ -9,6 +9,7 @@ import {
   desc,
   inArray,
   getTableColumns,
+  isNull,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/db.js";
@@ -24,6 +25,29 @@ import {
   businessTodayLocalDateString,
   formatLocalDateStringFromDate,
 } from "../utils/naive-datetime.js";
+
+async function assertEmployeeNotTimesheetBlockedForSafetyInspection(
+  employeeId: number,
+): Promise<void> {
+  const [row] = await db
+    .select({
+      blocked: employees.timesheetBlockedSafetyInspection,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.id, employeeId),
+        or(eq(employees.isDeleted, false), isNull(employees.isDeleted)),
+      ),
+    )
+    .limit(1);
+
+  if (row?.blocked) {
+    throw new Error(
+      "Timesheet access is blocked until you complete the required vehicle safety inspection. Contact your manager if you need help.",
+    );
+  }
+}
 
 export const getTimesheets = async (
   offset: number,
@@ -186,6 +210,8 @@ export const createTimesheet = async (data: {
   overtimeHours?: string;
   notes?: string;
 }) => {
+  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
+
   // Extract YYYY-MM-DD from the sheetDate string (no Date object needed)
   const sheetDateStr = String(data.sheetDate).split("T")[0]!;
 
@@ -462,6 +488,8 @@ export const clockIn = async (data: {
   jobIds?: string[];
   notes?: string;
 }) => {
+  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
+
   // Extract YYYY-MM-DD from the clockInDate string directly (no timezone conversion)
   const sheetDateStr = String(data.clockInDate).split("T")[0];
 
@@ -588,6 +616,8 @@ export const createTimesheetWithClockData = async (data: {
   breakMinutes?: number;
   notes?: string;
 }) => {
+  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
+
   // Get the sheet date (start of day)
   const sheetDate = new Date(data.clockInDate);
   sheetDate.setHours(0, 0, 0, 0);

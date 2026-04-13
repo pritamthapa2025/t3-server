@@ -22,6 +22,7 @@ import {
   invoiceDocuments,
   invoiceHistory,
 } from "../drizzle/schema/invoicing.schema.js";
+import { inventoryPurchaseOrders } from "../drizzle/schema/inventory.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { bidsTable } from "../drizzle/schema/bids.schema.js";
 import { organizations } from "../drizzle/schema/client.schema.js";
@@ -38,6 +39,60 @@ import {
 /** Escape %, _, \\ for ILIKE patterns (PostgreSQL default escape \\). */
 function escapeIlikePattern(raw: string): string {
   return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
+ * Comma-separated P.O. numbers for invoice PDFs, in the order stored on the invoice.
+ * Reads org.inventory_purchase_orders linked via invoice.purchaseOrderIds (UUID[]).
+ */
+export async function formatInvoiceLinkedPoNumbersLine(
+  purchaseOrderIds: unknown,
+): Promise<string> {
+  const ids = Array.isArray(purchaseOrderIds)
+    ? (purchaseOrderIds as unknown[]).filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      )
+    : [];
+  if (ids.length === 0) return "";
+
+  const rows = await db
+    .select({
+      id: inventoryPurchaseOrders.id,
+      poNumber: inventoryPurchaseOrders.poNumber,
+    })
+    .from(inventoryPurchaseOrders)
+    .where(
+      and(
+        inArray(inventoryPurchaseOrders.id, ids),
+        eq(inventoryPurchaseOrders.isDeleted, false),
+      ),
+    );
+
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    const n = String(r.poNumber ?? "").trim();
+    if (n) map.set(r.id, n);
+  }
+  const ordered = ids
+    .map((id) => map.get(id))
+    .filter((x): x is string => Boolean(x));
+  return ordered.join(", ");
+}
+
+/** Display label for invoice UI: job description (plain), else bid project name. */
+function resolveInvoiceJobName(
+  jobDescription: string | null | undefined,
+  projectName: string | null | undefined,
+): string | null {
+  const stripped = jobDescription
+    ? String(jobDescription)
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+  if (stripped) return stripped;
+  const p = projectName?.trim();
+  return p || null;
 }
 
 async function getJobIdsForOrganization(orgId: string): Promise<string[]> {
@@ -673,6 +728,27 @@ export const getInvoiceById = async (
       ...entry,
       createdAt: formatInstantIsoForJson(entry.createdAt),
     }));
+  }
+
+  if (result.jobId) {
+    const [jobRow] = await db
+      .select({
+        jobNumber: jobs.jobNumber,
+        jobDescription: jobs.description,
+        projectName: bidsTable.projectName,
+      })
+      .from(jobs)
+      .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+      .where(and(eq(jobs.id, result.jobId), eq(jobs.isDeleted, false)))
+      .limit(1);
+    result.jobNumber = jobRow?.jobNumber ?? null;
+    result.jobName = resolveInvoiceJobName(
+      jobRow?.jobDescription,
+      jobRow?.projectName,
+    );
+  } else {
+    result.jobNumber = null;
+    result.jobName = null;
   }
 
   return result;

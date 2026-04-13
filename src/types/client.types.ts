@@ -68,6 +68,8 @@ export interface BaseReferenceEntity {
 export interface Client extends BaseEntity {
   clientId: string;
   name: string;
+  /** Direct client vs indirect (e.g. GC) */
+  isDirect: boolean;
   legalName?: string;
   clientTypeId?: number;
   status: ClientStatus;
@@ -253,6 +255,8 @@ export interface ClientSettings {
 
 export interface CreateClientRequest {
   name: string;
+  /** Defaults true when omitted */
+  isDirect?: boolean;
   legalName?: string;
   clientTypeId?: number;
   industryClassificationId?: number;

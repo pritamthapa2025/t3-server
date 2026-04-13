@@ -59,6 +59,21 @@ export function formatNaiveDateForJson(value: unknown): string | null {
   return String(value);
 }
 
+/**
+ * Naive datetime as `YYYY-MM-DDTHH:mm:ss` (no offset) for APIs that take a separate IANA `timeZone`
+ * (e.g. Google Calendar `start.dateTime` + `start.timeZone`).
+ */
+export function formatNaiveDateTimeIsoTForZonedApi(d: Date): string {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+  const y = d.getUTCFullYear();
+  const m = pad2(d.getUTCMonth() + 1);
+  const day = pad2(d.getUTCDate());
+  const h = pad2(d.getUTCHours());
+  const min = pad2(d.getUTCMinutes());
+  const s = pad2(d.getUTCSeconds());
+  return `${y}-${m}-${day}T${h}:${min}:${s}`;
+}
+
 /** Naive datetime JSON string: `YYYY-MM-DD HH:mm:ss`. */
 export function formatNaiveDateTimeForJson(value: unknown): string | null {
   if (value == null || value === "") return null;

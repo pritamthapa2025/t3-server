@@ -68,6 +68,7 @@ export interface Bid {
   specialTerms?: string;
   exclusions?: string;
   proposalBasis?: string;
+  proposalBasisItems?: string[];
   referenceDate?: string;
   templateSelection?: string;
 

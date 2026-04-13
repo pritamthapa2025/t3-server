@@ -74,6 +74,8 @@ export const organizations: any = org.table(
     clientId: varchar("client_id", { length: 50 }).notNull().unique(),
     // Basic Info
     name: varchar("name", { length: 255 }).notNull(),
+    /** true = direct client; false = indirect (e.g. general contractor) */
+    isDirect: boolean("is_direct").default(true).notNull(),
     legalName: varchar("legal_name", { length: 255 }),
     clientTypeId: integer("client_type_id").references(
       () => clientTypes.id,

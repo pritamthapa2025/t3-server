@@ -42,7 +42,10 @@ import {
   parseDatabaseError,
   isDatabaseError,
 } from "../utils/database-error-parser.js";
-import { uploadToSpaces, resolveStorageUrl } from "../services/storage.service.js";
+import {
+  uploadToSpaces,
+  resolveStorageUrl,
+} from "../services/storage.service.js";
 import { getUserRoles } from "../services/role.service.js";
 import {
   getBids,
@@ -121,6 +124,12 @@ import {
   getBidMediaById,
   updateBidMedia,
   deleteBidMedia,
+  createBidWalkPhoto,
+  getBidWalkPhotos,
+  getBidWalkPhotosPaginated,
+  getBidWalkPhotoById,
+  updateBidWalkPhoto,
+  deleteBidWalkPhoto,
   getBidPlanSpecFiles,
   createBidPlanSpecFile,
   deleteBidPlanSpecFile,
@@ -133,8 +142,15 @@ import { getOrganizationById } from "../services/client.service.js";
 import {
   prepareQuoteDataForPDF,
   generateQuotePDF,
+  issuerCompanyFromGeneralSettings,
 } from "../services/pdf.service.js";
+import { getGeneralSettings } from "../services/settings.service.js";
 import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service.js";
+
+async function quotePdfIssuerOptions() {
+  const general = await getGeneralSettings();
+  return { issuer: issuerCompanyFromGeneralSettings(general) };
+}
 
 // ============================
 // Main Bid Operations
@@ -249,26 +265,33 @@ export const getBidsHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
-    // Optional filter: client organizationId from query (client data, not user)
-    // If not provided, returns all bids
-    const organizationId = req.query.organizationId as string | undefined;
-
     const offset = (page - 1) * limit;
 
     const filters: {
+      organizationIds?: string[];
       status?: string[];
-      jobType?: string;
+      jobType?: string[];
       priority?: string;
       assignedTo?: string;
       search?: string;
       sortBy?: "newest" | "oldest" | "value_high" | "value_low";
     } = {};
 
+    if (req.query.organizationId) {
+      const raw = req.query.organizationId;
+      filters.organizationIds = Array.isArray(raw)
+        ? (raw as string[])
+        : [raw as string];
+    }
+
     if (req.query.status) {
       const raw = req.query.status;
       filters.status = Array.isArray(raw) ? (raw as string[]) : [raw as string];
     }
-    if (req.query.jobType) filters.jobType = req.query.jobType as string;
+    if (req.query.jobType) {
+      const raw = req.query.jobType;
+      filters.jobType = Array.isArray(raw) ? (raw as string[]) : [raw as string];
+    }
     if (req.query.priority) filters.priority = req.query.priority as string;
     if (req.query.assignedTo)
       filters.assignedTo = req.query.assignedTo as string;
@@ -286,7 +309,6 @@ export const getBidsHandler = async (req: Request, res: Response) => {
       : undefined;
 
     const bids = await getBids(
-      organizationId,
       offset,
       limit,
       Object.keys(filters).length > 0 ? filters : undefined,
@@ -641,6 +663,72 @@ export const createBidHandler = async (req: Request, res: Response) => {
       }
     }
 
+    // Handle bid walk photo uploads if provided (walk_photo_0, walk_photo_1, etc.)
+    const walkPhotoFiles = files.filter((file) =>
+      file.fieldname.startsWith("walk_photo_"),
+    );
+
+    if (walkPhotoFiles.length > 0) {
+      const uploadedWalk: Awaited<ReturnType<typeof createBidWalkPhoto>>[] =
+        [];
+      for (let i = 0; i < walkPhotoFiles.length; i++) {
+        const file = walkPhotoFiles[i];
+        if (!file) continue;
+
+        try {
+          const uploadResult = await uploadToSpaces(
+            file.buffer,
+            file.originalname,
+            "bid-walk-photos",
+          );
+
+          let mediaTypeWalk = "other";
+          if (file.mimetype.startsWith("image/")) mediaTypeWalk = "photo";
+          else if (file.mimetype.startsWith("video/")) mediaTypeWalk = "video";
+          else if (file.mimetype.startsWith("audio/")) mediaTypeWalk = "audio";
+
+          const row = await createBidWalkPhoto({
+            bidId: bid.id,
+            fileName: file.originalname,
+            filePath: uploadResult.filePath,
+            fileUrl: uploadResult.url,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            mediaType: mediaTypeWalk,
+            uploadedBy: createdBy,
+          });
+          if (row) uploadedWalk.push(row);
+        } catch (uploadError: any) {
+          logger.error(
+            `Error uploading bid walk photo ${file.originalname}:`,
+            uploadError,
+          );
+        }
+      }
+
+      if (uploadedWalk.length > 0) {
+        createdRecords.walkPhotos = uploadedWalk;
+        const uploadedNames = uploadedWalk
+          .map((m) => m?.fileName ?? "")
+          .join(", ");
+        const n = uploadedWalk.length;
+        const desc = `${n} bid walk photo${n === 1 ? "" : "s"} uploaded: ${uploadedNames}`;
+        await createBidHistoryEntry({
+          bidId: bid.id,
+          action: "walk_photo_uploaded",
+          newValue: uploadedNames,
+          description: desc,
+          performedBy: createdBy,
+        });
+        await appendJobHistoryForBid(bid.id, {
+          action: "walk_photo_uploaded",
+          newValue: uploadedNames,
+          description: desc,
+          createdBy: createdBy,
+        });
+      }
+    }
+
     // Create history entry
     await createBidHistoryEntry({
       bidId: bid.id,
@@ -730,7 +818,12 @@ export const updateBidHandler = async (req: Request, res: Response) => {
     delete bidFields.bidNumber;
 
     // Update bid with only bid fields (excluding nested objects)
-    const updatedBid = await updateBid(id!, clientOrgId, bidFields, clientUpdatedAt);
+    const updatedBid = await updateBid(
+      id!,
+      clientOrgId,
+      bidFields,
+      clientUpdatedAt,
+    );
 
     if (updatedBid === STALE_DATA) {
       return res.status(409).json(staleDataResponse);
@@ -3736,8 +3829,7 @@ export const getBidDocumentsHandler = async (req: Request, res: Response) => {
     if (req.query.sortOrder)
       options.sortOrder = req.query.sortOrder as "asc" | "desc";
 
-    const filterOpts =
-      Object.keys(options).length > 0 ? options : undefined;
+    const filterOpts = Object.keys(options).length > 0 ? options : undefined;
     const wantsPagination =
       req.query.page !== undefined || req.query.limit !== undefined;
 
@@ -4489,13 +4581,13 @@ export const createBidMediaHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const uploadedNames = uploadedMedia.map((m) => m?.fileName ?? "").join(", ");
+    const uploadedNames = uploadedMedia
+      .map((m) => m?.fileName ?? "")
+      .join(", ");
     const n = uploadedMedia.length;
     const sitePhotoUploadDesc = `${n} site photo${n === 1 ? "" : "s"} uploaded: ${uploadedNames}`;
 
-    logger.info(
-      `${n} site photo(s) uploaded for bid ${bidId}`,
-    );
+    logger.info(`${n} site photo(s) uploaded for bid ${bidId}`);
 
     await createBidHistoryEntry({
       bidId: bidId!,
@@ -4568,8 +4660,7 @@ export const getBidMediaHandler = async (req: Request, res: Response) => {
     if (req.query.sortOrder)
       options.sortOrder = req.query.sortOrder as "asc" | "desc";
 
-    const filterOpts =
-      Object.keys(options).length > 0 ? options : undefined;
+    const filterOpts = Object.keys(options).length > 0 ? options : undefined;
     const wantsPagination =
       req.query.page !== undefined || req.query.limit !== undefined;
 
@@ -4585,12 +4676,7 @@ export const getBidMediaHandler = async (req: Request, res: Response) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
 
-    const result = await getBidMediaPaginated(
-      bidId!,
-      page,
-      limit,
-      filterOpts,
-    );
+    const result = await getBidMediaPaginated(bidId!, page, limit, filterOpts);
 
     logger.info(`Bid media fetched successfully for bid ${bidId}`);
     return res.status(200).json({
@@ -4744,10 +4830,7 @@ export const downloadBidDocumentHandler = async (
       "Content-Type",
       document.fileType || "application/octet-stream",
     );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${safeName}"`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
     return res.status(200).send(buffer);
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -4796,10 +4879,7 @@ export const downloadBidMediaHandler = async (req: Request, res: Response) => {
     const safeName = (media.fileName || "media-file").replace(/"/g, "");
 
     res.setHeader("Content-Type", media.fileType || "application/octet-stream");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${safeName}"`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
     return res.status(200).send(buffer);
   } catch (error) {
     logger.logApiError("Bid error", error, req);
@@ -4974,6 +5054,462 @@ export const deleteBidMediaHandler = async (req: Request, res: Response) => {
   }
 };
 
+// ============================
+// Bid Walk Photos Handlers
+// ============================
+
+export const createBidWalkPhotosHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const files = (req.files as Express.Multer.File[]) || [];
+    const mediaFiles = files.filter((file) =>
+      file.fieldname.startsWith("media_"),
+    );
+
+    if (mediaFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No files provided. Files must be uploaded with field names like 'media_0', 'media_1', etc.",
+      });
+    }
+
+    const uploaded: Awaited<ReturnType<typeof createBidWalkPhoto>>[] = [];
+    const errors: string[] = [];
+
+    for (const file of mediaFiles) {
+      if (!file) continue;
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-walk-photos",
+        );
+
+        let mediaType = "other";
+        if (file.mimetype.startsWith("image/")) {
+          mediaType = "photo";
+        } else if (file.mimetype.startsWith("video/")) {
+          mediaType = "video";
+        } else if (file.mimetype.startsWith("audio/")) {
+          mediaType = "audio";
+        }
+
+        const row = await createBidWalkPhoto({
+          bidId: bidId!,
+          fileName: file.originalname,
+          filePath: uploadResult.filePath,
+          fileUrl: uploadResult.url,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          mediaType,
+          caption: req.body.caption || undefined,
+          uploadedBy: userId!,
+        });
+        if (row) uploaded.push(row);
+      } catch (uploadError: any) {
+        logger.logApiError(
+          `Bid walk photo upload error for ${file.originalname}`,
+          uploadError,
+          req,
+        );
+        errors.push(
+          `Failed to upload ${file.originalname}: ${uploadError.message}`,
+        );
+      }
+    }
+
+    if (uploaded.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "All file uploads failed",
+        errors,
+      });
+    }
+
+    const uploadedNames = uploaded.map((m) => m?.fileName ?? "").join(", ");
+    const n = uploaded.length;
+    const desc = `${n} bid walk photo${n === 1 ? "" : "s"} uploaded: ${uploadedNames}`;
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      action: "walk_photo_uploaded",
+      newValue: uploadedNames,
+      description: desc,
+      performedBy: userId!,
+    });
+
+    await appendJobHistoryForBid(bidId!, {
+      action: "walk_photo_uploaded",
+      newValue: uploadedNames,
+      description: desc,
+      createdBy: userId!,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: uploaded,
+      message: `${uploaded.length} file(s) uploaded successfully`,
+      ...(errors.length > 0 && { errors }),
+    });
+  } catch (error: unknown) {
+    logger.logApiError("Bid walk photos upload error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getBidWalkPhotosHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const options: Parameters<typeof getBidWalkPhotos>[1] = {};
+    if (req.query.mediaType)
+      options.mediaType = req.query.mediaType as "photo" | "video" | "audio";
+    if (req.query.dateRange)
+      options.dateRange = req.query.dateRange as
+        | "today"
+        | "this_week"
+        | "this_month"
+        | "this_year";
+    if (req.query.sortBy)
+      options.sortBy = req.query.sortBy as "date" | "name" | "size";
+    if (req.query.sortOrder)
+      options.sortOrder = req.query.sortOrder as "asc" | "desc";
+
+    const filterOpts = Object.keys(options).length > 0 ? options : undefined;
+    const wantsPagination =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
+    if (!wantsPagination) {
+      const data = await getBidWalkPhotos(bidId!, filterOpts);
+      return res.status(200).json({ success: true, data });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 9));
+
+    const result = await getBidWalkPhotosPaginated(
+      bidId!,
+      page,
+      limit,
+      filterOpts,
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getBidWalkPhotoByIdHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "walkPhotoId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const walkPhotoId = asSingleString(req.params.walkPhotoId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const photo = await getBidWalkPhotoById(walkPhotoId!);
+    if (!photo || photo.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Walk photo not found",
+      });
+    }
+
+    return res.status(200).json({ success: true, data: photo });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const previewBidWalkPhotoHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "walkPhotoId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const walkPhotoId = asSingleString(req.params.walkPhotoId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+
+    const photo = await getBidWalkPhotoById(walkPhotoId!);
+    if (!photo || photo.bidId !== bidId) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Walk photo not found" });
+    }
+
+    const previewUrl = resolveStorageUrl(photo.fileUrl || photo.filePath);
+    if (!previewUrl) {
+      return res
+        .status(404)
+        .json({ success: false, message: "File URL not available" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        previewUrl,
+        fileName: photo.fileName,
+        fileType: photo.fileType,
+        mediaType: photo.mediaType,
+        fileSize: photo.fileSize,
+      },
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const downloadBidWalkPhotoHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "walkPhotoId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const walkPhotoId = asSingleString(req.params.walkPhotoId);
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+
+    const photo = await getBidWalkPhotoById(walkPhotoId!);
+    if (!photo || photo.bidId !== bidId) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Walk photo not found" });
+    }
+
+    const downloadUrl = resolveStorageUrl(photo.fileUrl || photo.filePath);
+    if (!downloadUrl) {
+      return res
+        .status(404)
+        .json({ success: false, message: "File URL not available" });
+    }
+
+    const upstream = await globalThis.fetch(downloadUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to fetch file from storage",
+      });
+    }
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const safeName = (photo.fileName || "walk-photo").replace(/"/g, "");
+
+    res.setHeader("Content-Type", photo.fileType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    return res.status(200).send(buffer);
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateBidWalkPhotoHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "walkPhotoId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const walkPhotoId = asSingleString(req.params.walkPhotoId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const existing = await getBidWalkPhotoById(walkPhotoId!);
+    if (!existing || existing.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Walk photo not found",
+      });
+    }
+
+    let uploadedFileUrl: string | null = null;
+    const file = req.file;
+    if (file) {
+      try {
+        const uploadResult = await uploadToSpaces(
+          file.buffer,
+          file.originalname,
+          "bid-walk-photos",
+        );
+        uploadedFileUrl = uploadResult.url;
+      } catch (uploadError: any) {
+        logger.logApiError("File upload error", uploadError, req);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new walk photo. Please try again.",
+        });
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (req.body.fileName) updateData.fileName = req.body.fileName;
+    if (req.body.mediaType) updateData.mediaType = req.body.mediaType;
+    if (req.body.caption) updateData.caption = req.body.caption;
+    if (uploadedFileUrl) {
+      updateData.fileUrl = uploadedFileUrl;
+      updateData.filePath = uploadedFileUrl;
+    }
+
+    const updated = await updateBidWalkPhoto(walkPhotoId!, updateData as any);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Walk photo not found",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      action: "walk_photo_updated",
+      description: `Bid walk photo "${updated.fileName}" was updated`,
+      performedBy: userId,
+    });
+
+    await appendJobHistoryForBid(bidId!, {
+      action: "walk_photo_updated",
+      description: `Bid walk photo "${updated.fileName}" was updated`,
+      createdBy: userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: updated,
+      message: "Walk photo updated successfully",
+    });
+  } catch (error: unknown) {
+    logger.logApiError("Bid walk photo update error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const deleteBidWalkPhotoHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "walkPhotoId"])) return;
+
+    const bidId = asSingleString(req.params.bidId);
+    const walkPhotoId = asSingleString(req.params.walkPhotoId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const bid = await getBidById(bidId!);
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid not found",
+      });
+    }
+
+    const existing = await getBidWalkPhotoById(walkPhotoId!);
+    if (!existing || existing.bidId !== bidId) {
+      return res.status(404).json({
+        success: false,
+        message: "Walk photo not found",
+      });
+    }
+
+    const deleted = await deleteBidWalkPhoto(walkPhotoId!);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Walk photo not found",
+      });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      action: "walk_photo_deleted",
+      description: `Bid walk photo "${existing.fileName}" was deleted`,
+      performedBy: userId,
+    });
+
+    await appendJobHistoryForBid(bidId!, {
+      action: "walk_photo_deleted",
+      description: `Bid walk photo "${existing.fileName}" was deleted`,
+      createdBy: userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Walk photo deleted successfully",
+    });
+  } catch (error) {
+    logger.logApiError("Bid error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 /** Financial + job-type rows for quote PDF (includes secondary service/PM when bid mixes types). */
 async function loadQuotePdfTypeData(
   bidId: string,
@@ -5061,6 +5597,8 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
+    const quoteIssuerOpts = await quotePdfIssuerOptions();
+
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
       bid.primaryContact ??
@@ -5077,7 +5615,7 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       financialBreakdown,
       contactForQuote,
       bid.property ?? null,
-      undefined,
+      quoteIssuerOpts,
       typeSpecificData,
       typeSpecificSecondary,
     );
@@ -5145,6 +5683,8 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
+    const quoteIssuerOpts = await quotePdfIssuerOptions();
+
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
       bid.primaryContact ??
@@ -5161,7 +5701,7 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       financialBreakdown,
       contactForQuote,
       bid.property ?? null,
-      undefined,
+      quoteIssuerOpts,
       typeSpecificData,
       typeSpecificSecondary,
     );
@@ -5262,13 +5802,15 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
+    const quoteIssuerOpts = await quotePdfIssuerOptions();
+
     const pdfData = prepareQuoteDataForPDF(
       bid,
       client.organization,
       financialBreakdown,
       primaryContact ?? null,
       bid.property ?? null,
-      undefined,
+      quoteIssuerOpts,
       typeSpecificData,
       typeSpecificSecondary,
     );
@@ -5362,6 +5904,8 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
+    const quoteIssuerOpts = await quotePdfIssuerOptions();
+
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const primaryContact =
       bid.primaryContact ??
@@ -5378,7 +5922,7 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       financialBreakdown,
       primaryContact,
       bid.property ?? null,
-      undefined,
+      quoteIssuerOpts,
       typeSpecificData,
       typeSpecificSecondary,
     );

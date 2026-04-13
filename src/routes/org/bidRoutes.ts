@@ -75,6 +75,13 @@ import {
   downloadBidMediaHandler,
   updateBidMediaHandler,
   deleteBidMediaHandler,
+  createBidWalkPhotosHandler,
+  getBidWalkPhotosHandler,
+  getBidWalkPhotoByIdHandler,
+  previewBidWalkPhotoHandler,
+  downloadBidWalkPhotoHandler,
+  updateBidWalkPhotoHandler,
+  deleteBidWalkPhotoHandler,
   downloadBidQuotePDF,
   previewBidQuotePDF,
   sendQuoteEmail,
@@ -169,6 +176,12 @@ import {
   previewBidMediaSchema,
   updateBidMediaSchema,
   deleteBidMediaSchema,
+  createBidWalkPhotosSchema,
+  getBidWalkPhotosSchema,
+  getBidWalkPhotoByIdSchema,
+  previewBidWalkPhotoSchema,
+  updateBidWalkPhotoSchema,
+  deleteBidWalkPhotoSchema,
   downloadBidQuotePDFSchema,
   previewBidQuotePDFSchema,
   sendQuoteSchema,
@@ -191,15 +204,18 @@ const uploadBidDocuments = multer({
   },
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
 
-// Combined multer for create bid: documents (5MB, any type) + media (50MB, images/video/audio)
+// Combined multer for create bid: documents (5MB, any type) + media + walk_photo_* (50MB, images/video/audio)
 const uploadBidDocumentsAndMedia = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB ceiling — per-field enforcement done in fileFilter
-    files: 30, // up to 20 documents + 10 media
+    files: 40, // up to 20 documents + 10 media + 10 walk_photo_*
   },
   fileFilter: (req, file, cb) => {
-    if (file.fieldname.startsWith("media_")) {
+    if (
+      file.fieldname.startsWith("media_") ||
+      file.fieldname.startsWith("walk_photo_")
+    ) {
       const allowedMediaTypes = [
         "image/jpeg",
         "image/png",
@@ -217,7 +233,7 @@ const uploadBidDocumentsAndMedia = multer({
       } else {
         cb(
           new Error(
-            `Invalid media type: ${file.mimetype}. Only images, videos, and audio files are allowed for media_* fields.`,
+            `Invalid media type: ${file.mimetype}. Only images, videos, and audio files are allowed for media_* and walk_photo_* fields.`,
           ),
         );
       }
@@ -689,6 +705,41 @@ router.get(
   "/bids/:bidId/media/:mediaId/download",
   validate(previewBidMediaSchema),
   downloadBidMediaHandler,
+);
+
+// Bid walk photos (separate from site / bid media)
+
+router
+  .route("/bids/:bidId/walk-photos")
+  .get(validate(getBidWalkPhotosSchema), getBidWalkPhotosHandler)
+  .post(
+    uploadBidMedia,
+    handleMulterError,
+    validate(createBidWalkPhotosSchema),
+    createBidWalkPhotosHandler,
+  );
+
+router
+  .route("/bids/:bidId/walk-photos/:walkPhotoId")
+  .get(validate(getBidWalkPhotoByIdSchema), getBidWalkPhotoByIdHandler)
+  .put(
+    uploadBidMedia,
+    handleMulterError,
+    validate(updateBidWalkPhotoSchema),
+    updateBidWalkPhotoHandler,
+  )
+  .delete(validate(deleteBidWalkPhotoSchema), deleteBidWalkPhotoHandler);
+
+router.get(
+  "/bids/:bidId/walk-photos/:walkPhotoId/preview",
+  validate(previewBidWalkPhotoSchema),
+  previewBidWalkPhotoHandler,
+);
+
+router.get(
+  "/bids/:bidId/walk-photos/:walkPhotoId/download",
+  validate(previewBidWalkPhotoSchema),
+  downloadBidWalkPhotoHandler,
 );
 
 // Quote PDF routes — use module-level auth so managers can download quotes

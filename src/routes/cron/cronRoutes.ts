@@ -13,6 +13,7 @@ import {
   notifyMaintenanceDue3Days,
   notifyMaintenanceOverdue,
   notifySafetyInspectionExpired,
+  notifySafetyInspectionAssignedDriverReminders,
   notifySafetyInspectionUpcoming,
   notifyVehicleRegistrationExpiring,
   notifyVehicleInsuranceExpiring,
@@ -204,13 +205,21 @@ router.get("/notify-maintenance-due", (_req: Request, res: Response) => {
 
 /**
  * GET /api/v1/cron/notify-inspection-expired
- * Notify manager and executive for vehicles with expired safety inspections.
+ * Notify manager and executive for vehicles with expired safety inspections (past due date),
+ * and run assigned-driver daily reminders / timesheet block (after 3 reminders) for due/overdue
+ * vehicles with an assigned driver.
  * Schedule: daily (e.g. 07:05).
  *
  * Returns 202 immediately; notifications run in the background. Use logs for outcomes.
  */
 router.get("/notify-inspection-expired", (_req: Request, res: Response) => {
-  scheduleCronJob("notify-inspection-expired", res, () => notifySafetyInspectionExpired());
+  scheduleCronJob("notify-inspection-expired", res, async () => {
+    const [expired, assignedDriver] = await Promise.all([
+      notifySafetyInspectionExpired(),
+      notifySafetyInspectionAssignedDriverReminders(),
+    ]);
+    return { expired, assignedDriverReminders: assignedDriver };
+  });
 });
 
 /**

@@ -80,6 +80,9 @@ export const getJobsQuerySchema = z.object({
     priority: jobPriorityEnum.optional(),
     search: z.string().optional(),
     propertyId: z.string().uuid().optional(),
+    organizationId: z
+      .union([uuidSchema, z.array(uuidSchema)])
+      .optional(),
   }),
 });
 

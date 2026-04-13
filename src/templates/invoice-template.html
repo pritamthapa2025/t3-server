@@ -70,6 +70,11 @@
         font-weight: 400;
       }
 
+      .header-logo-col {
+        text-align: right;
+        align-self: start;
+      }
+
       .company-logo {
         max-width: 180px;
         height: auto;
@@ -164,9 +169,15 @@
         letter-spacing: 0.5px;
       }
 
-      .po-item span {
+      .po-item > span {
         color: #374151;
         font-weight: 500;
+      }
+
+      .po-item strong .po-label {
+        text-decoration: none;
+        border-bottom: none;
+        cursor: help;
       }
 
       /* Items Table */
@@ -346,7 +357,11 @@
       }
 
       .company-info h1 {
-        display: none !important;
+        font-size: 20px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        color: var(--ink);
+        letter-spacing: -0.3px;
       }
 
       .company-info p {
@@ -421,9 +436,15 @@
         color: var(--muted-2);
       }
 
-      .po-item span {
+      .po-item > span {
         color: var(--ink);
         font-weight: 650;
+      }
+
+      .po-item strong .po-label {
+        text-decoration: none;
+        border-bottom: none;
+        cursor: help;
       }
 
       /* Items table */
@@ -521,11 +542,13 @@
       <!-- Header -->
       <div class="header">
         <div class="company-info">
-          <p>4749 Bennett Drive, Suite H, Livermore, CA 94551</p>
-          <p>(888) 488-2312</p>
-          <p>info@t3mechanicalinc.com</p>
+          {{#if companyName}}<h1>{{companyName}}</h1>{{/if}}
+          {{#if companyAddress}}<p>{{companyAddress}}</p>{{/if}}
+          {{#if companyLocationLine}}<p>{{companyLocationLine}}</p>{{/if}}
+          {{#if companyPhone}}<p>{{companyPhone}}</p>{{/if}}
+          {{#if companyEmail}}<p>{{companyEmail}}</p>{{/if}}
         </div>
-        <div>
+        <div class="header-logo-col">
           <img
             src="https://t3-mechanical.sfo3.cdn.digitaloceanspaces.com/t3_logo-black.png"
             alt="T3 Mechanical"
@@ -573,12 +596,14 @@
       <!-- PO Section -->
       <div class="po-section">
         <div class="po-item">
-          <strong>P.O. NO.</strong>
+          <strong
+            ><span class="po-label" title="Purchase Order">P.O.</span> NO.</strong
+          >
           <span>{{poNumber}}</span>
         </div>
         <div class="po-item">
-          <strong>SCOPE</strong>
-          <span>{{serviceDescription}}</span>
+          <strong>SERVICE</strong>
+          <span>{{jobName}}</span>
         </div>
       </div>
 

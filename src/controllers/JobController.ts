@@ -140,14 +140,17 @@ import {
 } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { uploadToSpaces } from "../services/storage.service.js";
-import { getDataFilterConditions } from "../services/featurePermission.service.js";
+import {
+  getDataFilterConditions,
+  getUserRoleWithContext,
+} from "../services/featurePermission.service.js";
 import { isUserExecutive } from "../services/role.service.js";
 
 /**
- * Checks whether the requesting user (if subject to assigned_only filter) is
- * a team member on the given job.
- * Returns true if access is allowed, false after sending a 404 response
- * (consistent with how getJobByIdHandler handles this case).
+ * For mutating job endpoints: allow managers/executives without extra checks.
+ * Technicians may browse all jobs but can only mutate jobs they are linked to
+ * (same rules as applyAssignedOrTeamFilter). Other roles with assigned_only
+ * data filters keep the legacy team-only mutation rule.
  */
 const checkJobAssignedAccess = async (
   req: Request,
@@ -157,8 +160,15 @@ const checkJobAssignedAccess = async (
   const userId = req.user?.id;
   if (!userId) return true;
 
-  const dataFilter = await getDataFilterConditions(userId, "jobs");
-  if (!dataFilter.assignedOnly) return true;
+  const [dataFilter, roleCtx] = await Promise.all([
+    getDataFilterConditions(userId, "jobs"),
+    getUserRoleWithContext(userId),
+  ]);
+
+  const mustVerifyTeamLink =
+    dataFilter.assignedOnly || roleCtx?.roleName === "Technician";
+
+  if (!mustVerifyTeamLink) return true;
 
   const job = await getJobById(jobId, {
     userId,
@@ -189,7 +199,7 @@ export const getJobsHandler = async (req: Request, res: Response) => {
       status?: string;
       priority?: string;
       search?: string;
-      organizationId?: string;
+      organizationIds?: string[];
       jobType?: string;
       sortBy?: string;
       propertyId?: string;
@@ -198,8 +208,12 @@ export const getJobsHandler = async (req: Request, res: Response) => {
     if (req.query.status) filters.status = req.query.status as string;
     if (req.query.priority) filters.priority = req.query.priority as string;
     if (req.query.search) filters.search = req.query.search as string;
-    if (req.query.organizationId)
-      filters.organizationId = req.query.organizationId as string;
+    if (req.query.organizationId) {
+      const raw = req.query.organizationId;
+      filters.organizationIds = Array.isArray(raw)
+        ? (raw as string[])
+        : [raw as string];
+    }
     if (req.query.jobType) filters.jobType = req.query.jobType as string;
     if (req.query.sortBy) filters.sortBy = req.query.sortBy as string;
     if (req.query.propertyId)
@@ -4030,7 +4044,7 @@ export const getJobLaborCostTrackingHandler = async (
 /**
  * Get jobs KPIs
  * GET /jobs/kpis
- * For technicians (assigned-only), returns KPIs scoped to their assigned/team jobs.
+ * When assigned_only applies, KPIs are scoped to those jobs; otherwise org-wide.
  */
 export const getJobsKPIsHandler = async (req: Request, res: Response) => {
   try {

@@ -24,7 +24,7 @@ type UIElementType = (typeof uiElementTypeEnum.enumValues)[number];
 const ROLES = {
   EXECUTIVE: 1,   // "Executive" in DB - Full admin access
   MANAGER: 2,     // "Manager" in DB - Limited access  
-  TECHNICIAN: 3,  // "Technician" in DB - Assigned-only access
+  TECHNICIAN: 3,  // "Technician" in DB - browse-all jobs; mutations still team-scoped in API
 };
 
 /**
@@ -435,8 +435,8 @@ const ROLE_FEATURES_DATA = [
   { roleId: ROLES.TECHNICIAN, module: "properties", featureCode: "delete_property", accessLevel: "none" },
 
   // Jobs - Assigned only
-  { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "view_jobs", accessLevel: "view_assigned" },
-  { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "view_job_overview", accessLevel: "view_assigned" },
+  { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "view_jobs", accessLevel: "view" },
+  { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "view_job_overview", accessLevel: "view" },
   { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "create_job", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "edit_job", accessLevel: "none" },
   { roleId: ROLES.TECHNICIAN, module: "jobs", featureCode: "delete_job", accessLevel: "none" },
@@ -1158,8 +1158,7 @@ const ROLE_FEATURES_DATA = [
  * Data filters based on CSV matrix
  */
 const DATA_FILTERS_DATA = [
-  // Technician filters - assigned/own only
-  { roleId: ROLES.TECHNICIAN, module: "jobs", filterType: "assigned_only", filterRule: "assigned_to = :userId", description: "Technicians can only see jobs assigned to them" },
+  // Technician filters - assigned/own only (jobs list is not filtered; technicians see all jobs)
   { roleId: ROLES.TECHNICIAN, module: "bids", filterType: "assigned_only", filterRule: "job_id IN (SELECT id FROM jobs WHERE assigned_to = :userId)", description: "Technicians can only see bids for assigned jobs" },
   { roleId: ROLES.TECHNICIAN, module: "clients", filterType: "assigned_only", filterRule: "client has jobs where technician is team member", description: "Technicians can only see clients they have worked or are working for" },
   { roleId: ROLES.TECHNICIAN, module: "properties", filterType: "assigned_only", filterRule: "property has jobs where technician is team member", description: "Technicians can only see properties they have worked or are working at" },

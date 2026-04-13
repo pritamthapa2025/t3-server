@@ -55,13 +55,38 @@ const timelineDurationTypeEnum = z.enum(["days", "weeks", "months"], {
   message: "Duration type must be one of: days, weeks, or months",
 });
 
+const ymdRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Empty string → undefined (optional bid dates from forms / JSON). */
+function optionalYmdString(message = "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)") {
+  return z.preprocess(
+    (val) =>
+      val === "" || val === null || val === undefined ? undefined : val,
+    z.string().regex(ymdRegex, message).optional(),
+  );
+}
+
+/** PATCH: same as optionalYmdString, but `null` clears the column in DB. */
+function optionalYmdStringOrNull(
+  message = "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
+) {
+  return z.preprocess((val) => {
+    if (val === "") return null;
+    if (val === null) return null;
+    if (val === undefined) return undefined;
+    return val;
+  }, z.union([z.string().regex(ymdRegex, message), z.null()]).optional());
+}
+
 // ============================
 // Main Bid Validations
 // ============================
 
 export const getBidsQuerySchema = z.object({
   query: z.object({
-    organizationId: uuidSchema.optional(), // Optional: Client organization ID (not T3). If not provided, returns all bids
+    organizationId: z
+      .union([uuidSchema, z.array(uuidSchema)])
+      .optional(), // Optional: one or more client org IDs (repeat query param). If omitted, returns all bids
     page: z
       .string()
       .optional()
@@ -84,7 +109,12 @@ export const getBidsQuerySchema = z.object({
       .transform((val) =>
         val === undefined ? undefined : Array.isArray(val) ? val : [val],
       ),
-    jobType: bidJobTypeEnum.optional(),
+    jobType: z
+      .union([bidJobTypeEnum, z.array(bidJobTypeEnum)])
+      .optional()
+      .transform((val) =>
+        val === undefined ? undefined : Array.isArray(val) ? val : [val],
+      ),
     priority: bidPriorityEnum.optional(),
     assignedTo: uuidSchema.optional(),
     search: z.string().optional(),
@@ -147,13 +177,7 @@ export const createBidSchema = z.object({
       scopeOfWork: z.string().optional(),
       specialRequirements: z.string().optional(),
       description: z.string().optional(),
-      endDate: z
-        .string()
-        .regex(
-          /^\d{4}-\d{2}-\d{2}$/,
-          "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-        )
-        .optional(),
+      endDate: optionalYmdString(),
       plannedStartDate: z
         .string()
         .regex(
@@ -194,6 +218,10 @@ export const createBidSchema = z.object({
       specialTerms: z.string().optional(),
       exclusions: z.string().optional(),
       proposalBasis: z.string().optional(),
+      proposalBasisItems: z
+        .array(z.string().max(8000))
+        .max(200)
+        .optional(),
       referenceDate: z
         .string()
         .max(50, "Reference date is too long (maximum 50 characters)")
@@ -608,13 +636,7 @@ export const updateBidSchema = z.object({
     scopeOfWork: z.string().optional(),
     specialRequirements: z.string().optional(),
     description: z.string().optional(),
-    endDate: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Date must be in YYYY-MM-DD format (e.g., 2024-01-15)",
-      )
-      .optional(),
+    endDate: optionalYmdStringOrNull(),
     plannedStartDate: z
       .string()
       .regex(
@@ -655,6 +677,10 @@ export const updateBidSchema = z.object({
     specialTerms: z.string().optional(),
     exclusions: z.string().optional(),
     proposalBasis: z.string().optional(),
+    proposalBasisItems: z
+      .array(z.string().max(8000))
+      .max(200)
+      .optional(),
     referenceDate: z
       .string()
       .max(50, "Reference date is too long (maximum 50 characters)")
@@ -2227,6 +2253,93 @@ export const deleteBidMediaSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
     mediaId: uuidSchema,
+  }),
+});
+
+// ============================
+// Bid Walk Photos Validations
+// ============================
+
+export const createBidWalkPhotosSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  body: z
+    .object({
+      caption: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const getBidWalkPhotosSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+  }),
+  query: z
+    .object({
+      mediaType: z
+        .enum(["photo", "video", "audio"], {
+          message: "mediaType must be one of: photo, video, audio",
+        })
+        .optional(),
+      dateRange: z
+        .enum(["today", "this_week", "this_month", "this_year"], {
+          message:
+            "dateRange must be one of: today, this_week, this_month, this_year",
+        })
+        .optional(),
+      sortBy: z
+        .enum(["date", "name", "size"], {
+          message: "sortBy must be one of: date, name, size",
+        })
+        .optional(),
+      sortOrder: z
+        .enum(["asc", "desc"], {
+          message: "sortOrder must be one of: asc, desc",
+        })
+        .optional(),
+      page: z.coerce.number().int().min(1).max(10_000).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    })
+    .optional(),
+});
+
+export const getBidWalkPhotoByIdSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    walkPhotoId: uuidSchema,
+  }),
+});
+
+export const previewBidWalkPhotoSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    walkPhotoId: uuidSchema,
+  }),
+});
+
+export const updateBidWalkPhotoSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    walkPhotoId: uuidSchema,
+  }),
+  body: z.object({
+    fileName: z
+      .string()
+      .max(255, "File name is too long (maximum 255 characters)")
+      .optional(),
+    mediaType: z
+      .string()
+      .max(50, "Media type is too long (maximum 50 characters)")
+      .optional(),
+    caption: z.string().optional(),
+  }),
+});
+
+export const deleteBidWalkPhotoSchema = z.object({
+  params: z.object({
+    bidId: uuidSchema,
+    walkPhotoId: uuidSchema,
   }),
 });
 

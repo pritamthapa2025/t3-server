@@ -13,6 +13,7 @@ import {
   unique,
   index,
 } from "drizzle-orm/pg-core";
+// timesheet_safety_block_vehicle_id references org.vehicles in DB (FK in migration); no TS reference to avoid schema import cycles.
 import { users } from "./auth.schema.js";
 
 // Import enums from centralized location
@@ -134,6 +135,16 @@ export const employees = org.table(
     violations: integer("violations").default(0), // number of violations
     note: jsonb("note"),
     status: employeeStatusEnum("status").notNull().default("available"),
+
+    /** Set when assigned driver ignores safety inspection reminders (B14); cleared on compliant inspection. */
+    timesheetBlockedSafetyInspection: boolean(
+      "timesheet_blocked_safety_inspection",
+    )
+      .default(false)
+      .notNull(),
+    /** Vehicle that triggered the block (org.vehicles.id). */
+    timesheetSafetyBlockVehicleId: uuid("timesheet_safety_block_vehicle_id"),
+
     isDeleted: boolean("is_deleted").default(false),
     deletedAt: timestamp("deleted_at"),
     deletedBy: uuid("deleted_by").references(() => users.id, {}),

@@ -89,6 +89,8 @@ export const loginUserHandler = async (req: Request, res: Response) => {
               ...(profile.employeeTableId != null && {
                 employeeTableId: profile.employeeTableId,
                 employeeId: profile.employeeCode ?? null,
+                timesheetBlockedForSafetyInspection:
+                  profile.timesheetBlockedForSafetyInspection === true,
               }),
             },
             trustedDevice: true,
@@ -247,6 +249,8 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           ...(profile.employeeTableId != null && {
             employeeTableId: profile.employeeTableId,
             employeeId: profile.employeeCode ?? null,
+            timesheetBlockedForSafetyInspection:
+              profile.timesheetBlockedForSafetyInspection === true,
           }),
         },
         deviceRemembered: deviceTokenSet,
@@ -336,6 +340,8 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
           ? {
               employeeTableId: row.employeeTableId,
               employeeId: row.employeeCode ?? null,
+              timesheetBlockedForSafetyInspection:
+                row.timesheetBlockedForSafetyInspection === true,
             }
           : {}),
       },

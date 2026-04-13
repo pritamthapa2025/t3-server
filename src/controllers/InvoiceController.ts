@@ -8,7 +8,9 @@ import {
   generateAndSaveInvoicePDF,
   prepareInvoiceDataForPDF,
   generateInvoicePDF,
+  issuerCompanyFromGeneralSettings,
 } from "../services/pdf.service.js";
+import { getGeneralSettings } from "../services/settings.service.js";
 import { getOrganizationById } from "../services/client.service.js";
 import { getBidFinancialBreakdown } from "../services/bid.service.js";
 import { sendInvoiceEmail as sendInvoiceEmailService } from "../services/email.service.js";
@@ -39,6 +41,23 @@ async function logJobInvoiceHistory(
   } catch (e) {
     logger.error("Failed to write job history for invoice action", e);
   }
+}
+
+async function getIssuerCompanyForInvoicePdf() {
+  const general = await getGeneralSettings();
+  return issuerCompanyFromGeneralSettings(general);
+}
+
+async function bidProjectNameForInvoicePdf(
+  bidId: string | null | undefined,
+): Promise<string | null> {
+  if (!bidId) return null;
+  const [row] = await db
+    .select({ projectName: bidsTable.projectName })
+    .from(bidsTable)
+    .where(eq(bidsTable.id, bidId))
+    .limit(1);
+  return row?.projectName?.trim() ?? null;
 }
 
 /**
@@ -1222,26 +1241,30 @@ export const sendInvoiceEmail = async (req: Request, res: Response) => {
     let pdfAttachment = undefined;
     if (attachPdf !== false) {
       try {
-        const pdfOptions =
-          primaryContact || job
-            ? {
-                ...(primaryContact && {
-                  primaryContact: {
-                    fullName: primaryContact.fullName ?? null,
-                  },
-                }),
-                ...(job && {
-                  job: {
-                    jobType: (job as any).jobType ?? null,
-                    description: (job as any).description ?? null,
-                  },
-                }),
-              }
-            : undefined;
+        const poNumbersDisplay =
+          await invoicingService.formatInvoiceLinkedPoNumbersLine(
+            invoice.purchaseOrderIds,
+          );
+        const pdfOptions = {
+          ...(primaryContact && {
+            primaryContact: {
+              fullName: primaryContact.fullName ?? null,
+            },
+          }),
+          ...(job && {
+            job: {
+              jobType: (job as any).jobType ?? null,
+              description: (job as any).description ?? null,
+              projectName: bid?.projectName?.trim() ?? null,
+            },
+          }),
+          poNumbersDisplay,
+        };
+        const issuerCompany = await getIssuerCompanyForInvoicePdf();
         const invoiceData = prepareInvoiceDataForPDF(
           invoice,
-          organization, // T3 Mechanical company info (stays as is from direct db query)
-          organization, // client is same as organization
+          issuerCompany,
+          organization,
           invoice.lineItems || [],
           financialBreakdown,
           pdfOptions,
@@ -1439,38 +1462,31 @@ export const sendInvoiceEmailTest = async (req: Request, res: Response) => {
     let pdfError: string | undefined;
     if (attachPdf !== false) {
       try {
-        const pdfOptions =
-          primaryContact || job
-            ? {
-                ...(primaryContact && {
-                  primaryContact: {
-                    fullName: primaryContact.fullName ?? null,
-                  },
-                }),
-                ...(job && {
-                  job: {
-                    jobType: (job as any).jobType ?? null,
-                    description: (job as any).description ?? null,
-                  },
-                }),
-              }
-            : undefined;
-
-        // T3 Mechanical company info
-        const t3MechanicalInfo = {
-          name: "T3 Mechanical Inc.",
-          address: "4749 Bennett Drive, Suite H",
-          city: "Livermore",
-          state: "CA",
-          zipCode: "94551",
-          phone: "(888) 488-2312",
-          email: "info@t3mechanicalinc.com",
+        const poNumbersDisplay =
+          await invoicingService.formatInvoiceLinkedPoNumbersLine(
+            invoice.purchaseOrderIds,
+          );
+        const pdfOptions = {
+          ...(primaryContact && {
+            primaryContact: {
+              fullName: primaryContact.fullName ?? null,
+            },
+          }),
+          ...(job && {
+            job: {
+              jobType: (job as any).jobType ?? null,
+              description: (job as any).description ?? null,
+              projectName: bid?.projectName?.trim() ?? null,
+            },
+          }),
+          poNumbersDisplay,
         };
 
+        const issuerCompany = await getIssuerCompanyForInvoicePdf();
         const invoiceData = prepareInvoiceDataForPDF(
           invoice,
-          t3MechanicalInfo, // T3 Mechanical info for header
-          organization ?? {}, // Client organization for Bill To
+          issuerCompany,
+          organization ?? {},
           invoice.lineItems || [],
           financialBreakdown,
           pdfOptions,
@@ -2155,32 +2171,29 @@ export const downloadInvoicePDF = async (req: Request, res: Response) => {
       }
     }
 
-    // Prepare PDF options with job type
-    const pdfOptions = job
-      ? {
-          job: {
-            jobType: job.jobType ?? null,
-            description: job.description ?? null,
-          },
-        }
-      : undefined;
-
-    // T3 Mechanical company info (hardcoded for now, can be moved to config)
-    const t3MechanicalInfo = {
-      name: "T3 Mechanical Inc.",
-      address: "4749 Bennett Drive, Suite H",
-      city: "Livermore",
-      state: "CA",
-      zipCode: "94551",
-      phone: "(888) 488-2312",
-      email: "info@t3mechanicalinc.com",
+    const projectName = job?.bidId
+      ? await bidProjectNameForInvoicePdf(job.bidId)
+      : null;
+    const poNumbersDisplay =
+      await invoicingService.formatInvoiceLinkedPoNumbersLine(
+        invoice.purchaseOrderIds,
+      );
+    const pdfOptions = {
+      ...(job && {
+        job: {
+          jobType: job.jobType ?? null,
+          description: job.description ?? null,
+          projectName,
+        },
+      }),
+      poNumbersDisplay,
     };
 
-    // Prepare data for PDF generation
+    const issuerCompany = await getIssuerCompanyForInvoicePdf();
     const pdfData = prepareInvoiceDataForPDF(
       invoice,
-      t3MechanicalInfo, // T3 Mechanical info for header
-      clientOrg.organization, // Client organization for Bill To
+      issuerCompany,
+      clientOrg.organization,
       invoice.lineItems || [],
       financialBreakdown,
       pdfOptions,
@@ -2289,32 +2302,29 @@ export const previewInvoicePDF = async (req: Request, res: Response) => {
       }
     }
 
-    // Prepare PDF options with job type
-    const pdfOptions = job
-      ? {
-          job: {
-            jobType: job.jobType ?? null,
-            description: job.description ?? null,
-          },
-        }
-      : undefined;
-
-    // T3 Mechanical company info (hardcoded for now, can be moved to config)
-    const t3MechanicalInfo = {
-      name: "T3 Mechanical Inc.",
-      address: "4749 Bennett Drive, Suite H",
-      city: "Livermore",
-      state: "CA",
-      zipCode: "94551",
-      phone: "(888) 488-2312",
-      email: "info@t3mechanicalinc.com",
+    const projectName = job?.bidId
+      ? await bidProjectNameForInvoicePdf(job.bidId)
+      : null;
+    const poNumbersDisplay =
+      await invoicingService.formatInvoiceLinkedPoNumbersLine(
+        invoice.purchaseOrderIds,
+      );
+    const pdfOptions = {
+      ...(job && {
+        job: {
+          jobType: job.jobType ?? null,
+          description: job.description ?? null,
+          projectName,
+        },
+      }),
+      poNumbersDisplay,
     };
 
-    // Prepare data for PDF generation
+    const issuerCompany = await getIssuerCompanyForInvoicePdf();
     const pdfData = prepareInvoiceDataForPDF(
       invoice,
-      t3MechanicalInfo, // T3 Mechanical info for header
-      clientOrg.organization, // Client organization for Bill To
+      issuerCompany,
+      clientOrg.organization,
       invoice.lineItems || [],
       financialBreakdown,
       pdfOptions,

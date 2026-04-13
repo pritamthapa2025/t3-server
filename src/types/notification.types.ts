@@ -253,6 +253,12 @@ export const NOTIFICATION_EVENT_TYPES = {
   MAINTENANCE_DUE_3DAYS: "maintenance_due_3days",
   MAINTENANCE_OVERDUE: "maintenance_overdue",
   SAFETY_INSPECTION_REQUIRED: "safety_inspection_required",
+  SAFETY_INSPECTION_DRIVER_REMINDER: "safety_inspection_driver_reminder",
+  SAFETY_INSPECTION_ASSIGNED_ESCALATION: "safety_inspection_assigned_escalation",
+  SAFETY_INSPECTION_TIMESHEET_BLOCK_ESCALATION:
+    "safety_inspection_timesheet_block_escalation",
+  SAFETY_INSPECTION_DRIVER_TIMESHEET_BLOCKED:
+    "safety_inspection_driver_timesheet_blocked",
   SAFETY_INSPECTION_EXPIRED: "safety_inspection_expired",
   SAFETY_INSPECTION_FAILED: "safety_inspection_failed",
   DRIVER_REASSIGNED: "driver_reassigned",

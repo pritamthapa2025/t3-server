@@ -581,6 +581,7 @@ export const createClient = async (
       .values({
         clientId,
         name: data.name,
+        isDirect: data.isDirect !== undefined ? Boolean(data.isDirect) : true,
         clientTypeId: data.clientTypeId,
         status: (data.status as any) || "prospect",
         website: data.website,

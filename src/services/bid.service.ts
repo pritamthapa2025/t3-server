@@ -14,6 +14,10 @@ import {
   isNotNull,
 } from "drizzle-orm";
 import { db } from "../config/db.js";
+import {
+  coerceProposalBasisStorage,
+  formatProposalBasisFromItems,
+} from "../utils/proposal-basis-storage.js";
 import { cachedOrgAggregate } from "../utils/org-aggregate-cache.js";
 import {
   bidsTable,
@@ -34,6 +38,7 @@ import {
   bidDocumentTags,
   bidDocumentTagLinks,
   bidMedia,
+  bidWalkPhotos,
   bidPlanSpecFiles,
   bidDesignBuildFiles,
 } from "../drizzle/schema/bids.schema.js";
@@ -60,6 +65,12 @@ import { getTableColumns } from "drizzle-orm";
 import { isStale, STALE_DATA } from "../utils/optimistic-lock.js";
 import { getOrganizationById } from "./client.service.js";
 import { getOperatingExpenseDefaults } from "./settings.service.js";
+import {
+  removeBidEndDateGoogleCalendar,
+  removeGoogleCalendarEventsForDispatchTask,
+  syncBidEndDateGoogleCalendar,
+} from "./google-calendar.service.js";
+import { logger } from "../utils/logger.js";
 
 // ============================
 // Main Bid Operations
@@ -167,12 +178,12 @@ export type GetBidsFilterOptions = {
 };
 
 export const getBids = async (
-  organizationId: string | undefined,
   offset: number,
   limit: number,
   filters?: {
+    organizationIds?: string[];
     status?: string[];
-    jobType?: string;
+    jobType?: string[];
     priority?: string;
     assignedTo?: string;
     search?: string;
@@ -191,16 +202,17 @@ export const getBids = async (
     ne(bidsTable.status, "won"),
   ];
 
-  // If organizationId is provided, filter by it
-  if (organizationId) {
-    whereConditions.push(eq(bidsTable.organizationId, organizationId));
+  if (filters?.organizationIds && filters.organizationIds.length > 0) {
+    whereConditions.push(
+      inArray(bidsTable.organizationId, filters.organizationIds),
+    );
   }
 
   if (filters?.status && filters.status.length > 0) {
     whereConditions.push(inArray(bidsTable.status, filters.status as any[]));
   }
-  if (filters?.jobType) {
-    whereConditions.push(eq(bidsTable.jobType, filters.jobType as any));
+  if (filters?.jobType && filters.jobType.length > 0) {
+    whereConditions.push(inArray(bidsTable.jobType, filters.jobType as any[]));
   }
   if (filters?.priority) {
     whereConditions.push(eq(bidsTable.priority, filters.priority as any));
@@ -403,6 +415,9 @@ export const getBids = async (
 
     return {
       ...item.bid,
+      proposalBasis: formatProposalBasisFromItems(
+        item.bid.proposalBasisItems as string[] | undefined,
+      ),
       bidAmount: effectiveBidAmount,
       totalPrice: item.totalPrice ?? null,
       createdByName: item.createdByName ?? null,
@@ -523,6 +538,9 @@ export const getBidById = async (id: string) => {
   });
   return {
     ...result.bid,
+    proposalBasis: formatProposalBasisFromItems(
+      result.bid.proposalBasisItems as string[] | undefined,
+    ),
     bidAmount: result.actualTotalPrice ?? null,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
@@ -564,6 +582,9 @@ export const getBidByIdSimple = async (id: string) => {
   });
   return {
     ...result.bid,
+    proposalBasis: formatProposalBasisFromItems(
+      result.bid.proposalBasisItems as string[] | undefined,
+    ),
     bidAmount: result.actualTotalPrice ?? null,
     createdByName: result.createdByName ?? null,
     assignedToName: result.assignedToName ?? null,
@@ -695,6 +716,7 @@ export const createBid = async (data: {
   specialTerms?: string;
   exclusions?: string;
   proposalBasis?: string;
+  proposalBasisItems?: unknown;
   referenceDate?: string;
   templateSelection?: string;
   supervisorManager?: number;
@@ -774,6 +796,11 @@ export const createBid = async (data: {
 
   const endDateVal = toDateOrUndefined(data.endDate);
 
+  const basisStored = coerceProposalBasisStorage({
+    proposalBasis: data.proposalBasis ?? null,
+    proposalBasisItems: data.proposalBasisItems,
+  });
+
   // Resolve versioning when a parent is provided
   let resolvedVersionNumber = 1;
   let resolvedRootBidId: string | undefined;
@@ -818,7 +845,7 @@ export const createBid = async (data: {
       warrantyDetails: data.warrantyDetails || undefined,
       specialTerms: data.specialTerms || undefined,
       exclusions: data.exclusions || undefined,
-      proposalBasis: data.proposalBasis || undefined,
+      proposalBasisItems: basisStored.proposalBasisItems,
       referenceDate: data.referenceDate || undefined,
       templateSelection: data.templateSelection || undefined,
       supervisorManager: data.supervisorManager ?? undefined,
@@ -938,6 +965,13 @@ export const createBid = async (data: {
     }
   })();
 
+  void syncBidEndDateGoogleCalendar(bid.id).catch((err) => {
+    logger.error("[google-calendar] sync after createBid", {
+      bidId: bid.id,
+      err,
+    });
+  });
+
   return getBidById(bid.id);
 };
 
@@ -954,7 +988,7 @@ export const updateBid = async (
     scopeOfWork: string;
     specialRequirements: string;
     description: string;
-    endDate: string;
+    endDate: string | null;
     plannedStartDate: string;
     estimatedCompletion: string;
     removalDate: string;
@@ -967,6 +1001,7 @@ export const updateBid = async (
     specialTerms: string;
     exclusions: string;
     proposalBasis: string;
+    proposalBasisItems?: unknown;
     referenceDate: string;
     templateSelection: string;
     primaryContactId: string | null;
@@ -1032,6 +1067,35 @@ export const updateBid = async (
     return toLocalDateString(d);
   };
 
+  const dataWithBasis = data as typeof data & { proposalBasisItems?: unknown };
+  const proposalBasisItemsKeyPresent = Object.prototype.hasOwnProperty.call(
+    data,
+    "proposalBasisItems",
+  );
+  const patchProposalBasis =
+    proposalBasisItemsKeyPresent || data.proposalBasis !== undefined;
+
+  let proposalBasisItemsMerged: string[] | undefined;
+
+  if (patchProposalBasis) {
+    let mergeInput: { proposalBasis?: string | null; proposalBasisItems?: unknown };
+    if (proposalBasisItemsKeyPresent) {
+      mergeInput = {
+        proposalBasis:
+          data.proposalBasis !== undefined ? data.proposalBasis : null,
+        proposalBasisItems: dataWithBasis.proposalBasisItems,
+      };
+    } else {
+      mergeInput = {
+        proposalBasis: data.proposalBasis ?? null,
+        proposalBasisItems: [],
+      };
+    }
+
+    const coerced = coerceProposalBasisStorage(mergeInput);
+    proposalBasisItemsMerged = coerced.proposalBasisItems;
+  }
+
   const [bid] = await db
     .update(bidsTable)
     .set({
@@ -1044,7 +1108,13 @@ export const updateBid = async (
       scopeOfWork: data.scopeOfWork,
       specialRequirements: data.specialRequirements,
       description: data.description,
-      endDate: toDateOrUndefined(data.endDate),
+      endDate: (() => {
+        if (!Object.prototype.hasOwnProperty.call(data, "endDate")) {
+          return undefined;
+        }
+        if (data.endDate === null) return null;
+        return toDateOrUndefined(data.endDate as string);
+      })(),
       plannedStartDate: toDateOrUndefined(data.plannedStartDate),
       estimatedCompletion: toDateOrUndefined(data.estimatedCompletion),
       removalDate: toDateOrUndefined(data.removalDate),
@@ -1056,7 +1126,11 @@ export const updateBid = async (
       warrantyDetails: data.warrantyDetails,
       specialTerms: data.specialTerms,
       exclusions: data.exclusions,
-      proposalBasis: data.proposalBasis,
+      ...(patchProposalBasis
+        ? {
+            proposalBasisItems: proposalBasisItemsMerged,
+          }
+        : {}),
       referenceDate: data.referenceDate,
       templateSelection: data.templateSelection,
       primaryContactId: data.primaryContactId ?? undefined,
@@ -1104,8 +1178,7 @@ export const updateBid = async (
     typeof data.status === "string" && data.status.length > 0
       ? data.status
       : null;
-  const statusTransitioned =
-    newStatus !== null && newStatus !== previousStatus;
+  const statusTransitioned = newStatus !== null && newStatus !== previousStatus;
 
   // Fire status-based notifications (fire-and-forget)
   if (statusTransitioned && newStatus) {
@@ -1163,6 +1236,10 @@ export const updateBid = async (
     })();
   }
 
+  void syncBidEndDateGoogleCalendar(id).catch((err) => {
+    logger.error("[google-calendar] sync after updateBid", { bidId: id, err });
+  });
+
   return getBidById(id);
 };
 
@@ -1172,6 +1249,15 @@ export const deleteBid = async (
   deletedBy: string,
 ) => {
   const now = new Date();
+
+  try {
+    await removeBidEndDateGoogleCalendar(id);
+  } catch (err) {
+    logger.error("[google-calendar] remove bid end-date event on deleteBid", {
+      bidId: id,
+      err,
+    });
+  }
 
   // 1. Collect job IDs for this bid
   const jobRows = await db
@@ -1193,8 +1279,18 @@ export const deleteBid = async (
       );
     const taskIds = taskRows.map((r) => r.id);
 
-    // 3. Soft-delete dispatch assignments
+    // 3. Remove Google Calendar events for dispatch assignments, then soft-delete assignments
     if (taskIds.length > 0) {
+      for (const tid of taskIds) {
+        try {
+          await removeGoogleCalendarEventsForDispatchTask(tid);
+        } catch (err) {
+          logger.error(
+            "[google-calendar] remove dispatch events on deleteBid",
+            { taskId: tid, err },
+          );
+        }
+      }
       await db
         .update(dispatchAssignments)
         .set({ isDeleted: true, updatedAt: now })
@@ -1470,9 +1566,9 @@ export const updateBidFinancialBreakdown = async (
   // Client-sent grossProfit is intentionally ignored because it is frequently
   // wrong (e.g. PM bids where the client sets it to "0" even though the
   // contract value creates real profit over direct costs).
-  const grossProfit = (
-    parseFloat(totalPrice) - parseFloat(totalCost)
-  ).toFixed(2);
+  const grossProfit = (parseFloat(totalPrice) - parseFloat(totalCost)).toFixed(
+    2,
+  );
 
   const setPayload: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -2096,15 +2192,13 @@ export const deleteBidMaterial = async (
     .from(bidMaterials)
     .where(eq(bidMaterials.id, id))
     .limit(1);
-  
+
   if (!material) {
     return null;
   }
-  
+
   // Hard delete - actually remove from database
-  await db
-    .delete(bidMaterials)
-    .where(eq(bidMaterials.id, id));
+  await db.delete(bidMaterials).where(eq(bidMaterials.id, id));
   return material;
 };
 
@@ -2318,21 +2412,17 @@ export const deleteBidLabor = async (id: string) => {
     .leftJoin(positions, eq(bidLabor.positionId, positions.id))
     .where(eq(bidLabor.id, id))
     .limit(1);
-  
+
   if (!labor) {
     return null;
   }
-  
+
   // First, hard delete all associated travel entries
-  await db
-    .delete(bidTravel)
-    .where(eq(bidTravel.bidLaborId, id));
-  
+  await db.delete(bidTravel).where(eq(bidTravel.bidLaborId, id));
+
   // Then hard delete the labor entry
-  await db
-    .delete(bidLabor)
-    .where(eq(bidLabor.id, id));
-  
+  await db.delete(bidLabor).where(eq(bidLabor.id, id));
+
   return labor;
 };
 
@@ -2585,8 +2675,10 @@ export const updateBidTravel = async (
   const setPayload: Record<string, unknown> = { updatedAt: new Date() };
 
   // Always persist origin fields when provided
-  if ("originAddressId" in data) setPayload.originAddressId = data.originAddressId ?? null;
-  if ("originAddress" in data) setPayload.originAddress = data.originAddress ?? null;
+  if ("originAddressId" in data)
+    setPayload.originAddressId = data.originAddressId ?? null;
+  if ("originAddress" in data)
+    setPayload.originAddress = data.originAddress ?? null;
 
   if (hasActual) {
     if (data.actualRoundTripMiles !== undefined)
@@ -2662,15 +2754,13 @@ export const deleteBidTravel = async (id: string) => {
     .from(bidTravel)
     .where(eq(bidTravel.id, id))
     .limit(1);
-  
+
   if (!travel) {
     return null;
   }
-  
+
   // Hard delete - actually remove from database
-  await db
-    .delete(bidTravel)
-    .where(eq(bidTravel.id, id));
+  await db.delete(bidTravel).where(eq(bidTravel.id, id));
   return travel;
 };
 
@@ -4349,6 +4439,255 @@ export const deleteBidMedia = async (mediaId: string) => {
 };
 
 // ============================
+// Bid Walk Photos (same behavior as bid media, separate table)
+// ============================
+
+function buildBidWalkPhotosWhereAndOrder(
+  bidId: string,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) {
+  const conditions: any[] = [
+    eq(bidWalkPhotos.bidId, bidId),
+    eq(bidWalkPhotos.isDeleted, false),
+  ];
+
+  if (options?.mediaType) {
+    conditions.push(eq(bidWalkPhotos.mediaType, options.mediaType));
+  }
+
+  if (options?.dateRange) {
+    const now = new Date();
+    let from: Date;
+    if (options.dateRange === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (options.dateRange === "this_week") {
+      from = new Date(now);
+      from.setDate(now.getDate() - now.getDay());
+      from.setHours(0, 0, 0, 0);
+    } else if (options.dateRange === "this_month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      from = new Date(now.getFullYear(), 0, 1);
+    }
+    conditions.push(sql`${bidWalkPhotos.createdAt} >= ${from.toISOString()}`);
+  }
+
+  const sortField =
+    options?.sortBy === "name"
+      ? bidWalkPhotos.fileName
+      : options?.sortBy === "size"
+        ? bidWalkPhotos.fileSize
+        : bidWalkPhotos.createdAt;
+  const orderBy =
+    options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
+
+  return { where: and(...conditions), orderBy };
+}
+
+export const getBidWalkPhotos = async (
+  bidId: string,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const { where, orderBy } = buildBidWalkPhotosWhereAndOrder(bidId, options);
+
+  const rows = await db
+    .select({
+      photo: bidWalkPhotos,
+      uploadedByName: users.fullName,
+    })
+    .from(bidWalkPhotos)
+    .leftJoin(users, eq(bidWalkPhotos.uploadedBy, users.id))
+    .where(where)
+    .orderBy(orderBy);
+
+  return rows.map((item) => ({
+    ...item.photo,
+    uploadedByName: item.uploadedByName || null,
+  }));
+};
+
+export const getBidWalkPhotosPaginated = async (
+  bidId: string,
+  page: number,
+  limit: number,
+  options?: {
+    mediaType?: "photo" | "video" | "audio";
+    dateRange?: "today" | "this_week" | "this_month" | "this_year";
+    sortBy?: "date" | "name" | "size";
+    sortOrder?: "asc" | "desc";
+  },
+) => {
+  const { where, orderBy } = buildBidWalkPhotosWhereAndOrder(bidId, options);
+  const offset = (page - 1) * limit;
+
+  const countResult = await db
+    .select({ total: count() })
+    .from(bidWalkPhotos)
+    .where(where);
+  const total = Number(countResult[0]?.total ?? 0);
+
+  const rows = await db
+    .select({
+      photo: bidWalkPhotos,
+      uploadedByName: users.fullName,
+    })
+    .from(bidWalkPhotos)
+    .leftJoin(users, eq(bidWalkPhotos.uploadedBy, users.id))
+    .where(where)
+    .orderBy(orderBy)
+    .limit(limit)
+    .offset(offset);
+
+  const data = rows.map((item) => ({
+    ...item.photo,
+    uploadedByName: item.uploadedByName || null,
+  }));
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    } satisfies BidMediaPagination,
+  };
+};
+
+export const getBidWalkPhotoById = async (photoId: string) => {
+  const [result] = await db
+    .select({
+      photo: bidWalkPhotos,
+      uploadedByName: users.fullName,
+    })
+    .from(bidWalkPhotos)
+    .leftJoin(users, eq(bidWalkPhotos.uploadedBy, users.id))
+    .where(and(eq(bidWalkPhotos.id, photoId), eq(bidWalkPhotos.isDeleted, false)));
+
+  if (!result) return null;
+
+  return {
+    ...result.photo,
+    uploadedByName: result.uploadedByName || null,
+  };
+};
+
+export const createBidWalkPhoto = async (data: {
+  bidId: string;
+  fileName: string;
+  filePath: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileSize?: number;
+  mediaType?: string;
+  thumbnailPath?: string;
+  thumbnailUrl?: string;
+  caption?: string;
+  uploadedBy: string;
+}) => {
+  const [row] = await db
+    .insert(bidWalkPhotos)
+    .values({
+      bidId: data.bidId,
+      fileName: data.fileName,
+      filePath: data.filePath,
+      fileUrl: data.fileUrl || undefined,
+      fileType: data.fileType || undefined,
+      fileSize: data.fileSize || undefined,
+      mediaType: data.mediaType || undefined,
+      thumbnailPath: data.thumbnailPath || undefined,
+      thumbnailUrl: data.thumbnailUrl || undefined,
+      caption: data.caption || undefined,
+      uploadedBy: data.uploadedBy,
+    })
+    .returning();
+  return row;
+};
+
+export const createMultipleBidWalkPhotos = async (
+  bidId: string,
+  files: Array<{
+    fileName: string;
+    filePath: string;
+    fileUrl?: string;
+    fileType?: string;
+    fileSize?: number;
+    mediaType?: string;
+    thumbnailPath?: string;
+    thumbnailUrl?: string;
+    caption?: string;
+    uploadedBy: string;
+  }>,
+) => {
+  if (files.length === 0) return [];
+  return await db
+    .insert(bidWalkPhotos)
+    .values(
+      files.map((f) => ({
+        bidId,
+        fileName: f.fileName,
+        filePath: f.filePath,
+        fileUrl: f.fileUrl || undefined,
+        fileType: f.fileType || undefined,
+        fileSize: f.fileSize || undefined,
+        mediaType: f.mediaType || undefined,
+        thumbnailPath: f.thumbnailPath || undefined,
+        thumbnailUrl: f.thumbnailUrl || undefined,
+        caption: f.caption || undefined,
+        uploadedBy: f.uploadedBy,
+      })),
+    )
+    .returning();
+};
+
+export const updateBidWalkPhoto = async (
+  photoId: string,
+  data: Partial<{
+    fileName: string;
+    filePath: string;
+    fileUrl: string;
+    fileType: string;
+    fileSize: number;
+    mediaType: string;
+    thumbnailPath: string;
+    thumbnailUrl: string;
+    caption: string;
+  }>,
+) => {
+  const [row] = await db
+    .update(bidWalkPhotos)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(bidWalkPhotos.id, photoId), eq(bidWalkPhotos.isDeleted, false)))
+    .returning();
+  return row || null;
+};
+
+export const deleteBidWalkPhoto = async (photoId: string) => {
+  const [row] = await db
+    .update(bidWalkPhotos)
+    .set({
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(bidWalkPhotos.id, photoId), eq(bidWalkPhotos.isDeleted, false)))
+    .returning();
+  return row || null;
+};
+
+// ============================
 // Bids KPIs
 // ============================
 
@@ -4388,7 +4727,9 @@ const computeBidsKPIs = async () => {
     db
       .select({ count: count() })
       .from(bidsTable)
-      .where(and(eq(bidsTable.isDeleted, false), eq(bidsTable.status, "draft"))),
+      .where(
+        and(eq(bidsTable.isDeleted, false), eq(bidsTable.status, "draft")),
+      ),
     db
       .select({ count: count() })
       .from(bidsTable)

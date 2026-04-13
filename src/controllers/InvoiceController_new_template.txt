@@ -771,7 +771,7 @@
                 <div class="info-content">${emailAddress}</div>
             </div>
             <div class="info-box">
-                <div class="info-label">Client Address</div>
+                <div class="info-label">Address</div>
                 <div class="info-content">${clientAddress}</div>
             </div>
         </div>

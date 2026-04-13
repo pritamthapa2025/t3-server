@@ -124,6 +124,9 @@ export const dispatchAssignments = org.table(
     isDeleted: boolean("is_deleted").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
+
+    /** Google Calendar event id on the technician's primary calendar (domain-wide delegation). */
+    googleCalendarEventId: varchar("google_calendar_event_id", { length: 512 }),
   },
   (table) => [
     index("idx_dispatch_assignments_task").on(table.taskId),

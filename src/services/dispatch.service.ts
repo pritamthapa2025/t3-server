@@ -38,6 +38,13 @@ import type {
   UpdateDispatchAssignmentData,
 } from "../types/dispatch.types.js";
 import { naiveDT, businessTodayLocalDateString } from "../utils/naive-datetime.js";
+import {
+  removeGoogleCalendarEventsForDispatchTask,
+  removeDispatchAssignmentGoogleCalendar,
+  syncDispatchAssignmentGoogleCalendar,
+  syncAllDispatchAssignmentsForTaskGoogleCalendar,
+  deleteDispatchAssignmentGoogleCalendarIfReassigned,
+} from "./google-calendar.service.js";
 
 // ============================
 // DISPATCH TASKS SERVICE
@@ -481,6 +488,14 @@ export const updateDispatchTask = async (
 
   // If technicianIds provided, replace assignments: soft-delete existing, create new
   if (data.technicianIds !== undefined) {
+    try {
+      await removeGoogleCalendarEventsForDispatchTask(id);
+    } catch (err) {
+      logger.error(
+        "[google-calendar] remove events before replacing technicians",
+        { taskId: id, err },
+      );
+    }
     // Track which techs were already assigned so we only notify NEW additions
     const existingAssignments = await db
       .select({ technicianId: dispatchAssignments.technicianId })
@@ -522,12 +537,28 @@ export const updateDispatchTask = async (
     }
   }
 
+  void syncAllDispatchAssignmentsForTaskGoogleCalendar(id).catch((err) => {
+    logger.error("[google-calendar] sync after updateDispatchTask", {
+      taskId: id,
+      err,
+    });
+  });
+
   return await getDispatchTaskById(id);
 };
 
 // Soft Delete Dispatch Task
 export const deleteDispatchTask = async (id: string, deletedBy: string) => {
   const now = new Date();
+
+  try {
+    await removeGoogleCalendarEventsForDispatchTask(id);
+  } catch (err) {
+    logger.error("[google-calendar] remove events on deleteDispatchTask", {
+      taskId: id,
+      err,
+    });
+  }
 
   // 1. Soft-delete all assignments for this task + nullify vehicle currentDispatchTaskId (in parallel)
   await Promise.all([
@@ -713,6 +744,15 @@ export const createDispatchAssignment = async (
     })();
   }
 
+  if (assignment?.id) {
+    void syncDispatchAssignmentGoogleCalendar(assignment.id).catch((err) => {
+      logger.error("[google-calendar] sync after createDispatchAssignment", {
+        assignmentId: assignment.id,
+        err,
+      });
+    });
+  }
+
   return assignment;
 };
 
@@ -728,6 +768,7 @@ export const updateDispatchAssignment = async (
       technicianId: dispatchAssignments.technicianId,
       taskId: dispatchAssignments.taskId,
       updatedAt: dispatchAssignments.updatedAt,
+      googleCalendarEventId: dispatchAssignments.googleCalendarEventId,
     })
     .from(dispatchAssignments)
     .where(
@@ -740,6 +781,26 @@ export const updateDispatchAssignment = async (
 
   if (!existing) return null;
   if (isStale(existing.updatedAt, clientUpdatedAt)) return STALE_DATA;
+
+  if (
+    data.technicianId !== undefined &&
+    existing.technicianId != null &&
+    data.technicianId !== existing.technicianId &&
+    existing.googleCalendarEventId
+  ) {
+    try {
+      await deleteDispatchAssignmentGoogleCalendarIfReassigned(
+        id,
+        existing.technicianId,
+        existing.googleCalendarEventId,
+      );
+    } catch (err) {
+      logger.error(
+        "[google-calendar] delete event on technician reassignment",
+        { assignmentId: id, err },
+      );
+    }
+  }
 
   const updateData: any = {
     updatedAt: new Date(),
@@ -835,16 +896,35 @@ export const updateDispatchAssignment = async (
     })();
   }
 
+  if (updated?.id) {
+    void syncDispatchAssignmentGoogleCalendar(updated.id).catch((err) => {
+      logger.error("[google-calendar] sync after updateDispatchAssignment", {
+        assignmentId: updated.id,
+        err,
+      });
+    });
+  }
+
   return updated;
 };
 
 // Soft Delete Dispatch Assignment
 export const deleteDispatchAssignment = async (id: string) => {
+  try {
+    await removeDispatchAssignmentGoogleCalendar(id);
+  } catch (err) {
+    logger.error("[google-calendar] remove on deleteDispatchAssignment", {
+      assignmentId: id,
+      err,
+    });
+  }
+
   const result = await db
     .update(dispatchAssignments)
     .set({
       isDeleted: true,
       updatedAt: new Date(),
+      googleCalendarEventId: null,
     })
     .where(
       and(

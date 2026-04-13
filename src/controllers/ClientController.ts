@@ -681,7 +681,8 @@ export const getClientContactByIdHandler = async (
         .json({ success: false, message: "Contact ID is required" });
     }
 
-    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId)))
+      return;
 
     const contact = await getClientContactById(contactId);
 
@@ -991,7 +992,8 @@ export const getClientNoteByIdHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Note ID is required" });
     }
 
-    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId)))
+      return;
 
     const note = await getClientNoteById(noteId);
 
@@ -2146,7 +2148,8 @@ export const getClientDocumentByIdHandler = async (
       });
     }
 
-    if (clientId && !(await checkClientAssignedAccess(req, res, clientId))) return;
+    if (clientId && !(await checkClientAssignedAccess(req, res, clientId)))
+      return;
 
     const document = await getClientDocumentById(documentId);
 
@@ -2661,7 +2664,9 @@ export const bulkDeleteClientsHandler = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId)
-      return res.status(403).json({ success: false, message: "Authentication required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Authentication required" });
 
     const { ids } = req.body as { ids: string[] };
     const result = await bulkDeleteClients(ids, userId);
@@ -2674,7 +2679,9 @@ export const bulkDeleteClientsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Bulk delete clients error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -2686,11 +2693,22 @@ export const getClientJobsHandler = async (req: Request, res: Response) => {
   try {
     const id = asSingleString(req.params.id);
     if (!id) {
-      return res.status(400).json({ success: false, message: "Client ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Client ID is required" });
     }
 
-    const page = Math.max(1, parseInt(asSingleString(req.query.page as string) || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(asSingleString(req.query.limit as string) || "10", 10)));
+    const page = Math.max(
+      1,
+      parseInt(asSingleString(req.query.page as string) || "1", 10),
+    );
+    const limit = Math.min(
+      100,
+      Math.max(
+        1,
+        parseInt(asSingleString(req.query.limit as string) || "10", 10),
+      ),
+    );
     const offset = (page - 1) * limit;
     const status = asSingleString(req.query.status as string) || undefined;
     const search = asSingleString(req.query.search as string) || undefined;
@@ -2698,7 +2716,9 @@ export const getClientJobsHandler = async (req: Request, res: Response) => {
     // Verify client exists before querying
     const client = await getClientById(id);
     if (!client) {
-      return res.status(404).json({ success: false, message: "Client not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Client not found" });
     }
 
     const result = await getJobsByOrganizationId(id, offset, limit, {
@@ -2720,7 +2740,8 @@ export const getClientJobsHandler = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch client jobs",
-      detail: process.env.NODE_ENV === "development" ? error.message : undefined,
+      detail:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

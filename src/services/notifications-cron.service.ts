@@ -23,6 +23,7 @@ import {
   gte,
   gt,
   isNull,
+  isNotNull,
   sql,
   lt,
   asc,
@@ -55,6 +56,19 @@ const BATCH_SIZE = 5;
 const CLOCK_REMINDER_CONCURRENCY = 5;
 /** Maximum rows rendered in a single digest email. */
 const DIGEST_LIMIT = 50;
+
+/**
+ * Assigned-driver safety inspection (B14): 14-day cycle via vehicles.next_inspection_due;
+ * daily reminder while overdue; after 3 reminders, block timesheet + notify leadership + driver.
+ */
+const SAFETY_DRIVER_REMINDER = "safety_inspection_driver_reminder";
+const SAFETY_TIMESHEET_BLOCK_ESCALATION =
+  "safety_inspection_timesheet_block_escalation";
+const SAFETY_DRIVER_TIMESHEET_BLOCKED =
+  "safety_inspection_driver_timesheet_blocked";
+const SAFETY_DRIVER_REMINDER_COOLDOWN_DAYS = 1;
+const SAFETY_DRIVER_REMINDER_MAX = 3;
+const SAFETY_BLOCK_ESCALATION_COOLDOWN_DAYS = 7;
 
 type CronResult = { processed: number; errors: number };
 
@@ -189,6 +203,66 @@ async function setCooldown(
         lastSentAt: now,
         nextAllowedAt,
         cooldownDays,
+        updatedAt: now,
+      },
+    });
+}
+
+async function getCooldownMetadata(
+  eventType: string,
+  entityType: string,
+  entityId: string,
+): Promise<Record<string, unknown>> {
+  const [row] = await db
+    .select({ metadata: notificationCooldowns.metadata })
+    .from(notificationCooldowns)
+    .where(
+      and(
+        eq(notificationCooldowns.eventType, eventType),
+        eq(notificationCooldowns.entityType, entityType),
+        eq(notificationCooldowns.entityId, entityId),
+      ),
+    )
+    .limit(1);
+  const m = row?.metadata;
+  if (m && typeof m === "object" && !Array.isArray(m)) {
+    return m as Record<string, unknown>;
+  }
+  return {};
+}
+
+async function setCooldownWithMetadata(
+  eventType: string,
+  entityType: string,
+  entityId: string,
+  cooldownDays: number,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  const now = new Date();
+  const nextAllowedAt = new Date(now.getTime() + cooldownDays * 86_400_000);
+
+  await db
+    .insert(notificationCooldowns)
+    .values({
+      eventType,
+      entityType,
+      entityId,
+      lastSentAt: now,
+      nextAllowedAt,
+      cooldownDays,
+      metadata,
+    })
+    .onConflictDoUpdate({
+      target: [
+        notificationCooldowns.eventType,
+        notificationCooldowns.entityType,
+        notificationCooldowns.entityId,
+      ],
+      set: {
+        lastSentAt: now,
+        nextAllowedAt,
+        cooldownDays,
+        metadata,
         updatedAt: now,
       },
     });
@@ -802,7 +876,217 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 10. SAFETY INSPECTION EXPIRED
+// 10. SAFETY INSPECTION — ASSIGNED DRIVER REMINDERS + TIMESHEET BLOCK (B14)
+// ---------------------------------------------------------------------------
+
+/**
+ * For vehicles with an assigned driver whose safety inspection is due or overdue
+ * (nextInspectionDue <= today): send the driver a daily reminder until complete.
+ * After 3 reminders, set employees.timesheet_blocked_safety_inspection, notify
+ * managers/executives, and notify the driver that timesheets are blocked until inspection.
+ * Respects safetyInspectionRemindersEnabled. Cycle key `${vehicleId}:${nextInspectionDue}`
+ * resets when nextInspectionDue advances after a compliant inspection.
+ *
+ * Recommended schedule: daily (e.g. with notify-inspection-expired).
+ */
+export async function notifySafetyInspectionAssignedDriverReminders(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
+  try {
+    const today = todayStr();
+    const now = new Date();
+
+    const raw = await db
+      .select({
+        id: vehicles.id,
+        vehicleId: vehicles.vehicleId,
+        make: vehicles.make,
+        model: vehicles.model,
+        licensePlate: vehicles.licensePlate,
+        nextInspectionDue: vehicles.nextInspectionDue,
+        assignedToEmployeeId: vehicles.assignedToEmployeeId,
+      })
+      .from(vehicles)
+      .where(
+        and(
+          eq(vehicles.isDeleted, false),
+          isNotNull(vehicles.nextInspectionDue),
+          lte(vehicles.nextInspectionDue, today),
+          isNotNull(vehicles.assignedToEmployeeId),
+          or(
+            isNull(vehicles.safetyInspectionRemindersEnabled),
+            eq(vehicles.safetyInspectionRemindersEnabled, true),
+          ),
+        ),
+      )
+      .orderBy(asc(vehicles.nextInspectionDue))
+      .limit(BATCH_SIZE);
+
+    const cooling = await getCoolingDownEntityIdSet(
+      SAFETY_DRIVER_REMINDER,
+      "Vehicle",
+      raw.map((v) => `${v.id}:${v.nextInspectionDue}`),
+      now,
+    );
+
+    for (const v of raw) {
+      try {
+        const cycleEntityId = `${v.id}:${v.nextInspectionDue}`;
+        if (cooling.has(cycleEntityId)) continue;
+
+        const empId = v.assignedToEmployeeId;
+        if (empId == null) continue;
+
+        const [emp] = await db
+          .select({
+            timesheetBlockedSafetyInspection:
+              employees.timesheetBlockedSafetyInspection,
+            timesheetSafetyBlockVehicleId:
+              employees.timesheetSafetyBlockVehicleId,
+          })
+          .from(employees)
+          .where(eq(employees.id, empId))
+          .limit(1);
+
+        if (!emp) continue;
+
+        if (
+          emp.timesheetBlockedSafetyInspection &&
+          emp.timesheetSafetyBlockVehicleId === v.id
+        ) {
+          continue;
+        }
+        if (emp.timesheetBlockedSafetyInspection) {
+          continue;
+        }
+
+        const meta = await getCooldownMetadata(
+          SAFETY_DRIVER_REMINDER,
+          "Vehicle",
+          cycleEntityId,
+        );
+        const nudges = Math.min(
+          Number(meta.driverNudges ?? 0),
+          SAFETY_DRIVER_REMINDER_MAX,
+        );
+
+        const dueDate = v.nextInspectionDue ? new Date(v.nextInspectionDue) : null;
+        const daysOverdue = dueDate
+          ? Math.floor((now.getTime() - dueDate.getTime()) / 86_400_000)
+          : 0;
+        const entityName =
+          `${v.make} ${v.model}`.trim() || v.vehicleId || v.id;
+
+        const driverIdStr = String(empId);
+
+        if (nudges < SAFETY_DRIVER_REMINDER_MAX) {
+          await svc.triggerNotification({
+            type: SAFETY_DRIVER_REMINDER,
+            category: "fleet",
+            priority: nudges >= 2 ? "high" : "medium",
+            data: {
+              entityType: "Vehicle",
+              entityId: v.id,
+              entityName,
+              licensePlate: v.licensePlate ?? undefined,
+              dueDate: v.nextInspectionDue ?? undefined,
+              daysOverdue,
+              driverId: driverIdStr,
+              reminderNumber: nudges + 1,
+            },
+          });
+          await setCooldownWithMetadata(
+            SAFETY_DRIVER_REMINDER,
+            "Vehicle",
+            cycleEntityId,
+            SAFETY_DRIVER_REMINDER_COOLDOWN_DAYS,
+            { ...meta, driverNudges: nudges + 1 },
+          );
+          processed++;
+          continue;
+        }
+
+        await db
+          .update(employees)
+          .set({
+            timesheetBlockedSafetyInspection: true,
+            timesheetSafetyBlockVehicleId: v.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(employees.id, empId));
+
+        const escCooling = await isCoolingDown(
+          SAFETY_TIMESHEET_BLOCK_ESCALATION,
+          "Vehicle",
+          cycleEntityId,
+        );
+        if (!escCooling) {
+          await svc.triggerNotification({
+            type: SAFETY_TIMESHEET_BLOCK_ESCALATION,
+            category: "fleet",
+            priority: "high",
+            data: {
+              entityType: "Vehicle",
+              entityId: v.id,
+              entityName,
+              licensePlate: v.licensePlate ?? undefined,
+              dueDate: v.nextInspectionDue ?? undefined,
+              daysOverdue,
+              driverId: driverIdStr,
+              timesheetBlocked: true,
+            },
+          });
+          await setCooldown(
+            SAFETY_TIMESHEET_BLOCK_ESCALATION,
+            "Vehicle",
+            cycleEntityId,
+            SAFETY_BLOCK_ESCALATION_COOLDOWN_DAYS,
+          );
+        }
+
+        await svc.triggerNotification({
+          type: SAFETY_DRIVER_TIMESHEET_BLOCKED,
+          category: "fleet",
+          priority: "high",
+          data: {
+            entityType: "Vehicle",
+            entityId: v.id,
+            entityName,
+            licensePlate: v.licensePlate ?? undefined,
+            dueDate: v.nextInspectionDue ?? undefined,
+            daysOverdue,
+            driverId: driverIdStr,
+          },
+        });
+
+        await setCooldownWithMetadata(
+          SAFETY_DRIVER_REMINDER,
+          "Vehicle",
+          cycleEntityId,
+          SAFETY_BLOCK_ESCALATION_COOLDOWN_DAYS,
+          { ...meta, driverNudges: SAFETY_DRIVER_REMINDER_MAX, blockApplied: true },
+        );
+        processed++;
+      } catch (err) {
+        logger.error(
+          `[CronNotif] ${SAFETY_DRIVER_REMINDER} failed for vehicle ${v.id}:`,
+          err,
+        );
+        errors++;
+      }
+    }
+  } catch (err) {
+    logger.error(
+      "[CronNotif] notifySafetyInspectionAssignedDriverReminders query failed:",
+      err,
+    );
+    errors++;
+  }
+  return { processed, errors };
+}
+
+// ---------------------------------------------------------------------------
+// 11. SAFETY INSPECTION EXPIRED
 // ---------------------------------------------------------------------------
 
 /**
@@ -879,7 +1163,7 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 11. VEHICLE REGISTRATION EXPIRING
+// 12. VEHICLE REGISTRATION EXPIRING
 // ---------------------------------------------------------------------------
 
 /**
@@ -951,7 +1235,7 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 12. VEHICLE INSURANCE EXPIRING
+// 13. VEHICLE INSURANCE EXPIRING
 // ---------------------------------------------------------------------------
 
 /**
@@ -1023,7 +1307,7 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 13. PERFORMANCE REVIEW DUE
+// 14. PERFORMANCE REVIEW DUE
 // ---------------------------------------------------------------------------
 
 /**
@@ -1091,7 +1375,7 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 14. SAFETY INSPECTION UPCOMING (within 30 days)
+// 15. SAFETY INSPECTION UPCOMING (within 30 days)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1162,7 +1446,7 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
 }
 
 // ---------------------------------------------------------------------------
-// 15. PURCHASE ORDER DELAYED
+// 16. PURCHASE ORDER DELAYED
 // ---------------------------------------------------------------------------
 
 /**
