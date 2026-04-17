@@ -825,20 +825,20 @@ export const logHoursHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Assignment ID is required" });
     }
 
-    const { actualStartTime, actualEndTime, actualHours, logNotes } = req.body;
+    const { timeIn, timeOut, actualHours, logNotes } = req.body;
 
-    if (!actualStartTime || !actualEndTime || actualHours == null) {
+    if (!timeIn || !timeOut || actualHours == null) {
       return res.status(400).json({
         success: false,
-        message: "actualStartTime, actualEndTime, and actualHours are required",
+        message: "timeIn, timeOut, and actualHours are required",
       });
     }
 
     const updated = await logHoursForAssignment(
       assignmentId,
       {
-        actualStartTime,
-        actualEndTime,
+        timeIn,
+        timeOut,
         actualHours: Number(actualHours),
         logNotes,
       },
@@ -860,9 +860,11 @@ export const logHoursHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Error logging hours for assignment", error, req);
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const isBlockedError = message.includes("safety inspection");
     return res
-      .status(500)
-      .json({ success: false, message: "Internal server error" });
+      .status(isBlockedError ? 403 : 500)
+      .json({ success: false, message });
   }
 };
 

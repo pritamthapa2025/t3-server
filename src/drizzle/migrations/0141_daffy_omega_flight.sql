@@ -1,0 +1,1 @@
+ALTER TABLE "org"."bid_document_tags" ADD COLUMN "is_default" boolean DEFAULT false NOT NULL;

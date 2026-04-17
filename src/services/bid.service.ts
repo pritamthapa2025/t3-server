@@ -486,6 +486,7 @@ export const getRelatedBids = async (bidId: string) => {
       parentBidId: bidsTable.parentBidId,
       organizationId: bidsTable.organizationId,
       assignedTo: bidsTable.assignedTo,
+      marked: bidsTable.marked,
       createdByUser: createdByUser.fullName,
     })
     .from(bidsTable)
@@ -913,6 +914,9 @@ export const createBid = async (data: {
         createdBy: data.createdBy,
       });
     }
+
+    // Seed the three protected default document tags for every new bid
+    await seedDefaultDocumentTagsForBid(bid.id);
   }
 
   if (!bid) return null;
@@ -973,6 +977,23 @@ export const createBid = async (data: {
   });
 
   return getBidById(bid.id);
+};
+
+/**
+ * Lightweight patch — updates only the `marked` column.
+ * Avoids the overhead of the full updateBid (history loop, Google Calendar
+ * sync, notification checks, re-fetching the whole bid object, etc.).
+ */
+export const patchBidMarked = async (
+  id: string,
+  marked: string,
+): Promise<{ id: string; marked: string | null } | null> => {
+  const [row] = await db
+    .update(bidsTable)
+    .set({ marked, updatedAt: new Date() })
+    .where(and(eq(bidsTable.id, id), eq(bidsTable.isDeleted, false)))
+    .returning({ id: bidsTable.id, marked: bidsTable.marked });
+  return row ?? null;
 };
 
 export const updateBid = async (
@@ -3990,12 +4011,40 @@ export const deleteBidDocument = async (documentId: string) => {
 // Bid Document Tags Operations
 // ============================
 
+/** Names of the three built-in, protected document tags every bid receives. */
+export const DEFAULT_DOCUMENT_TAG_NAMES = [
+  "Client Correspondence",
+  "Vendor Correspondence",
+  "Architecture Correspondence",
+] as const;
+
+/**
+ * Upsert the three default document tags for a bid.
+ * Uses ON CONFLICT DO NOTHING so it is safe to call multiple times.
+ */
+export const seedDefaultDocumentTagsForBid = async (
+  bidId: string,
+): Promise<void> => {
+  const values = DEFAULT_DOCUMENT_TAG_NAMES.map((name) => ({
+    bidId,
+    name,
+    isDefault: true,
+  }));
+  await db
+    .insert(bidDocumentTags)
+    .values(values)
+    .onConflictDoNothing({
+      target: [bidDocumentTags.bidId, bidDocumentTags.name],
+    });
+};
+
 export const getBidDocumentTags = async (bidId: string) => {
   const tags = await db
     .select({
       id: bidDocumentTags.id,
       bidId: bidDocumentTags.bidId,
       name: bidDocumentTags.name,
+      isDefault: bidDocumentTags.isDefault,
       createdAt: bidDocumentTags.createdAt,
     })
     .from(bidDocumentTags)
@@ -4145,7 +4194,11 @@ export const linkDocumentTag = async (params: {
   return existing ?? null;
 };
 
-/** Unlink a tag from a document. If tag has no more links, delete the tag. */
+/**
+ * Unlink a tag from a document.
+ * If the tag has no remaining links AND is not a default tag, it is deleted.
+ * Default tags (isDefault = true) are never deleted regardless of link count.
+ */
 export const unlinkDocumentTag = async (
   documentId: string,
   tagId: string,
@@ -4162,6 +4215,18 @@ export const unlinkDocumentTag = async (
 
   if (!deleted) {
     return { unlinked: false, tagDeleted: false };
+  }
+
+  // Fetch the tag to check if it is a protected default tag
+  const [tag] = await db
+    .select({ isDefault: bidDocumentTags.isDefault })
+    .from(bidDocumentTags)
+    .where(eq(bidDocumentTags.id, tagId))
+    .limit(1);
+
+  // Never auto-delete default tags even when no documents are linked to them
+  if (tag?.isDefault) {
+    return { unlinked: true, tagDeleted: false };
   }
 
   const remaining = await db

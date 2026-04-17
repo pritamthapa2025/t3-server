@@ -5,18 +5,17 @@ import {
   createTimesheet,
   updateTimesheet,
   deleteTimesheet,
-  clockIn,
-  clockOut,
   approveTimesheet,
   canApproveTimesheet,
   rejectTimesheet,
   getTimesheetsByEmployee,
   getWeeklyTimesheetsByEmployee,
   getMyWeeklyTimesheets,
-  createTimesheetWithClockData,
   getTimesheetKPIs,
   bulkDeleteTimesheets,
-  getClockStatus,
+  approveWeek,
+  rejectWeek,
+  confirmWeek,
 } from "../services/timesheet.service.js";
 import {
   syncPayrollFromApprovedTimesheet,
@@ -40,32 +39,21 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
 
     let timesheetOptions: { ownEmployeeId?: number; departmentId?: number } | undefined;
 
-    // Apply role-based data scoping
     if (userId) {
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.ownOnly) {
-        // Technician: only their own timesheets
         const [emp] = await db
           .select({ id: employees.id })
           .from(employees)
           .where(eq(employees.userId, userId))
           .limit(1);
-        if (emp) {
-          timesheetOptions = { ownEmployeeId: emp.id };
-        }
+        if (emp) timesheetOptions = { ownEmployeeId: emp.id };
       } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
-        // Manager: only their department's timesheets (includes their own)
         timesheetOptions = { departmentId: dataFilter.departmentId };
       }
-      // Executive/admin: no filter applied — sees all records
     }
 
-    const timesheets = await getTimesheets(
-      offset,
-      limit,
-      search,
-      timesheetOptions,
-    );
+    const timesheets = await getTimesheets(offset, limit, search, timesheetOptions);
 
     logger.info("Timesheets fetched successfully");
     return res.status(200).json({
@@ -80,10 +68,7 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
   }
 };
 
-export const getTimesheetsByEmployeeHandler = async (
-  req: Request,
-  res: Response,
-) => {
+export const getTimesheetsByEmployeeHandler = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -91,16 +76,10 @@ export const getTimesheetsByEmployeeHandler = async (
     const employeeId = req.query.employeeId as string | undefined;
     const dateFrom = req.query.dateFrom as string | undefined;
     const dateTo = req.query.dateTo as string | undefined;
-
     const offset = (page - 1) * limit;
 
     const timesheets = await getTimesheetsByEmployee(
-      offset,
-      limit,
-      search,
-      employeeId,
-      dateFrom,
-      dateTo,
+      offset, limit, search, employeeId, dateFrom, dateTo,
     );
 
     logger.info("Timesheets by employee fetched successfully");
@@ -113,39 +92,31 @@ export const getTimesheetsByEmployeeHandler = async (
     });
   } catch (error) {
     logger.logApiError("Timesheet by employee error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
-// New endpoint for technicians to view only their own timesheets in weekly format
 export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
   try {
     const { weekStartDate, search } = req.query;
 
-    // Default to current week's Monday if no weekStartDate provided
     let startDate: string;
     if (weekStartDate) {
       startDate = weekStartDate as string;
     } else {
-      // Get current week's Monday
       const now = new Date();
-      const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      const daysToSubtract = currentDay === 0 ? 6 : currentDay - 1; // If Sunday, go back 6 days
+      const currentDay = now.getDay();
+      const daysToSubtract = currentDay === 0 ? 6 : currentDay - 1;
       const monday = new Date(now);
       monday.setDate(now.getDate() - daysToSubtract);
       startDate = formatLocalDateStringFromDate(monday);
     }
 
-    // Get the current user's employee ID from the authenticated request
     const currentUser = (req as any).user;
     if (!currentUser || !currentUser.employeeId) {
       return res.status(400).json({
         success: false,
-        message:
-          "Employee information not found. Please ensure you are properly logged in as an employee.",
+        message: "Employee information not found. Please ensure you are properly logged in as an employee.",
       });
     }
 
@@ -155,9 +126,7 @@ export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
       search as string | undefined,
     );
 
-    logger.info(
-      `My weekly timesheets fetched successfully for employee: ${currentUser.employeeId}, week: ${startDate}`,
-    );
+    logger.info(`My weekly timesheets fetched for employee: ${currentUser.employeeId}, week: ${startDate}`);
     return res.status(200).json({
       success: true,
       message: "Your weekly timesheets retrieved successfully",
@@ -166,46 +135,29 @@ export const getMyTimesheetsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Get my weekly timesheets error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
-export const getWeeklyTimesheetsByEmployeeHandler = async (
-  req: Request,
-  res: Response,
-) => {
+export const getWeeklyTimesheetsByEmployeeHandler = async (req: Request, res: Response) => {
   try {
-    const { weekStartDate, employeeId, departmentId, status, page, limit } =
-      req.query;
+    const { weekStartDate, employeeId, departmentId, status, page, limit } = req.query;
 
-    // Handle employeeId - can be single value, array, or comma-separated string like "[14,16]" or "14,16"
     let employeeIds: number[] | undefined;
     if (employeeId) {
       if (Array.isArray(employeeId)) {
-        employeeIds = employeeId
-          .map((id) => parseInt(id as string, 10))
-          .filter((id) => !isNaN(id));
+        employeeIds = employeeId.map((id) => parseInt(id as string, 10)).filter((id) => !isNaN(id));
       } else {
         const str = employeeId.toString().trim();
-        // Remove brackets if present
         const cleaned = str.replace(/^\[|\]$/g, "");
-        // Split by comma and parse
         const ids = cleaned
           .split(",")
-          .map((id) => {
-            const trimmed = id.trim();
-            return parseInt(trimmed, 10);
-          })
+          .map((id) => parseInt(id.trim(), 10))
           .filter((id) => !isNaN(id) && id > 0);
-
         employeeIds = ids.length > 0 ? ids : undefined;
       }
     }
 
-    // Resolve the effective department filter based on role
     let effectiveDepartmentId: number | undefined = departmentId
       ? parseInt(departmentId as string, 10)
       : undefined;
@@ -214,7 +166,6 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
     if (userId) {
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.departmentOnly && dataFilter.departmentId) {
-        // Manager: always enforce their own department regardless of query param
         effectiveDepartmentId = dataFilter.departmentId;
       }
     }
@@ -236,31 +187,22 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (
     });
   } catch (error) {
     logger.logApiError("Weekly timesheet by employee error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
 export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as unknown as number;
-
     const timesheet = await getTimesheetById(id);
     if (!timesheet) {
-      return res.status(404).json({
-        success: false,
-        message: "Timesheet not found",
-      });
+      return res.status(404).json({ success: false, message: "Timesheet not found" });
     }
 
-    // Role-based access check for viewing a single timesheet
     const userId = req.user?.id;
     if (userId) {
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.ownOnly) {
-        // Technician: must be their own timesheet
         const [emp] = await db
           .select({ id: employees.id })
           .from(employees)
@@ -273,7 +215,6 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
           });
         }
       } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
-        // Manager: timesheet's employee must belong to their department
         const [timesheetEmp] = await db
           .select({ departmentId: employees.departmentId })
           .from(employees)
@@ -286,46 +227,29 @@ export const getTimesheetByIdHandler = async (req: Request, res: Response) => {
           });
         }
       }
-      // Executive/admin: no restriction
     }
 
     logger.info("Timesheet fetched successfully");
-    return res.status(200).json({
-      success: true,
-      data: timesheet,
-    });
+    return res.status(200).json({ success: true, data: timesheet });
   } catch (error) {
     logger.logApiError("Timesheet error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
 export const createTimesheetHandler = async (req: Request, res: Response) => {
   try {
-    const {
-      employeeId,
-      sheetDate,
-      clockIn,
-      clockOut,
-      breakMinutes,
-      totalHours,
-      overtimeHours,
-      notes,
-    } = req.body;
+    const { employeeId, sheetDate, breakMinutes, totalHours, overtimeHours, notes } = req.body;
 
     const timesheet = await createTimesheet({
       employeeId,
       sheetDate,
-      clockIn,
-      clockOut,
       breakMinutes,
       totalHours,
       overtimeHours,
       notes,
     });
+
     logger.info("Timesheet created successfully");
     return res.status(201).json({
       success: true,
@@ -335,16 +259,12 @@ export const createTimesheetHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
       return res.status(409).json({
         success: false,
         message: "Timesheet for this employee and date already exists",
       });
     }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -353,7 +273,6 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
     const id = req.params.id as unknown as number;
     const userId = req.user?.id;
 
-    // Ownership check: edit_own access level means the user can only edit their own timesheet
     if (req.userAccessLevel === "edit_own") {
       if (!userId) {
         return res.status(403).json({ success: false, message: "Authentication required" });
@@ -378,8 +297,6 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
     const {
       employeeId,
       sheetDate,
-      clockIn,
-      clockOut,
       breakMinutes,
       totalHours,
       overtimeHours,
@@ -393,8 +310,6 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
     const updateData: any = {};
     if (employeeId !== undefined) updateData.employeeId = employeeId;
     if (sheetDate !== undefined) updateData.sheetDate = sheetDate;
-    if (clockIn !== undefined) updateData.clockIn = clockIn;
-    if (clockOut !== undefined) updateData.clockOut = clockOut;
     if (breakMinutes !== undefined) updateData.breakMinutes = breakMinutes;
     if (totalHours !== undefined) updateData.totalHours = totalHours;
     if (overtimeHours !== undefined) updateData.overtimeHours = overtimeHours;
@@ -405,15 +320,9 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
 
     const timesheet = await updateTimesheet(id, updateData, clientUpdatedAt);
 
-    if (timesheet === STALE_DATA) {
-      return res.status(409).json(staleDataResponse);
-    }
-
+    if (timesheet === STALE_DATA) return res.status(409).json(staleDataResponse);
     if (!timesheet) {
-      return res.status(404).json({
-        success: false,
-        message: "Timesheet not found",
-      });
+      return res.status(404).json({ success: false, message: "Timesheet not found" });
     }
 
     logger.info("Timesheet updated successfully");
@@ -425,10 +334,7 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.logApiError("Timesheet error", error, req);
     if (error.code === "23505") {
-      // PostgreSQL unique constraint violation
-      return res
-        .status(409)
-        .send("Timesheet for this employee and date already exists");
+      return res.status(409).send("Timesheet for this employee and date already exists");
     }
     return res.status(500).send("Internal server error");
   }
@@ -437,13 +343,11 @@ export const updateTimesheetHandler = async (req: Request, res: Response) => {
 export const deleteTimesheetHandler = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as unknown as number;
-
     const userId = req.user?.id;
     if (!userId) {
       return res.status(403).json({ success: false, message: "Authentication required" });
     }
 
-    // Ownership check: delete_own access level means the user can only delete their own timesheet
     if (req.userAccessLevel === "delete_own") {
       const existing = await getTimesheetById(id);
       if (!existing) {
@@ -463,154 +367,13 @@ export const deleteTimesheetHandler = async (req: Request, res: Response) => {
     }
 
     const timesheet = await deleteTimesheet(id, userId);
-    if (!timesheet) {
-      return res.status(404).send("Timesheet not found");
-    }
+    if (!timesheet) return res.status(404).send("Timesheet not found");
 
     logger.info("Timesheet deleted successfully");
-    return res.status(200).json({
-      success: true,
-      message: "Timesheet deleted successfully",
-    });
+    return res.status(200).json({ success: true, message: "Timesheet deleted successfully" });
   } catch (error) {
     logger.logApiError("Timesheet error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const clockInHandler = async (req: Request, res: Response) => {
-  try {
-    const { employeeId, clockInDate, clockInTime, jobIds, notes } = req.body;
-
-    const timesheet = await clockIn({
-      employeeId,
-      clockInDate,
-      clockInTime,
-      jobIds,
-      notes,
-    });
-
-    logger.info("Employee clocked in successfully");
-    return res.status(201).json({
-      success: true,
-      message: "Clocked in successfully",
-      data: timesheet,
-    });
-  } catch (error: any) {
-    logger.logApiError("Clock-in error", error, req);
-
-    if (error.message === "Employee has already clocked in today") {
-      return res.status(409).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const clockOutHandler = async (req: Request, res: Response) => {
-  try {
-    const {
-      employeeId,
-      clockOutDate,
-      clockOutTime,
-      jobIds,
-      notes,
-      breakMinutes,
-    } = req.body;
-
-    const timesheet = await clockOut({
-      employeeId,
-      clockOutDate,
-      clockOutTime,
-      jobIds,
-      notes,
-      breakMinutes,
-    });
-
-    logger.info("Employee clocked out successfully");
-    return res.status(200).json({
-      success: true,
-      message: "Clocked out successfully",
-      data: timesheet,
-    });
-  } catch (error: any) {
-    logger.logApiError("Clock-out error", error, req);
-
-    if (
-      error.message ===
-      "No clock-in record found for today. Please clock in first."
-    ) {
-      return res.status(404).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-export const createTimesheetWithClockDataHandler = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const {
-      employeeId,
-      clockInDate,
-      clockInTime,
-      clockOutDate,
-      clockOutTime,
-      breakMinutes,
-      notes,
-    } = req.body;
-
-    const timesheet = await createTimesheetWithClockData({
-      employeeId,
-      clockInDate,
-      clockInTime,
-      clockOutDate,
-      clockOutTime,
-      breakMinutes,
-      notes,
-    });
-
-    logger.info("Timesheet created successfully with clock data");
-    return res.status(201).json({
-      success: true,
-      message: "Timesheet created successfully",
-      data: timesheet,
-    });
-  } catch (error: any) {
-    logger.logApiError("Create timesheet with clock data error", error, req);
-
-    if (
-      error.message === "Timesheet for this employee and date already exists" ||
-      error.code === "23505"
-    ) {
-      // PostgreSQL unique constraint violation
-      return res.status(409).json({
-        success: false,
-        message: "Timesheet for this employee and date already exists",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -625,13 +388,11 @@ export const getTimesheetKPIsHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Validate that weekStartDate is a Monday
     const date = new Date(weekStartDate);
     if (isNaN(date.getTime())) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid date format for weekStartDate. Please use YYYY-MM-DD format",
+        message: "Invalid date format for weekStartDate. Please use YYYY-MM-DD format",
       });
     }
 
@@ -652,10 +413,7 @@ export const getTimesheetKPIsHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Get timesheet KPIs error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -664,48 +422,31 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
     const timesheetId = req.params.id as unknown as number;
     const { approvedBy, notes } = req.body;
 
-    // First check if timesheet exists
     const existingTimesheet = await getTimesheetById(timesheetId);
     if (!existingTimesheet) {
-      return res.status(404).json({
-        success: false,
-        message: "Timesheet not found",
-      });
+      return res.status(404).json({ success: false, message: "Timesheet not found" });
     }
 
-    // Check if timesheet is already approved
     if (existingTimesheet.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        message: "Timesheet is already approved",
-      });
+      return res.status(400).json({ success: false, message: "Timesheet is already approved" });
     }
 
-    // Role-based approval: Technician → Manager/Executive; Manager → Executive only
     const approvalCheck = await canApproveTimesheet(approvedBy, timesheetId);
     if (!approvalCheck.allowed) {
       return res.status(403).json({
         success: false,
-        message:
-          approvalCheck.message ??
-          "You are not allowed to approve this timesheet",
+        message: approvalCheck.message ?? "You are not allowed to approve this timesheet",
       });
     }
 
     const timesheet = await approveTimesheet(timesheetId, approvedBy, notes);
 
-    // Sync payroll for this period (create or update payroll entry from approved timesheets)
     let payrollSync: { synced: boolean; reason?: string } = { synced: false };
     try {
       payrollSync = await syncPayrollFromApprovedTimesheet(timesheetId);
     } catch (payrollError: any) {
-      logger.warn(
-        `Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`,
-      );
-      payrollSync = {
-        synced: false,
-        reason: payrollError?.message ?? "Payroll sync failed",
-      };
+      logger.warn(`Payroll sync after timesheet approval failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`);
+      payrollSync = { synced: false, reason: payrollError?.message ?? "Payroll sync failed" };
     }
 
     logger.info(`Timesheet ${timesheetId} approved by ${approvedBy}`);
@@ -717,10 +458,7 @@ export const approveTimesheetHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Approve timesheet error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -729,45 +467,25 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
     const timesheetId = req.params.id as unknown as number;
     const { rejectedBy, rejectionReason, notes } = req.body;
 
-    // First check if timesheet exists
     const existingTimesheet = await getTimesheetById(timesheetId);
     if (!existingTimesheet) {
-      return res.status(404).json({
-        success: false,
-        message: "Timesheet not found",
-      });
+      return res.status(404).json({ success: false, message: "Timesheet not found" });
     }
 
-    // Check if timesheet is already rejected
     if (existingTimesheet.status === "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Timesheet is already rejected",
-      });
+      return res.status(400).json({ success: false, message: "Timesheet is already rejected" });
     }
 
-    const timesheet = await rejectTimesheet(
-      timesheetId,
-      rejectedBy,
-      rejectionReason,
-      notes,
-    );
+    const timesheet = await rejectTimesheet(timesheetId, rejectedBy, rejectionReason, notes);
 
-    // Recalc payroll for this employee/week so the rejected day is excluded (hourly only)
-    if (
-      timesheet &&
-      existingTimesheet?.employeeId != null &&
-      existingTimesheet?.sheetDate
-    ) {
+    if (timesheet && existingTimesheet?.employeeId != null && existingTimesheet?.sheetDate) {
       try {
         await recalcPayrollForEmployeeWeek(
           Number(existingTimesheet.employeeId),
           existingTimesheet.sheetDate,
         );
       } catch (payrollError: any) {
-        logger.warn(
-          `Payroll recalc after timesheet reject failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`,
-        );
+        logger.warn(`Payroll recalc after timesheet reject failed (timesheet ${timesheetId}): ${payrollError?.message ?? payrollError}`);
       }
     }
 
@@ -779,10 +497,108 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.logApiError("Reject timesheet error", error, req);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Weekly Bulk Actions (approve / reject / confirm full week)
+// ===========================================================================
+
+export const approveWeekHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    const { employeeId, weekStart, weekEnd, notes } = req.body;
+    if (!employeeId || !weekStart || !weekEnd) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId, weekStart, and weekEnd are required",
+      });
+    }
+
+    const result = await approveWeek(Number(employeeId), weekStart, weekEnd, userId, notes);
+
+    logger.info(`Week approved for employee ${employeeId} (${weekStart} – ${weekEnd}) by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.approved} timesheet day(s) approved for the week`,
+      data: result,
     });
+  } catch (error) {
+    logger.logApiError("Approve week error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const rejectWeekHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    const { employeeId, weekStart, weekEnd, rejectionReason, notes } = req.body;
+    if (!employeeId || !weekStart || !weekEnd || !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId, weekStart, weekEnd, and rejectionReason are required",
+      });
+    }
+
+    const result = await rejectWeek(
+      Number(employeeId),
+      weekStart,
+      weekEnd,
+      userId,
+      rejectionReason,
+      notes,
+    );
+
+    logger.info(`Week rejected for employee ${employeeId} (${weekStart} – ${weekEnd}) by ${userId}`);
+    return res.status(200).json({
+      success: true,
+      message: `${result.rejected} timesheet day(s) rejected for the week`,
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Reject week error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const confirmWeekHandler = async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!currentUser?.employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee information not found. Please ensure you are properly logged in as an employee.",
+      });
+    }
+
+    const { weekStart, weekEnd, notes } = req.body;
+    if (!weekStart || !weekEnd) {
+      return res.status(400).json({
+        success: false,
+        message: "weekStart and weekEnd are required",
+      });
+    }
+
+    const result = await confirmWeek(currentUser.employeeId, weekStart, weekEnd, notes);
+
+    logger.info(`Week confirmed by employee ${currentUser.employeeId} (${weekStart} – ${weekEnd})`);
+    return res.status(200).json({
+      success: true,
+      message: "Week confirmed successfully",
+      data: result,
+    });
+  } catch (error) {
+    logger.logApiError("Confirm week error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -793,8 +609,9 @@ export const rejectTimesheetHandler = async (req: Request, res: Response) => {
 export const bulkDeleteTimesheetsHandler = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId)
+    if (!userId) {
       return res.status(403).json({ success: false, message: "Authentication required" });
+    }
 
     const { ids } = req.body as { ids: number[] };
     const result = await bulkDeleteTimesheets(ids, userId);
@@ -807,33 +624,6 @@ export const bulkDeleteTimesheetsHandler = async (req: Request, res: Response) =
     });
   } catch (error) {
     logger.logApiError("Bulk delete timesheets error", error, req);
-    return res.status(500).json({ success: false, message: "Internal server error" });
-  }
-};
-
-// ===========================================================================
-// Clock Status
-// ===========================================================================
-
-export const getClockStatusHandler = async (req: Request, res: Response) => {
-  try {
-    const employeeId = req.user?.employeeId;
-    if (!employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee information not found. Please ensure you are logged in as an employee.",
-      });
-    }
-
-    const status = await getClockStatus(employeeId);
-
-    logger.info(`Clock status fetched for employee ${employeeId}: ${status.status}`);
-    return res.status(200).json({
-      success: true,
-      data: status,
-    });
-  } catch (error) {
-    logger.logApiError("Get clock status error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

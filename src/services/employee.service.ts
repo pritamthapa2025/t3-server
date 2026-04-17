@@ -1314,51 +1314,87 @@ export const getManagersAndTechniciansByRole = async (): Promise<{
 };
 
 /**
- * Get all employees with role "Technician" who are not assigned to any vehicle (unassigned drivers).
+ * Get employees with role "Technician" or "Manager" who are not assigned to any vehicle.
+ * Supports search (by name or employeeId), pagination, and returns total count for infinite scroll.
  */
-export const getUnassignedDrivers = async () => {
-  const result = await db
-    .select({
-      id: employees.id,
-      userId: users.id,
-      userName: users.fullName,
-      employeeId: employees.employeeId,
-      departmentId: departments.id,
-      departmentName: departments.name,
-      positionId: positions.id,
-      positionName: positions.name,
-      reportsToName: reportsToUser.fullName,
-      roleName: roles.name,
-      status: employees.status,
-      isActive: users.isActive,
-      createdAt: employees.createdAt,
-      updatedAt: employees.updatedAt,
-    })
-    .from(employees)
-    .innerJoin(users, eq(employees.userId, users.id))
-    .innerJoin(userRoles, eq(users.id, userRoles.userId))
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(positions, eq(employees.positionId, positions.id))
-    .leftJoin(reportsToUser, eq(employees.reportsTo, reportsToUser.id))
-    .leftJoin(
-      vehicles,
-      and(
-        eq(vehicles.assignedToEmployeeId, employees.id),
-        eq(vehicles.isDeleted, false),
-      ),
-    )
-    .where(
-      and(
-        eq(employees.isDeleted, false),
-        eq(roles.isDeleted, false),
-        eq(roles.name, "Technician"),
-        sql`${vehicles.id} IS NULL`,
-      ),
-    )
-    .orderBy(users.fullName);
+export const getUnassignedDrivers = async (params: {
+  search?: string;
+  page?: number;
+  limit?: number;
+} = {}) => {
+  const { search = "", page = 1, limit = 20 } = params;
+  const offset = (page - 1) * limit;
 
-  return result.map((row) => ({
+  const baseWhere = and(
+    eq(employees.isDeleted, false),
+    eq(roles.isDeleted, false),
+    inArray(roles.name, ["Technician", "Manager"]),
+    sql`${vehicles.id} IS NULL`,
+    search.trim()
+      ? or(
+          sql`LOWER(${users.fullName}) LIKE LOWER(${"%" + search.trim() + "%"})`,
+          sql`LOWER(${employees.employeeId}) LIKE LOWER(${"%" + search.trim() + "%"})`,
+        )
+      : undefined,
+  );
+
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        id: employees.id,
+        userId: users.id,
+        userName: users.fullName,
+        employeeId: employees.employeeId,
+        departmentId: departments.id,
+        departmentName: departments.name,
+        positionId: positions.id,
+        positionName: positions.name,
+        reportsToName: reportsToUser.fullName,
+        roleName: roles.name,
+        status: employees.status,
+        isActive: users.isActive,
+        createdAt: employees.createdAt,
+        updatedAt: employees.updatedAt,
+      })
+      .from(employees)
+      .innerJoin(users, eq(employees.userId, users.id))
+      .innerJoin(userRoles, eq(users.id, userRoles.userId))
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .leftJoin(departments, eq(employees.departmentId, departments.id))
+      .leftJoin(positions, eq(employees.positionId, positions.id))
+      .leftJoin(reportsToUser, eq(employees.reportsTo, reportsToUser.id))
+      .leftJoin(
+        vehicles,
+        and(
+          eq(vehicles.assignedToEmployeeId, employees.id),
+          eq(vehicles.isDeleted, false),
+        ),
+      )
+      .where(baseWhere)
+      .orderBy(users.fullName)
+      .limit(limit)
+      .offset(offset),
+
+    db
+      .select({ count: sql<number>`COUNT(DISTINCT ${employees.id})` })
+      .from(employees)
+      .innerJoin(users, eq(employees.userId, users.id))
+      .innerJoin(userRoles, eq(users.id, userRoles.userId))
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .leftJoin(
+        vehicles,
+        and(
+          eq(vehicles.assignedToEmployeeId, employees.id),
+          eq(vehicles.isDeleted, false),
+        ),
+      )
+      .where(baseWhere),
+  ]);
+
+  const total = Number(countRows[0]?.count ?? 0);
+  const totalPages = Math.ceil(total / limit);
+
+  const data = rows.map((row) => ({
     id: row.id,
     userId: row.userId,
     userName: row.userName,
@@ -1376,6 +1412,17 @@ export const getUnassignedDrivers = async () => {
     createdAt: row.createdAt ?? null,
     updatedAt: row.updatedAt ?? null,
   }));
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+    },
+  };
 };
 
 /**

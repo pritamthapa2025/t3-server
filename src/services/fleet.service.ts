@@ -133,14 +133,31 @@ export const getVehicles = async (
 
   const total = totalResult[0]?.count || 0;
 
-  // Get paginated results
-  const vehiclesList = await db
-    .select()
+  // Alias for the assigned employee's user row
+  const assignedToUserAlias = alias(users, "assigned_to_user_list");
+
+  // Get paginated results with assigned employee info
+  const vehicleRows = await db
+    .select({
+      ...getTableColumns(vehicles),
+      assignedToEmployeeName: assignedToUserAlias.fullName,
+      assignedToEmployeeDisplayId: employees.employeeId,
+    })
     .from(vehicles)
+    .leftJoin(employees, eq(vehicles.assignedToEmployeeId, employees.id))
+    .leftJoin(assignedToUserAlias, eq(employees.userId, assignedToUserAlias.id))
     .where(and(...conditions))
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
+
+  const vehiclesList = vehicleRows.map(
+    ({ assignedToEmployeeName, assignedToEmployeeDisplayId, ...v }) => ({
+      ...v,
+      assignedToEmployeeName: assignedToEmployeeName ?? null,
+      assignedToEmployeeDisplayId: assignedToEmployeeDisplayId ?? null,
+    }),
+  );
 
   return {
     data: vehiclesList,

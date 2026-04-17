@@ -114,7 +114,7 @@ export const getDispatchAssignmentsQuerySchema = z.object({
     taskId: uuidSchema.optional(),
     technicianId: z.string().transform(Number).optional(),
     status: z.enum(["pending", "started", "completed"]).optional(),
-    sortBy: z.enum(["createdAt", "clockIn"]).optional(),
+    sortBy: z.enum(["createdAt"]).optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
   }),
 });
@@ -130,8 +130,6 @@ export const createDispatchAssignmentSchema = z.object({
     taskId: uuidSchema,
     technicianId: z.number().int().positive(),
     status: z.enum(["pending", "started", "completed"]).optional(),
-    clockIn: z.string().optional(),
-    clockOut: z.string().optional(),
     actualDuration: z.number().int().positive().optional(),
     role: z.string().max(50).optional(),
   }),
@@ -145,11 +143,69 @@ export const updateDispatchAssignmentSchema = z.object({
     taskId: uuidSchema.optional(),
     technicianId: z.number().int().positive().optional(),
     status: z.enum(["pending", "started", "completed"]).optional(),
-    clockIn: z.string().optional(),
-    clockOut: z.string().optional(),
     actualDuration: z.number().int().positive().optional(),
     role: z.string().max(50).optional(),
   }),
+});
+
+// Log hours for a specific dispatch assignment (dispatch-driven time tracking)
+export const logHoursForAssignmentSchema = z.object({
+  params: z.object({
+    id: uuidSchema,
+  }),
+  body: z
+    .object({
+      timeIn: z.string().datetime({ message: "timeIn must be a valid ISO datetime" }),
+      timeOut: z.string().datetime({ message: "timeOut must be a valid ISO datetime" }),
+      actualHours: z.number().nonnegative("actualHours must be 0 or greater").optional(),
+      logNotes: z.string().max(2000).optional(),
+      breakTaken: z.boolean().optional(),
+      breakStartTime: z
+        .string()
+        .datetime({ message: "breakStartTime must be a valid ISO datetime" })
+        .optional(),
+      breakMinutes: z
+        .number()
+        .int()
+        .nonnegative("breakMinutes must be 0 or greater")
+        .max(120, "breakMinutes cannot exceed 120")
+        .optional(),
+      mediaAttachments: z
+        .array(
+          z.object({
+            url: z.string().url("Each attachment must have a valid URL"),
+            label: z.string().max(255),
+            uploadedAt: z.string().datetime(),
+          }),
+        )
+        .max(20, "Maximum 20 media attachments per shift")
+        .optional(),
+    })
+    .refine(
+      (data) => {
+        const start = new Date(data.timeIn);
+        const end = new Date(data.timeOut);
+        return end > start;
+      },
+      {
+        message: "timeOut must be after timeIn",
+        path: ["timeOut"],
+      },
+    )
+    .refine(
+      (data) => {
+        if (data.breakTaken && data.breakStartTime) {
+          const start = new Date(data.timeIn);
+          const breakStart = new Date(data.breakStartTime);
+          return breakStart >= start;
+        }
+        return true;
+      },
+      {
+        message: "breakStartTime must be after or equal to timeIn",
+        path: ["breakStartTime"],
+      },
+    ),
 });
 
 export const deleteDispatchAssignmentSchema = z.object({

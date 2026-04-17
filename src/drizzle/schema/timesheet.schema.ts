@@ -24,7 +24,9 @@ const org = pgSchema("org");
 
 /**
  * Timesheets Table
- * Employee time tracking with clock in/out functionality
+ * Employee time tracking — dispatch-driven model.
+ * One row per employee per calendar day.
+ * totalHours is accumulated from dispatch assignment logs (not derived from clockIn/clockOut).
  */
 export const timesheets = org.table(
   "timesheets",
@@ -36,11 +38,12 @@ export const timesheets = org.table(
 
     sheetDate: date("sheet_date").notNull(),
 
-    clockIn: varchar("clock_in", { length: 5 }).notNull(), // HH:MM format (24-hour)
-    clockOut: varchar("clock_out", { length: 5 }), // HH:MM format (24-hour) // Nullable - populated when employee clocks out
+    // clockIn / clockOut removed — times live in dispatch_assignments.timeIn/timeOut
 
+    // Daily accumulated break minutes (sum of all shift breaks for this day)
     breakMinutes: integer("break_minutes").default(0),
 
+    // Accumulated from dispatch assignment logs via upsertTimesheetFromDispatch
     totalHours: numeric("total_hours", { precision: 5, scale: 2 }).default("0"),
     overtimeHours: numeric("overtime_hours", {
       precision: 5,
@@ -53,6 +56,10 @@ export const timesheets = org.table(
 
     rejectedBy: uuid("rejected_by").references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
+
+    // Weekly confirmation (tech confirms on Monday morning after receiving email snapshot)
+    weeklyConfirmedAt: timestamp("weekly_confirmed_at"),
+    weeklyConfirmationNotes: text("weekly_confirmation_notes"),
 
     isDeleted: boolean("is_deleted").default(false),
     deletedAt: timestamp("deleted_at"),

@@ -88,8 +88,10 @@ export const dispatchTasks = org.table(
  * ============================================================================
  * DISPATCH ASSIGNMENTS TABLE
  * ============================================================================
- * Many-to-many relationship between dispatch tasks and technicians
- * Tracks individual technician assignments with clock in/out times
+ * Many-to-many relationship between dispatch tasks and technicians.
+ * Each row is one SHIFT: one technician on one task.
+ * Technicians log Time In (timeIn) / Time Out (timeOut) per shift.
+ * The dispatch service accumulates hours into org.timesheets via upsertTimesheetFromDispatch.
  */
 export const dispatchAssignments = org.table(
   "dispatch_assignments",
@@ -110,15 +112,27 @@ export const dispatchAssignments = org.table(
     // Role in Task
     role: varchar("role", { length: 50 }), // "Primary Tech", "Helper", etc.
 
-    // Actual Hours Logged by Technician / Manager
-    actualStartTime: timestamp("actual_start_time"),
-    actualEndTime: timestamp("actual_end_time"),
+    // Shift Time In / Time Out (replaces the old clockIn/clockOut concept)
+    timeIn: timestamp("time_in"),   // Time In
+    timeOut: timestamp("time_out"), // Time Out
     actualHours: numeric("actual_hours", { precision: 6, scale: 2 }),
     logNotes: text("log_notes"),
     loggedAt: timestamp("logged_at"),
     loggedBy: uuid("logged_by").references(() => users.id, {
       onDelete: "set null",
     }),
+
+    // Per-shift break tracking (CA labor law compliance)
+    breakTaken: boolean("break_taken").notNull().default(false),
+    breakStartTime: timestamp("break_start_time"),  // When the break started
+    breakMinutes: integer("break_minutes").default(30), // Defaults to 30 min when break taken
+
+    // Media uploaded during this shift (auto-labeled with name + timestamp)
+    mediaAttachments: jsonb("media_attachments"), // Array of { url, label, uploadedAt }
+
+    // CA Labor Law compliance flags
+    caLaborViolation: boolean("ca_labor_violation").notNull().default(false),
+    caViolationDetails: text("ca_violation_details"),
 
     // Metadata
     isDeleted: boolean("is_deleted").default(false),

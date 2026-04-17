@@ -29,14 +29,10 @@ export function transformTimesheet<T extends Record<string, any>>(timesheet: T):
     transformed.sheetDate = formatToEasternMMDDYYYY(transformed.sheetDate);
   }
   
-  if (transformed.clockIn) {
-    transformed.clockIn = formatToEasternDateTime(transformed.clockIn);
+  if (transformed.weeklyConfirmedAt) {
+    transformed.weeklyConfirmedAt = formatToEasternDateTime(transformed.weeklyConfirmedAt);
   }
-  
-  if (transformed.clockOut) {
-    transformed.clockOut = formatToEasternDateTime(transformed.clockOut);
-  }
-  
+
   if (transformed.createdAt) {
     transformed.createdAt = formatToEasternDateTime(transformed.createdAt);
   }
@@ -72,7 +68,7 @@ export function transformObject<T extends Record<string, any>>(
 
   const { 
     dateFields = ['sheetDate', 'dateOfBirth', 'hireDate'], 
-    dateTimeFields = ['createdAt', 'updatedAt', 'clockIn', 'clockOut'],
+    dateTimeFields = ['createdAt', 'updatedAt', 'weeklyConfirmedAt'],
     preserveOriginal = false 
   } = options;
 
@@ -167,7 +163,7 @@ export const quickTransforms = {
   // For timesheet responses
   timesheet: (data: any) => createEasternTimeResponse(data, {
     dateFields: ['sheetDate'],
-    dateTimeFields: ['clockIn', 'clockOut', 'createdAt', 'updatedAt']
+    dateTimeFields: ['weeklyConfirmedAt', 'createdAt', 'updatedAt']
   }),
 
   // For user responses  

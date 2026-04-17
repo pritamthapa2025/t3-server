@@ -5,16 +5,15 @@ import {
   getTimesheetByIdHandler,
   updateTimesheetHandler,
   deleteTimesheetHandler,
-  clockInHandler,
-  clockOutHandler,
   approveTimesheetHandler,
   rejectTimesheetHandler,
   getWeeklyTimesheetsByEmployeeHandler,
   getMyTimesheetsHandler,
-  createTimesheetWithClockDataHandler,
   getTimesheetKPIsHandler,
   bulkDeleteTimesheetsHandler,
-  getClockStatusHandler,
+  approveWeekHandler,
+  rejectWeekHandler,
+  confirmWeekHandler,
 } from "../../controllers/TimesheetController.js";
 import { authenticate } from "../../middleware/auth.js";
 import {
@@ -28,14 +27,14 @@ import {
   createTimesheetSchema,
   updateTimesheetSchema,
   deleteTimesheetSchema,
-  clockInSchema,
-  clockOutSchema,
   approveTimesheetSchema,
   rejectTimesheetSchema,
   getWeeklyTimesheetsByEmployeeQuerySchema,
   getMyTimesheetsQuerySchema,
-  createTimesheetWithClockDataSchema,
   getTimesheetKPIsQuerySchema,
+  weeklyApproveSchema,
+  weeklyRejectSchema,
+  weeklyConfirmSchema,
 } from "../../validations/timesheet.validations.js";
 import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 
@@ -44,33 +43,27 @@ const router: IRouter = Router();
 // Apply authentication middleware to all timesheet routes
 router.use(authenticate);
 
-
-// All roles can view their own timesheets and create/submit entries
+// Permission aliases
 const viewOwn = authorizeFeature("timesheet", "view_own_timesheets");
 const createEntry = authorizeFeature("timesheet", "create_timesheet_entry");
 const editOwn = authorizeFeature("timesheet", "edit_own_timesheets");
 const deleteOwn = authorizeFeature("timesheet", "delete_own_timesheets");
-// Manager/Executive only
 const viewOthers = authorizeFeature("timesheet", "view_others_timesheets");
 const approveTimesheets = authorizeFeature("timesheet", "approve_timesheets");
 const rejectTimesheets = authorizeFeature("timesheet", "reject_timesheets");
-// KPIs include labor costs — Manager/Executive
 const viewLaborCosts = authorizeFeature("timesheet", "view_labor_costs");
 
-// All roles see their own timesheets; Managers/Executives also see all
+// List / create timesheets
 router
   .route("/timesheets")
   .get(
-    authorizeAnyFeature("timesheet", [
-      "view_own_timesheets",
-      "view_others_timesheets",
-    ]),
+    authorizeAnyFeature("timesheet", ["view_own_timesheets", "view_others_timesheets"]),
     validate(getTimesheetsQuerySchema),
     getTimesheetsHandler,
   )
   .post(createEntry, validate(createTimesheetSchema), createTimesheetHandler);
 
-// All roles can view their own timesheets
+// Technician views their own week
 router
   .route("/timesheets/my-timesheets")
   .get(viewOwn, validate(getMyTimesheetsQuerySchema), getMyTimesheetsHandler);
@@ -87,55 +80,40 @@ router
 // KPIs include labor cost data — Manager/Executive only
 router
   .route("/timesheets/kpis")
-  .get(
-    viewLaborCosts,
-    validate(getTimesheetKPIsQuerySchema),
-    getTimesheetKPIsHandler,
-  );
+  .get(viewLaborCosts, validate(getTimesheetKPIsQuerySchema), getTimesheetKPIsHandler);
 
-// All roles can clock in/out and check their status
-router
-  .route("/timesheets/clock-in")
-  .post(createEntry, validate(clockInSchema), clockInHandler);
-router
-  .route("/timesheets/clock-out")
-  .post(createEntry, validate(clockOutSchema), clockOutHandler);
-router
-  .route("/timesheets/clock-status")
-  .get(viewOwn, getClockStatusHandler);
+// -------------------------------------------------------------------------
+// Weekly bulk actions (new dispatch-driven model)
+// -------------------------------------------------------------------------
 
+// Technician confirms their week (Monday morning, after receiving email snapshot)
 router
-  .route("/timesheets/clock")
-  .post(
-    createEntry,
-    validate(createTimesheetWithClockDataSchema),
-    createTimesheetWithClockDataHandler,
-  );
+  .route("/timesheets/weekly-confirm")
+  .post(viewOwn, validate(weeklyConfirmSchema), confirmWeekHandler);
 
-// Approve/Reject — Manager/Executive only
+// Manager/Executive approves all days in a week for one employee
+router
+  .route("/timesheets/weekly-approve")
+  .patch(approveTimesheets, validate(weeklyApproveSchema), approveWeekHandler);
+
+// Manager/Executive rejects all days in a week for one employee
+router
+  .route("/timesheets/weekly-reject")
+  .patch(rejectTimesheets, validate(weeklyRejectSchema), rejectWeekHandler);
+
+// Approve/Reject single timesheet (kept for compatibility)
 router
   .route("/timesheets/:id/approve")
-  .post(
-    approveTimesheets,
-    validate(approveTimesheetSchema),
-    approveTimesheetHandler,
-  );
+  .post(approveTimesheets, validate(approveTimesheetSchema), approveTimesheetHandler);
 router
   .route("/timesheets/:id/reject")
-  .post(
-    rejectTimesheets,
-    validate(rejectTimesheetSchema),
-    rejectTimesheetHandler,
-  );
+  .post(rejectTimesheets, validate(rejectTimesheetSchema), rejectTimesheetHandler);
 
-// All roles can view, edit and delete own timesheets
+// CRUD for a single timesheet record
 router
   .route("/timesheets/:id")
   .get(
-    authorizeAnyFeature("timesheet", [
-      "view_own_timesheets",
-      "view_others_timesheets",
-    ]),
+    authorizeAnyFeature("timesheet", ["view_own_timesheets", "view_others_timesheets"]),
     validate(getTimesheetByIdSchema),
     getTimesheetByIdHandler,
   )

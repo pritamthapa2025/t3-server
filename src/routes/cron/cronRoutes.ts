@@ -8,7 +8,8 @@ import {
   notifyInvoiceOverdue1Day,
   notifyInvoiceOverdue7Days,
   notifyInvoiceOverdue30Days,
-  notifyClockReminder,
+  notifyDispatchTimeLogReminder,
+  sendWeeklyTimesheetEmail,
   notifyMaintenanceDue7Days,
   notifyMaintenanceDue3Days,
   notifyMaintenanceOverdue,
@@ -171,18 +172,25 @@ router.get("/notify-invoice-overdue", (_req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/cron/notify-clock-reminder
- * Remind employees who haven't clocked in (morning) or out (evening).
- * Schedule: twice daily — 09:30 (in), 18:30 (out).
- * Pass ?type=in or ?type=out (default: out).
+ * GET /api/v1/cron/notify-dispatch-log-reminder
+ * Remind technicians who have dispatch assignments today but haven't logged Time In yet.
+ * Schedule: daily 19:00 (7pm).
  *
  * Returns 202 immediately; notifications run in the background. Use logs for outcomes.
  */
-router.get("/notify-clock-reminder", (req: Request, res: Response) => {
-  const clockType = (req.query.type as string) === "in" ? "in" : "out";
-  scheduleCronJob("notify-clock-reminder", res, () => notifyClockReminder(clockType), {
-    clockType,
-  });
+router.get("/notify-dispatch-log-reminder", (_req: Request, res: Response) => {
+  scheduleCronJob("notify-dispatch-log-reminder", res, () => notifyDispatchTimeLogReminder());
+});
+
+/**
+ * GET /api/v1/cron/send-weekly-timesheet-email
+ * Send Monday morning weekly timesheet snapshot email to all active employees.
+ * Schedule: Monday 08:00.
+ *
+ * Returns 202 immediately; notifications run in the background. Use logs for outcomes.
+ */
+router.get("/send-weekly-timesheet-email", (_req: Request, res: Response) => {
+  scheduleCronJob("send-weekly-timesheet-email", res, () => sendWeeklyTimesheetEmail());
 });
 
 /**
@@ -252,7 +260,7 @@ router.get("/notify-performance-reviews", (_req: Request, res: Response) => {
 
 /**
  * GET /api/v1/cron/notify-inspection-upcoming
- * Notify manager and executive for vehicles whose safety inspection is due within 30 days.
+ * Notify manager and executive for vehicles whose safety inspection is due within 14 days (one full cycle).
  * Schedule: daily (e.g. 07:06, right after notify-inspection-expired).
  *
  * Returns 202 immediately; notifications run in the background. Use logs for outcomes.

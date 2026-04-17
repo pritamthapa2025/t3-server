@@ -53,6 +53,7 @@ import {
   getBidByIdSimple,
   createBid,
   updateBid,
+  patchBidMarked,
   deleteBid,
   bulkDeleteBids,
   getBidFinancialBreakdown,
@@ -772,6 +773,44 @@ export const createBidHandler = async (req: Request, res: Response) => {
       detail:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+};
+
+/**
+ * PATCH /bids/:bidId/marked
+ * Lightweight endpoint — updates only the `marked` column and writes one
+ * history entry.  Much faster than the full PUT /bids/:id.
+ */
+export const patchBidMarkedHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const { marked } = req.body as { marked?: string };
+    if (marked === undefined) {
+      return res.status(400).json({ success: false, message: "'marked' field is required" });
+    }
+
+    const result = await patchBidMarked(bidId!, marked);
+    if (!result) {
+      return res.status(404).json({ success: false, message: "Bid not found" });
+    }
+
+    await createBidHistoryEntry({
+      bidId: bidId!,
+      action: "field_updated_marked",
+      newValue: marked,
+      description: marked === "selected" ? "Bid marked as client approved" : "Client approval cleared",
+      performedBy: userId,
+    });
+
+    logger.info(`Bid ${bidId} marked field updated to "${marked}"`);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    logger.logApiError("Error patching bid marked", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -4307,6 +4346,13 @@ export const deleteBidDocumentTagHandler = async (
       return res.status(404).json({
         success: false,
         message: "Tag not found",
+      });
+    }
+
+    if (tag.isDefault) {
+      return res.status(403).json({
+        success: false,
+        message: `"${tag.name}" is a default tag and cannot be deleted.`,
       });
     }
 

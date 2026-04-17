@@ -7,6 +7,8 @@ import {
   sql,
   sum,
   desc,
+  gte,
+  lte,
   inArray,
   getTableColumns,
   isNull,
@@ -25,6 +27,10 @@ import {
   businessTodayLocalDateString,
   formatLocalDateStringFromDate,
 } from "../utils/naive-datetime.js";
+
+// Aliases for joining users table multiple times
+const approverUser = alias(users, "approver_user");
+const rejectorUser = alias(users, "rejector_user");
 
 async function assertEmployeeNotTimesheetBlockedForSafetyInspection(
   employeeId: number,
@@ -57,17 +63,14 @@ export const getTimesheets = async (
 ) => {
   let whereConditions: any[] = [];
 
-  // own_only: scope to a specific employee (Technician sees only their timesheets)
   if (options?.ownEmployeeId !== undefined) {
     whereConditions.push(eq(timesheets.employeeId, options.ownEmployeeId));
   }
 
-  // department_only: scope to employees in the manager's department
   if (options?.departmentId !== undefined) {
     whereConditions.push(eq(employees.departmentId, options.departmentId));
   }
 
-  // Add search filter if provided
   if (search) {
     whereConditions.push(
       or(
@@ -99,12 +102,10 @@ export const getTimesheets = async (
     .limit(limit)
     .offset(offset);
 
-  // Extract timesheet data from result and format
   const timesheetData = result.map((row) => {
     const { approvedByName, rejectedByName, ...timesheet } = row.timesheet;
-    const formatted = formatTimesheetResponse(timesheet);
     return {
-      ...formatted,
+      ...timesheet,
       approvedByName: approvedByName ?? null,
       rejectedByName: rejectedByName ?? null,
     };
@@ -130,10 +131,6 @@ export const getTimesheets = async (
   };
 };
 
-// Aliases for joining users table multiple times
-const approverUser = alias(users, "approver_user");
-const rejectorUser = alias(users, "rejector_user");
-
 export const getTimesheetById = async (id: number) => {
   const [row] = await db
     .select({
@@ -149,14 +146,10 @@ export const getTimesheetById = async (id: number) => {
   if (!row) return null;
 
   const { approvedByName, rejectedByName, ...timesheet } = row;
-  const formatted = formatTimesheetResponse(timesheet);
 
-  // Get latest rejection reason from approval history (if rejected)
   if (timesheet.status === "rejected") {
     const [rejectionRecord] = await db
-      .select({
-        remarks: timesheetApprovals.remarks,
-      })
+      .select({ remarks: timesheetApprovals.remarks })
       .from(timesheetApprovals)
       .where(
         and(
@@ -168,7 +161,6 @@ export const getTimesheetById = async (id: number) => {
       .limit(1);
 
     if (rejectionRecord?.remarks) {
-      // Extract rejection reason (before "Manager Notes:" if present)
       const remarks = rejectionRecord.remarks;
       const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
       const rejectionReason =
@@ -177,34 +169,24 @@ export const getTimesheetById = async (id: number) => {
           : remarks;
 
       return {
-        ...formatted,
+        ...timesheet,
         approvedByName: approvedByName ?? null,
         rejectedByName: rejectedByName ?? null,
-        rejectionReason: rejectionReason, // Latest rejection reason from manager
-        // notes field contains employee's notes (preserved)
+        rejectionReason,
       };
     }
   }
 
   return {
-    ...formatted,
+    ...timesheet,
     approvedByName: approvedByName ?? null,
     rejectedByName: rejectedByName ?? null,
   };
 };
 
-// Helper function to format timesheet response (clockIn/clockOut are already strings, just return as-is)
-export const formatTimesheetResponse = (timesheet: any) => {
-  if (!timesheet) return timesheet;
-  // clockIn and clockOut are already stored as HH:MM strings, no conversion needed
-  return timesheet;
-};
-
 export const createTimesheet = async (data: {
   employeeId: number;
-  sheetDate: Date;
-  clockIn: string; // Now accepts time string (HH:MM)
-  clockOut?: string; // Now accepts time string (HH:MM)
+  sheetDate: Date | string;
   breakMinutes?: number;
   totalHours?: string;
   overtimeHours?: string;
@@ -212,66 +194,37 @@ export const createTimesheet = async (data: {
 }) => {
   await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
 
-  // Extract YYYY-MM-DD from the sheetDate string (no Date object needed)
   const sheetDateStr = String(data.sheetDate).split("T")[0]!;
 
-  // Store clockIn and clockOut as time strings directly (HH:MM format)
-  const clockInTime = data.clockIn; // Already in HH:MM format
-  const clockOutTime = data.clockOut || null; // Already in HH:MM format or null
-
-  // Calculate totalHours and overtimeHours if clockOut is provided
-  let calculatedTotalHours = data.totalHours || "0";
-  let calculatedOvertimeHours = data.overtimeHours || "0";
-
-  if (data.clockOut) {
-    // Parse times to calculate hours
-    const clockInParts = data.clockIn.split(":");
-    const clockOutParts = data.clockOut.split(":");
-    const clockInMinutes =
-      parseInt(clockInParts[0] || "0", 10) * 60 +
-      parseInt(clockInParts[1] || "0", 10);
-    const clockOutMinutes =
-      parseInt(clockOutParts[0] || "0", 10) * 60 +
-      parseInt(clockOutParts[1] || "0", 10);
-    const breakMinutes = data.breakMinutes || 0;
-    const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
-    calculatedTotalHours = (totalMinutes / 60).toFixed(2);
-
-    // Calculate overtime (assuming 8 hours is regular time)
-    const regularHours = 8;
-    calculatedOvertimeHours = Math.max(
-      0,
-      parseFloat(calculatedTotalHours) - regularHours,
-    ).toFixed(2);
-  }
+  const totalHours = data.totalHours || "0";
+  const regularHours = 8;
+  const overtimeHours =
+    data.overtimeHours ??
+    Math.max(0, parseFloat(totalHours) - regularHours).toFixed(2);
 
   const [timesheet] = await db
     .insert(timesheets)
     .values({
       employeeId: data.employeeId,
       sheetDate: sheetDateStr as string,
-      clockIn: clockInTime,
-      clockOut: clockOutTime,
       breakMinutes: data.breakMinutes || 0,
-      totalHours: calculatedTotalHours,
-      overtimeHours: calculatedOvertimeHours,
+      totalHours,
+      overtimeHours,
       notes: data.notes || null,
-      status: "pending", // Always set to pending
+      status: "pending",
       rejectedBy: null,
       approvedBy: null,
     })
     .returning();
 
-  return formatTimesheetResponse(timesheet);
+  return timesheet;
 };
 
 export const updateTimesheet = async (
   id: number,
   data: {
     employeeId?: number;
-    sheetDate?: Date;
-    clockIn?: string; // Now accepts time string (HH:MM)
-    clockOut?: string; // Now accepts time string (HH:MM)
+    sheetDate?: Date | string;
     breakMinutes?: number;
     totalHours?: string;
     overtimeHours?: string;
@@ -282,106 +235,38 @@ export const updateTimesheet = async (
   },
   clientUpdatedAt?: string,
 ) => {
-  // Get existing timesheet to use sheetDate if clockIn/clockOut are provided
   const [existingTimesheet] = await db
     .select()
     .from(timesheets)
     .where(and(eq(timesheets.id, id), eq(timesheets.isDeleted, false)));
 
-  if (!existingTimesheet) {
-    return null;
-  }
+  if (!existingTimesheet) return null;
 
   if (isStale(existingTimesheet.updatedAt, clientUpdatedAt)) return STALE_DATA;
 
-  const updateData: {
-    employeeId?: number;
-    sheetDate?: string;
-    clockIn?: string;
-    clockOut?: string;
-    breakMinutes?: number | null;
-    totalHours?: string | null;
-    overtimeHours?: string | null;
-    notes?: string | null;
-    status?: "pending" | "submitted" | "approved" | "rejected";
-    rejectedBy?: string | null;
-    approvedBy?: string | null;
-    updatedAt: Date;
-  } = {
-    updatedAt: new Date(),
-  };
+  const updateData: Record<string, any> = { updatedAt: new Date() };
 
-  if (data.employeeId !== undefined) {
-    updateData.employeeId = data.employeeId;
-  }
+  if (data.employeeId !== undefined) updateData.employeeId = data.employeeId;
 
   if (data.sheetDate !== undefined) {
-    // Convert sheetDate to YYYY-MM-DD string format for date column
-    const sheetDateStr: string =
+    updateData.sheetDate =
       data.sheetDate instanceof Date
         ? formatLocalDateStringFromDate(data.sheetDate)
         : String(data.sheetDate);
-    updateData.sheetDate = sheetDateStr;
   }
 
-  if (data.clockIn !== undefined) {
-    // Store clockIn as time string directly (HH:MM format)
-    updateData.clockIn = data.clockIn;
-  }
-
-  if (data.clockOut !== undefined) {
-    // Store clockOut as time string directly (HH:MM format)
-    updateData.clockOut = data.clockOut;
-
-    // Recalculate hours if clockOut is updated
-    const clockInTime = updateData.clockIn || existingTimesheet.clockIn;
-    if (clockInTime) {
-      // Parse times to calculate hours
-      const clockInParts = clockInTime.split(":");
-      const clockOutParts = data.clockOut.split(":");
-      const clockInMinutes =
-        parseInt(clockInParts[0] || "0", 10) * 60 +
-        parseInt(clockInParts[1] || "0", 10);
-      const clockOutMinutes =
-        parseInt(clockOutParts[0] || "0", 10) * 60 +
-        parseInt(clockOutParts[1] || "0", 10);
-      const breakMins =
-        data.breakMinutes !== undefined
-          ? data.breakMinutes
-          : existingTimesheet.breakMinutes || 0;
-      const totalMinutes = clockOutMinutes - clockInMinutes - breakMins;
-      const calculatedTotalHours = (totalMinutes / 60).toFixed(2);
-      const regularHours = 8;
-      const calculatedOvertimeHours = Math.max(
-        0,
-        parseFloat(calculatedTotalHours) - regularHours,
-      ).toFixed(2);
-
-      updateData.totalHours = calculatedTotalHours;
-      updateData.overtimeHours = calculatedOvertimeHours;
-    }
-  }
-  if (data.breakMinutes !== undefined) {
-    updateData.breakMinutes = data.breakMinutes || null;
-  }
-  if (data.totalHours !== undefined) {
-    updateData.totalHours = data.totalHours || null;
-  }
-  if (data.overtimeHours !== undefined) {
-    updateData.overtimeHours = data.overtimeHours || null;
-  }
-  if (data.notes !== undefined) {
-    updateData.notes = data.notes || null;
-  }
-  if (data.status !== undefined) {
-    updateData.status = data.status;
-  }
-  if (data.rejectedBy !== undefined) {
-    updateData.rejectedBy = data.rejectedBy || null;
-  }
-  if (data.approvedBy !== undefined) {
-    updateData.approvedBy = data.approvedBy || null;
-  }
+  if (data.breakMinutes !== undefined)
+    updateData.breakMinutes = data.breakMinutes ?? null;
+  if (data.totalHours !== undefined)
+    updateData.totalHours = data.totalHours ?? null;
+  if (data.overtimeHours !== undefined)
+    updateData.overtimeHours = data.overtimeHours ?? null;
+  if (data.notes !== undefined) updateData.notes = data.notes ?? null;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.rejectedBy !== undefined)
+    updateData.rejectedBy = data.rejectedBy ?? null;
+  if (data.approvedBy !== undefined)
+    updateData.approvedBy = data.approvedBy ?? null;
 
   const [timesheet] = await db
     .update(timesheets)
@@ -389,365 +274,345 @@ export const updateTimesheet = async (
     .where(eq(timesheets.id, id))
     .returning();
 
-  // Fire timesheet_submitted notification when employee first-time submits (pending → submitted)
+  // Notify on first submission
   if (
     timesheet &&
     data.status === "submitted" &&
     existingTimesheet.status === "pending"
   ) {
-    void (async () => {
-      try {
-        const empId = existingTimesheet.employeeId;
-        const [empRow] =
-          empId != null
-            ? await db
-                .select({ departmentId: employees.departmentId })
-                .from(employees)
-                .where(eq(employees.id, empId))
-                .limit(1)
-            : [];
-        const departmentId = empRow?.departmentId ?? undefined;
-        const { NotificationService } = await import("./notification.service.js");
-        await new NotificationService().triggerNotification({
-          type: "timesheet_submitted",
-          category: "timesheet",
-          priority: "medium",
-          data: {
-            entityType: "Timesheet",
-            entityId: String(id),
-            entityName: `Timesheet #${id}`,
-            employeeId: String(existingTimesheet.employeeId),
-            ...(departmentId != null ? { departmentId: String(departmentId) } : {}),
-          },
-        });
-      } catch (err) {
-        console.error("[Notification] timesheet_submitted failed:", err);
-      }
-    })();
+    void notifyTimesheetStatus("timesheet_submitted", timesheetId(timesheet), existingTimesheet.employeeId);
   }
 
-  // Fire timesheet_resubmitted notification when employee resubmits after rejection
+  // Notify on resubmission
   if (
     timesheet &&
     data.status === "submitted" &&
     existingTimesheet.status === "rejected"
   ) {
-    void (async () => {
-      try {
-        const empId = existingTimesheet.employeeId;
-        const [empRow] =
-          empId != null
-            ? await db
-                .select({ departmentId: employees.departmentId })
-                .from(employees)
-                .where(eq(employees.id, empId))
-                .limit(1)
-            : [];
-        const departmentId = empRow?.departmentId ?? undefined;
-        const { NotificationService } = await import("./notification.service.js");
-        await new NotificationService().triggerNotification({
-          type: "timesheet_resubmitted",
-          category: "timesheet",
-          priority: "medium",
-          data: {
-            entityType: "Timesheet",
-            entityId: String(id),
-            entityName: `Timesheet #${id}`,
-            employeeId: String(existingTimesheet.employeeId),
-            ...(departmentId != null ? { departmentId: String(departmentId) } : {}),
-          },
-        });
-      } catch (err) {
-        console.error("[Notification] timesheet_resubmitted failed:", err);
-      }
-    })();
+    void notifyTimesheetStatus("timesheet_resubmitted", timesheetId(timesheet), existingTimesheet.employeeId);
   }
 
   return timesheet || null;
 };
+
+function timesheetId(t: { id: number }) {
+  return t.id;
+}
+
+async function notifyTimesheetStatus(
+  type: string,
+  id: number,
+  employeeId: number | null | undefined,
+) {
+  try {
+    const empId = employeeId;
+    const [empRow] =
+      empId != null
+        ? await db
+            .select({ departmentId: employees.departmentId })
+            .from(employees)
+            .where(eq(employees.id, empId))
+            .limit(1)
+        : [];
+    const departmentId = empRow?.departmentId ?? undefined;
+    const { NotificationService } = await import("./notification.service.js");
+    await new NotificationService().triggerNotification({
+      type,
+      category: "timesheet",
+      priority: "medium",
+      data: {
+        entityType: "Timesheet",
+        entityId: String(id),
+        entityName: `Timesheet #${id}`,
+        employeeId: String(employeeId),
+        ...(departmentId != null ? { departmentId: String(departmentId) } : {}),
+      },
+    });
+  } catch (err) {
+    console.error(`[Notification] ${type} failed:`, err);
+  }
+}
 
 export const deleteTimesheet = async (id: number, deletedBy: string) => {
   const now = new Date();
   const [timesheet] = await db
     .update(timesheets)
-    .set({
-      isDeleted: true,
-      deletedAt: now,
-      deletedBy,
-      updatedAt: now,
-    })
+    .set({ isDeleted: true, deletedAt: now, deletedBy, updatedAt: now })
     .where(and(eq(timesheets.id, id), eq(timesheets.isDeleted, false)))
     .returning();
   return timesheet || null;
 };
 
-export const clockIn = async (data: {
-  employeeId: number;
-  clockInDate: string;
-  clockInTime: string;
-  jobIds?: string[];
-  notes?: string;
-}) => {
-  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
+/**
+ * Atomically add hours to a daily timesheet row (upsert).
+ * Called by dispatch.service after every shift log / edit / delete.
+ * addedNetHours can be negative (for edits reducing hours, or deletes).
+ */
+export const upsertTimesheetFromDispatch = async (
+  employeeId: number,
+  workDate: string,        // YYYY-MM-DD
+  addedNetHours: number,   // net shift hours (after break deduction); negative for removals
+  addedBreakMinutes: number,
+) => {
+  await assertEmployeeNotTimesheetBlockedForSafetyInspection(employeeId);
 
-  // Extract YYYY-MM-DD from the clockInDate string directly (no timezone conversion)
-  const sheetDateStr = String(data.clockInDate).split("T")[0];
+  const REGULAR_HOURS = 8;
 
-  // Store clockIn time as string directly (HH:MM format)
-  const clockInTime = data.clockInTime;
-
-  // Check if there's already a timesheet for this employee today
-  const existingTimesheet = await db
+  const [existing] = await db
     .select()
     .from(timesheets)
     .where(
       and(
-        eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string),
+        eq(timesheets.employeeId, employeeId),
+        eq(timesheets.sheetDate, workDate as string),
         eq(timesheets.isDeleted, false),
       ),
+    )
+    .limit(1);
+
+  if (existing) {
+    const newTotal = Math.max(
+      0,
+      parseFloat(existing.totalHours || "0") + addedNetHours,
     );
+    const newBreak = Math.max(
+      0,
+      (existing.breakMinutes || 0) + addedBreakMinutes,
+    );
+    const newOt = Math.max(0, newTotal - REGULAR_HOURS);
 
-  if (existingTimesheet.length > 0) {
-    throw new Error("Employee has already clocked in today");
-  }
-
-  // Create new timesheet with clock-in time (clockOut will be null until employee clocks out)
-  const [timesheet] = await db
-    .insert(timesheets)
-    .values({
-      employeeId: data.employeeId,
-      sheetDate: sheetDateStr as string,
-      clockIn: clockInTime,
-      clockOut: null, // Will be populated when employee clocks out
-      breakMinutes: 0,
-      totalHours: "0",
-      overtimeHours: "0",
-      notes: data.notes || null,
+    await db
+      .update(timesheets)
+      .set({
+        totalHours: newTotal.toFixed(2),
+        overtimeHours: newOt.toFixed(2),
+        breakMinutes: newBreak,
+        updatedAt: new Date(),
+      })
+      .where(eq(timesheets.id, existing.id));
+  } else if (addedNetHours > 0) {
+    // Only INSERT if there are positive hours to record
+    const newOt = Math.max(0, addedNetHours - REGULAR_HOURS);
+    await db.insert(timesheets).values({
+      employeeId,
+      sheetDate: workDate as string,
+      breakMinutes: Math.max(0, addedBreakMinutes),
+      totalHours: addedNetHours.toFixed(2),
+      overtimeHours: newOt.toFixed(2),
       status: "pending",
       rejectedBy: null,
       approvedBy: null,
-    })
-    .returning();
-
-
-  return formatTimesheetResponse(timesheet);
+    });
+  }
 };
 
-export const clockOut = async (data: {
-  employeeId: number;
-  clockOutDate: string;
-  clockOutTime: string;
-  jobIds?: string[];
-  notes?: string;
-  breakMinutes?: number;
-}) => {
-  // Extract YYYY-MM-DD from the clockOutDate string directly (no timezone conversion)
-  const sheetDateStr = String(data.clockOutDate).split("T")[0];
-
-  // Store clockOut time as string directly (HH:MM format)
-  const clockOutTimeStr = data.clockOutTime;
-
-  // Find existing timesheet for today
-  const [existingTimesheet] = await db
-    .select()
+/**
+ * Bulk approve all timesheet days in a week for one employee.
+ */
+export const approveWeek = async (
+  employeeId: number,
+  weekStart: string,  // YYYY-MM-DD (Monday)
+  weekEnd: string,    // YYYY-MM-DD (Sunday)
+  approvedBy: string, // UUID
+  notes?: string,
+) => {
+  const rows = await db
+    .select({ id: timesheets.id })
     .from(timesheets)
     .where(
       and(
-        eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string),
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
         eq(timesheets.isDeleted, false),
       ),
     );
 
-  if (!existingTimesheet) {
-    throw new Error(
-      "No clock-in record found for today. Please clock in first.",
-    );
-  }
+  if (rows.length === 0) return { approved: 0 };
 
-  // Calculate total hours worked using time strings
-  const clockInTimeStr = existingTimesheet.clockIn;
-  const breakMinutes = data.breakMinutes || existingTimesheet.breakMinutes || 0;
-
-  // Parse times to calculate hours
-  const clockInParts = clockInTimeStr.split(":");
-  const clockOutParts = clockOutTimeStr.split(":");
-  const clockInMinutes =
-    parseInt(clockInParts[0] || "0", 10) * 60 +
-    parseInt(clockInParts[1] || "0", 10);
-  const clockOutMinutes =
-    parseInt(clockOutParts[0] || "0", 10) * 60 +
-    parseInt(clockOutParts[1] || "0", 10);
-  const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
-  const totalHours = (totalMinutes / 60).toFixed(2);
-
-  // Calculate overtime (assuming 8 hours is regular time)
-  const regularHours = 8;
-  const overtimeHours = Math.max(
-    0,
-    parseFloat(totalHours) - regularHours,
-  ).toFixed(2);
-
-  // Update the timesheet with clock-out information
-  const [updatedTimesheet] = await db
+  await db
     .update(timesheets)
     .set({
-      clockOut: clockOutTimeStr,
-      breakMinutes: breakMinutes,
-      totalHours: totalHours,
-      overtimeHours: overtimeHours,
-      notes: data.notes || existingTimesheet.notes,
+      status: "approved",
+      approvedBy,
+      rejectedBy: null,
       updatedAt: new Date(),
     })
-    .where(eq(timesheets.id, existingTimesheet.id))
-    .returning();
-
-
-  return formatTimesheetResponse(updatedTimesheet);
-};
-
-export const createTimesheetWithClockData = async (data: {
-  employeeId: number;
-  clockInDate: string;
-  clockInTime: string;
-  clockOutDate?: Date;
-  clockOutTime?: string;
-  breakMinutes?: number;
-  notes?: string;
-}) => {
-  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
-
-  // Get the sheet date (start of day)
-  const sheetDate = new Date(data.clockInDate);
-  sheetDate.setHours(0, 0, 0, 0);
-  const sheetDateStr = formatLocalDateStringFromDate(sheetDate);
-
-  // Store clockIn time as string directly (HH:MM format)
-  const clockInTime = data.clockInTime;
-
-  // Check if timesheet already exists for this employee and date
-  const [existingTimesheet] = await db
-    .select()
-    .from(timesheets)
     .where(
       and(
-        eq(timesheets.employeeId, data.employeeId),
-        eq(timesheets.sheetDate, sheetDateStr as string),
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
+        eq(timesheets.isDeleted, false),
       ),
     );
 
-  if (existingTimesheet) {
-    throw new Error("Timesheet for this employee and date already exists");
+  // Audit trail — one approval record per timesheet row
+  for (const row of rows) {
+    await db.insert(timesheetApprovals).values({
+      timesheetId: row.id,
+      action: "approved",
+      performedBy: approvedBy,
+      remarks: notes ?? null,
+    });
   }
 
-  // If clock-out data is provided
-  if (data.clockOutDate && data.clockOutTime) {
-    // Store clockOut time as string directly (HH:MM format)
-    const clockOutTime = data.clockOutTime;
+  // Fire approved notification for the employee
+  void notifyTimesheetStatus(
+    "timesheet_approved",
+    rows[0]!.id,
+    employeeId,
+  );
 
-    const breakMinutes = data.breakMinutes || 0;
+  return { approved: rows.length };
+};
 
-    // Calculate total hours worked using time strings
-    const clockInParts = clockInTime.split(":");
-    const clockOutParts = clockOutTime.split(":");
-    const clockInMinutes =
-      parseInt(clockInParts[0] || "0", 10) * 60 +
-      parseInt(clockInParts[1] || "0", 10);
-    const clockOutMinutes =
-      parseInt(clockOutParts[0] || "0", 10) * 60 +
-      parseInt(clockOutParts[1] || "0", 10);
-    const totalMinutes = clockOutMinutes - clockInMinutes - breakMinutes;
-    const totalHours = (totalMinutes / 60).toFixed(2);
+/**
+ * Bulk reject all timesheet days in a week for one employee.
+ */
+export const rejectWeek = async (
+  employeeId: number,
+  weekStart: string,
+  weekEnd: string,
+  rejectedBy: string,
+  rejectionReason: string,
+  notes?: string,
+) => {
+  const rows = await db
+    .select({ id: timesheets.id })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
+        eq(timesheets.isDeleted, false),
+      ),
+    );
 
-    // Calculate overtime (assuming 8 hours is regular time)
-    const regularHours = 8;
-    const overtimeHours = Math.max(
-      0,
-      parseFloat(totalHours) - regularHours,
-    ).toFixed(2);
+  if (rows.length === 0) return { rejected: 0 };
 
-    // Create new timesheet with both clock-in and clock-out
-    const [newTimesheet] = await db
-      .insert(timesheets)
-      .values({
-        employeeId: data.employeeId,
-        sheetDate: sheetDateStr as string,
-        clockIn: clockInTime,
-        clockOut: clockOutTime,
-        breakMinutes: breakMinutes,
-        totalHours: totalHours,
-        overtimeHours: overtimeHours,
-        notes: data.notes || null,
-        status: "pending",
-        rejectedBy: null,
-        approvedBy: null,
-      })
-      .returning();
+  await db
+    .update(timesheets)
+    .set({
+      status: "rejected",
+      rejectedBy,
+      approvedBy: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
+        eq(timesheets.isDeleted, false),
+      ),
+    );
 
-    return formatTimesheetResponse(newTimesheet);
-  } else {
-    // Create new timesheet with only clock-in
-    const [newTimesheet] = await db
-      .insert(timesheets)
-      .values({
-        employeeId: data.employeeId,
-        sheetDate: sheetDateStr as string,
-        clockIn: clockInTime,
-        clockOut: null,
-        breakMinutes: data.breakMinutes || 0,
-        totalHours: "0",
-        overtimeHours: "0",
-        notes: data.notes || null,
-        status: "pending",
-        rejectedBy: null,
-        approvedBy: null,
-      })
-      .returning();
+  const remarks = notes
+    ? `${rejectionReason}\n\nManager Notes: ${notes}`
+    : rejectionReason;
 
-    return newTimesheet;
+  for (const row of rows) {
+    await db.insert(timesheetApprovals).values({
+      timesheetId: row.id,
+      action: "rejected",
+      performedBy: rejectedBy,
+      remarks,
+    });
   }
+
+  void notifyTimesheetStatus("timesheet_rejected", rows[0]!.id, employeeId);
+
+  return { rejected: rows.length };
+};
+
+/**
+ * Tech confirms their weekly timesheet on Monday (after receiving the email snapshot).
+ * Flips all pending/rejected rows to "submitted" and stores confirmation metadata.
+ */
+export const confirmWeek = async (
+  employeeId: number,
+  weekStart: string,
+  weekEnd: string,
+  notes?: string,
+) => {
+  const now = new Date();
+
+  await db
+    .update(timesheets)
+    .set({
+      status: "submitted",
+      weeklyConfirmedAt: now,
+      weeklyConfirmationNotes: notes ?? null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
+        eq(timesheets.isDeleted, false),
+        or(
+          eq(timesheets.status, "pending"),
+          eq(timesheets.status, "rejected"),
+        ),
+      ),
+    );
+
+  // Fire submitted notification
+  const [firstRow] = await db
+    .select({ id: timesheets.id })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        gte(timesheets.sheetDate, weekStart as string),
+        lte(timesheets.sheetDate, weekEnd as string),
+      ),
+    )
+    .limit(1);
+
+  if (firstRow) {
+    void notifyTimesheetStatus("timesheet_submitted", firstRow.id, employeeId);
+  }
+
+  return { confirmed: true };
 };
 
 export const getWeeklyTimesheetsByEmployee = async (
-  weekStartDate: string, // YYYY-MM-DD format
+  weekStartDate: string,
   employeeIds?: number[],
   departmentId?: number,
   status?: string,
   page: number = 1,
   limit: number = 10,
 ) => {
-  // Calculate week end date using UTC arithmetic to avoid local-TZ shift
-  const startDateStr = weekStartDate; // Already YYYY-MM-DD
+  const startDateStr = weekStartDate;
   const weekStartUTC = new Date(weekStartDate + "T00:00:00Z");
   const weekEndUTC = new Date(weekStartUTC);
   weekEndUTC.setUTCDate(weekStartUTC.getUTCDate() + 6);
   const endDateStr = formatLocalDateStringFromDate(weekEndUTC);
-  // weekStartUTC used for weekDays loop below
 
   const offset = (page - 1) * limit;
 
   let whereConditions: any[] = [];
   let employeeWhereConditions: any[] = [eq(employees.isDeleted, false)];
 
-  // Add date range filter for the week
   whereConditions.push(
     sql`${timesheets.sheetDate} >= ${startDateStr} AND ${timesheets.sheetDate} <= ${endDateStr}`,
   );
 
-  // Add employee ID filter if provided (array of employee IDs)
   if (employeeIds && employeeIds.length > 0) {
     whereConditions.push(inArray(employees.id, employeeIds));
     employeeWhereConditions.push(inArray(employees.id, employeeIds));
   }
 
-  // Add department filter if provided
   if (departmentId) {
     whereConditions.push(eq(employees.departmentId, departmentId));
     employeeWhereConditions.push(eq(employees.departmentId, departmentId));
   }
 
-  // Add status filter if provided
   if (status) {
     whereConditions.push(eq(timesheets.status, status as any));
   }
@@ -755,20 +620,15 @@ export const getWeeklyTimesheetsByEmployee = async (
   const whereClause = and(...whereConditions);
   const employeeWhereClause = and(...employeeWhereConditions);
 
-  // Create aliases for approver and rejector users
-  const approverUser = alias(users, "approver_user");
-  const rejectorUser = alias(users, "rejector_user");
+  const localApproverUser = alias(users, "approver_user");
+  const localRejectorUser = alias(users, "rejector_user");
 
-  // Get all timesheets for the week with employee and user details
-  // Select timesheet fields explicitly to ensure clockIn/clockOut are retrieved correctly
   const result = await db
     .select({
       timesheet: {
         id: timesheets.id,
         employeeId: timesheets.employeeId,
         sheetDate: timesheets.sheetDate,
-        clockIn: timesheets.clockIn,
-        clockOut: timesheets.clockOut,
         breakMinutes: timesheets.breakMinutes,
         totalHours: timesheets.totalHours,
         overtimeHours: timesheets.overtimeHours,
@@ -776,6 +636,8 @@ export const getWeeklyTimesheetsByEmployee = async (
         status: timesheets.status,
         rejectedBy: timesheets.rejectedBy,
         approvedBy: timesheets.approvedBy,
+        weeklyConfirmedAt: timesheets.weeklyConfirmedAt,
+        weeklyConfirmationNotes: timesheets.weeklyConfirmationNotes,
         createdAt: timesheets.createdAt,
         updatedAt: timesheets.updatedAt,
       },
@@ -796,24 +658,23 @@ export const getWeeklyTimesheetsByEmployee = async (
         name: departments.name,
       },
       approver: {
-        id: approverUser.id,
-        fullName: approverUser.fullName,
+        id: localApproverUser.id,
+        fullName: localApproverUser.fullName,
       },
       rejector: {
-        id: rejectorUser.id,
-        fullName: rejectorUser.fullName,
+        id: localRejectorUser.id,
+        fullName: localRejectorUser.fullName,
       },
     })
     .from(timesheets)
     .innerJoin(employees, eq(timesheets.employeeId, employees.id))
     .innerJoin(users, eq(employees.userId, users.id))
     .leftJoin(departments, eq(employees.departmentId, departments.id))
-    .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
-    .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
+    .leftJoin(localApproverUser, eq(timesheets.approvedBy, localApproverUser.id))
+    .leftJoin(localRejectorUser, eq(timesheets.rejectedBy, localRejectorUser.id))
     .where(whereClause)
     .orderBy(users.fullName, timesheets.sheetDate);
 
-  // Get approval history for all timesheets to track rejections and resubmissions
   const timesheetIds = result.map((row) => row.timesheet.id).filter((id) => id);
   let approvalHistoryMap = new Map<number, any[]>();
 
@@ -827,12 +688,8 @@ export const getWeeklyTimesheetsByEmployee = async (
       })
       .from(timesheetApprovals)
       .where(inArray(timesheetApprovals.timesheetId, timesheetIds))
-      .orderBy(
-        timesheetApprovals.timesheetId,
-        desc(timesheetApprovals.createdAt),
-      );
+      .orderBy(timesheetApprovals.timesheetId, desc(timesheetApprovals.createdAt));
 
-    // Group by timesheet ID
     approvalHistory.forEach((record) => {
       if (!approvalHistoryMap.has(record.timesheetId)) {
         approvalHistoryMap.set(record.timesheetId, []);
@@ -841,9 +698,6 @@ export const getWeeklyTimesheetsByEmployee = async (
     });
   }
 
-  // Get all employees (even those without timesheets this week) if no status filter
-  // If status filter is applied, we only want employees with timesheets matching that status
-  // If search or departmentId is provided, we still want to show all matching employees
   let allEmployees;
   if (!status) {
     allEmployees = await db
@@ -855,15 +709,8 @@ export const getWeeklyTimesheetsByEmployee = async (
           positionId: employees.positionId,
           hourlyRate: employees.hourlyRate,
         },
-        user: {
-          id: users.id,
-          fullName: users.fullName,
-          email: users.email,
-        },
-        department: {
-          id: departments.id,
-          name: departments.name,
-        },
+        user: { id: users.id, fullName: users.fullName, email: users.email },
+        department: { id: departments.id, name: departments.name },
       })
       .from(employees)
       .innerJoin(users, eq(employees.userId, users.id))
@@ -872,8 +719,7 @@ export const getWeeklyTimesheetsByEmployee = async (
       .orderBy(users.fullName);
   }
 
-  // Create days of the week array
-  const DAY_NAMES = ["sun","mon","tue","wed","thu","fri","sat"];
+  const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
   const weekDays: Array<{ date: string; dayName: string }> = [];
   for (let i = 0; i < 7; i++) {
     const date = new Date(weekStartUTC);
@@ -884,10 +730,8 @@ export const getWeeklyTimesheetsByEmployee = async (
     });
   }
 
-  // Group timesheets by employee and create weekly view
   const employeeMap = new Map();
 
-  // First, add all employees from timesheets
   result.forEach((row) => {
     const empId = row.employee.id;
     if (!employeeMap.has(empId)) {
@@ -902,23 +746,18 @@ export const getWeeklyTimesheetsByEmployee = async (
           fullName: row.user.fullName,
           email: row.user.email,
         },
-        weekDays: weekDays.map((day: { date: string; dayName: string }) => ({
+        weekDays: weekDays.map((day) => ({
           date: day.date,
           dayName: day.dayName,
           timesheet: null,
           hours: "0.0",
-          status: "no_clock",
+          status: "no_hours",
         })),
-        totals: {
-          regular: 0,
-          overtime: 0,
-          doubleTime: 0,
-        },
+        totals: { regular: 0, overtime: 0, doubleTime: 0 },
       });
     }
   });
 
-  // Add employees without timesheets (matching search/department filters if provided)
   if (allEmployees) {
     allEmployees.forEach((emp) => {
       const empId = emp.employee.id;
@@ -934,24 +773,19 @@ export const getWeeklyTimesheetsByEmployee = async (
             fullName: emp.user.fullName,
             email: emp.user.email,
           },
-          weekDays: weekDays.map((day: { date: string; dayName: string }) => ({
+          weekDays: weekDays.map((day) => ({
             date: day.date,
             dayName: day.dayName,
             timesheet: null,
             hours: "0.0",
-            status: "no_clock",
+            status: "no_hours",
           })),
-          totals: {
-            regular: 0,
-            overtime: 0,
-            doubleTime: 0,
-          },
+          totals: { regular: 0, overtime: 0, doubleTime: 0 },
         });
       }
     });
   }
 
-  // Fill in the actual timesheet data
   result.forEach((row) => {
     const empId = row.employee.id;
     const employeeData = employeeMap.get(empId);
@@ -966,200 +800,83 @@ export const getWeeklyTimesheetsByEmployee = async (
         const overtimeHours = parseFloat(row.timesheet.overtimeHours || "0");
         const regularHours = Math.max(0, totalHours - overtimeHours);
 
-        // Build the day object with flattened timesheet data
         const dayData: any = {
           date: row.timesheet.sheetDate,
           dayName: employeeData.weekDays[dayIndex].dayName,
           hours: totalHours.toFixed(1),
-          status: row.timesheet.clockOut ? row.timesheet.status : "clocked_in",
+          status: row.timesheet.status,
         };
 
-        // Only include timesheet fields if timesheet exists
         if (row.timesheet.id) {
           dayData.timesheetId = row.timesheet.id;
-
-          // clockIn and clockOut are already stored as HH:MM strings, use directly
-          dayData.clockIn = row.timesheet.clockIn || null;
-          dayData.clockOut = row.timesheet.clockOut || null;
-
           dayData.breakMinutes = row.timesheet.breakMinutes || 0;
           dayData.totalHours = row.timesheet.totalHours || "0";
           dayData.overtimeHours = row.timesheet.overtimeHours || "0";
           dayData.regularHours = regularHours.toFixed(2);
+          dayData.weeklyConfirmedAt = row.timesheet.weeklyConfirmedAt ?? null;
+          dayData.weeklyConfirmationNotes =
+            row.timesheet.weeklyConfirmationNotes ?? null;
 
-          // Only include optional fields if they're not null
-          if (
-            row.timesheet.notes !== null &&
-            row.timesheet.notes !== undefined
-          ) {
-            dayData.notes = row.timesheet.notes;
-          }
+          if (row.timesheet.notes != null) dayData.notes = row.timesheet.notes;
 
-          // Include approver information
-          if (
-            row.timesheet.approvedBy !== null &&
-            row.timesheet.approvedBy !== undefined
-          ) {
+          if (row.timesheet.approvedBy != null) {
             dayData.approvedBy = row.timesheet.approvedBy;
-            if (row.approver?.fullName) {
-              dayData.approvedByName = row.approver.fullName;
-            }
+            if (row.approver?.fullName) dayData.approvedByName = row.approver.fullName;
           }
 
-          // Include rejector information and rejection reason
-          // Note: This will be enhanced below with approval history data
-          if (
-            row.timesheet.rejectedBy !== null &&
-            row.timesheet.rejectedBy !== undefined
-          ) {
+          if (row.timesheet.rejectedBy != null) {
             dayData.rejectedBy = row.timesheet.rejectedBy;
-            if (row.rejector?.fullName) {
-              dayData.rejectedByName = row.rejector.fullName;
-            }
+            if (row.rejector?.fullName) dayData.rejectedByName = row.rejector.fullName;
           }
 
-          // Get rejection and resubmission history from approval records
-          const approvalHistory =
-            approvalHistoryMap.get(row.timesheet.id) || [];
-
-          // Find rejection records (sorted by most recent first)
+          const approvalHistory = approvalHistoryMap.get(row.timesheet.id) || [];
           const rejectionRecords = approvalHistory
-            .filter((record) => record.action === "rejected")
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
+            .filter((r) => r.action === "rejected")
+            .sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
           const mostRecentRejection = rejectionRecords[0];
 
-          // Include rejection reason from approval history remarks (not from notes)
-          // Extract rejection reason (before "Manager Notes:" if present)
-          if (
-            row.timesheet.status === "rejected" &&
-            mostRecentRejection?.remarks
-          ) {
+          if (row.timesheet.status === "rejected" && mostRecentRejection?.remarks) {
             const remarks = mostRecentRejection.remarks;
-            const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
-            dayData.rejectionReason =
-              managerNotesIndex > 0
-                ? remarks.substring(0, managerNotesIndex)
-                : remarks;
+            const idx = remarks.indexOf("\n\nManager Notes:");
+            dayData.rejectionReason = idx > 0 ? remarks.substring(0, idx) : remarks;
           }
 
-          // Check if timesheet was resubmitted (status is not "rejected" but rejectedBy is not null)
           const isResubmitted =
-            row.timesheet.rejectedBy !== null &&
-            row.timesheet.rejectedBy !== undefined &&
-            row.timesheet.status !== "rejected";
+            row.timesheet.rejectedBy != null && row.timesheet.status !== "rejected";
 
-          if (row.timesheet.status === "rejected") {
-            // For rejected status, include rejectedAt
-            if (mostRecentRejection) {
-              dayData.rejectedAt = mostRecentRejection.createdAt.toISOString();
-            } else if (row.timesheet.updatedAt) {
-              // Fallback to updatedAt if no approval record exists
-              dayData.rejectedAt = row.timesheet.updatedAt.toISOString();
-            }
-          } else if (isResubmitted) {
-            // Timesheet was previously rejected but has been resubmitted
-            // Include previous rejection info
-            if (row.rejector?.fullName) {
-              dayData.rejectedByName = row.rejector.fullName;
-            }
-            // Use rejection reason from approval history remarks (not from notes)
-            // Extract rejection reason (before "Manager Notes:" if present)
-            if (mostRecentRejection?.remarks) {
+          if (row.timesheet.status === "rejected" && mostRecentRejection) {
+            dayData.rejectedAt = mostRecentRejection.createdAt.toISOString();
+          } else if (isResubmitted && mostRecentRejection) {
+            if (mostRecentRejection.remarks) {
               const remarks = mostRecentRejection.remarks;
-              const managerNotesIndex = remarks.indexOf("\n\nManager Notes:");
-              dayData.rejectionReason =
-                managerNotesIndex > 0
-                  ? remarks.substring(0, managerNotesIndex)
-                  : remarks;
+              const idx = remarks.indexOf("\n\nManager Notes:");
+              dayData.rejectionReason = idx > 0 ? remarks.substring(0, idx) : remarks;
             }
-
-            // Find resubmission timestamp
-            // Look for records after the most recent rejection that indicate resubmission
-            if (mostRecentRejection) {
-              // Find the first record after rejection that's not a rejection
-              const resubmissionRecord = approvalHistory
-                .filter(
-                  (record) =>
-                    record.createdAt > mostRecentRejection.createdAt &&
-                    record.action !== "rejected",
-                )
-                .sort(
-                  (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-                )[0];
-
-              if (resubmissionRecord) {
-                dayData.resubmittedAt =
-                  resubmissionRecord.createdAt.toISOString();
-              } else if (
-                row.timesheet.updatedAt &&
-                row.timesheet.updatedAt > mostRecentRejection.createdAt
-              ) {
-                // Use updatedAt if it's after rejection and no explicit resubmission record
-                dayData.resubmittedAt = row.timesheet.updatedAt.toISOString();
-              }
-
-              // Calculate resubmission count
-              // Count how many times status changed from rejected to non-rejected
-              // We count status transitions: each time it goes from rejected to something else
-              const statusTransitions = approvalHistory.filter(
-                (record) =>
-                  record.createdAt > mostRecentRejection.createdAt &&
-                  record.action !== "rejected",
-              ).length;
-
-              // At minimum, if it's resubmitted, count is at least 1
-              const resubmissionCount = Math.max(1, statusTransitions);
-              dayData.resubmissionCount = resubmissionCount;
-            } else {
-              // No explicit rejection record, but rejectedBy exists
-              // Use updatedAt as resubmission time
-              if (row.timesheet.updatedAt) {
-                dayData.resubmittedAt = row.timesheet.updatedAt.toISOString();
-              }
-              // Assume at least 1 resubmission
-              dayData.resubmissionCount = 1;
-            }
+            dayData.resubmittedAt = row.timesheet.updatedAt?.toISOString();
+            dayData.resubmissionCount = 1;
           }
         }
 
         employeeData.weekDays[dayIndex] = dayData;
-
-        // Update totals
         employeeData.totals.regular += regularHours;
         employeeData.totals.overtime += overtimeHours;
-        // For double time, you might need additional logic based on your business rules
       }
     }
   });
 
-  // Convert map to array and format totals with enhanced status detection
   const today = businessTodayLocalDateString();
 
   const formattedData = Array.from(employeeMap.values()).map((emp) => ({
     ...emp,
     weekDays: emp.weekDays.map((day: any) => {
-      // If there's already timesheet data (has timesheetId), keep it as is
-      if (day.timesheetId) {
-        return day;
-      }
+      if (day.timesheetId) return day;
 
-      // For days without timesheet data, determine status based on date
       const dayDate = day.date;
-      let status = "no_clock";
+      let dayStatus = "no_hours";
+      if (dayDate > today) dayStatus = "future";
+      else if (dayDate === today) dayStatus = "no_hours";
 
-      if (dayDate > today) {
-        status = "future"; // Future date - can't have data yet
-      } else if (dayDate === today) {
-        status = "not_clocked_in"; // Today but no clock in yet
-      } else {
-        status = "no_clock"; // Past date with no data
-      }
-
-      return {
-        ...day,
-        status: status,
-      };
+      return { ...day, status: dayStatus };
     }),
     totals: {
       regular: emp.totals.regular.toFixed(1),
@@ -1168,48 +885,29 @@ export const getWeeklyTimesheetsByEmployee = async (
     },
   }));
 
-  // Apply pagination
   const total = formattedData.length;
   const paginatedData = formattedData.slice(offset, offset + limit);
 
   return {
-    weekInfo: {
-      startDate: startDateStr,
-      endDate: endDateStr,
-      weekDays: weekDays,
-    },
+    weekInfo: { startDate: startDateStr, endDate: endDateStr, weekDays },
     employees: paginatedData,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 };
 
-// Get weekly timesheets for a specific employee (for technician's own view)
 export const getMyWeeklyTimesheets = async (
   employeeId: number,
   weekStartDate: string,
   _search?: string,
 ) => {
-  // Get weekly data for this specific employee
-  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [
-    employeeId,
-  ]);
+  const weeklyData = await getWeeklyTimesheetsByEmployee(weekStartDate, [employeeId]);
 
-  // Filter to only include the current employee's data
   const myEmployeeData = weeklyData.employees.find(
     (emp) => emp.employeeInfo.id === employeeId,
   );
 
   if (!myEmployeeData) {
-    // If no data found for this employee, create empty structure
     const startDate = new Date(weekStartDate);
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 6);
-
     const weekDays: Array<{ date: string; dayName: string }> = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(startDate);
@@ -1227,35 +925,20 @@ export const getMyWeeklyTimesheets = async (
     return {
       weekInfo: weeklyData.weekInfo,
       employee: {
-        employeeInfo: null, // Will be populated when employee record exists
-        weekDays: weekDays.map((day) => {
-          let status = "no_clock";
-          if (day.date > today) {
-            status = "future";
-          } else if (day.date === today) {
-            status = "not_clocked_in";
-          }
-          return {
-            date: day.date,
-            dayName: day.dayName,
-            timesheet: null,
-            hours: "0.0",
-            status: status,
-          };
-        }),
-        totals: {
-          regular: "0.0",
-          overtime: "0.0",
-          doubleTime: "0.0",
-        },
+        employeeInfo: null,
+        weekDays: weekDays.map((day) => ({
+          date: day.date,
+          dayName: day.dayName,
+          timesheet: null,
+          hours: "0.0",
+          status: day.date > today ? "future" : "no_hours",
+        })),
+        totals: { regular: "0.0", overtime: "0.0", doubleTime: "0.0" },
       },
     };
   }
 
-  return {
-    weekInfo: weeklyData.weekInfo,
-    employee: myEmployeeData,
-  };
+  return { weekInfo: weeklyData.weekInfo, employee: myEmployeeData };
 };
 
 export const getTimesheetsByEmployee = async (
@@ -1268,7 +951,6 @@ export const getTimesheetsByEmployee = async (
 ) => {
   let whereConditions: any[] = [];
 
-  // Add search filter if provided
   if (search) {
     whereConditions.push(
       or(
@@ -1280,18 +962,9 @@ export const getTimesheetsByEmployee = async (
     );
   }
 
-  // Filter by specific employee if provided
-  if (employeeId) {
-    whereConditions.push(eq(employees.employeeId, employeeId));
-  }
-
-  // Date range filter
-  if (dateFrom) {
-    whereConditions.push(sql`${timesheets.sheetDate} >= ${dateFrom}`);
-  }
-  if (dateTo) {
-    whereConditions.push(sql`${timesheets.sheetDate} <= ${dateTo}`);
-  }
+  if (employeeId) whereConditions.push(eq(employees.employeeId, employeeId));
+  if (dateFrom) whereConditions.push(sql`${timesheets.sheetDate} >= ${dateFrom}`);
+  if (dateTo) whereConditions.push(sql`${timesheets.sheetDate} <= ${dateTo}`);
 
   const whereClause =
     whereConditions.length > 0 ? and(...whereConditions) : undefined;
@@ -1301,8 +974,6 @@ export const getTimesheetsByEmployee = async (
       timesheet: {
         id: timesheets.id,
         sheetDate: timesheets.sheetDate,
-        clockIn: timesheets.clockIn,
-        clockOut: timesheets.clockOut,
         breakMinutes: timesheets.breakMinutes,
         totalHours: timesheets.totalHours,
         overtimeHours: timesheets.overtimeHours,
@@ -1310,6 +981,8 @@ export const getTimesheetsByEmployee = async (
         status: timesheets.status,
         rejectedBy: timesheets.rejectedBy,
         approvedBy: timesheets.approvedBy,
+        weeklyConfirmedAt: timesheets.weeklyConfirmedAt,
+        weeklyConfirmationNotes: timesheets.weeklyConfirmationNotes,
         createdAt: timesheets.createdAt,
         updatedAt: timesheets.updatedAt,
       },
@@ -1319,11 +992,7 @@ export const getTimesheetsByEmployee = async (
         departmentId: employees.departmentId,
         positionId: employees.positionId,
       },
-      user: {
-        id: users.id,
-        fullName: users.fullName,
-        email: users.email,
-      },
+      user: { id: users.id, fullName: users.fullName, email: users.email },
     })
     .from(timesheets)
     .innerJoin(employees, eq(timesheets.employeeId, employees.id))
@@ -1333,39 +1002,22 @@ export const getTimesheetsByEmployee = async (
     .offset(offset)
     .orderBy(employees.employeeId, timesheets.sheetDate);
 
-  // Group timesheets by employee
   const groupedData = result.reduce((acc: any[], row) => {
-    const employeeKey = row.employee.employeeId;
-
-    // Find existing employee group or create new one
-    let employeeGroup = acc.find((group) => group.employeeId === employeeKey);
-
-    if (!employeeGroup) {
-      employeeGroup = {
-        employeeId: row.employee.employeeId,
-        employee: {
-          id: row.employee.id,
-          employeeId: row.employee.employeeId,
-          departmentId: row.employee.departmentId,
-          positionId: row.employee.positionId,
-        },
-        user: {
-          id: row.user.id,
-          fullName: row.user.fullName,
-          email: row.user.email,
-        },
+    const key = row.employee.employeeId;
+    let group = acc.find((g) => g.employeeId === key);
+    if (!group) {
+      group = {
+        employeeId: key,
+        employee: row.employee,
+        user: row.user,
         timesheets: [],
       };
-      acc.push(employeeGroup);
+      acc.push(group);
     }
-
-    // Add timesheet to employee group (format clockIn/clockOut)
-    employeeGroup.timesheets.push(formatTimesheetResponse(row.timesheet));
-
+    group.timesheets.push(row.timesheet);
     return acc;
   }, []);
 
-  // Get total count for pagination
   const totalResult = await db
     .select({ count: count() })
     .from(timesheets)
@@ -1380,18 +1032,12 @@ export const getTimesheetsByEmployee = async (
     total: totalCount,
     pagination: {
       page: Math.floor(offset / limit) + 1,
-      limit: limit,
+      limit,
       totalPages: Math.ceil(totalCount / limit),
     },
   };
 };
 
-/**
- * Check if the approver is allowed to approve this timesheet based on role rules:
- * - Technician's timesheet → Manager or Executive can approve
- * - Manager's timesheet → only Executive can approve
- * - Executive (or other) timesheet → only Executive can approve
- */
 export const canApproveTimesheet = async (
   approverUserId: string,
   timesheetId: number,
@@ -1402,13 +1048,9 @@ export const canApproveTimesheet = async (
     .where(and(eq(timesheets.id, timesheetId), eq(timesheets.isDeleted, false)))
     .limit(1);
 
-  if (!timesheet) {
-    return { allowed: false, message: "Timesheet not found" };
-  }
-
-  if (!timesheet.employeeId) {
+  if (!timesheet) return { allowed: false, message: "Timesheet not found" };
+  if (!timesheet.employeeId)
     return { allowed: false, message: "Timesheet has no associated employee" };
-  }
 
   const [employee] = await db
     .select({ userId: employees.userId })
@@ -1416,12 +1058,8 @@ export const canApproveTimesheet = async (
     .where(eq(employees.id, timesheet.employeeId))
     .limit(1);
 
-  if (!employee?.userId) {
-    return {
-      allowed: false,
-      message: "Employee or user not found for timesheet",
-    };
-  }
+  if (!employee?.userId)
+    return { allowed: false, message: "Employee or user not found for timesheet" };
 
   const submitterRole = await getUserRoles(employee.userId);
   const approverRole = await getUserRoles(approverUserId);
@@ -1430,42 +1068,28 @@ export const canApproveTimesheet = async (
   const submitterRoleName = submitterRoleNameRaw.toLowerCase();
   const approverRoleName = approverRole?.roleName?.trim().toLowerCase() ?? "";
 
-  if (!approverRoleName) {
+  if (!approverRoleName)
     return { allowed: false, message: "Approver has no role assigned" };
-  }
 
-  // Technician's timesheet: Manager or Executive can approve (case-sensitive role name)
   if (submitterRoleNameRaw === "Technician") {
     const allowed =
       approverRoleName === "manager" || approverRoleName === "executive";
     return allowed
       ? { allowed: true }
-      : {
-          allowed: false,
-          message:
-            "Only a Manager or Executive can approve a Technician's timesheet",
-        };
+      : { allowed: false, message: "Only a Manager or Executive can approve a Technician's timesheet" };
   }
 
-  // Manager's timesheet: only Executive can approve
   if (submitterRoleName === "manager") {
     const allowed = approverRoleName === "executive";
     return allowed
       ? { allowed: true }
-      : {
-          allowed: false,
-          message: "Only an Executive can approve a Manager's timesheet",
-        };
+      : { allowed: false, message: "Only an Executive can approve a Manager's timesheet" };
   }
 
-  // Executive or any other role: only Executive can approve
   const allowed = approverRoleName === "executive";
   return allowed
     ? { allowed: true }
-    : {
-        allowed: false,
-        message: "Only an Executive can approve this timesheet",
-      };
+    : { allowed: false, message: "Only an Executive can approve this timesheet" };
 };
 
 export const approveTimesheet = async (
@@ -1473,50 +1097,32 @@ export const approveTimesheet = async (
   approvedBy: string,
   notes?: string,
 ) => {
-  // Get existing timesheet to preserve employee notes
   const [existingTimesheet] = await db
     .select()
     .from(timesheets)
     .where(eq(timesheets.id, timesheetId));
 
-  if (!existingTimesheet) {
-    return null;
-  }
+  if (!existingTimesheet) return null;
 
-  // Update timesheet: only update status and approvedBy (latest)
-  // Keep employee notes separate - don't overwrite them
   const [timesheet] = await db
     .update(timesheets)
     .set({
       status: "approved",
-      approvedBy: approvedBy, // Store latest approvedBy
-      rejectedBy: null, // Clear any previous rejection
-      // Keep existing employee notes - don't overwrite
+      approvedBy,
+      rejectedBy: null,
       updatedAt: new Date(),
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
 
-  // Create approval record for approval (stores full history)
-  if (timesheet && notes) {
-    await db.insert(timesheetApprovals).values({
-      timesheetId: timesheetId,
-      action: "approved",
-      performedBy: approvedBy,
-      remarks: notes, // Store manager notes in approval history if provided
-    });
-  } else if (timesheet) {
-    // Still create approval record even without notes for audit trail
-    await db.insert(timesheetApprovals).values({
-      timesheetId: timesheetId,
-      action: "approved",
-      performedBy: approvedBy,
-      remarks: null,
-    });
-  }
-
   if (timesheet) {
-    // Fire timesheet_approved notification (fire-and-forget)
+    await db.insert(timesheetApprovals).values({
+      timesheetId,
+      action: "approved",
+      performedBy: approvedBy,
+      remarks: notes ?? null,
+    });
+
     void (async () => {
       try {
         if (existingTimesheet.employeeId === null) return;
@@ -1525,9 +1131,7 @@ export const approveTimesheet = async (
           .from(employees)
           .where(eq(employees.id, existingTimesheet.employeeId))
           .limit(1);
-
         if (!empData?.userId) return;
-
         const { NotificationService } = await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "timesheet_approved",
@@ -1547,7 +1151,7 @@ export const approveTimesheet = async (
     })();
   }
 
-  return timesheet ? formatTimesheetResponse(timesheet) : null;
+  return timesheet ?? null;
 };
 
 export const rejectTimesheet = async (
@@ -1556,49 +1160,36 @@ export const rejectTimesheet = async (
   rejectionReason: string,
   notes?: string,
 ) => {
-  // Get existing timesheet to preserve employee notes
   const [existingTimesheet] = await db
     .select()
     .from(timesheets)
     .where(and(eq(timesheets.id, timesheetId), eq(timesheets.isDeleted, false)));
 
-  if (!existingTimesheet) {
-    return null;
-  }
+  if (!existingTimesheet) return null;
 
-  // Update timesheet: only update status and rejectedBy (latest)
-  // Keep employee notes separate - don't overwrite them
   const [timesheet] = await db
     .update(timesheets)
     .set({
       status: "rejected",
-      rejectedBy: rejectedBy, // Store latest rejectedBy
-      approvedBy: null, // Clear any previous approval
-      // Keep existing employee notes - don't overwrite
+      rejectedBy,
+      approvedBy: null,
       updatedAt: new Date(),
     })
     .where(eq(timesheets.id, timesheetId))
     .returning();
 
-  // Create approval record for rejection (stores full history)
   if (timesheet) {
-    // Store rejection reason in approval history remarks
-    // If manager provided additional notes, combine with rejection reason
     const remarks = notes
       ? `${rejectionReason}\n\nManager Notes: ${notes}`
       : rejectionReason;
 
     await db.insert(timesheetApprovals).values({
-      timesheetId: timesheetId,
+      timesheetId,
       action: "rejected",
       performedBy: rejectedBy,
-      remarks: remarks, // Store rejection reason (and manager notes if provided) in approval history
+      remarks,
     });
-  }
 
-  // Format response to include rejectionReason from approval history
-  if (timesheet) {
-    // Fire timesheet_rejected notification (fire-and-forget)
     void (async () => {
       try {
         if (existingTimesheet.employeeId === null) return;
@@ -1607,9 +1198,7 @@ export const rejectTimesheet = async (
           .from(employees)
           .where(eq(employees.id, existingTimesheet.employeeId))
           .limit(1);
-
         if (!empData?.userId) return;
-
         const { NotificationService } = await import("./notification.service.js");
         await new NotificationService().triggerNotification({
           type: "timesheet_rejected",
@@ -1629,18 +1218,13 @@ export const rejectTimesheet = async (
       }
     })();
 
-    const formatted = formatTimesheetResponse(timesheet);
-    return {
-      ...formatted,
-      rejectionReason: rejectionReason,
-    };
+    return { ...timesheet, rejectionReason };
   }
 
   return null;
 };
 
 export const getTimesheetKPIs = async (weekStartDate: string) => {
-  // Calculate week end date using UTC arithmetic to avoid local-TZ shift
   const startDateStr = weekStartDate;
   const kpiStartUTC = new Date(weekStartDate + "T00:00:00Z");
   const kpiEndUTC = new Date(kpiStartUTC);
@@ -1664,12 +1248,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       .select({ count: count() })
       .from(employees)
       .innerJoin(users, eq(employees.userId, users.id))
-      .where(
-        and(
-          eq(employees.isDeleted, false),
-          eq(employees.status, "available"),
-        ),
-      ),
+      .where(and(eq(employees.isDeleted, false), eq(employees.status, "available"))),
     db
       .select({ employeeId: timesheets.employeeId })
       .from(timesheets)
@@ -1690,10 +1269,7 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       .where(
         and(
           weekRange,
-          or(
-            eq(timesheets.status, "pending"),
-            eq(timesheets.status, "submitted"),
-          )!,
+          or(eq(timesheets.status, "pending"), eq(timesheets.status, "submitted"))!,
         ),
       ),
     db
@@ -1713,9 +1289,6 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
   const overtimeHours = parseFloat(hoursResult[0]?.overtimeHours || "0");
   const trackedHours = totalHours + overtimeHours;
 
-  const pendingApprovals = pendingApprovalsResult?.count || 0;
-  const rejectedEntries = rejectedEntriesResult?.count || 0;
-
   return {
     technicians: {
       total: totalEmployees,
@@ -1726,28 +1299,21 @@ export const getTimesheetKPIs = async (weekStartDate: string) => {
       total: trackedHours,
       regular: totalHours,
       overtime: overtimeHours,
-      doubleTime: 0, // If double time is tracked separately, add it here
+      doubleTime: 0,
       label: `${trackedHours.toFixed(1)}h Regular + OT + Double`,
     },
     pendingApprovals: {
-      count: pendingApprovals,
-      label: `${pendingApprovals} Need manager review`,
+      count: pendingApprovalsResult?.count || 0,
+      label: `${pendingApprovalsResult?.count || 0} Need manager review`,
     },
     rejectedEntries: {
-      count: rejectedEntries,
-      label: `${rejectedEntries} Awaiting technician edits`,
+      count: rejectedEntriesResult?.count || 0,
+      label: `${rejectedEntriesResult?.count || 0} Awaiting technician edits`,
     },
   };
 };
 
-// ===========================================================================
-// Bulk Delete
-// ===========================================================================
-
-export const bulkDeleteTimesheets = async (
-  ids: number[],
-  deletedBy: string,
-) => {
+export const bulkDeleteTimesheets = async (ids: number[], deletedBy: string) => {
   const now = new Date();
   const result = await db
     .update(timesheets)
@@ -1755,46 +1321,4 @@ export const bulkDeleteTimesheets = async (
     .where(and(inArray(timesheets.id, ids), eq(timesheets.isDeleted, false)))
     .returning({ id: timesheets.id });
   return { deleted: result.length, skipped: ids.length - result.length };
-};
-
-// ===========================================================================
-// Clock Status
-// ===========================================================================
-
-/**
- * Returns today's clock status for a given employee.
- * status:
- *   "not_clocked_in"  – no timesheet entry for today
- *   "clocked_in"      – entry exists with clockIn but no clockOut
- *   "clocked_out"     – entry exists with both clockIn and clockOut
- */
-export const getClockStatus = async (employeeId: number) => {
-  const today = businessTodayLocalDateString(); // YYYY-MM-DD
-
-  const [entry] = await db
-    .select({
-      id: timesheets.id,
-      clockIn: timesheets.clockIn,
-      clockOut: timesheets.clockOut,
-      sheetDate: timesheets.sheetDate,
-    })
-    .from(timesheets)
-    .where(
-      and(
-        eq(timesheets.employeeId, employeeId),
-        eq(timesheets.sheetDate, today),
-        eq(timesheets.isDeleted, false),
-      ),
-    )
-    .limit(1);
-
-  if (!entry) {
-    return { status: "not_clocked_in" as const, clockIn: null, clockOut: null, sheetDate: today };
-  }
-
-  if (entry.clockIn && !entry.clockOut) {
-    return { status: "clocked_in" as const, clockIn: entry.clockIn, clockOut: null, sheetDate: today };
-  }
-
-  return { status: "clocked_out" as const, clockIn: entry.clockIn, clockOut: entry.clockOut, sheetDate: today };
 };

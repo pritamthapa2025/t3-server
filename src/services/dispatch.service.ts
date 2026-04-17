@@ -38,6 +38,7 @@ import type {
   UpdateDispatchAssignmentData,
 } from "../types/dispatch.types.js";
 import { naiveDT, businessTodayLocalDateString } from "../utils/naive-datetime.js";
+import { upsertTimesheetFromDispatch } from "./timesheet.service.js";
 import {
   removeGoogleCalendarEventsForDispatchTask,
   removeDispatchAssignmentGoogleCalendar,
@@ -1383,21 +1384,31 @@ export const bulkDeleteDispatchTasks = async (
 };
 
 // ===========================================================================
-// Log Hours for Assignment
+// Log Hours for Assignment (Dispatch-Driven Timesheet Model)
 // ===========================================================================
 
 export const logHoursForAssignment = async (
   assignmentId: string,
   data: {
-    actualStartTime: string;
-    actualEndTime: string;
-    actualHours: number;
+    timeIn: string;   // ISO datetime — Time In
+    timeOut: string;  // ISO datetime — Time Out
+    actualHours: number;      // Computed or manual override
     logNotes?: string;
+    breakTaken?: boolean;
+    breakStartTime?: string;  // ISO datetime — when break started
+    breakMinutes?: number;    // Defaults to 30 if breakTaken
+    mediaAttachments?: Array<{ url: string; label: string; uploadedAt: string }>;
   },
   loggedBy: string,
 ) => {
+  // Load the existing assignment with technician linkage
   const [existing] = await db
-    .select({ id: dispatchAssignments.id })
+    .select({
+      id: dispatchAssignments.id,
+      technicianId: dispatchAssignments.technicianId,
+      actualHours: dispatchAssignments.actualHours,
+      breakMinutes: dispatchAssignments.breakMinutes,
+    })
     .from(dispatchAssignments)
     .where(
       and(
@@ -1409,21 +1420,206 @@ export const logHoursForAssignment = async (
 
   if (!existing) return null;
 
+  // Block hour logging if the assigned technician has a pending safety inspection
+  if (existing.technicianId != null) {
+    const [empRow] = await db
+      .select({ blocked: employees.timesheetBlockedSafetyInspection })
+      .from(employees)
+      .where(eq(employees.id, existing.technicianId))
+      .limit(1);
+    if (empRow?.blocked) {
+      throw new Error(
+        "Hour logging is blocked until you complete the required vehicle safety inspection. Contact your manager if you need help.",
+      );
+    }
+  }
+
+  // Validate: Time Out must be after Time In
+  const startDT = new Date(data.timeIn);
+  const endDT = new Date(data.timeOut);
+  if (endDT <= startDT) {
+    throw new Error("Time Out must be after Time In.");
+  }
+
+  // Validate: logging must be for today (techs cannot log for past dates)
+  const today = businessTodayLocalDateString();
+  const workDate = data.timeIn.split("T")[0];
+  if (workDate !== today) {
+    throw new Error(
+      "Time entries must be for today's date. Past dates cannot be logged.",
+    );
+  }
+
+  // Calculate shift duration in minutes
+  const shiftGrossMinutes = (endDT.getTime() - startDT.getTime()) / 60000;
+  const breakTaken = data.breakTaken ?? false;
+  const breakMinutes = breakTaken ? (data.breakMinutes ?? 30) : 0;
+  const shiftNetMinutes = Math.max(0, shiftGrossMinutes - breakMinutes);
+  const shiftNetHours = shiftNetMinutes / 60;
+
+  // --- CA Labor Law Compliance Check ---
+  // Rule 1: Shift > 5 hours requires a 30-min meal break
+  let caLaborViolation = false;
+  let caViolationDetails: string | null = null;
+
+  if (shiftGrossMinutes > 300) {
+    if (!breakTaken) {
+      // Return early asking frontend to confirm break
+      return {
+        requiresBreakConfirmation: true,
+        shiftHours: (shiftGrossMinutes / 60).toFixed(2),
+      };
+    }
+
+    // Break was confirmed — validate it started within first 5 hours
+    if (data.breakStartTime) {
+      const breakStart = new Date(data.breakStartTime);
+      const minutesUntilBreak =
+        (breakStart.getTime() - startDT.getTime()) / 60000;
+      if (minutesUntilBreak > 300) {
+        caLaborViolation = true;
+        caViolationDetails =
+          "Meal break not taken within first 5 hours of shift (CA Lab. Code §512).";
+      }
+    }
+  }
+
+  // Rule 2: Daily total > 8 hours with no break across all shifts
+  // (checked post-upsert via timesheet total — flagged server-side)
+  if (!breakTaken && existing.technicianId != null) {
+    // Get current day total from timesheets
+    const { timesheets } = await import("../drizzle/schema/timesheet.schema.js");
+    const [dayRow] = await db
+      .select({ totalHours: timesheets.totalHours })
+      .from(timesheets)
+      .where(
+        and(
+          eq(timesheets.employeeId, existing.technicianId),
+          eq(timesheets.sheetDate, workDate as string),
+          eq(timesheets.isDeleted, false),
+        ),
+      )
+      .limit(1);
+
+    const currentDayTotal = parseFloat(dayRow?.totalHours ?? "0");
+    if (currentDayTotal + shiftNetHours > 8 && !caLaborViolation) {
+      caLaborViolation = true;
+      caViolationDetails =
+        "Total hours for the day exceed 8 hours without a recorded meal break (CA Lab. Code §512).";
+    }
+  }
+
+  // Record violation in compliance history if flagged
+  if (caLaborViolation && existing.technicianId != null) {
+    try {
+      const { employeeViolationHistory } = await import(
+        "../drizzle/schema/compliance.schema.js"
+      );
+      const { organizations } = await import("../drizzle/schema/client.schema.js");
+      const [orgRow] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .limit(1);
+
+      await db.insert(employeeViolationHistory).values({
+        organizationId: orgRow?.id ?? null,
+        employeeId: existing.technicianId,
+        violationType: "timesheet",
+        violationDate: workDate as string,
+        description: caViolationDetails ?? "CA labor law violation",
+        severity: "medium",
+        isResolved: false,
+        createdBy: loggedBy,
+      });
+    } catch (err) {
+      console.error("[CA Labor] Failed to record violation:", err);
+    }
+  }
+
+  // Calculate delta for timesheet update (handles edits — subtract old hours, add new)
+  const oldNetHours = existing.actualHours
+    ? parseFloat(existing.actualHours)
+    : 0;
+  const oldBreakMinutes = existing.breakMinutes ?? 0;
+  const deltaHours = shiftNetHours - oldNetHours;
+  const deltaBreak = breakMinutes - oldBreakMinutes;
+
+  // Save to dispatch_assignments
   const [updated] = await db
     .update(dispatchAssignments)
     .set({
-      actualStartTime: naiveDT(data.actualStartTime),
-      actualEndTime: naiveDT(data.actualEndTime),
-      actualHours: String(data.actualHours),
+      timeIn: naiveDT(data.timeIn),
+      timeOut: naiveDT(data.timeOut),
+      actualHours: shiftNetHours.toFixed(2),
       logNotes: data.logNotes ?? null,
       loggedAt: new Date(),
       loggedBy,
+      breakTaken,
+      breakStartTime: data.breakStartTime ? naiveDT(data.breakStartTime) : null,
+      breakMinutes: breakMinutes || null,
+      mediaAttachments: data.mediaAttachments
+        ? JSON.stringify(data.mediaAttachments)
+        : null,
+      caLaborViolation,
+      caViolationDetails,
+      status: "completed",
       updatedAt: new Date(),
     })
     .where(eq(dispatchAssignments.id, assignmentId))
     .returning();
 
+  // Accumulate hours into the daily timesheet row
+  if (existing.technicianId != null) {
+    await upsertTimesheetFromDispatch(
+      existing.technicianId,
+      workDate!,
+      deltaHours,
+      deltaBreak,
+    );
+  }
+
   return updated ?? null;
+};
+
+/**
+ * Remove logged hours from the daily timesheet when an assignment log is deleted.
+ * Call this before soft-deleting the assignment.
+ */
+export const removeLoggedHoursFromTimesheet = async (
+  assignmentId: string,
+) => {
+  const [existing] = await db
+    .select({
+      technicianId: dispatchAssignments.technicianId,
+      actualHours: dispatchAssignments.actualHours,
+      breakMinutes: dispatchAssignments.breakMinutes,
+      timeIn: dispatchAssignments.timeIn,
+    })
+    .from(dispatchAssignments)
+    .where(
+      and(
+        eq(dispatchAssignments.id, assignmentId),
+        eq(dispatchAssignments.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  if (!existing?.technicianId || !existing.actualHours) return;
+
+  const workDate = existing.timeIn
+    ? existing.timeIn.toISOString().split("T")[0]
+    : null;
+  if (!workDate) return;
+
+  const hoursToRemove = parseFloat(existing.actualHours);
+  const breakToRemove = existing.breakMinutes ?? 0;
+
+  await upsertTimesheetFromDispatch(
+    existing.technicianId,
+    workDate,
+    -hoursToRemove,
+    -breakToRemove,
+  );
 };
 
 // Get all assignments for a task, enriched with technician name
@@ -1435,12 +1631,18 @@ export const getAssignmentLoggedHours = async (taskId: string) => {
       technicianId: dispatchAssignments.technicianId,
       status: dispatchAssignments.status,
       role: dispatchAssignments.role,
-      actualStartTime: dispatchAssignments.actualStartTime,
-      actualEndTime: dispatchAssignments.actualEndTime,
+      timeIn: dispatchAssignments.timeIn,
+      timeOut: dispatchAssignments.timeOut,
       actualHours: dispatchAssignments.actualHours,
       logNotes: dispatchAssignments.logNotes,
       loggedAt: dispatchAssignments.loggedAt,
       loggedBy: dispatchAssignments.loggedBy,
+      breakTaken: dispatchAssignments.breakTaken,
+      breakStartTime: dispatchAssignments.breakStartTime,
+      breakMinutes: dispatchAssignments.breakMinutes,
+      mediaAttachments: dispatchAssignments.mediaAttachments,
+      caLaborViolation: dispatchAssignments.caLaborViolation,
+      caViolationDetails: dispatchAssignments.caViolationDetails,
       technicianName: users.fullName,
       employeeIdStr: employees.employeeId,
     })

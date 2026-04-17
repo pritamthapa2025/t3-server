@@ -53,6 +53,7 @@ import {
   getBidHistoryHandler,
   getBidWithAllDataHandler,
   getRelatedBidsHandler,
+  patchBidMarkedHandler,
   createBidDocumentsHandler,
   getBidDocumentsHandler,
   getBidDocumentByIdHandler,
@@ -421,6 +422,13 @@ router
     validate(getRelatedBidsSchema),
     getRelatedBidsHandler,
   );
+
+// Lightweight patch — only updates the `marked` column (client-approved flag)
+router.patch(
+  "/bids/:bidId/marked",
+  authorizeAnyFeature("bids", ["edit_own", "edit_pending"]),
+  patchBidMarkedHandler,
+);
 
 // Financial Breakdown Routes
 

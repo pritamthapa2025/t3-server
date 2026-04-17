@@ -4,6 +4,10 @@ const uuidSchema = z
   .string()
   .uuid({ message: "Invalid ID format - must be a valid UUID" });
 
+const dateStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Date must be in YYYY-MM-DD format" });
+
 // Get timesheets query validation
 export const getTimesheetsQuerySchema = z.object({
   query: z.object({
@@ -34,9 +38,7 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
         .string()
         .optional()
         .transform((val) => (val ? parseInt(val, 10) : 1))
-        .pipe(
-          z.number().int().positive("Page number must be a positive number"),
-        ),
+        .pipe(z.number().int().positive("Page number must be a positive number")),
       limit: z
         .string()
         .optional()
@@ -54,15 +56,13 @@ export const getTimesheetsByEmployeeQuerySchema = z.object({
         .string()
         .optional()
         .refine((val) => !val || !isNaN(new Date(val).getTime()), {
-          message:
-            "Invalid date format for dateFrom. Please use YYYY-MM-DD format",
+          message: "Invalid date format for dateFrom. Please use YYYY-MM-DD format",
         }),
       dateTo: z
         .string()
         .optional()
         .refine((val) => !val || !isNaN(new Date(val).getTime()), {
-          message:
-            "Invalid date format for dateTo. Please use YYYY-MM-DD format",
+          message: "Invalid date format for dateTo. Please use YYYY-MM-DD format",
         }),
     })
     .refine(
@@ -85,16 +85,11 @@ export const getTimesheetByIdSchema = z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Timesheet ID must be a valid positive number"),
-      ),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
 });
 
-// Create timesheet validation
+// Create timesheet validation (dispatch-driven: no clockIn/clockOut required)
 export const createTimesheetSchema = z.object({
   body: z.object({
     employeeId: z
@@ -102,17 +97,6 @@ export const createTimesheetSchema = z.object({
       .int("Employee ID must be a whole number")
       .positive("Employee ID is required and must be a positive number"),
     sheetDate: z.string(),
-    clockIn: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-      message:
-        "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
-    }),
-    clockOut: z
-      .string()
-      .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-        message:
-          "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
-      })
-      .optional(),
     breakMinutes: z
       .union([z.number().int(), z.string()])
       .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
@@ -137,18 +121,13 @@ export const createTimesheetSchema = z.object({
   }),
 });
 
-// Update timesheet validation
+// Update timesheet validation (dispatch-driven: no clockIn/clockOut)
 export const updateTimesheetSchema = z.object({
   params: z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Timesheet ID must be a valid positive number"),
-      ),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z
     .object({
@@ -158,20 +137,6 @@ export const updateTimesheetSchema = z.object({
         .positive("Employee ID must be a positive number")
         .optional(),
       sheetDate: z.string().optional(),
-      clockIn: z
-        .string()
-        .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-          message:
-            "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
-        })
-        .optional(),
-      clockOut: z
-        .string()
-        .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-          message:
-            "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
-        })
-        .optional(),
       breakMinutes: z
         .union([z.number().int(), z.string()])
         .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
@@ -195,19 +160,17 @@ export const updateTimesheetSchema = z.object({
       notes: z.string().optional(),
       status: z
         .enum(["pending", "submitted", "approved", "rejected"], {
-          message:
-            "Status must be one of: pending, submitted, approved, or rejected",
+          message: "Status must be one of: pending, submitted, approved, or rejected",
         })
         .optional(),
       rejectedBy: uuidSchema.optional().nullable(),
       approvedBy: uuidSchema.optional().nullable(),
+      updatedAt: z.string().optional(),
     })
     .refine(
       (data) =>
         data.employeeId !== undefined ||
         data.sheetDate !== undefined ||
-        data.clockIn !== undefined ||
-        data.clockOut !== undefined ||
         data.breakMinutes !== undefined ||
         data.totalHours !== undefined ||
         data.overtimeHours !== undefined ||
@@ -221,77 +184,23 @@ export const updateTimesheetSchema = z.object({
     ),
 });
 
-// Clock-in validation
-export const clockInSchema = z.object({
-  body: z.object({
-    employeeId: z
-      .number()
-      .int("Employee ID must be a whole number")
-      .positive("Employee ID is required and must be a positive number"),
-    clockInDate: z.string(),
-    clockInTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-      message:
-        "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
-    }),
-    jobIds: z.array(uuidSchema).optional(),
-    notes: z.string().optional(),
-  }),
-});
-
-// Clock-out validation
-export const clockOutSchema = z.object({
-  body: z.object({
-    employeeId: z
-      .number()
-      .int("Employee ID must be a whole number")
-      .positive("Employee ID is required and must be a positive number"),
-    clockOutDate: z.string(),
-    clockOutTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-      message:
-        "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
-    }),
-    jobIds: z.array(uuidSchema).optional(),
-    notes: z.string().optional(),
-    breakMinutes: z
-      .union([z.number().int(), z.string()])
-      .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-      .pipe(
-        z
-          .number()
-          .int("Break minutes must be a whole number")
-          .nonnegative("Break minutes cannot be negative"),
-      )
-      .optional(),
-  }),
-});
-
 // Delete timesheet validation
 export const deleteTimesheetSchema = z.object({
   params: z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Timesheet ID must be a valid positive number"),
-      ),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
 });
 
-// Approve timesheet validation
+// Approve single timesheet validation
 export const approveTimesheetSchema = z.object({
   params: z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Timesheet ID must be a valid positive number"),
-      ),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z.object({
     approvedBy: uuidSchema,
@@ -299,18 +208,13 @@ export const approveTimesheetSchema = z.object({
   }),
 });
 
-// Reject timesheet validation
+// Reject single timesheet validation
 export const rejectTimesheetSchema = z.object({
   params: z.object({
     id: z
       .string()
       .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Timesheet ID must be a valid positive number"),
-      ),
+      .pipe(z.number().int().positive("Timesheet ID must be a valid positive number")),
   }),
   body: z.object({
     rejectedBy: uuidSchema,
@@ -327,26 +231,12 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
   query: z.object({
     weekStartDate: z
       .string()
-      .refine(
-        (val) => {
-          const date = new Date(val);
-          return !isNaN(date.getTime());
-        },
-        {
-          message:
-            "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        },
-      )
-      .refine(
-        (val) => {
-          const date = new Date(val);
-          // Check if it's a Monday (0 = Sunday, 1 = Monday)
-          return date.getDay() === 1;
-        },
-        {
-          message: "Week start date must be a Monday (start of the work week)",
-        },
-      ),
+      .refine((val) => !isNaN(new Date(val).getTime()), {
+        message: "Invalid date format for week start date. Please use YYYY-MM-DD format",
+      })
+      .refine((val) => new Date(val).getDay() === 1, {
+        message: "Week start date must be a Monday (start of the work week)",
+      }),
     employeeId: z
       .union([z.string(), z.array(z.string())])
       .optional()
@@ -355,43 +245,23 @@ export const getWeeklyTimesheetsByEmployeeQuerySchema = z.object({
         if (Array.isArray(val)) {
           return val.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
         }
-        // Handle comma-separated string like "14,16" or array-like string "[14,16]"
         const str = val.toString().trim();
-        // Remove brackets if present
         const cleaned = str.replace(/^\[|\]$/g, "");
-        // Split by comma and parse
         const ids = cleaned
           .split(",")
-          .map((id) => {
-            const trimmed = id.trim();
-            return parseInt(trimmed, 10);
-          })
+          .map((id) => parseInt(id.trim(), 10))
           .filter((id) => !isNaN(id) && id > 0);
-
         return ids.length > 0 ? ids : undefined;
       })
-      .pipe(
-        z
-          .array(
-            z.number().int().positive("Employee ID must be a positive number"),
-          )
-          .optional(),
-      ),
+      .pipe(z.array(z.number().int().positive("Employee ID must be a positive number")).optional()),
     departmentId: z
       .string()
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : undefined))
-      .pipe(
-        z
-          .number()
-          .int()
-          .positive("Department ID must be a positive number")
-          .optional(),
-      ),
+      .pipe(z.number().int().positive("Department ID must be a positive number").optional()),
     status: z
       .enum(["pending", "submitted", "approved", "rejected"], {
-        message:
-          "Status must be one of: pending, submitted, approved, or rejected",
+        message: "Status must be one of: pending, submitted, approved, or rejected",
       })
       .optional(),
     page: z
@@ -420,26 +290,12 @@ export const getMyTimesheetsQuerySchema = z.object({
       .string()
       .optional()
       .refine(
-        (val) => {
-          if (!val) return true;
-          const date = new Date(val);
-          return !isNaN(date.getTime());
-        },
-        {
-          message:
-            "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        },
+        (val) => !val || !isNaN(new Date(val).getTime()),
+        { message: "Invalid date format for week start date. Please use YYYY-MM-DD format" },
       )
       .refine(
-        (val) => {
-          if (!val) return true;
-          const date = new Date(val);
-          // Check if it's a Monday (0 = Sunday, 1 = Monday)
-          return date.getDay() === 1;
-        },
-        {
-          message: "Week start date must be a Monday (start of the work week)",
-        },
+        (val) => !val || new Date(val).getDay() === 1,
+        { message: "Week start date must be a Monday (start of the work week)" },
       ),
     search: z.string().optional(),
   }),
@@ -451,74 +307,48 @@ export const getTimesheetKPIsQuerySchema = z.object({
     weekStartDate: z
       .string()
       .min(1, "Week start date is required")
-      .refine(
-        (val) => {
-          const date = new Date(val);
-          return !isNaN(date.getTime());
-        },
-        {
-          message:
-            "Invalid date format for week start date. Please use YYYY-MM-DD format (e.g., 2024-01-15)",
-        },
-      )
-      .refine(
-        (val) => {
-          const date = new Date(val);
-          // Check if it's a Monday (0 = Sunday, 1 = Monday)
-          return date.getDay() === 1;
-        },
-        {
-          message: "Week start date must be a Monday (start of the work week)",
-        },
-      ),
+      .refine((val) => !isNaN(new Date(val).getTime()), {
+        message: "Invalid date format for week start date. Please use YYYY-MM-DD format",
+      })
+      .refine((val) => new Date(val).getDay() === 1, {
+        message: "Week start date must be a Monday (start of the work week)",
+      }),
   }),
 });
 
-// Create timesheet with both clock-in and clock-out validation
-export const createTimesheetWithClockDataSchema = z.object({
-  body: z
-    .object({
-      employeeId: z
-        .number()
-        .int("Employee ID must be a whole number")
-        .positive("Employee ID is required and must be a positive number"),
-      clockInDate: z.string(),
-      clockInTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-        message:
-          "Invalid time format. Please use HH:MM in 24-hour format (e.g., 08:30 or 14:45)",
-      }),
-      clockOutDate: z.string().optional(),
-      clockOutTime: z
-        .string()
-        .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-          message:
-            "Invalid time format. Please use HH:MM in 24-hour format (e.g., 17:30 or 22:15)",
-        })
-        .optional(),
-      jobIds: z.array(uuidSchema).optional(),
-      notes: z.string().optional(),
-      breakMinutes: z
-        .union([z.number().int(), z.string()])
-        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
-        .pipe(
-          z
-            .number()
-            .int("Break minutes must be a whole number")
-            .nonnegative("Break minutes cannot be negative"),
-        )
-        .optional(),
-    })
-    .refine(
-      (data) => {
-        // If clockOutDate is provided, clockOutTime must also be provided and vice versa
-        const hasClockOutDate = !!data.clockOutDate;
-        const hasClockOutTime = !!data.clockOutTime;
-        return hasClockOutDate === hasClockOutTime;
-      },
-      {
-        message:
-          "Both clockOutDate and clockOutTime must be provided together, or both omitted",
-        path: ["clockOutTime"],
-      },
-    ),
+// ===========================================================================
+// Weekly Bulk Action Schemas (new dispatch-driven model)
+// ===========================================================================
+
+// Tech confirms their own week (Monday morning)
+export const weeklyConfirmSchema = z.object({
+  body: z.object({
+    weekStart: dateStringSchema,
+    weekEnd: dateStringSchema,
+    notes: z.string().max(1000).optional(),
+  }),
+});
+
+// Manager/Executive approves full week for one employee
+export const weeklyApproveSchema = z.object({
+  body: z.object({
+    employeeId: z.number().int().positive("Employee ID must be a positive integer"),
+    weekStart: dateStringSchema,
+    weekEnd: dateStringSchema,
+    notes: z.string().max(1000).optional(),
+  }),
+});
+
+// Manager/Executive rejects full week for one employee
+export const weeklyRejectSchema = z.object({
+  body: z.object({
+    employeeId: z.number().int().positive("Employee ID must be a positive integer"),
+    weekStart: dateStringSchema,
+    weekEnd: dateStringSchema,
+    rejectionReason: z
+      .string()
+      .min(1, "Rejection reason is required")
+      .max(500, "Rejection reason is too long (maximum 500 characters)"),
+    notes: z.string().max(1000).optional(),
+  }),
 });

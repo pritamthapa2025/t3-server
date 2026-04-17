@@ -126,7 +126,7 @@ export const bidsTable: any = org.table(
       .references(() => users.id),
     assignedTo: uuid("assigned_to").references(() => users.id, {}),
     qtyNumber: varchar("qty_number", { length: 50 }),
-    marked: varchar("marked", { length: 20 }), // "won" | "lost"
+    marked: varchar("marked", { length: 20 }),
     convertToJob: boolean("convert_to_job").default(false),
 
     isDeleted: boolean("is_deleted").default(false),
@@ -908,6 +908,8 @@ export const bidDocumentTags = org.table(
       .notNull()
       .references(() => bidsTable.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 100 }).notNull(),
+    /** When true this tag was created automatically and cannot be deleted. */
+    isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [

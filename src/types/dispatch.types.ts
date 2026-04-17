@@ -65,8 +65,8 @@ export interface DispatchAssignment {
   taskId: string;
   technicianId: number;
   status: "pending" | "started" | "completed";
-  clockIn?: string;
-  clockOut?: string;
+  timeIn?: string;    // ISO datetime — Time In
+  timeOut?: string;   // ISO datetime — Time Out
   actualDuration?: number;
   role?: string;
   isDeleted: boolean;
@@ -78,8 +78,6 @@ export interface CreateDispatchAssignmentData {
   taskId: string;
   technicianId: number;
   status?: "pending" | "started" | "completed";
-  clockIn?: string;
-  clockOut?: string;
   actualDuration?: number;
   role?: string;
 }
@@ -88,15 +86,13 @@ export interface UpdateDispatchAssignmentData {
   taskId?: string;
   technicianId?: number;
   status?: "pending" | "started" | "completed";
-  clockIn?: string;
-  clockOut?: string;
   actualDuration?: number;
   role?: string;
 }
 
 export interface LogHoursData {
-  actualStartTime: string; // ISO datetime
-  actualEndTime: string; // ISO datetime
+  timeIn: string;   // ISO datetime — Time In
+  timeOut: string;  // ISO datetime — Time Out
   actualHours: number; // computed or manual override
   logNotes?: string;
 }

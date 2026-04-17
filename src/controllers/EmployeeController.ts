@@ -175,11 +175,16 @@ export const getUnassignedDriversHandler = async (
   res: Response,
 ) => {
   try {
-    const data = await getUnassignedDrivers();
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
+
+    const result = await getUnassignedDrivers({ search, page, limit });
     logger.info("Unassigned drivers fetched successfully");
     return res.status(200).json({
       success: true,
-      data,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.logApiError("Error fetching unassigned drivers", error, req);

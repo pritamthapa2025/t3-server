@@ -615,108 +615,169 @@ export const notifyInvoiceOverdue30Days = () => notifyInvoiceOverdueDays(30);
 // ---------------------------------------------------------------------------
 
 /**
- * Remind employees who have clocked in today but have not yet clocked out
- * (clockOut is null), or (morning) active employees with NO timesheet for today
- * (clockType = "in"). There is no per-run row cap — all matches are processed.
- * Deliveries use CLOCK_REMINDER_CONCURRENCY parallel calls per batch to limit
- * SMTP/SMS load.
- * Recommended schedule: twice daily — morning (09:30) for missing clock-in,
- * evening (18:30) for missing clock-out.
+ * Dispatch time-log reminder — fires at 7pm.
+ * Finds all technicians who have dispatch assignments scheduled for today
+ * where Time In (timeIn) has NOT been logged yet, and sends a reminder.
  */
-export async function notifyClockReminder(clockType: "in" | "out" = "out"): Promise<CronResult> {
+export async function notifyDispatchTimeLogReminder(): Promise<CronResult> {
   let processed = 0;
   let errors = 0;
 
   try {
     const today = todayStr();
 
-    if (clockType === "out") {
-      const openShifts = await db
-        .select({
-          employeeId: timesheets.employeeId,
-          sheetDate: timesheets.sheetDate,
-        })
-        .from(timesheets)
-        .where(
-          and(
-            eq(timesheets.isDeleted, false),
-            eq(timesheets.sheetDate, today),
-            isNull(timesheets.clockOut),
-          ),
-        );
+    // Import dispatch schema lazily to avoid circular deps at module load
+    const { dispatchAssignments } = await import("../drizzle/schema/dispatch.schema.js");
+    const { dispatchTasks } = await import("../drizzle/schema/dispatch.schema.js");
 
-      const rows = openShifts.filter((ts) => ts.employeeId != null);
-      const batch = await runInConcurrencyWindows(
-        rows,
-        CLOCK_REMINDER_CONCURRENCY,
-        (ts) =>
-          svc.triggerNotification({
-            type: "clock_reminder",
-            category: "timesheet",
-            priority: "medium",
-            data: {
-              employeeId: String(ts.employeeId),
-              entityType: "Employee",
-              entityId: String(ts.employeeId),
-              entityName: String(ts.employeeId),
-              clockType: "out",
-            },
-          }),
-        (ts, err) =>
-          logger.error(
-            `[CronNotif] clock_reminder(out) failed for employee ${ts.employeeId}:`,
-            err,
-          ),
+    const unloggedRows = await db
+      .select({
+        technicianId: dispatchAssignments.technicianId,
+      })
+      .from(dispatchAssignments)
+      .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+      .where(
+        and(
+          eq(dispatchAssignments.isDeleted, false),
+          eq(dispatchTasks.isDeleted, false),
+          isNull(dispatchAssignments.timeIn),
+          sql`DATE(${dispatchTasks.startTime}) = ${today}`,
+        ),
       );
-      processed += batch.processed;
-      errors += batch.errors;
-    } else {
-      const [allActiveEmployees, todaySheets] = await Promise.all([
-        db
-          .select({ id: employees.id })
-          .from(employees)
-          .where(
-            and(
-              isNull(employees.terminationDate),
-              not(inArray(employees.status as any, ["terminated", "suspended"])),
-            ),
-          ),
-        db
-          .select({ employeeId: timesheets.employeeId })
+
+    // Deduplicate by technicianId
+    const uniqueTechIds = [
+      ...new Set(unloggedRows.map((r) => r.technicianId).filter(Boolean)),
+    ] as number[];
+
+    const batch = await runInConcurrencyWindows(
+      uniqueTechIds.map((id) => ({ id })),
+      CLOCK_REMINDER_CONCURRENCY,
+      (emp) =>
+        svc.triggerNotification({
+          type: "dispatch_time_reminder",
+          category: "timesheet",
+          priority: "medium",
+          data: {
+            employeeId: String(emp.id),
+            entityType: "Employee",
+            entityId: String(emp.id),
+            entityName: String(emp.id),
+          },
+        }),
+      (emp, err) =>
+        logger.error(
+          `[CronNotif] dispatch_time_reminder failed for employee ${emp.id}:`,
+          err,
+        ),
+    );
+    processed += batch.processed;
+    errors += batch.errors;
+  } catch (err) {
+    logger.error("[CronNotif] notifyDispatchTimeLogReminder failed:", err);
+    errors++;
+  }
+
+  return { processed, errors };
+}
+
+/**
+ * Weekly timesheet email — fires Monday morning (8am).
+ * For each active employee, pulls their 7 prior-week org.timesheets rows and
+ * sends a summary email with a link to confirm.
+ */
+export async function sendWeeklyTimesheetEmail(): Promise<CronResult> {
+  let processed = 0;
+  let errors = 0;
+
+  try {
+    // Calculate last week's date range (Mon – Sun)
+    const now = new Date();
+    const todayDay = now.getUTCDay(); // 0=Sun, 1=Mon
+    const daysSinceLastMonday = todayDay === 0 ? 6 : todayDay - 1;
+    const thisMonday = new Date(now);
+    thisMonday.setUTCDate(now.getUTCDate() - daysSinceLastMonday);
+    thisMonday.setUTCHours(0, 0, 0, 0);
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+    const lastSunday = new Date(lastMonday);
+    lastSunday.setUTCDate(lastMonday.getUTCDate() + 6);
+
+    const weekStart = formatLocalDateStringFromDate(lastMonday);
+    const weekEnd = formatLocalDateStringFromDate(lastSunday);
+
+    const activeEmployees = await db
+      .select({
+        id: employees.id,
+        userId: employees.userId,
+        fullName: users.fullName,
+        email: users.email,
+      })
+      .from(employees)
+      .innerJoin(users, eq(employees.userId, users.id))
+      .where(
+        and(
+          eq(employees.isDeleted, false),
+          not(inArray(employees.status as any, ["terminated", "suspended"])),
+        ),
+      );
+
+    const batch = await runInConcurrencyWindows(
+      activeEmployees,
+      CLOCK_REMINDER_CONCURRENCY,
+      async (emp) => {
+        if (!emp.email) return;
+
+        // Fetch their weekly timesheet rows
+        const weekRows = await db
+          .select({
+            sheetDate: timesheets.sheetDate,
+            totalHours: timesheets.totalHours,
+            overtimeHours: timesheets.overtimeHours,
+            status: timesheets.status,
+            breakMinutes: timesheets.breakMinutes,
+          })
           .from(timesheets)
           .where(
-            and(eq(timesheets.sheetDate, today), eq(timesheets.isDeleted, false)),
-          ),
-      ]);
+            and(
+              eq(timesheets.employeeId, emp.id),
+              eq(timesheets.isDeleted, false),
+              sql`${timesheets.sheetDate} >= ${weekStart} AND ${timesheets.sheetDate} <= ${weekEnd}`,
+            ),
+          )
+          .orderBy(timesheets.sheetDate);
 
-      const clockedInIds = new Set(todaySheets.map((r) => r.employeeId).filter(Boolean));
+        const totalHours = weekRows.reduce(
+          (sum, r) => sum + parseFloat(r.totalHours ?? "0"),
+          0,
+        );
 
-      const unclockedIn = allActiveEmployees.filter((emp) => !clockedInIds.has(emp.id));
-
-      const batch = await runInConcurrencyWindows(
-        unclockedIn,
-        CLOCK_REMINDER_CONCURRENCY,
-        (emp) =>
-          svc.triggerNotification({
-            type: "clock_reminder",
-            category: "timesheet",
-            priority: "medium",
-            data: {
-              employeeId: String(emp.id),
-              entityType: "Employee",
-              entityId: String(emp.id),
-              entityName: String(emp.id),
-              clockType: "in",
-            },
-          }),
-        (emp, err) =>
-          logger.error(`[CronNotif] clock_reminder(in) failed for employee ${emp.id}:`, err),
-      );
-      processed += batch.processed;
-      errors += batch.errors;
-    }
+        await svc.triggerNotification({
+          type: "weekly_timesheet_summary",
+          category: "timesheet",
+          priority: "medium",
+          data: {
+            employeeId: String(emp.id),
+            entityType: "Employee",
+            entityId: String(emp.id),
+            entityName: emp.fullName ?? String(emp.id),
+            weekStart,
+            weekEnd,
+            totalHours: totalHours.toFixed(1),
+            dayCount: String(weekRows.length),
+          },
+        });
+      },
+      (emp, err) =>
+        logger.error(
+          `[CronNotif] sendWeeklyTimesheetEmail failed for employee ${emp.id}:`,
+          err,
+        ),
+    );
+    processed += batch.processed;
+    errors += batch.errors;
   } catch (err) {
-    logger.error("[CronNotif] notifyClockReminder query failed:", err);
+    logger.error("[CronNotif] sendWeeklyTimesheetEmail failed:", err);
     errors++;
   }
 
@@ -1387,7 +1448,7 @@ export async function notifyPerformanceReviewDue(): Promise<CronResult> {
 export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
   try {
     const today = todayStr();
-    const in30 = daysFromNow(30);
+    const in14 = daysFromNow(14);
     const now = new Date();
 
     const raw = await db
@@ -1404,7 +1465,7 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
         and(
           eq(vehicles.isDeleted, false),
           gte(vehicles.nextInspectionDue, today),
-          lte(vehicles.nextInspectionDue, in30),
+          lte(vehicles.nextInspectionDue, in14),
         ),
       )
       .orderBy(asc(vehicles.nextInspectionDue))
@@ -1431,7 +1492,7 @@ export async function notifySafetyInspectionUpcoming(): Promise<CronResult> {
       digestKey: "safety_inspection_upcoming_digest",
       recipientRoles: ["manager", "executive"],
       title: "🔍 Upcoming Safety Inspections",
-      intro: `${upcomingVehicles.length} vehicle safety inspection${upcomingVehicles.length !== 1 ? "s are" : " is"} due within the next 30 days.`,
+      intro: `${upcomingVehicles.length} vehicle safety inspection${upcomingVehicles.length !== 1 ? "s are" : " is"} due within the next 14 days.`,
       columns: ["Vehicle", "Vehicle ID", "License Plate", "Due Date", "Days Left"],
       rows,
       hasMore,

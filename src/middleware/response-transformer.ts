@@ -46,8 +46,6 @@ const DEFAULT_CONFIG: TransformConfig = {
     "createdAt",
     "updatedAt",
     "deletedAt",
-    "clockIn",
-    "clockOut",
     "lastLogin",
     "emailVerifiedAt",
     "startTime",
@@ -343,7 +341,7 @@ export function largeDataTransformer(config?: TransformConfig) {
  */
 export const timesheetTransformer = easternTimeTransformer({
   dateFields: ["sheetDate"],
-  dateTimeFields: ["createdAt", "updatedAt"], // clockIn/clockOut are formatted manually as HH:MM
+  dateTimeFields: ["createdAt", "updatedAt", "weeklyConfirmedAt"],
   preserveOriginal: false,
 });
 
