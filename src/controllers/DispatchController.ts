@@ -825,7 +825,15 @@ export const logHoursHandler = async (req: Request, res: Response) => {
         .json({ success: false, message: "Assignment ID is required" });
     }
 
-    const { timeIn, timeOut, actualHours, logNotes } = req.body;
+    const {
+      timeIn,
+      timeOut,
+      actualHours,
+      logNotes,
+      breakTaken,
+      breakStartTime,
+      breakMinutes,
+    } = req.body;
 
     if (!timeIn || !timeOut || actualHours == null) {
       return res.status(400).json({
@@ -834,29 +842,48 @@ export const logHoursHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const updated = await logHoursForAssignment(
+    const result = await logHoursForAssignment(
       assignmentId,
       {
         timeIn,
         timeOut,
         actualHours: Number(actualHours),
         logNotes,
+        breakTaken: breakTaken === true || breakTaken === "true",
+        ...(breakStartTime != null && { breakStartTime }),
+        ...(breakMinutes != null && { breakMinutes: Number(breakMinutes) }),
       },
       userId,
     );
 
-    if (!updated) {
+    if (!result) {
       return res.status(404).json({
         success: false,
         message: "Assignment not found",
       });
     }
 
+    // Service returns a special object when it needs break confirmation from the client
+    if ("requiresBreakConfirmation" in result && result.requiresBreakConfirmation) {
+      return res.status(200).json({
+        success: false,
+        requiresBreakConfirmation: true,
+        shiftHours: result.shiftHours,
+        message: `This shift is ${result.shiftHours} hours. California law requires a 30-minute meal break for shifts over 5 hours (CA Lab. Code §512). Was a break taken?`,
+      });
+    }
+
     logger.info(`Hours logged for assignment ${assignmentId} by ${userId}`);
+
+    const assignmentResult = result as { caLaborViolation?: boolean; caViolationDetails?: string | null };
     return res.status(200).json({
       success: true,
-      data: updated,
+      data: result,
       message: "Hours logged successfully",
+      ...(assignmentResult.caLaborViolation && {
+        caViolation: true,
+        caViolationDetails: assignmentResult.caViolationDetails,
+      }),
     });
   } catch (error) {
     logger.logApiError("Error logging hours for assignment", error, req);
