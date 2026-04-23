@@ -1225,12 +1225,19 @@ export const createSafetyInspectionHandler = async (
     const createdBy = req.user?.id;
     if (createdBy) (inspectionData as any).createdBy = createdBy;
 
-    // Handle multiple image uploads (exterior_0, exterior_1, interior_0, interior_1, etc.)
-    const exteriorPhotos: string[] = [];
-    const interiorPhotos: string[] = [];
+    // Handle four required inspection photo uploads
+    const uploadedPhotoMap: Record<string, string> = {};
 
-    if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
+    const uploadedFiles: Express.Multer.File[] = Array.isArray(req.files)
+      ? req.files
+      : req.files
+        ? Object.values(req.files as Record<string, Express.Multer.File[]>)
+            .flat()
+            .filter(Boolean)
+        : [];
+
+    if (uploadedFiles.length > 0) {
+      for (const file of uploadedFiles) {
         try {
           const uploadResult = await uploadToSpaces(
             file.buffer,
@@ -1238,12 +1245,7 @@ export const createSafetyInspectionHandler = async (
             "inspection-photos",
           );
 
-          // Determine if it's exterior or interior based on fieldname
-          if (file.fieldname.startsWith("exterior_")) {
-            exteriorPhotos.push(uploadResult.url);
-          } else if (file.fieldname.startsWith("interior_")) {
-            interiorPhotos.push(uploadResult.url);
-          }
+          uploadedPhotoMap[file.fieldname] = uploadResult.url;
         } catch (uploadError: unknown) {
           logger.logApiError("Inspection photo upload error", uploadError, req);
           return res.status(500).json({
@@ -1254,12 +1256,30 @@ export const createSafetyInspectionHandler = async (
       }
     }
 
-    // Add uploaded photo URLs to inspection data
-    if (exteriorPhotos.length > 0) {
-      inspectionData.exteriorPhotos = exteriorPhotos;
-    }
-    if (interiorPhotos.length > 0) {
-      inspectionData.interiorPhotos = interiorPhotos;
+    inspectionData.driverSideExteriorPhoto =
+      uploadedPhotoMap.driverSideExteriorPhoto ??
+      inspectionData.driverSideExteriorPhoto;
+    inspectionData.passengerSideExteriorPhoto =
+      uploadedPhotoMap.passengerSideExteriorPhoto ??
+      inspectionData.passengerSideExteriorPhoto;
+    inspectionData.driverSideInteriorPhoto =
+      uploadedPhotoMap.driverSideInteriorPhoto ??
+      inspectionData.driverSideInteriorPhoto;
+    inspectionData.passengerSideInteriorPhoto =
+      uploadedPhotoMap.passengerSideInteriorPhoto ??
+      inspectionData.passengerSideInteriorPhoto;
+
+    if (
+      !inspectionData.driverSideExteriorPhoto ||
+      !inspectionData.passengerSideExteriorPhoto ||
+      !inspectionData.driverSideInteriorPhoto ||
+      !inspectionData.passengerSideInteriorPhoto
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "All four inspection photos are required: driver side exterior, passenger side exterior, driver side interior, and passenger side interior.",
+      });
     }
 
     const newInspection = await createSafetyInspection(inspectionData);
@@ -1301,12 +1321,19 @@ export const updateSafetyInspectionHandler = async (
     }
     const updateData = req.body;
 
-    // Handle multiple image uploads (exterior_0, exterior_1, interior_0, interior_1, etc.)
-    const exteriorPhotos: string[] = [];
-    const interiorPhotos: string[] = [];
+    // Handle inspection photo uploads
+    const uploadedPhotoMap: Record<string, string> = {};
 
-    if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
+    const uploadedFiles: Express.Multer.File[] = Array.isArray(req.files)
+      ? req.files
+      : req.files
+        ? Object.values(req.files as Record<string, Express.Multer.File[]>)
+            .flat()
+            .filter(Boolean)
+        : [];
+
+    if (uploadedFiles.length > 0) {
+      for (const file of uploadedFiles) {
         try {
           const uploadResult = await uploadToSpaces(
             file.buffer,
@@ -1314,12 +1341,7 @@ export const updateSafetyInspectionHandler = async (
             "inspection-photos",
           );
 
-          // Determine if it's exterior or interior based on fieldname
-          if (file.fieldname.startsWith("exterior_")) {
-            exteriorPhotos.push(uploadResult.url);
-          } else if (file.fieldname.startsWith("interior_")) {
-            interiorPhotos.push(uploadResult.url);
-          }
+          uploadedPhotoMap[file.fieldname] = uploadResult.url;
         } catch (uploadError: unknown) {
           logger.logApiError("Inspection photo upload error", uploadError, req);
           return res.status(500).json({
@@ -1330,12 +1352,21 @@ export const updateSafetyInspectionHandler = async (
       }
     }
 
-    // Add uploaded photo URLs to update data (merge with existing if any)
-    if (exteriorPhotos.length > 0) {
-      updateData.exteriorPhotos = exteriorPhotos;
+    if (uploadedPhotoMap.driverSideExteriorPhoto) {
+      updateData.driverSideExteriorPhoto =
+        uploadedPhotoMap.driverSideExteriorPhoto;
     }
-    if (interiorPhotos.length > 0) {
-      updateData.interiorPhotos = interiorPhotos;
+    if (uploadedPhotoMap.passengerSideExteriorPhoto) {
+      updateData.passengerSideExteriorPhoto =
+        uploadedPhotoMap.passengerSideExteriorPhoto;
+    }
+    if (uploadedPhotoMap.driverSideInteriorPhoto) {
+      updateData.driverSideInteriorPhoto =
+        uploadedPhotoMap.driverSideInteriorPhoto;
+    }
+    if (uploadedPhotoMap.passengerSideInteriorPhoto) {
+      updateData.passengerSideInteriorPhoto =
+        uploadedPhotoMap.passengerSideInteriorPhoto;
     }
 
     const updatedInspection = await updateSafetyInspection(id, updateData);

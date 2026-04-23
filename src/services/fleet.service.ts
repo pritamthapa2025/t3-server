@@ -1567,31 +1567,39 @@ export const getSafetyInspectionById = async (id: string) => {
 export const createSafetyInspection = async (
   data: CreateSafetyInspectionData,
 ) => {
+  const [vehicle] = await db
+    .select({
+      id: vehicles.id,
+      assignedToEmployeeId: vehicles.assignedToEmployeeId,
+    })
+    .from(vehicles)
+    .where(and(eq(vehicles.id, data.vehicleId), eq(vehicles.isDeleted, false)))
+    .limit(1);
+
+  if (!vehicle) {
+    throw new Error("Vehicle not found");
+  }
+  if (!vehicle.assignedToEmployeeId) {
+    throw new Error(
+      "Safety inspection requires a currently assigned vehicle driver.",
+    );
+  }
+
   const insertData: any = {
     vehicleId: data.vehicleId,
     date: data.date,
     overallStatus: data.overallStatus,
-    isTeamMember: data.isTeamMember,
+    isTeamMember: true,
+    employeeId: vehicle.assignedToEmployeeId,
   };
-
-  // Handle team member vs external performer logic
-  if (data.isTeamMember) {
-    if (data.employeeId) {
-      insertData.employeeId = data.employeeId;
-    }
-    // performedBy will be null for team members (employee name will be used)
-  } else {
-    if (data.performedBy) {
-      insertData.performedBy = data.performedBy;
-    }
-    // employeeId will be null for external performers
-  }
 
   if (data.mileage) insertData.mileage = data.mileage;
   if (data.inspectionNotes) insertData.inspectionNotes = data.inspectionNotes;
   if (data.checklist) insertData.checklist = data.checklist;
-  if (data.exteriorPhotos) insertData.exteriorPhotos = data.exteriorPhotos;
-  if (data.interiorPhotos) insertData.interiorPhotos = data.interiorPhotos;
+  insertData.driverSideExteriorPhoto = data.driverSideExteriorPhoto;
+  insertData.passengerSideExteriorPhoto = data.passengerSideExteriorPhoto;
+  insertData.driverSideInteriorPhoto = data.driverSideInteriorPhoto;
+  insertData.passengerSideInteriorPhoto = data.passengerSideInteriorPhoto;
   if (data.createdBy) insertData.createdBy = data.createdBy;
 
   const result = await db
@@ -1699,26 +1707,19 @@ export const updateSafetyInspection = async (
 
   if (data.date !== undefined) updateData.date = data.date;
   if (data.mileage !== undefined) updateData.mileage = data.mileage;
-  if (data.performedBy !== undefined) updateData.performedBy = data.performedBy;
   if (data.overallStatus !== undefined)
     updateData.overallStatus = data.overallStatus;
   if (data.inspectionNotes !== undefined)
     updateData.inspectionNotes = data.inspectionNotes;
   if (data.checklist !== undefined) updateData.checklist = data.checklist;
-  if (data.isTeamMember !== undefined) {
-    updateData.isTeamMember = data.isTeamMember;
-    // Handle logic change: if switching to team member, clear performedBy
-    if (data.isTeamMember) {
-      updateData.performedBy = null;
-    } else {
-      updateData.employeeId = null;
-    }
-  }
-  if (data.employeeId !== undefined) updateData.employeeId = data.employeeId;
-  if (data.exteriorPhotos !== undefined)
-    updateData.exteriorPhotos = data.exteriorPhotos;
-  if (data.interiorPhotos !== undefined)
-    updateData.interiorPhotos = data.interiorPhotos;
+  if (data.driverSideExteriorPhoto !== undefined)
+    updateData.driverSideExteriorPhoto = data.driverSideExteriorPhoto;
+  if (data.passengerSideExteriorPhoto !== undefined)
+    updateData.passengerSideExteriorPhoto = data.passengerSideExteriorPhoto;
+  if (data.driverSideInteriorPhoto !== undefined)
+    updateData.driverSideInteriorPhoto = data.driverSideInteriorPhoto;
+  if (data.passengerSideInteriorPhoto !== undefined)
+    updateData.passengerSideInteriorPhoto = data.passengerSideInteriorPhoto;
 
   const result = await db
     .update(safetyInspections)

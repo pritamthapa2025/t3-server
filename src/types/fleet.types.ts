@@ -365,7 +365,7 @@ export interface SafetyInspection {
   vehicleId: string;
   date: string;
   mileage?: string;
-  performedBy?: string; // Nullable - only used when isTeamMember = false
+  performedBy?: string;
   overallStatus:
     | "passed"
     | "failed"
@@ -376,8 +376,10 @@ export interface SafetyInspection {
   checklist?: any; // JSON checklist data
   isTeamMember: boolean;
   employeeId?: number;
-  exteriorPhotos?: string[];
-  interiorPhotos?: string[];
+  driverSideExteriorPhoto?: string;
+  passengerSideExteriorPhoto?: string;
+  driverSideInteriorPhoto?: string;
+  passengerSideInteriorPhoto?: string;
   createdBy?: string;
   isDeleted: boolean;
   createdAt: Date;
@@ -388,7 +390,7 @@ export interface CreateSafetyInspectionData {
   vehicleId: string;
   date: string;
   mileage?: string;
-  performedBy?: string; // Optional when isTeamMember is true
+  performedBy?: string;
   overallStatus:
     | "passed"
     | "failed"
@@ -397,10 +399,12 @@ export interface CreateSafetyInspectionData {
     | "overdue";
   inspectionNotes?: string;
   checklist?: any; // JSON checklist data
-  isTeamMember: boolean;
-  employeeId?: number; // Required when isTeamMember is true
-  exteriorPhotos?: string[];
-  interiorPhotos?: string[];
+  isTeamMember?: boolean;
+  employeeId?: number;
+  driverSideExteriorPhoto?: string;
+  passengerSideExteriorPhoto?: string;
+  driverSideInteriorPhoto?: string;
+  passengerSideInteriorPhoto?: string;
   createdBy?: string;
 }
 
@@ -418,8 +422,10 @@ export interface UpdateSafetyInspectionData {
   checklist?: any; // JSON checklist data
   isTeamMember?: boolean;
   employeeId?: number;
-  exteriorPhotos?: string[];
-  interiorPhotos?: string[];
+  driverSideExteriorPhoto?: string;
+  passengerSideExteriorPhoto?: string;
+  driverSideInteriorPhoto?: string;
+  passengerSideInteriorPhoto?: string;
 }
 
 // Safety Inspection Item Types

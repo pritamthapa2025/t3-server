@@ -1,6 +1,7 @@
 import {
   count,
   eq,
+  ne,
   and,
   or,
   ilike,
@@ -20,7 +21,11 @@ import { employees, departments } from "../drizzle/schema/org.schema.js";
 import {
   timesheets,
   timesheetApprovals,
+  timesheetJobEntries,
 } from "../drizzle/schema/timesheet.schema.js";
+import { jobs } from "../drizzle/schema/jobs.schema.js";
+import { bidsTable } from "../drizzle/schema/bids.schema.js";
+import { dispatchAssignments, dispatchTasks } from "../drizzle/schema/dispatch.schema.js";
 import { users } from "../drizzle/schema/auth.schema.js";
 import { getUserRoles } from "./role.service.js";
 import {
@@ -416,6 +421,8 @@ export const approveWeek = async (
   approvedBy: string, // UUID
   notes?: string,
 ) => {
+  // Only fetch rows that are not already approved — avoids duplicate audit entries
+  // and is idempotent when mixing day-level and week-level approvals.
   const rows = await db
     .select({ id: timesheets.id })
     .from(timesheets)
@@ -425,6 +432,7 @@ export const approveWeek = async (
         gte(timesheets.sheetDate, weekStart as string),
         lte(timesheets.sheetDate, weekEnd as string),
         eq(timesheets.isDeleted, false),
+        ne(timesheets.status, "approved"),
       ),
     );
 
@@ -444,10 +452,11 @@ export const approveWeek = async (
         gte(timesheets.sheetDate, weekStart as string),
         lte(timesheets.sheetDate, weekEnd as string),
         eq(timesheets.isDeleted, false),
+        ne(timesheets.status, "approved"),
       ),
     );
 
-  // Audit trail — one approval record per timesheet row
+  // Audit trail — one approval record per newly-approved row only
   for (const row of rows) {
     await db.insert(timesheetApprovals).values({
       timesheetId: row.id,
@@ -478,6 +487,8 @@ export const rejectWeek = async (
   rejectionReason: string,
   notes?: string,
 ) => {
+  // Skip individually-approved rows — week reject must not overwrite a day
+  // that has already been explicitly approved by a manager.
   const rows = await db
     .select({ id: timesheets.id })
     .from(timesheets)
@@ -487,6 +498,7 @@ export const rejectWeek = async (
         gte(timesheets.sheetDate, weekStart as string),
         lte(timesheets.sheetDate, weekEnd as string),
         eq(timesheets.isDeleted, false),
+        ne(timesheets.status, "approved"),
       ),
     );
 
@@ -506,6 +518,7 @@ export const rejectWeek = async (
         gte(timesheets.sheetDate, weekStart as string),
         lte(timesheets.sheetDate, weekEnd as string),
         eq(timesheets.isDeleted, false),
+        ne(timesheets.status, "approved"),
       ),
     );
 
@@ -932,13 +945,63 @@ export const getMyWeeklyTimesheets = async (
           timesheet: null,
           hours: "0.0",
           status: day.date > today ? "future" : "no_hours",
+          jobEntries: [],
         })),
         totals: { regular: "0.0", overtime: "0.0", doubleTime: "0.0" },
       },
     };
   }
 
-  return { weekInfo: weeklyData.weekInfo, employee: myEmployeeData };
+  // Enrich each day with job entries from timesheet_job_entries
+  const timesheetIds = myEmployeeData.weekDays
+    .map((d: any) => d.timesheetId)
+    .filter(Boolean) as number[];
+
+  let jobEntriesByTimesheetId = new Map<number, any[]>();
+
+  if (timesheetIds.length > 0) {
+    const entries = await db
+      .select({
+        id: timesheetJobEntries.id,
+        timesheetId: timesheetJobEntries.timesheetId,
+        jobId: timesheetJobEntries.jobId,
+        jobNumber: jobs.jobNumber,
+        jobTitle: jobs.description,
+        timeIn: timesheetJobEntries.timeIn,
+        timeOut: timesheetJobEntries.timeOut,
+        breakMinutes: timesheetJobEntries.breakMinutes,
+        hours: timesheetJobEntries.hours,
+        entryType: timesheetJobEntries.entryType,
+        notes: timesheetJobEntries.notes,
+        breakTaken: timesheetJobEntries.breakTaken,
+        caLaborViolation: timesheetJobEntries.caLaborViolation,
+        caViolationDetails: timesheetJobEntries.caViolationDetails,
+        createdAt: timesheetJobEntries.createdAt,
+      })
+      .from(timesheetJobEntries)
+      .leftJoin(jobs, eq(timesheetJobEntries.jobId, jobs.id))
+      .where(inArray(timesheetJobEntries.timesheetId, timesheetIds))
+      .orderBy(timesheetJobEntries.timeIn);
+
+    entries.forEach((entry) => {
+      if (!jobEntriesByTimesheetId.has(entry.timesheetId)) {
+        jobEntriesByTimesheetId.set(entry.timesheetId, []);
+      }
+      jobEntriesByTimesheetId.get(entry.timesheetId)!.push(entry);
+    });
+  }
+
+  const enrichedEmployee = {
+    ...myEmployeeData,
+    weekDays: myEmployeeData.weekDays.map((day: any) => ({
+      ...day,
+      jobEntries: day.timesheetId
+        ? (jobEntriesByTimesheetId.get(day.timesheetId) ?? [])
+        : [],
+    })),
+  };
+
+  return { weekInfo: weeklyData.weekInfo, employee: enrichedEmployee };
 };
 
 export const getTimesheetsByEmployee = async (
@@ -1321,4 +1384,542 @@ export const bulkDeleteTimesheets = async (ids: number[], deletedBy: string) => 
     .where(and(inArray(timesheets.id, ids), eq(timesheets.isDeleted, false)))
     .returning({ id: timesheets.id });
   return { deleted: result.length, skipped: ids.length - result.length };
+};
+
+// ===========================================================================
+// Manual / Coverage Time Logging
+// ===========================================================================
+
+/**
+ * Converts "HH:MM" strings to total minutes since midnight.
+ */
+function hhmmToMinutes(hhmm: string): number {
+  const [h = "0", m = "0"] = hhmm.split(":");
+  return parseInt(h, 10) * 60 + parseInt(m, 10);
+}
+
+/**
+ * CA Labor Law compliance check for a full day's total hours.
+ * Returns an array of violation strings (empty = no violations).
+ */
+function checkCaCompliance(
+  totalHoursForDay: number,
+  totalBreakMinutesForDay: number,
+): string[] {
+  const violations: string[] = [];
+  const MEAL_BREAK_THRESHOLD_1 = 5;
+  const MEAL_BREAK_THRESHOLD_2 = 10;
+  const MIN_MEAL_BREAK_MINUTES = 30;
+
+  if (
+    totalHoursForDay > MEAL_BREAK_THRESHOLD_1 &&
+    totalBreakMinutesForDay < MIN_MEAL_BREAK_MINUTES
+  ) {
+    violations.push(
+      `Meal break violation: ${totalHoursForDay.toFixed(1)}h worked with only ${totalBreakMinutesForDay} min break (30 min required after 5 hours).`,
+    );
+  }
+
+  if (
+    totalHoursForDay > MEAL_BREAK_THRESHOLD_2 &&
+    totalBreakMinutesForDay < MIN_MEAL_BREAK_MINUTES * 2
+  ) {
+    violations.push(
+      `Second meal break violation: ${totalHoursForDay.toFixed(1)}h worked — second 30-min meal break required after 10 hours.`,
+    );
+  }
+
+  return violations;
+}
+
+/**
+ * Logs manual or coverage time for an employee against a specific job.
+ * - Upserts the daily org.timesheets row (adds hours to totalHours).
+ * - Inserts a row into org.timesheet_job_entries with exact clock times and job ref.
+ * - Returns CA compliance warnings (does not block save).
+ */
+export const logManualTime = async (data: {
+  employeeId: number;
+  jobId?: string;
+  sheetDate: string;      // YYYY-MM-DD
+  timeIn: string;         // HH:MM 24h
+  timeOut: string;        // HH:MM 24h
+  breakMinutes: number;
+  entryType: "manual" | "coverage";
+  notes?: string;
+  coveredForEmployeeId?: number;              // employee ID of the person being covered for
+  coveredForDispatchAssignmentId?: string;    // UUID of the specific dispatch assignment being covered
+  createdBy?: string;     // user UUID of the person submitting
+}) => {
+  await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
+
+  // Calculate net hours from clock times
+  const rawMinutes = hhmmToMinutes(data.timeOut) - hhmmToMinutes(data.timeIn);
+  const netMinutes = Math.max(0, rawMinutes - data.breakMinutes);
+  const newHours = parseFloat((netMinutes / 60).toFixed(2));
+
+  const REGULAR_HOURS = 8;
+
+  // --- Upsert the daily timesheet row ---
+  const [existing] = await db
+    .select({
+      id: timesheets.id,
+      totalHours: timesheets.totalHours,
+      breakMinutes: timesheets.breakMinutes,
+    })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, data.employeeId),
+        eq(timesheets.sheetDate, data.sheetDate),
+        eq(timesheets.isDeleted, false),
+      ),
+    )
+    .limit(1);
+
+  let timesheetId: number;
+
+  if (existing) {
+    const newTotal = parseFloat(existing.totalHours || "0") + newHours;
+    const newBreak = (existing.breakMinutes || 0) + data.breakMinutes;
+    const newOt = Math.max(0, newTotal - REGULAR_HOURS);
+
+    await db
+      .update(timesheets)
+      .set({
+        totalHours: newTotal.toFixed(2),
+        overtimeHours: newOt.toFixed(2),
+        breakMinutes: newBreak,
+        updatedAt: new Date(),
+      })
+      .where(eq(timesheets.id, existing.id));
+
+    timesheetId = existing.id;
+  } else {
+    const newOt = Math.max(0, newHours - REGULAR_HOURS);
+    const [inserted] = await db
+      .insert(timesheets)
+      .values({
+        employeeId: data.employeeId,
+        sheetDate: data.sheetDate,
+        breakMinutes: data.breakMinutes,
+        totalHours: newHours.toFixed(2),
+        overtimeHours: newOt.toFixed(2),
+        status: "pending",
+        rejectedBy: null,
+        approvedBy: null,
+      })
+      .returning({ id: timesheets.id });
+
+    timesheetId = inserted!.id;
+  }
+
+  // --- Insert job entry record ---
+  const caViolations = checkCaCompliance(
+    parseFloat(
+      existing
+        ? (parseFloat(existing.totalHours || "0") + newHours).toFixed(2)
+        : newHours.toFixed(2),
+    ),
+    (existing?.breakMinutes || 0) + data.breakMinutes,
+  );
+
+  const [jobEntry] = await db
+    .insert(timesheetJobEntries)
+    .values({
+      timesheetId,
+      jobId: data.jobId ?? null,
+      timeIn: data.timeIn,
+      timeOut: data.timeOut,
+      breakMinutes: data.breakMinutes,
+      hours: newHours.toFixed(2),
+      entryType: data.entryType,
+      notes: data.notes ?? null,
+      coveredForEmployeeId: data.coveredForEmployeeId ?? null,
+      coveredForDispatchAssignmentId: data.coveredForDispatchAssignmentId ?? null,
+      breakTaken: data.breakMinutes > 0,
+      caLaborViolation: caViolations.length > 0,
+      caViolationDetails: caViolations.length > 0 ? caViolations.join(" | ") : null,
+      createdBy: data.createdBy ?? null,
+    })
+    .returning();
+
+  // Fetch updated timesheet row with job entries for the day
+  const [updatedTimesheet] = await db
+    .select()
+    .from(timesheets)
+    .where(eq(timesheets.id, timesheetId))
+    .limit(1);
+
+  const dayJobEntries = await db
+    .select({
+      id: timesheetJobEntries.id,
+      timesheetId: timesheetJobEntries.timesheetId,
+      jobId: timesheetJobEntries.jobId,
+      timeIn: timesheetJobEntries.timeIn,
+      timeOut: timesheetJobEntries.timeOut,
+      breakMinutes: timesheetJobEntries.breakMinutes,
+      hours: timesheetJobEntries.hours,
+      entryType: timesheetJobEntries.entryType,
+      notes: timesheetJobEntries.notes,
+      breakTaken: timesheetJobEntries.breakTaken,
+      caLaborViolation: timesheetJobEntries.caLaborViolation,
+      caViolationDetails: timesheetJobEntries.caViolationDetails,
+      createdAt: timesheetJobEntries.createdAt,
+      jobTitle: bidsTable.projectName,
+      jobNumber: jobs.jobNumber,
+    })
+    .from(timesheetJobEntries)
+    .leftJoin(jobs, eq(timesheetJobEntries.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(eq(timesheetJobEntries.timesheetId, timesheetId))
+    .orderBy(timesheetJobEntries.timeIn);
+
+  return {
+    timesheet: updatedTimesheet,
+    jobEntry,
+    jobEntries: dayJobEntries,
+    caWarnings: caViolations,
+  };
+};
+
+/**
+ * Returns a flat, paginated history of all time blocks for a tech:
+ *  - Manual / coverage entries from org.timesheet_job_entries
+ *  - Dispatch entries from org.dispatch_assignments (where timeIn IS NOT NULL)
+ *
+ * Both are merged, sorted by date desc (or hours desc), then paginated.
+ */
+export const getMyTimesheetHistory = async (
+  employeeId: number,
+  options: {
+    page?: number;
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    jobId?: string;
+    status?: string;
+    sortBy?: "date" | "hours";
+    sortOrder?: "asc" | "desc";
+    search?: string;
+  } = {},
+) => {
+  const {
+    page = 1,
+    limit = 20,
+    dateFrom,
+    dateTo,
+    jobId,
+    status,
+    sortBy = "date",
+    sortOrder = "desc",
+    search,
+  } = options;
+
+  // ── 1. Manual entries from timesheet_job_entries ─────────────────────────
+  const manualConditions: any[] = [eq(timesheets.employeeId, employeeId)];
+  if (dateFrom) manualConditions.push(sql`${timesheets.sheetDate} >= ${dateFrom}`);
+  if (dateTo) manualConditions.push(sql`${timesheets.sheetDate} <= ${dateTo}`);
+  if (jobId) manualConditions.push(eq(timesheetJobEntries.jobId, jobId));
+  if (status) manualConditions.push(eq(timesheets.status, status as any));
+  if (search) {
+    manualConditions.push(
+      or(
+        ilike(jobs.jobNumber, `%${search}%`),
+        ilike(jobs.description, `%${search}%`),
+        ilike(timesheetJobEntries.notes, `%${search}%`),
+      )!,
+    );
+  }
+
+  const manualRows = await db
+    .select({
+      rowId: sql<string>`'m:' || ${timesheetJobEntries.id}`,
+      sheetDate: timesheets.sheetDate,
+      timesheetId: timesheetJobEntries.timesheetId,
+      timesheetStatus: timesheets.status,
+      jobId: timesheetJobEntries.jobId,
+      jobNumber: jobs.jobNumber,
+      jobTitle: bidsTable.projectName,
+      timeIn: timesheetJobEntries.timeIn,
+      timeOut: timesheetJobEntries.timeOut,
+      breakMinutes: timesheetJobEntries.breakMinutes,
+      hours: timesheetJobEntries.hours,
+      entryType: timesheetJobEntries.entryType,
+      notes: timesheetJobEntries.notes,
+      breakTaken: timesheetJobEntries.breakTaken,
+      caLaborViolation: timesheetJobEntries.caLaborViolation,
+      caViolationDetails: timesheetJobEntries.caViolationDetails,
+      createdAt: timesheetJobEntries.createdAt,
+    })
+    .from(timesheetJobEntries)
+    .innerJoin(timesheets, eq(timesheetJobEntries.timesheetId, timesheets.id))
+    .leftJoin(jobs, eq(timesheetJobEntries.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(...manualConditions));
+
+  // ── 2. Dispatch entries from dispatch_assignments ─────────────────────────
+  const dispatchConditions: any[] = [
+    eq(dispatchAssignments.technicianId, employeeId),
+    sql`${dispatchAssignments.timeIn} IS NOT NULL`,
+    or(eq(dispatchAssignments.isDeleted, false), sql`${dispatchAssignments.isDeleted} IS NULL`)!,
+  ];
+
+  if (jobId) dispatchConditions.push(eq(dispatchTasks.jobId, jobId));
+
+  if (search) {
+    dispatchConditions.push(
+      or(
+        ilike(jobs.jobNumber, `%${search}%`),
+        ilike(jobs.description, `%${search}%`),
+        ilike(dispatchAssignments.logNotes, `%${search}%`),
+      )!,
+    );
+  }
+
+  const dispatchRows = await db
+    .select({
+      rowId: sql<string>`'d:' || ${dispatchAssignments.id}`,
+      sheetDate: sql<string>`TO_CHAR(${dispatchAssignments.timeIn}, 'YYYY-MM-DD')`,
+      timesheetId: sql<number | null>`NULL`,
+      timesheetStatus: sql<string | null>`NULL`,
+      jobId: dispatchTasks.jobId,
+      jobNumber: jobs.jobNumber,
+      jobTitle: bidsTable.projectName,
+      // Convert full timestamps to HH:MM strings for consistency
+      timeIn: sql<string | null>`TO_CHAR(${dispatchAssignments.timeIn}, 'HH24:MI')`,
+      timeOut: sql<string | null>`TO_CHAR(${dispatchAssignments.timeOut}, 'HH24:MI')`,
+      breakMinutes: dispatchAssignments.breakMinutes,
+      hours: dispatchAssignments.actualHours,
+      entryType: sql<string>`'dispatch'`,
+      notes: dispatchAssignments.logNotes,
+      breakTaken: dispatchAssignments.breakTaken,
+      caLaborViolation: dispatchAssignments.caLaborViolation,
+      caViolationDetails: dispatchAssignments.caViolationDetails,
+      createdAt: dispatchAssignments.createdAt,
+    })
+    .from(dispatchAssignments)
+    .innerJoin(dispatchTasks, eq(dispatchAssignments.taskId, dispatchTasks.id))
+    .leftJoin(jobs, eq(dispatchTasks.jobId, jobs.id))
+    .leftJoin(bidsTable, eq(jobs.bidId, bidsTable.id))
+    .where(and(...dispatchConditions));
+
+  // ── 3. Merge, enrich with timesheetStatus for dispatch rows ──────────────
+  // For dispatch rows that have a timesheet, look up its status
+  const allDispatchSheetDates = [...new Set(
+    dispatchRows.map((r) => r.sheetDate).filter(Boolean) as string[],
+  )];
+
+  let dispatchTimesheetStatusMap = new Map<string, string>();
+  if (allDispatchSheetDates.length > 0) {
+    const sheetRows = await db
+      .select({ sheetDate: timesheets.sheetDate, status: timesheets.status })
+      .from(timesheets)
+      .where(
+        and(
+          eq(timesheets.employeeId, employeeId),
+          eq(timesheets.isDeleted, false),
+          inArray(timesheets.sheetDate, allDispatchSheetDates as string[]),
+        ),
+      );
+    sheetRows.forEach((r) => {
+      if (r.sheetDate) dispatchTimesheetStatusMap.set(String(r.sheetDate), r.status);
+    });
+  }
+
+  // Apply date filters to dispatch rows (they were fetched without date WHERE clause for simplicity)
+  let filteredDispatch = dispatchRows;
+  if (dateFrom) filteredDispatch = filteredDispatch.filter((r) => r.sheetDate >= dateFrom);
+  if (dateTo) filteredDispatch = filteredDispatch.filter((r) => r.sheetDate <= dateTo);
+  if (status) {
+    filteredDispatch = filteredDispatch.filter(
+      (r) => (dispatchTimesheetStatusMap.get(r.sheetDate ?? "") ?? "pending") === status,
+    );
+  }
+
+  // ── 4. Combine and sort ──────────────────────────────────────────────────
+  type CombinedEntry = {
+    rowId: string;
+    source: "manual" | "dispatch";
+    sheetDate: string;
+    timesheetId: number | null;
+    timesheetStatus: string | null;
+    jobId: string | null;
+    jobNumber: string | null;
+    jobTitle: string | null;
+    timeIn: string | null;
+    timeOut: string | null;
+    breakMinutes: number | null;
+    hours: string | null;
+    entryType: string;
+    notes: string | null;
+    breakTaken: boolean;
+    caLaborViolation: boolean;
+    caViolationDetails: string | null;
+    createdAt: Date | null;
+  };
+
+  const combined: CombinedEntry[] = [
+    ...manualRows.map((r) => ({
+      ...r,
+      source: "manual" as const,
+      sheetDate: String(r.sheetDate ?? ""),
+      timesheetStatus: r.timesheetStatus ?? null,
+      jobId: r.jobId ?? null,
+      hours: r.hours ? String(r.hours) : null,
+      entryType: r.entryType ?? "manual",
+      breakTaken: r.breakTaken ?? false,
+      caLaborViolation: r.caLaborViolation ?? false,
+    })),
+    ...filteredDispatch.map((r) => ({
+      ...r,
+      source: "dispatch" as const,
+      sheetDate: r.sheetDate ?? "",
+      timesheetStatus: dispatchTimesheetStatusMap.get(r.sheetDate ?? "") ?? null,
+      jobId: r.jobId ?? null,
+      hours: r.hours ? String(r.hours) : null,
+      breakTaken: r.breakTaken ?? false,
+      caLaborViolation: r.caLaborViolation ?? false,
+    })),
+  ];
+
+  combined.sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === "hours") {
+      cmp = parseFloat(a.hours ?? "0") - parseFloat(b.hours ?? "0");
+    } else {
+      cmp = (a.sheetDate ?? "").localeCompare(b.sheetDate ?? "");
+    }
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
+
+  // ── 5. Paginate ──────────────────────────────────────────────────────────
+  const total = combined.length;
+  const offset = (page - 1) * limit;
+  const paginated = combined.slice(offset, offset + limit);
+
+  return {
+    data: paginated,
+    total,
+    pagination: {
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+/**
+ * Update a timesheetJobEntry (time-in, time-out, break, notes).
+ * Also recalculates hours and patches the parent timesheet's totalHours.
+ * Only the entry owner can call this (enforced in controller).
+ */
+export const updateTimesheetJobEntry = async (
+  entryId: number,
+  data: {
+    timeIn: string;     // HH:MM
+    timeOut: string;    // HH:MM
+    breakMinutes: number;
+    notes?: string;
+  },
+) => {
+  const [existing] = await db
+    .select({
+      id: timesheetJobEntries.id,
+      timesheetId: timesheetJobEntries.timesheetId,
+      hours: timesheetJobEntries.hours,
+    })
+    .from(timesheetJobEntries)
+    .where(eq(timesheetJobEntries.id, entryId))
+    .limit(1);
+
+  if (!existing) return null;
+
+  const rawMinutes = hhmmToMinutes(data.timeOut) - hhmmToMinutes(data.timeIn);
+  const netMinutes = Math.max(0, rawMinutes - data.breakMinutes);
+  const newHours = parseFloat((netMinutes / 60).toFixed(2));
+  const oldHours = parseFloat(String(existing.hours) || "0");
+  const hoursDelta = newHours - oldHours;
+
+  const [updated] = await db
+    .update(timesheetJobEntries)
+    .set({
+      timeIn: data.timeIn,
+      timeOut: data.timeOut,
+      breakMinutes: data.breakMinutes,
+      hours: newHours.toFixed(2),
+      notes: data.notes ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(timesheetJobEntries.id, entryId))
+    .returning();
+
+  // Patch the parent timesheet totals by the delta
+  if (hoursDelta !== 0) {
+    const [parentSheet] = await db
+      .select({ totalHours: timesheets.totalHours })
+      .from(timesheets)
+      .where(eq(timesheets.id, existing.timesheetId))
+      .limit(1);
+
+    if (parentSheet) {
+      const REGULAR_HOURS = 8;
+      const newTotal = Math.max(0, parseFloat(String(parentSheet.totalHours) || "0") + hoursDelta);
+      const newOt = Math.max(0, newTotal - REGULAR_HOURS);
+      await db
+        .update(timesheets)
+        .set({
+          totalHours: newTotal.toFixed(2),
+          overtimeHours: newOt.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheets.id, existing.timesheetId));
+    }
+  }
+
+  return updated ?? null;
+};
+
+/**
+ * Returns all coverage timesheet entries for a job, keyed by the dispatch assignment
+ * they cover. Used by the labor tab to show "Covered by: X" badges.
+ * Accessible by all roles — no financial data exposed.
+ */
+export const getCoverageEntriesForJob = async (jobId: string) => {
+  const coveredByEmployee = alias(employees, "covered_by_employee");
+  const coveredByUser = alias(users, "covered_by_user");
+
+  const rows = await db
+    .select({
+      jobEntryId: timesheetJobEntries.id,
+      sheetDate: timesheets.sheetDate,
+      coveredForDispatchAssignmentId: timesheetJobEntries.coveredForDispatchAssignmentId,
+      coveredForEmployeeId: timesheetJobEntries.coveredForEmployeeId,
+      coveredByEmployeeId: timesheets.employeeId,
+      hours: timesheetJobEntries.hours,
+      timeIn: timesheetJobEntries.timeIn,
+      timeOut: timesheetJobEntries.timeOut,
+      breakMinutes: timesheetJobEntries.breakMinutes,
+      notes: timesheetJobEntries.notes,
+      coveredByName: coveredByUser.fullName,
+    })
+    .from(timesheetJobEntries)
+    .innerJoin(
+      timesheets,
+      eq(timesheetJobEntries.timesheetId, timesheets.id),
+    )
+    .innerJoin(
+      coveredByEmployee,
+      eq(timesheets.employeeId, coveredByEmployee.id),
+    )
+    .leftJoin(coveredByUser, eq(coveredByEmployee.userId, coveredByUser.id))
+    .where(
+      and(
+        eq(timesheetJobEntries.jobId, jobId),
+        eq(timesheetJobEntries.entryType, "coverage"),
+        sql`${timesheetJobEntries.coveredForDispatchAssignmentId} IS NOT NULL`,
+      ),
+    );
+
+  return rows;
 };

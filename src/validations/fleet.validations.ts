@@ -723,7 +723,6 @@ export const createSafetyInspectionSchema = z.object({
       vehicleId: uuidSchema,
       date: z.string(),
       mileage: z.string().max(50).optional(),
-      performedBy: z.string().min(1).max(255).optional(),
       overallStatus: z.enum([
         "passed",
         "failed",
@@ -733,28 +732,13 @@ export const createSafetyInspectionSchema = z.object({
       ]),
       inspectionNotes: z.string().optional(),
       checklist: z.any().optional(), // JSON checklist data
-      isTeamMember: z.boolean(),
+      isTeamMember: z.boolean().optional(),
       employeeId: z.number().int().positive().optional(),
-      exteriorPhotos: z.array(z.string()).optional(),
-      interiorPhotos: z.array(z.string()).optional(),
-    })
-    .refine(
-      (data) => {
-        // If isTeamMember is true, employeeId is required
-        if (data.isTeamMember && !data.employeeId) {
-          return false;
-        }
-        // If isTeamMember is false, performedBy is required
-        if (!data.isTeamMember && !data.performedBy) {
-          return false;
-        }
-        return true;
-      },
-      {
-        message:
-          "When isTeamMember is true, employeeId is required. When false, performedBy is required.",
-      },
-    ),
+      driverSideExteriorPhoto: z.string().max(500).optional(),
+      passengerSideExteriorPhoto: z.string().max(500).optional(),
+      driverSideInteriorPhoto: z.string().max(500).optional(),
+      passengerSideInteriorPhoto: z.string().max(500).optional(),
+    }),
 });
 
 export const updateSafetyInspectionSchema = z.object({
@@ -766,7 +750,6 @@ export const updateSafetyInspectionSchema = z.object({
       .string()
       .optional(),
     mileage: z.string().max(50).optional(),
-    performedBy: z.string().min(1).max(255).optional(),
     overallStatus: z
       .enum(["passed", "failed", "conditional_pass", "scheduled", "overdue"])
       .optional(),
@@ -774,8 +757,10 @@ export const updateSafetyInspectionSchema = z.object({
     checklist: z.any().optional(), // JSON checklist data
     isTeamMember: z.boolean().optional(),
     employeeId: z.number().int().positive().optional(),
-    exteriorPhotos: z.array(z.string()).optional(),
-    interiorPhotos: z.array(z.string()).optional(),
+    driverSideExteriorPhoto: z.string().max(500).optional(),
+    passengerSideExteriorPhoto: z.string().max(500).optional(),
+    driverSideInteriorPhoto: z.string().max(500).optional(),
+    passengerSideInteriorPhoto: z.string().max(500).optional(),
   }),
 });
 
@@ -813,7 +798,6 @@ export const createSafetyInspectionByVehicleSchema = z.object({
     .object({
       date: z.string(),
       mileage: z.string().max(50).optional(),
-      performedBy: z.string().min(1).max(255).optional(),
       overallStatus: z.enum([
         "passed",
         "failed",
@@ -823,28 +807,13 @@ export const createSafetyInspectionByVehicleSchema = z.object({
       ]),
       inspectionNotes: z.string().optional(),
       checklist: z.any().optional(), // JSON checklist data
-      isTeamMember: z.boolean(),
+      isTeamMember: z.boolean().optional(),
       employeeId: z.number().int().positive().optional(),
-      exteriorPhotos: z.array(z.string()).optional(),
-      interiorPhotos: z.array(z.string()).optional(),
-    })
-    .refine(
-      (data) => {
-        // If isTeamMember is true, employeeId is required
-        if (data.isTeamMember && !data.employeeId) {
-          return false;
-        }
-        // If isTeamMember is false, performedBy is required
-        if (!data.isTeamMember && !data.performedBy) {
-          return false;
-        }
-        return true;
-      },
-      {
-        message:
-          "When isTeamMember is true, employeeId is required. When false, performedBy is required.",
-      },
-    ),
+      driverSideExteriorPhoto: z.string().max(500).optional(),
+      passengerSideExteriorPhoto: z.string().max(500).optional(),
+      driverSideInteriorPhoto: z.string().max(500).optional(),
+      passengerSideInteriorPhoto: z.string().max(500).optional(),
+    }),
 });
 
 export const getSafetyInspectionByVehicleByIdSchema = z.object({
@@ -858,7 +827,6 @@ export const updateSafetyInspectionByVehicleSchema = z.object({
       .string()
       .optional(),
     mileage: z.string().max(50).optional(),
-    performedBy: z.string().min(1).max(255).optional(),
     overallStatus: z
       .enum(["passed", "failed", "conditional_pass", "scheduled", "overdue"])
       .optional(),
@@ -866,8 +834,10 @@ export const updateSafetyInspectionByVehicleSchema = z.object({
     checklist: z.any().optional(), // JSON checklist data
     isTeamMember: z.boolean().optional(),
     employeeId: z.number().int().positive().optional(),
-    exteriorPhotos: z.array(z.string()).optional(),
-    interiorPhotos: z.array(z.string()).optional(),
+    driverSideExteriorPhoto: z.string().max(500).optional(),
+    passengerSideExteriorPhoto: z.string().max(500).optional(),
+    driverSideInteriorPhoto: z.string().max(500).optional(),
+    passengerSideInteriorPhoto: z.string().max(500).optional(),
   }),
 });
 

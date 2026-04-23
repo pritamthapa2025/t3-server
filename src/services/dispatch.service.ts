@@ -336,27 +336,36 @@ async function fireDispatchAssignmentNotifications(
     // 4. Format date and times directly from raw strings (no timezone conversion)
     const dateStr = formatRawDateStr(String(task.startTime));
     const startTimeStr = formatRawTimeStr(String(task.startTime));
-    const endTimeStr = formatRawTimeStr(String(task.endTime));
+    const endTimeRaw = formatRawTimeStr(String(task.endTime));
+    const endTimeStr = endTimeRaw && endTimeRaw !== "N/A" ? endTimeRaw : "";
 
     // 5. Build additionalNotes JSON (parsed by frontend notification-detail-modal)
-    const additionalNotes = JSON.stringify({
+    const additionalNotesPayload = {
       jobNumber,
       dispatchTitle: task.title,
       date: dateStr,
       startTime: startTimeStr,
-      endTime: endTimeStr,
       jobSiteAddress,
       directionsUrl,
       assignedTechs: assignedTechNames,
       tasks: [task.title],
       description: task.description ?? "",
-    });
+    } as Record<string, unknown>;
+
+    if (endTimeStr) {
+      additionalNotesPayload.endTime = endTimeStr;
+    }
+
+    const additionalNotes = JSON.stringify(additionalNotesPayload);
 
     // 6. Build the full message string
     const techList = assignedTechNames.join(", ");
+    const timeRange = endTimeStr
+      ? `from ${startTimeStr} to ${endTimeStr}`
+      : `at ${startTimeStr}`;
     const message =
       `You have been assigned to ${task.title} (${jobNumber}) ` +
-      `on ${dateStr} from ${startTimeStr} to ${endTimeStr}. ` +
+      `on ${dateStr} ${timeRange}. ` +
       (jobSiteAddress ? `Location: ${jobSiteAddress}. ` : "") +
       (directionsUrl ? `Directions: ${directionsUrl}. ` : "") +
       `Assigned techs: ${techList}. ` +
@@ -962,6 +971,7 @@ export const getAssignmentsByTechnicianId = async (
     startDate?: string;
     endDate?: string;
     status?: string;
+    jobId?: string;
   },
 ) => {
   const conditions = [
@@ -969,6 +979,10 @@ export const getAssignmentsByTechnicianId = async (
     eq(dispatchAssignments.isDeleted, false),
     eq(dispatchTasks.isDeleted, false),
   ];
+
+  if (filters?.jobId) {
+    conditions.push(eq(dispatchTasks.jobId, filters.jobId));
+  }
 
   if (filters?.status) {
     conditions.push(eq(dispatchAssignments.status, filters.status as any));

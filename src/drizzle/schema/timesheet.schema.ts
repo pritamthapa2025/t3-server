@@ -16,6 +16,8 @@ import {
 // Import related tables
 import { users } from "./auth.schema.js";
 import { employees } from "./org.schema.js";
+import { jobs } from "./jobs.schema.js";
+import { dispatchAssignments } from "./dispatch.schema.js";
 
 // Import enums from centralized location
 import { timesheetStatusEnum } from "../enums/org.enums.js";
@@ -86,6 +88,61 @@ export const timesheets = org.table(
 
 /** Alias for reports.service compatibility (uses timesheets table: sheetDate, totalHours, overtimeHours) */
 export const timesheetEntries = timesheets;
+
+/**
+ * Timesheet Job Entries Table
+ * Stores individual time blocks for manual / coverage time logging.
+ * One-to-many with org.timesheets (many entries per daily timesheet row).
+ * Dispatch-driven hours continue to accumulate on org.timesheets.totalHours;
+ * this table captures the job reference, exact clock times, and entryType flag.
+ */
+export const timesheetJobEntries = org.table(
+  "timesheet_job_entries",
+  {
+    id: serial("id").primaryKey(),
+
+    timesheetId: integer("timesheet_id")
+      .notNull()
+      .references(() => timesheets.id, { onDelete: "cascade" }),
+
+    // Which job was this time logged against (nullable — tech may log general time)
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+
+    // Clock times stored as "HH:MM" strings in 24h format
+    timeIn: varchar("time_in", { length: 10 }),
+    timeOut: varchar("time_out", { length: 10 }),
+
+    breakMinutes: integer("break_minutes").default(0),
+
+    hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
+
+    // 'dispatch' = came from dispatch assignment, 'manual' = self-logged, 'coverage' = covering another tech
+    entryType: varchar("entry_type", { length: 20 }).default("manual"),
+
+    notes: text("notes"),
+
+    // When entryType = 'coverage', this records which employee the tech covered for
+    coveredForEmployeeId: integer("covered_for_employee_id").references(() => employees.id, { onDelete: "set null" }),
+
+    // The specific dispatch assignment being covered (links to dispatch_assignments.id)
+    coveredForDispatchAssignmentId: uuid("covered_for_dispatch_assignment_id").references(() => dispatchAssignments.id, { onDelete: "set null" }),
+
+    // CA labor law compliance flags (mirrors dispatch_assignments pattern)
+    caLaborViolation: boolean("ca_labor_violation").notNull().default(false),
+    caViolationDetails: text("ca_violation_details"),
+    breakTaken: boolean("break_taken").notNull().default(false),
+
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_tsje_timesheet").on(table.timesheetId),
+    index("idx_tsje_job").on(table.jobId),
+    index("idx_tsje_entry_type").on(table.entryType),
+    index("idx_tsje_created_by").on(table.createdBy),
+  ],
+);
 
 /**
  * Timesheet Approvals Table

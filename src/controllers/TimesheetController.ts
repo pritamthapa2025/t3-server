@@ -16,6 +16,10 @@ import {
   approveWeek,
   rejectWeek,
   confirmWeek,
+  logManualTime,
+  updateTimesheetJobEntry,
+  getMyTimesheetHistory,
+  getCoverageEntriesForJob,
 } from "../services/timesheet.service.js";
 import {
   syncPayrollFromApprovedTimesheet,
@@ -598,6 +602,180 @@ export const confirmWeekHandler = async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.logApiError("Confirm week error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Manual / Coverage Time Logging
+// ===========================================================================
+
+/**
+ * POST /api/v1/org/timesheets/log-time
+ * Available to techs (logs for self) and managers (supply employeeId in body).
+ */
+export const logTimeHandler = async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!currentUser) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+
+    const { employeeId: bodyEmployeeId, jobId, sheetDate, timeIn, timeOut, breakMinutes, entryType, notes, coveredForEmployeeId, coveredForDispatchAssignmentId } = req.body;
+
+    // Determine whose timesheet to log against
+    let targetEmployeeId: number;
+    if (bodyEmployeeId) {
+      // Manager is logging on behalf of a tech
+      targetEmployeeId = bodyEmployeeId;
+    } else {
+      // Tech is logging for themselves
+      if (!currentUser.employeeId) {
+        return res.status(400).json({
+          success: false,
+          message: "Employee information not found. Please ensure you are logged in as an employee.",
+        });
+      }
+      targetEmployeeId = currentUser.employeeId;
+    }
+
+    const result = await logManualTime({
+      employeeId: targetEmployeeId,
+      jobId: jobId ?? undefined,
+      sheetDate,
+      timeIn,
+      timeOut,
+      breakMinutes: breakMinutes ?? 0,
+      entryType: entryType ?? "manual",
+      notes: notes ?? undefined,
+      coveredForEmployeeId: coveredForEmployeeId ?? undefined,
+      coveredForDispatchAssignmentId: coveredForDispatchAssignmentId ?? undefined,
+      createdBy: currentUser.id,
+    });
+
+    logger.info(
+      `Time logged manually: employee=${targetEmployeeId}, date=${sheetDate}, hours=${result.jobEntry?.hours}, by=${currentUser.id}`,
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Time logged successfully",
+      data: {
+        timesheet: result.timesheet,
+        jobEntry: result.jobEntry,
+        jobEntries: result.jobEntries,
+      },
+      caWarnings: result.caWarnings,
+    });
+  } catch (error: any) {
+    if (error?.message?.includes("blocked")) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+    logger.logApiError("Log time error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
+ * GET /api/v1/org/timesheets/my-history
+ * Returns a flat paginated list of a tech's own time-block history.
+ */
+export const getMyHistoryHandler = async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!currentUser || !currentUser.employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee information not found. Please ensure you are logged in as an employee.",
+      });
+    }
+
+    const {
+      page, limit, dateFrom, dateTo, jobId, status, sortBy, sortOrder, search,
+    } = req.query;
+
+    const result = await getMyTimesheetHistory(currentUser.employeeId, {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 20,
+      ...(dateFrom != null && String(dateFrom) ? { dateFrom: String(dateFrom) } : {}),
+      ...(dateTo != null && String(dateTo) ? { dateTo: String(dateTo) } : {}),
+      ...(jobId != null && String(jobId) ? { jobId: String(jobId) } : {}),
+      ...(status != null && String(status) ? { status: String(status) } : {}),
+      sortBy: (sortBy as "date" | "hours") ?? "date",
+      sortOrder: (sortOrder as "asc" | "desc") ?? "desc",
+      ...(search != null && String(search) ? { search: String(search) } : {}),
+    });
+
+    logger.info(`My timesheet history fetched for employee: ${currentUser.employeeId}`);
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    logger.logApiError("Get my history error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Update a timesheetJobEntry (coverage / manual entry edit)
+// ===========================================================================
+
+export const updateTimesheetJobEntryHandler = async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as Request & { user?: { id: string; employeeId?: number } }).user;
+    if (!currentUser) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const entryId = parseInt(String(req.params.entryId), 10);
+    if (!entryId || isNaN(entryId)) {
+      return res.status(400).json({ success: false, message: "Entry ID is required" });
+    }
+
+    const { timeIn, timeOut, breakMinutes, notes } = req.body as {
+      timeIn: string;
+      timeOut: string;
+      breakMinutes: number;
+      notes?: string;
+    };
+
+    const updated = await updateTimesheetJobEntry(entryId, {
+      timeIn,
+      timeOut,
+      breakMinutes: breakMinutes ?? 0,
+      ...(notes !== undefined && { notes }),
+    });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Entry not found" });
+    }
+
+    logger.info(
+      `TimesheetJobEntry updated: entryId=${entryId}, by=${currentUser.id}`,
+    );
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    logger.logApiError("Update timesheet job entry error", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Coverage entries for a job (for labor tab badges)
+// ===========================================================================
+
+export const getCoverageEntriesForJobHandler = async (req: Request, res: Response) => {
+  try {
+    const rawJobId = req.params.jobId;
+    const jobId = Array.isArray(rawJobId) ? rawJobId[0] : rawJobId;
+    if (!jobId) {
+      return res.status(400).json({ success: false, message: "Job ID is required" });
+    }
+    const entries = await getCoverageEntriesForJob(String(jobId));
+    return res.status(200).json({ success: true, data: entries });
+  } catch (error) {
+    logger.logApiError("Get coverage entries error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

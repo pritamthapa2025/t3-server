@@ -28,6 +28,42 @@ if (apiKey) {
 }
 
 export class NotificationEmailService {
+  private toTitleCaseLabel(label: string): string {
+    const labelOverrides: Record<string, string> = {
+      assignedTechs: "Assigned Technicians",
+    };
+
+    if (labelOverrides[label]) {
+      return labelOverrides[label];
+    }
+
+    const titleCased = label
+      .replace(/[_-]+/g, " ")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    return titleCased
+      .replace(/\bId\b/g, "ID")
+      .replace(/\bUrl\b/g, "URL")
+      .replace(/\bSms\b/g, "SMS")
+      .replace(/\bIp\b/g, "IP");
+  }
+
+  private hasDisplayValue(value: unknown): boolean {
+    if (value == null) return false;
+    const normalized = String(value).trim().toLowerCase();
+    return (
+      normalized !== "" &&
+      normalized !== "n/a" &&
+      normalized !== "na" &&
+      normalized !== "null" &&
+      normalized !== "undefined" &&
+      normalized !== "0"
+    );
+  }
+
   /**
    * Send notification email
    */
@@ -100,11 +136,11 @@ export class NotificationEmailService {
   private generateEmailHTML(data: EmailTemplateData): string {
     const infoCardRows = data.additionalInfo
       ? Object.entries(data.additionalInfo)
-          .filter(([, v]) => v && v.toString().trim() !== "")
+          .filter(([, value]) => this.hasDisplayValue(value))
           .map(
             ([label, value]) => `
         <tr>
-          <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #555555; white-space: nowrap; width: 38%; border-bottom: 1px solid #F0F0F0;">${label}</td>
+          <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #555555; white-space: nowrap; width: 38%; border-bottom: 1px solid #F0F0F0;">${this.toTitleCaseLabel(label)}</td>
           <td style="padding: 10px 14px; font-size: 13px; color: #111111; border-bottom: 1px solid #F0F0F0;">${
             String(value).startsWith("http://") || String(value).startsWith("https://")
               ? `<a href="${value}" target="_blank" rel="noopener noreferrer" style="color:#46931f; text-decoration:underline;">Open link</a>`
@@ -218,7 +254,6 @@ export class NotificationEmailService {
 
     <div class="content">
       <p class="greeting">Hi <strong>${data.recipientName}</strong>,</p>
-      <p class="message">${data.message}</p>
 
       ${infoCardHtml}
 
@@ -393,7 +428,7 @@ export class NotificationEmailService {
     const theadCells = columns
       .map(
         (c) =>
-          `<th style="padding:10px 14px;text-align:left;color:#ffffff;font-weight:600;white-space:nowrap;font-size:12px;">${c}</th>`,
+          `<th style="padding:10px 14px;text-align:left;color:#ffffff;font-weight:600;white-space:nowrap;font-size:12px;">${this.toTitleCaseLabel(c)}</th>`,
       )
       .join("");
 

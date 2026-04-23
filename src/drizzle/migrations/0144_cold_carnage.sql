@@ -1,0 +1,2 @@
+ALTER TABLE "org"."timesheet_job_entries" ADD COLUMN "covered_for_employee_id" integer;--> statement-breakpoint
+ALTER TABLE "org"."timesheet_job_entries" ADD CONSTRAINT "timesheet_job_entries_covered_for_employee_id_employees_id_fk" FOREIGN KEY ("covered_for_employee_id") REFERENCES "org"."employees"("id") ON DELETE set null ON UPDATE no action;

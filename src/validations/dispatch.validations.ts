@@ -231,6 +231,7 @@ export const getAssignmentsByTechnicianIdSchema = z.object({
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     status: z.enum(["pending", "started", "completed"]).optional(),
+    jobId: z.string().uuid().optional(),
   }),
 });
 

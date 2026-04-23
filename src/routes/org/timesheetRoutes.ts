@@ -14,6 +14,10 @@ import {
   approveWeekHandler,
   rejectWeekHandler,
   confirmWeekHandler,
+  logTimeHandler,
+  updateTimesheetJobEntryHandler,
+  getMyHistoryHandler,
+  getCoverageEntriesForJobHandler,
 } from "../../controllers/TimesheetController.js";
 import { authenticate } from "../../middleware/auth.js";
 import {
@@ -35,6 +39,10 @@ import {
   weeklyApproveSchema,
   weeklyRejectSchema,
   weeklyConfirmSchema,
+  logTimeSchema,
+  updateJobEntryParamsSchema,
+  updateJobEntryBodySchema,
+  getMyHistoryQuerySchema,
 } from "../../validations/timesheet.validations.js";
 import { bulkDeleteIntSchema } from "../../validations/bulk-delete.validations.js";
 
@@ -86,6 +94,16 @@ router
 // Weekly bulk actions (new dispatch-driven model)
 // -------------------------------------------------------------------------
 
+// Manual / coverage time logging — techs log for self, managers supply employeeId
+router
+  .route("/timesheets/log-time")
+  .post(createEntry, validate(logTimeSchema), logTimeHandler);
+
+// Flat history of a tech's own time blocks (both manual and dispatch-sourced)
+router
+  .route("/timesheets/my-history")
+  .get(viewOwn, validate(getMyHistoryQuerySchema), getMyHistoryHandler);
+
 // Technician confirms their week (Monday morning, after receiving email snapshot)
 router
   .route("/timesheets/weekly-confirm")
@@ -126,6 +144,22 @@ router.post(
   authorizeFeature("timesheet", "bulk_delete"),
   validate(bulkDeleteIntSchema),
   bulkDeleteTimesheetsHandler,
+);
+
+// Update a timesheetJobEntry (coverage / manual entry — owner only)
+router.put(
+  "/timesheets/job-entries/:entryId",
+  authorizeFeature("timesheet", "edit_own_timesheets"),
+  validate(updateJobEntryParamsSchema),
+  validate(updateJobEntryBodySchema),
+  updateTimesheetJobEntryHandler,
+);
+
+// Coverage entries for a job — all authenticated roles (no financial data, used for UI badges)
+router.get(
+  "/timesheets/jobs/:jobId/coverage-entries",
+  authorizeAnyFeature("timesheet", ["view_own_timesheets", "view_others_timesheets"]),
+  getCoverageEntriesForJobHandler,
 );
 
 export default router;

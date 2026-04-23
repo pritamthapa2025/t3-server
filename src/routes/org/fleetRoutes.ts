@@ -128,12 +128,12 @@ const uploadVehicle = multer({
   },
 }).single("vehicle");
 
-// Configure multer for safety inspection images (exterior_0, exterior_1, interior_0, interior_1, etc.)
+// Configure multer for four required safety inspection photos
 const uploadInspectionImages = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
-    files: 20, // Maximum 20 files total
+    files: 4,
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
@@ -142,7 +142,12 @@ const uploadInspectionImages = multer({
       cb(new Error("Only image files are allowed for inspection photos"));
     }
   },
-}).any(); // Accept any files with dynamic field names
+}).fields([
+  { name: "driverSideExteriorPhoto", maxCount: 1 },
+  { name: "passengerSideExteriorPhoto", maxCount: 1 },
+  { name: "driverSideInteriorPhoto", maxCount: 1 },
+  { name: "passengerSideInteriorPhoto", maxCount: 1 },
+]);
 
 // Middleware to parse JSON "data" field from multipart/form-data
 const parseFormData = (req: any, res: any, next: any) => {

@@ -352,3 +352,122 @@ export const weeklyRejectSchema = z.object({
     notes: z.string().max(1000).optional(),
   }),
 });
+
+// ===========================================================================
+// Manual / Coverage Time Logging
+// ===========================================================================
+
+const timeHHMMSchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, { message: "Time must be in HH:MM format (24h)" });
+
+/**
+ * POST /timesheets/log-time
+ * Body accepted from both techs and managers.
+ * Managers must supply employeeId; techs omit it (self is inferred from JWT).
+ */
+export const logTimeSchema = z.object({
+  body: z
+    .object({
+      // Required only for managers logging on behalf of a tech
+      employeeId: z.number().int().positive("Employee ID must be a positive integer").optional(),
+      // Active job to record the time against (optional — tech can log general time)
+      jobId: z.string().uuid({ message: "Invalid job ID format" }).optional(),
+      sheetDate: dateStringSchema,
+      timeIn: timeHHMMSchema,
+      timeOut: timeHHMMSchema,
+      breakMinutes: z
+        .union([z.number().int(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().min(0, "Break minutes cannot be negative"))
+        .default(0),
+      // 'manual' = self-logged without dispatch, 'coverage' = covering another tech's job
+      entryType: z.enum(["manual", "coverage"]).default("manual"),
+      notes: z.string().max(2000).optional(),
+      // When entryType = 'coverage', the employee ID of the person being covered for
+      coveredForEmployeeId: z.number().int().positive("Covered-for employee ID must be a positive integer").optional(),
+      // The specific dispatch assignment UUID being covered
+      coveredForDispatchAssignmentId: z.string().uuid("Invalid dispatch assignment ID").optional(),
+    })
+    .refine(
+      (data) => {
+        const [inH = 0, inM = 0] = data.timeIn.split(":").map(Number);
+        const [outH = 0, outM = 0] = data.timeOut.split(":").map(Number);
+        return outH * 60 + outM > inH * 60 + inM;
+      },
+      { message: "Time Out must be after Time In", path: ["timeOut"] },
+    ),
+});
+
+/**
+ * PUT /timesheets/job-entries/:entryId
+ * Update time-in, time-out, break, notes on an existing timesheetJobEntry.
+ */
+export const updateJobEntryParamsSchema = z.object({
+  params: z.object({
+    entryId: z
+      .string()
+      .transform((v) => parseInt(v, 10))
+      .pipe(z.number().int().positive("Entry ID must be a positive integer")),
+  }),
+});
+
+export const updateJobEntryBodySchema = z.object({
+  body: z
+    .object({
+      timeIn: timeHHMMSchema,
+      timeOut: timeHHMMSchema,
+      breakMinutes: z
+        .union([z.number().int(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().min(0, "Break minutes cannot be negative"))
+        .default(0),
+      notes: z.string().max(2000).optional(),
+    })
+    .refine(
+      (data) => {
+        const [inH = 0, inM = 0] = data.timeIn.split(":").map(Number);
+        const [outH = 0, outM = 0] = data.timeOut.split(":").map(Number);
+        return outH * 60 + outM > inH * 60 + inM;
+      },
+      { message: "Time Out must be after Time In", path: ["timeOut"] },
+    ),
+});
+
+/**
+ * GET /timesheets/my-history
+ * Flat paginated list of a tech's own time-block history (both dispatch and manual).
+ */
+export const getMyHistoryQuerySchema = z.object({
+  query: z.object({
+    page: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 1))
+      .pipe(z.number().int().positive("Page must be a positive number")),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => (val ? parseInt(val, 10) : 20))
+      .pipe(z.number().int().positive().max(100, "Maximum 100 per page")),
+    dateFrom: z
+      .string()
+      .optional()
+      .refine((val) => !val || !isNaN(new Date(val).getTime()), {
+        message: "Invalid dateFrom format. Use YYYY-MM-DD",
+      }),
+    dateTo: z
+      .string()
+      .optional()
+      .refine((val) => !val || !isNaN(new Date(val).getTime()), {
+        message: "Invalid dateTo format. Use YYYY-MM-DD",
+      }),
+    jobId: z.string().uuid().optional(),
+    status: z
+      .enum(["pending", "submitted", "approved", "rejected"])
+      .optional(),
+    sortBy: z.enum(["date", "hours"]).optional().default("date"),
+    sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
+    search: z.string().optional(),
+  }),
+});

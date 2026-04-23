@@ -70,7 +70,9 @@ export const vehicles = org.table(
       () => employees.id,
       { onDelete: "set null" },
     ), // Current driver assignment
-    currentJobId: uuid("current_job_id").references(() => jobs.id, { onDelete: "set null" }), // Currently assigned job
+    currentJobId: uuid("current_job_id").references(() => jobs.id, {
+      onDelete: "set null",
+    }), // Currently assigned job
     currentDispatchTaskId: uuid("current_dispatch_task_id").references(
       () => dispatchTasks.id,
       { onDelete: "set null" },
@@ -376,9 +378,21 @@ export const safetyInspections = org.table(
     // Inspection Data
     checklist: jsonb("checklist"), // JSON checklist data
     isTeamMember: boolean("is_team_member").notNull(),
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
-    exteriorPhotos: jsonb("exterior_photos"), // Array of photo URLs
-    interiorPhotos: jsonb("interior_photos"), // Array of photo URLs
+    employeeId: integer("employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
+    driverSideExteriorPhoto: varchar("driver_side_exterior_photo", {
+      length: 500,
+    }),
+    passengerSideExteriorPhoto: varchar("passenger_side_exterior_photo", {
+      length: 500,
+    }),
+    driverSideInteriorPhoto: varchar("driver_side_interior_photo", {
+      length: 500,
+    }),
+    passengerSideInteriorPhoto: varchar("passenger_side_interior_photo", {
+      length: 500,
+    }),
 
     // Metadata
     createdBy: uuid("created_by").references(() => users.id),
@@ -460,7 +474,9 @@ export const fuelRecords = org.table(
     fuelType: fuelTypeEnum("fuel_type").notNull(), // gasoline, diesel, electric
 
     // Employee Tracking
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }), // Who fueled
+    employeeId: integer("employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }), // Who fueled
     employeeName: varchar("employee_name", { length: 255 }),
 
     // Notes
@@ -545,7 +561,9 @@ export const assignmentHistory = org.table(
     vehicleId: uuid("vehicle_id")
       .notNull()
       .references(() => vehicles.id, { onDelete: "cascade" }),
-    employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }), // Driver assigned for this period
+    employeeId: integer("employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }), // Driver assigned for this period
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }), // Job the driver was assigned to for this period
 
     // Assignment Period
