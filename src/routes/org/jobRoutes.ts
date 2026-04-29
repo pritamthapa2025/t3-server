@@ -98,6 +98,7 @@ import {
   getJobWithAllDataHandler,
   getJobInvoiceKPIsHandler,
   getJobLaborCostTrackingHandler,
+  getJobActualLaborEntriesHandler,
   getJobsKPIsHandler,
   bulkDeleteJobsHandler,
 } from "../../controllers/JobController.js";
@@ -397,6 +398,11 @@ router
     validate(getJobLaborCostTrackingSchema),
     getJobLaborCostTrackingHandler,
   );
+
+// Get actual labor entries (dispatch logged hours + coverage timesheet entries)
+router
+  .route("/jobs/:jobId/labor/actual-entries")
+  .get(viewJobs, getJobActualLaborEntriesHandler);
 
 // Team Members Routes (Manager/Executive only — job management)
 

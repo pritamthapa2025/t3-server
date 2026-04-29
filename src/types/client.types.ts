@@ -356,6 +356,8 @@ export interface ClientFilters {
   status?: string | string[];
   search?: string;
   tags?: string[];
+  /** true = Direct clients only, false = Indirect only, undefined = all */
+  isDirect?: boolean;
 }
 
 export interface ClientQuery {

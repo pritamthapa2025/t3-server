@@ -1177,7 +1177,7 @@ const DATA_FILTERS_DATA = [
 
   // Manager filters - department level for some modules
   { roleId: ROLES.MANAGER, module: "performance", filterType: "department_only", filterRule: "department_id = :departmentId", description: "Managers can only manage their department's reviews" },
-  { roleId: ROLES.MANAGER, module: "timesheet", filterType: "department_only", filterRule: "user_id IN (SELECT user_id FROM employees WHERE department_id = :departmentId)", description: "Managers can approve timesheets for their department" },
+  { roleId: ROLES.MANAGER, module: "timesheet", filterType: "own_and_technicians", filterRule: "employee_id = :ownEmployeeId OR role_id = 3", description: "Managers see their own timesheet logs plus all technicians logs" },
 
   // Hide sensitive financial data for Managers (no individual pay rates)
   { roleId: ROLES.MANAGER, module: "team", filterType: "hide_financial", filterRule: "exclude_fields: hourly_rate,salary,pay_rate", description: "Hide individual pay rates from managers" },

@@ -443,6 +443,7 @@ export const getDataFilterConditions = async (
   assignedOnly: boolean;
   departmentOnly: boolean;
   ownOnly: boolean;
+  ownAndTechnicians: boolean;
   hideFinancial: boolean;
   departmentId: number | null;
   conditions: any[];
@@ -454,6 +455,7 @@ export const getDataFilterConditions = async (
     assignedOnly: boolean;
     departmentOnly: boolean;
     ownOnly: boolean;
+    ownAndTechnicians: boolean;
     hideFinancial: boolean;
     departmentId: number | null;
     conditions: any[];
@@ -461,6 +463,7 @@ export const getDataFilterConditions = async (
     assignedOnly: false,
     departmentOnly: false,
     ownOnly: false,
+    ownAndTechnicians: false,
     hideFinancial: false,
     departmentId: null,
     conditions: [],
@@ -482,6 +485,9 @@ export const getDataFilterConditions = async (
       case "own_only":
         result.ownOnly = true;
         result.conditions.push({ createdBy: userId });
+        break;
+      case "own_and_technicians":
+        result.ownAndTechnicians = true;
         break;
       case "hide_financial":
         result.hideFinancial = true;

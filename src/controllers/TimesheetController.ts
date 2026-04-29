@@ -41,19 +41,38 @@ export const getTimesheetsHandler = async (req: Request, res: Response) => {
     const offset = (page - 1) * limit;
     const userId = req.user?.id;
 
-    let timesheetOptions: { ownEmployeeId?: number; departmentId?: number } | undefined;
+    let timesheetOptions: {
+      ownEmployeeId?: number;
+      departmentId?: number;
+      allTechnicians?: boolean;
+      prioritizeEmployeeId?: number;
+    } | undefined;
 
     if (userId) {
+      // Always resolve the current user's employee record so their rows sort first
+      const [emp] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.userId, userId))
+        .limit(1);
+
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
       if (dataFilter.ownOnly) {
-        const [emp] = await db
-          .select({ id: employees.id })
-          .from(employees)
-          .where(eq(employees.userId, userId))
-          .limit(1);
-        if (emp) timesheetOptions = { ownEmployeeId: emp.id };
+        if (emp) timesheetOptions = { ownEmployeeId: emp.id, prioritizeEmployeeId: emp.id };
+      } else if (dataFilter.ownAndTechnicians) {
+        // Manager sees their own logs + all technicians' logs, own rows float to top
+        timesheetOptions = {
+          ...(emp ? { ownEmployeeId: emp.id, prioritizeEmployeeId: emp.id } : {}),
+          allTechnicians: true,
+        };
       } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
-        timesheetOptions = { departmentId: dataFilter.departmentId };
+        timesheetOptions = {
+          departmentId: dataFilter.departmentId,
+          ...(emp ? { prioritizeEmployeeId: emp.id } : {}),
+        };
+      } else {
+        // Executive / no filter — sees all, but own rows still float to top
+        if (emp) timesheetOptions = { prioritizeEmployeeId: emp.id };
       }
     }
 
@@ -166,10 +185,25 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (req: Request, res: Re
       ? parseInt(departmentId as string, 10)
       : undefined;
 
+    let prioritizeEmployeeId: number | undefined;
+    let allTechnicians: boolean = false;
+
     const userId = req.user?.id;
     if (userId) {
+      // Always resolve the current user's employee record so their card sorts first
+      const [emp] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.userId, userId))
+        .limit(1);
+      if (emp) prioritizeEmployeeId = emp.id;
+
       const dataFilter = await getDataFilterConditions(userId, "timesheet");
-      if (dataFilter.departmentOnly && dataFilter.departmentId) {
+      if (dataFilter.ownAndTechnicians) {
+        // Manager: own card + all technicians — no department restriction
+        allTechnicians = true;
+        effectiveDepartmentId = undefined;
+      } else if (dataFilter.departmentOnly && dataFilter.departmentId) {
         effectiveDepartmentId = dataFilter.departmentId;
       }
     }
@@ -181,6 +215,8 @@ export const getWeeklyTimesheetsByEmployeeHandler = async (req: Request, res: Re
       status as string | undefined,
       page ? parseInt(page as string, 10) : 1,
       limit ? parseInt(limit as string, 10) : 10,
+      prioritizeEmployeeId,
+      allTechnicians,
     );
 
     logger.info("Weekly timesheets by employee fetched successfully");

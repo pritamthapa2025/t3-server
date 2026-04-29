@@ -107,6 +107,7 @@ import {
   userHasAccessToJob,
   getJobInvoiceKPIs,
   getJobLaborCostTracking,
+  getJobActualLaborEntries,
   getJobsKPIs,
   bulkDeleteJobs,
   getJobServiceCalls,
@@ -4038,6 +4039,27 @@ export const getJobLaborCostTrackingHandler = async (
       success: false,
       message: error.message || "Internal server error",
     });
+  }
+};
+
+/**
+ * Get actual labor entries for a job (dispatch logged hours + coverage timesheet entries)
+ * GET /jobs/:jobId/labor/actual-entries
+ */
+export const getJobActualLaborEntriesHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const jobId = req.params.jobId as string;
+    if (!jobId) {
+      return res.status(400).json({ success: false, message: "Job ID is required" });
+    }
+    const entries = await getJobActualLaborEntries(jobId);
+    return res.status(200).json({ success: true, data: entries });
+  } catch (error) {
+    logger.logApiError("Error fetching actual labor entries", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 

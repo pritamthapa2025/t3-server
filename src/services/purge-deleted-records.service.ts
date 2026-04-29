@@ -161,7 +161,7 @@ async function purgeJobs(cutoff: Date): Promise<ModuleResult> {
  * - DB cascade removes ALL bid child tables (bidFinancialBreakdown, bidMaterials,
  *   bidLabor, bidTravel, bidOperatingExpenses, bidPlanSpecData, bidSurveyData,
  *   bidDesignBuildData, bidTimeline, bidNotes, bidDocuments, bidMedia,
- *   bidPlanSpecFiles, bidDesignBuildFiles, bidDocumentTags, bidDocumentTagLinks,
+   *   bidPlanSpecFiles, bidDesignBuildFiles,
  *   bidHistory, bidTravel).
  * - We collect file paths first for DO Spaces cleanup, then delete bids.
  * Must run AFTER jobs purge (jobs.bidId references bids).

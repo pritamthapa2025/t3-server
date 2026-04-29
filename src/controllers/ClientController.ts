@@ -164,6 +164,7 @@ export const getClientsHandler = async (req: Request, res: Response) => {
       status?: string;
       search?: string;
       tags?: string[];
+      isDirect?: boolean;
     } = {};
 
     // Map status from array to string if needed
@@ -179,6 +180,10 @@ export const getClientsHandler = async (req: Request, res: Response) => {
       filters.type = req.query.clientTypeId as string;
     }
     if (search) filters.search = search;
+    if (req.query.isDirect !== undefined) {
+      const raw = req.query.isDirect as string;
+      filters.isDirect = raw === "true" || raw === "1";
+    }
 
     // view_assigned: Technicians only see clients they have jobs assigned to/team members of
     const userId = req.user?.id;

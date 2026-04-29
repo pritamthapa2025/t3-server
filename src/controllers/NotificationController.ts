@@ -236,10 +236,11 @@ export class NotificationController {
         return;
       }
 
-      await notificationService.markAllAsRead(userId);
+      const updatedCount = await notificationService.markAllAsRead(userId);
 
       res.json({
         success: true,
+        data: { updatedCount },
         message: "All notifications marked as read",
       });
     } catch (error) {

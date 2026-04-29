@@ -61,14 +61,11 @@ import {
   downloadBidDocumentHandler,
   updateBidDocumentHandler,
   deleteBidDocumentHandler,
-  getBidDocumentTagsHandler,
-  getBidDocumentTagByIdHandler,
-  createBidDocumentTagHandler,
-  updateBidDocumentTagHandler,
-  deleteBidDocumentTagHandler,
-  getDocumentTagsHandler,
-  linkDocumentTagHandler,
-  unlinkDocumentTagHandler,
+  updateDocumentTagsHandler,
+  getDistinctMediaTagsHandler,
+  updateMediaTagsHandler,
+  getDistinctWalkPhotoTagsHandler,
+  updateWalkPhotoTagsHandler,
   createBidMediaHandler,
   getBidMediaHandler,
   getBidMediaByIdHandler,
@@ -163,14 +160,9 @@ import {
   previewBidDocumentSchema,
   updateBidDocumentSchema,
   deleteBidDocumentSchema,
-  getBidDocumentTagsSchema,
-  getBidDocumentTagByIdSchema,
-  createBidDocumentTagSchema,
-  updateBidDocumentTagSchema,
-  deleteBidDocumentTagSchema,
-  getDocumentTagsSchema,
-  linkDocumentTagSchema,
-  unlinkDocumentTagSchema,
+  updateDocumentTagsSchema,
+  updateMediaTagsSchema,
+  updateWalkPhotoTagsSchema,
   createBidMediaSchema,
   getBidMediaSchema,
   getBidMediaByIdSchema,
@@ -655,30 +647,28 @@ router.get(
   downloadBidDocumentHandler,
 );
 
-// Document tags: list tags for a document; link tag (by id or create by name)
-router
-  .route("/bids/:bidId/documents/:documentId/tags")
-  .get(validate(getDocumentTagsSchema), getDocumentTagsHandler)
-  .post(validate(linkDocumentTagSchema), linkDocumentTagHandler);
-
-// Unlink a tag from a document
-router.delete(
-  "/bids/:bidId/documents/:documentId/tags/:tagId",
-  validate(unlinkDocumentTagSchema),
-  unlinkDocumentTagHandler,
+// Document tags — replace full tags array
+router.patch(
+  "/bids/:bidId/documents/:documentId/tags",
+  validate(updateDocumentTagsSchema),
+  updateDocumentTagsHandler,
 );
 
-// Bid-level tags CRUD (e.g. Client, Vendor, Architect)
-router
-  .route("/bids/:bidId/tags")
-  .get(validate(getBidDocumentTagsSchema), getBidDocumentTagsHandler)
-  .post(validate(createBidDocumentTagSchema), createBidDocumentTagHandler);
+// Media tags
+router.get("/bids/:bidId/media/tags", getDistinctMediaTagsHandler);
+router.patch(
+  "/bids/:bidId/media/:mediaId/tags",
+  validate(updateMediaTagsSchema),
+  updateMediaTagsHandler,
+);
 
-router
-  .route("/bids/:bidId/tags/:tagId")
-  .get(validate(getBidDocumentTagByIdSchema), getBidDocumentTagByIdHandler)
-  .patch(validate(updateBidDocumentTagSchema), updateBidDocumentTagHandler)
-  .delete(validate(deleteBidDocumentTagSchema), deleteBidDocumentTagHandler);
+// Walk photo tags
+router.get("/bids/:bidId/walk-photos/tags", getDistinctWalkPhotoTagsHandler);
+router.patch(
+  "/bids/:bidId/walk-photos/:walkPhotoId/tags",
+  validate(updateWalkPhotoTagsSchema),
+  updateWalkPhotoTagsHandler,
+);
 
 // Media Routes
 

@@ -876,10 +876,12 @@ export const bidDocuments = org.table(
     filePath: varchar("file_path", { length: 500 }).notNull(),
     fileType: varchar("file_type", { length: 50 }),
     fileSize: integer("file_size"),
-    documentType: varchar("document_type", { length: 50 }), // proposal, contract, spec, plan, etc.
+    documentType: varchar("document_type", { length: 50 }),
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
+
+    tags: text("tags").array().notNull().default([]),
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
@@ -896,50 +898,6 @@ export const bidDocuments = org.table(
   ],
 );
 
-/**
- * Bid Document Tags Table
- * Tags for categorizing bid documents (e.g. Client, Vendor, Architect). Scoped per bid.
- */
-export const bidDocumentTags = org.table(
-  "bid_document_tags",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    bidId: uuid("bid_id")
-      .notNull()
-      .references(() => bidsTable.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 100 }).notNull(),
-    /** When true this tag was created automatically and cannot be deleted. */
-    isDefault: boolean("is_default").notNull().default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_bid_document_tags_bid_id").on(table.bidId),
-    unique("unique_bid_document_tag_name_per_bid").on(table.bidId, table.name),
-  ],
-);
-
-/**
- * Bid Document Tag Links (junction table)
- * Many-to-many: documents <-> tags
- */
-export const bidDocumentTagLinks = org.table(
-  "bid_document_tag_links",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    documentId: uuid("document_id")
-      .notNull()
-      .references(() => bidDocuments.id, { onDelete: "cascade" }),
-    tagId: uuid("tag_id")
-      .notNull()
-      .references(() => bidDocumentTags.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => [
-    unique("unique_document_tag").on(table.documentId, table.tagId),
-    index("idx_bid_document_tag_links_document").on(table.documentId),
-    index("idx_bid_document_tag_links_tag").on(table.tagId),
-  ],
-);
 
 /**
  * Bid Media Table
@@ -965,6 +923,8 @@ export const bidMedia = org.table(
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
+
+    tags: text("tags").array().notNull().default([]),
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),
@@ -1005,6 +965,8 @@ export const bidWalkPhotos = org.table(
     uploadedBy: uuid("uploaded_by")
       .notNull()
       .references(() => users.id),
+
+    tags: text("tags").array().notNull().default([]),
 
     isStarred: boolean("is_starred").default(false),
     isDeleted: boolean("is_deleted").default(false),

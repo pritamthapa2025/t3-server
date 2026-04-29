@@ -35,8 +35,6 @@ import {
   bidNotes,
   bidHistory,
   bidDocuments,
-  bidDocumentTags,
-  bidDocumentTagLinks,
   bidMedia,
   bidWalkPhotos,
   bidPlanSpecFiles,
@@ -915,8 +913,6 @@ export const createBid = async (data: {
       });
     }
 
-    // Seed the three protected default document tags for every new bid
-    await seedDefaultDocumentTagsForBid(bid.id);
   }
 
   if (!bid) return null;
@@ -3682,11 +3678,11 @@ export const getBidWithAllData = async (id: string) => {
 // Bid Documents Operations
 // ============================
 
-/** Ordered document rows (before tags map); used for full list and pagination */
+/** Ordered document rows; used for full list and pagination */
 async function fetchBidDocumentsRows(
   bidId: string,
   options?: {
-    tagIds?: string[];
+    tags?: string[];
     fileType?: "pdf" | "word" | "excel";
     dateRange?: "today" | "this_week" | "this_month" | "this_year";
     sortBy?: "date" | "name" | "size";
@@ -3698,8 +3694,8 @@ async function fetchBidDocumentsRows(
     uploadedByName: string | null;
   }[]
 > {
-  const tagIds = options?.tagIds?.filter(Boolean);
-  const hasTagFilter = (tagIds?.length ?? 0) > 0;
+  const filterTags = options?.tags?.filter(Boolean);
+  const hasTagFilter = (filterTags?.length ?? 0) > 0;
 
   const conditions: any[] = [
     eq(bidDocuments.bidId, bidId),
@@ -3755,27 +3751,13 @@ async function fetchBidDocumentsRows(
   const orderBy =
     options?.sortOrder === "asc" ? asc(sortField) : desc(sortField);
 
-  if (hasTagFilter) {
-    const withTagLinks = await db
-      .select({
-        document: bidDocuments,
-        uploadedByName: users.fullName,
-      })
-      .from(bidDocuments)
-      .innerJoin(
-        bidDocumentTagLinks,
-        eq(bidDocuments.id, bidDocumentTagLinks.documentId),
-      )
-      .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
-      .where(and(baseConditions, inArray(bidDocumentTagLinks.tagId, tagIds!)))
-      .orderBy(orderBy);
-    const seen = new Set<string>();
-    return withTagLinks.filter((row) => {
-      if (seen.has(row.document.id)) return false;
-      seen.add(row.document.id);
-      return true;
-    });
-  }
+  const tagCondition = hasTagFilter
+    ? sql`${bidDocuments.tags} && ARRAY[${sql.join(filterTags!.map((t) => sql`${t}`), sql`, `)}]::text[]`
+    : undefined;
+
+  const whereClause = tagCondition
+    ? and(baseConditions, tagCondition)
+    : baseConditions;
 
   return db
     .select({
@@ -3784,14 +3766,14 @@ async function fetchBidDocumentsRows(
     })
     .from(bidDocuments)
     .leftJoin(users, eq(bidDocuments.uploadedBy, users.id))
-    .where(baseConditions)
+    .where(whereClause)
     .orderBy(orderBy);
 }
 
 export const getBidDocuments = async (
   bidId: string,
   options?: {
-    tagIds?: string[];
+    tags?: string[];
     fileType?: "pdf" | "word" | "excel";
     dateRange?: "today" | "this_week" | "this_month" | "this_year";
     sortBy?: "date" | "name" | "size";
@@ -3799,16 +3781,9 @@ export const getBidDocuments = async (
   },
 ) => {
   const documentsResult = await fetchBidDocumentsRows(bidId, options);
-  const documentIds = documentsResult.map((r) => r.document.id);
-  const documentTagsMap = await getDocumentTagsMapForDocuments(
-    bidId,
-    documentIds,
-  );
-
   return documentsResult.map((doc) => ({
     ...doc.document,
     uploadedByName: doc.uploadedByName || null,
-    tags: documentTagsMap.get(doc.document.id) ?? [],
   }));
 };
 
@@ -3824,7 +3799,7 @@ export const getBidDocumentsPaginated = async (
   page: number,
   limit: number,
   options?: {
-    tagIds?: string[];
+    tags?: string[];
     fileType?: "pdf" | "word" | "excel";
     dateRange?: "today" | "this_week" | "this_month" | "this_year";
     sortBy?: "date" | "name" | "size";
@@ -3835,14 +3810,9 @@ export const getBidDocumentsPaginated = async (
   const total = rows.length;
   const offset = (page - 1) * limit;
   const slice = rows.slice(offset, offset + limit);
-  const documentTagsMap = await getDocumentTagsMapForDocuments(
-    bidId,
-    slice.map((r) => r.document.id),
-  );
   const data = slice.map((doc) => ({
     ...doc.document,
     uploadedByName: doc.uploadedByName || null,
-    tags: documentTagsMap.get(doc.document.id) ?? [],
   }));
   return {
     data,
@@ -3854,40 +3824,6 @@ export const getBidDocumentsPaginated = async (
     } satisfies BidDocumentsPagination,
   };
 };
-
-/** Build map documentId -> tags[] for given document ids in a bid */
-async function getDocumentTagsMapForDocuments(
-  bidId: string,
-  documentIds: string[],
-): Promise<Map<string, { id: string; name: string }[]>> {
-  const map = new Map<string, { id: string; name: string }[]>();
-  if (documentIds.length === 0) return map;
-
-  const linksAndTags = await db
-    .select({
-      documentId: bidDocumentTagLinks.documentId,
-      tagId: bidDocumentTags.id,
-      tagName: bidDocumentTags.name,
-    })
-    .from(bidDocumentTagLinks)
-    .innerJoin(
-      bidDocumentTags,
-      eq(bidDocumentTagLinks.tagId, bidDocumentTags.id),
-    )
-    .where(
-      and(
-        eq(bidDocumentTags.bidId, bidId),
-        inArray(bidDocumentTagLinks.documentId, documentIds),
-      ),
-    );
-
-  for (const row of linksAndTags) {
-    const list = map.get(row.documentId) ?? [];
-    list.push({ id: row.tagId, name: row.tagName });
-    map.set(row.documentId, list);
-  }
-  return map;
-}
 
 export const getBidDocumentById = async (documentId: string) => {
   const [result] = await db
@@ -3917,6 +3853,7 @@ export const createBidDocument = async (data: {
   fileSize?: number;
   documentType?: string;
   uploadedBy: string;
+  tags?: string[];
 }) => {
   const [document] = await db
     .insert(bidDocuments)
@@ -3928,6 +3865,7 @@ export const createBidDocument = async (data: {
       fileSize: data.fileSize || undefined,
       documentType: data.documentType || undefined,
       uploadedBy: data.uploadedBy,
+      tags: data.tags ?? [],
     })
     .returning();
   return document;
@@ -3942,6 +3880,7 @@ export const createBidDocuments = async (
     fileSize?: number;
     documentType?: string;
     uploadedBy: string;
+    tags?: string[];
   }>,
 ) => {
   if (documents.length === 0) {
@@ -3959,6 +3898,7 @@ export const createBidDocuments = async (
         fileSize: doc.fileSize || undefined,
         documentType: doc.documentType || undefined,
         uploadedBy: doc.uploadedBy,
+        tags: doc.tags ?? [],
       })),
     )
     .returning();
@@ -4011,235 +3951,48 @@ export const deleteBidDocument = async (documentId: string) => {
 // Bid Document Tags Operations
 // ============================
 
-/** Names of the three built-in, protected document tags every bid receives. */
-export const DEFAULT_DOCUMENT_TAG_NAMES = [
-  "Client Correspondence",
-  "Vendor Correspondence",
-  "Architecture Correspondence",
-] as const;
-
-/**
- * Upsert the three default document tags for a bid.
- * Uses ON CONFLICT DO NOTHING so it is safe to call multiple times.
- */
-export const seedDefaultDocumentTagsForBid = async (
-  bidId: string,
+export const updateDocumentTags = async (
+  documentId: string,
+  tags: string[],
 ): Promise<void> => {
-  const values = DEFAULT_DOCUMENT_TAG_NAMES.map((name) => ({
-    bidId,
-    name,
-    isDefault: true,
-  }));
   await db
-    .insert(bidDocumentTags)
-    .values(values)
-    .onConflictDoNothing({
-      target: [bidDocumentTags.bidId, bidDocumentTags.name],
-    });
+    .update(bidDocuments)
+    .set({ tags, updatedAt: new Date() })
+    .where(eq(bidDocuments.id, documentId));
 };
 
-export const getBidDocumentTags = async (bidId: string) => {
-  const tags = await db
-    .select({
-      id: bidDocumentTags.id,
-      bidId: bidDocumentTags.bidId,
-      name: bidDocumentTags.name,
-      isDefault: bidDocumentTags.isDefault,
-      createdAt: bidDocumentTags.createdAt,
-    })
-    .from(bidDocumentTags)
-    .where(eq(bidDocumentTags.bidId, bidId))
-    .orderBy(asc(bidDocumentTags.name));
-
-  const linkCounts = await db
-    .select({
-      tagId: bidDocumentTagLinks.tagId,
-      count: count(),
-    })
-    .from(bidDocumentTagLinks)
-    .where(
-      inArray(
-        bidDocumentTagLinks.tagId,
-        tags.map((t) => t.id),
-      ),
-    )
-    .groupBy(bidDocumentTagLinks.tagId);
-
-  const countByTagId = new Map(
-    linkCounts.map((r) => [r.tagId, Number(r.count)]),
+export const getDistinctMediaTags = async (bidId: string): Promise<string[]> => {
+  const rows = await db.execute(
+    sql`SELECT DISTINCT unnest(tags) as tag FROM org.bid_media WHERE bid_id = ${bidId} AND is_deleted = false ORDER BY tag`,
   );
-
-  return tags.map((tag) => ({
-    ...tag,
-    documentCount: countByTagId.get(tag.id) ?? 0,
-  }));
+  return rows.rows.map((r: any) => r.tag as string);
 };
 
-export const getBidDocumentTagById = async (tagId: string) => {
-  const [row] = await db
-    .select()
-    .from(bidDocumentTags)
-    .where(eq(bidDocumentTags.id, tagId));
-  return row ?? null;
-};
-
-export const createBidDocumentTag = async (bidId: string, name: string) => {
-  const [tag] = await db
-    .insert(bidDocumentTags)
-    .values({ bidId, name: name.trim() })
-    .returning();
-  return tag;
-};
-
-export const updateBidDocumentTag = async (
-  tagId: string,
-  data: { name: string },
-) => {
-  const [tag] = await db
-    .update(bidDocumentTags)
-    .set({ name: data.name.trim() })
-    .where(eq(bidDocumentTags.id, tagId))
-    .returning();
-  return tag ?? null;
-};
-
-export const deleteBidDocumentTag = async (tagId: string) => {
+export const updateMediaTags = async (
+  mediaId: string,
+  tags: string[],
+): Promise<void> => {
   await db
-    .delete(bidDocumentTagLinks)
-    .where(eq(bidDocumentTagLinks.tagId, tagId));
-  const [tag] = await db
-    .delete(bidDocumentTags)
-    .where(eq(bidDocumentTags.id, tagId))
-    .returning();
-  return tag ?? null;
+    .update(bidMedia)
+    .set({ tags, updatedAt: new Date() })
+    .where(eq(bidMedia.id, mediaId));
 };
 
-export const getDocumentTags = async (
-  bidId: string,
-  documentId: string,
-): Promise<{ id: string; name: string }[]> => {
-  const rows = await db
-    .select({
-      id: bidDocumentTags.id,
-      name: bidDocumentTags.name,
-    })
-    .from(bidDocumentTagLinks)
-    .innerJoin(
-      bidDocumentTags,
-      eq(bidDocumentTagLinks.tagId, bidDocumentTags.id),
-    )
-    .where(
-      and(
-        eq(bidDocumentTagLinks.documentId, documentId),
-        eq(bidDocumentTags.bidId, bidId),
-      ),
-    );
-  return rows;
+export const getDistinctWalkPhotoTags = async (bidId: string): Promise<string[]> => {
+  const rows = await db.execute(
+    sql`SELECT DISTINCT unnest(tags) as tag FROM org.bid_walk_photos WHERE bid_id = ${bidId} AND is_deleted = false ORDER BY tag`,
+  );
+  return rows.rows.map((r: any) => r.tag as string);
 };
 
-/** Link a tag to a document. If tagName provided and tag doesn't exist, create it then link. */
-export const linkDocumentTag = async (params: {
-  bidId: string;
-  documentId: string;
-  tagId?: string;
-  tagName?: string;
-}) => {
-  const { bidId, documentId, tagId: providedTagId, tagName } = params;
-
-  let tagId = providedTagId;
-  if (!tagId && tagName) {
-    const trimmed = tagName.trim();
-    const [existing] = await db
-      .select()
-      .from(bidDocumentTags)
-      .where(
-        and(
-          eq(bidDocumentTags.bidId, bidId),
-          eq(bidDocumentTags.name, trimmed),
-        ),
-      );
-    if (existing) {
-      tagId = existing.id;
-    } else {
-      const [created] = await db
-        .insert(bidDocumentTags)
-        .values({ bidId, name: trimmed })
-        .returning();
-      tagId = created?.id;
-    }
-  }
-
-  if (!tagId) {
-    return null;
-  }
-
-  const [link] = await db
-    .insert(bidDocumentTagLinks)
-    .values({ documentId, tagId })
-    .onConflictDoNothing({
-      target: [bidDocumentTagLinks.documentId, bidDocumentTagLinks.tagId],
-    })
-    .returning();
-
-  if (link) return link;
-  const [existing] = await db
-    .select()
-    .from(bidDocumentTagLinks)
-    .where(
-      and(
-        eq(bidDocumentTagLinks.documentId, documentId),
-        eq(bidDocumentTagLinks.tagId, tagId),
-      ),
-    );
-  return existing ?? null;
-};
-
-/**
- * Unlink a tag from a document.
- * If the tag has no remaining links AND is not a default tag, it is deleted.
- * Default tags (isDefault = true) are never deleted regardless of link count.
- */
-export const unlinkDocumentTag = async (
-  documentId: string,
-  tagId: string,
-): Promise<{ unlinked: boolean; tagDeleted: boolean }> => {
-  const [deleted] = await db
-    .delete(bidDocumentTagLinks)
-    .where(
-      and(
-        eq(bidDocumentTagLinks.documentId, documentId),
-        eq(bidDocumentTagLinks.tagId, tagId),
-      ),
-    )
-    .returning();
-
-  if (!deleted) {
-    return { unlinked: false, tagDeleted: false };
-  }
-
-  // Fetch the tag to check if it is a protected default tag
-  const [tag] = await db
-    .select({ isDefault: bidDocumentTags.isDefault })
-    .from(bidDocumentTags)
-    .where(eq(bidDocumentTags.id, tagId))
-    .limit(1);
-
-  // Never auto-delete default tags even when no documents are linked to them
-  if (tag?.isDefault) {
-    return { unlinked: true, tagDeleted: false };
-  }
-
-  const remaining = await db
-    .select({ count: count() })
-    .from(bidDocumentTagLinks)
-    .where(eq(bidDocumentTagLinks.tagId, tagId));
-
-  const remainingCount = Number(remaining[0]?.count ?? 0);
-  if (remainingCount === 0) {
-    await db.delete(bidDocumentTags).where(eq(bidDocumentTags.id, tagId));
-    return { unlinked: true, tagDeleted: true };
-  }
-  return { unlinked: true, tagDeleted: false };
+export const updateWalkPhotoTags = async (
+  walkPhotoId: string,
+  tags: string[],
+): Promise<void> => {
+  await db
+    .update(bidWalkPhotos)
+    .set({ tags, updatedAt: new Date() })
+    .where(eq(bidWalkPhotos.id, walkPhotoId));
 };
 
 // ============================
@@ -4405,6 +4158,7 @@ export const createBidMedia = async (data: {
   thumbnailUrl?: string;
   caption?: string;
   uploadedBy: string;
+  tags?: string[];
 }) => {
   const [media] = await db
     .insert(bidMedia)
@@ -4420,6 +4174,7 @@ export const createBidMedia = async (data: {
       thumbnailUrl: data.thumbnailUrl || undefined,
       caption: data.caption || undefined,
       uploadedBy: data.uploadedBy,
+      tags: data.tags ?? [],
     })
     .returning();
   return media;
@@ -4438,6 +4193,7 @@ export const createMultipleBidMedia = async (
     thumbnailUrl?: string;
     caption?: string;
     uploadedBy: string;
+    tags?: string[];
   }>,
 ) => {
   if (mediaFiles.length === 0) {
@@ -4459,6 +4215,7 @@ export const createMultipleBidMedia = async (
         thumbnailUrl: media.thumbnailUrl || undefined,
         caption: media.caption || undefined,
         uploadedBy: media.uploadedBy,
+        tags: media.tags ?? [],
       })),
     )
     .returning();
@@ -4659,6 +4416,7 @@ export const createBidWalkPhoto = async (data: {
   thumbnailUrl?: string;
   caption?: string;
   uploadedBy: string;
+  tags?: string[];
 }) => {
   const [row] = await db
     .insert(bidWalkPhotos)
@@ -4674,6 +4432,7 @@ export const createBidWalkPhoto = async (data: {
       thumbnailUrl: data.thumbnailUrl || undefined,
       caption: data.caption || undefined,
       uploadedBy: data.uploadedBy,
+      tags: data.tags ?? [],
     })
     .returning();
   return row;
@@ -4692,6 +4451,7 @@ export const createMultipleBidWalkPhotos = async (
     thumbnailUrl?: string;
     caption?: string;
     uploadedBy: string;
+    tags?: string[];
   }>,
 ) => {
   if (files.length === 0) return [];
@@ -4710,6 +4470,7 @@ export const createMultipleBidWalkPhotos = async (
         thumbnailUrl: f.thumbnailUrl || undefined,
         caption: f.caption || undefined,
         uploadedBy: f.uploadedBy,
+        tags: f.tags ?? [],
       })),
     )
     .returning();

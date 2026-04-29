@@ -19,6 +19,7 @@ import {
   bulkDeleteDispatchTasksHandler,
   logHoursHandler,
   getTaskLoggedHoursHandler,
+  getJobLoggedHoursHandler,
 } from "../../controllers/DispatchController.js";
 import { authenticate } from "../../middleware/auth.js";
 import {
@@ -172,6 +173,13 @@ router.get(
   viewDispatch,
   validate(getAssignmentsByTaskIdSchema),
   getAssignmentsByTaskIdHandler,
+);
+
+// Bulk: all logged-hours for every task in a job — single query, replaces N per-task calls
+router.get(
+  "/jobs/:jobId/logged-hours",
+  viewDispatch,
+  getJobLoggedHoursHandler,
 );
 
 // Logged hours per task (all assignments with their log data)

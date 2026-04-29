@@ -64,16 +64,44 @@ export const getTimesheets = async (
   offset: number,
   limit: number,
   search?: string,
-  options?: { ownEmployeeId?: number; departmentId?: number },
+  options?: {
+    ownEmployeeId?: number;
+    departmentId?: number;
+    allTechnicians?: boolean;
+    /** When set, rows belonging to this employeeId are sorted first */
+    prioritizeEmployeeId?: number;
+  },
 ) => {
   let whereConditions: any[] = [];
 
-  if (options?.ownEmployeeId !== undefined) {
-    whereConditions.push(eq(timesheets.employeeId, options.ownEmployeeId));
-  }
+  if (options?.allTechnicians) {
+    // Manager view: own timesheet rows OR any employee with the Technician role (roleId = 3)
+    const technicianRoleId = 3;
+    const technicianCondition = sql`EXISTS (
+      SELECT 1 FROM auth.user_roles ur
+      INNER JOIN org.employees e2 ON e2.user_id = ur.user_id
+      WHERE e2.id = ${timesheets.employeeId}
+        AND ur.role_id = ${technicianRoleId}
+    )`;
 
-  if (options?.departmentId !== undefined) {
-    whereConditions.push(eq(employees.departmentId, options.departmentId));
+    if (options.ownEmployeeId !== undefined) {
+      whereConditions.push(
+        or(
+          eq(timesheets.employeeId, options.ownEmployeeId),
+          technicianCondition,
+        )!,
+      );
+    } else {
+      whereConditions.push(technicianCondition);
+    }
+  } else {
+    if (options?.ownEmployeeId !== undefined) {
+      whereConditions.push(eq(timesheets.employeeId, options.ownEmployeeId));
+    }
+
+    if (options?.departmentId !== undefined) {
+      whereConditions.push(eq(employees.departmentId, options.departmentId));
+    }
   }
 
   if (search) {
@@ -90,6 +118,15 @@ export const getTimesheets = async (
   const whereClause =
     whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
+  // Build ORDER BY: own rows first, then most-recent first within each group
+  const prioritizeEmployeeId = options?.prioritizeEmployeeId;
+  const orderBy = prioritizeEmployeeId !== undefined
+    ? [
+        sql`CASE WHEN ${timesheets.employeeId} = ${prioritizeEmployeeId} THEN 0 ELSE 1 END`,
+        desc(timesheets.createdAt),
+      ]
+    : [desc(timesheets.createdAt)];
+
   const result = await db
     .select({
       timesheet: {
@@ -104,6 +141,7 @@ export const getTimesheets = async (
     .leftJoin(approverUser, eq(timesheets.approvedBy, approverUser.id))
     .leftJoin(rejectorUser, eq(timesheets.rejectedBy, rejectorUser.id))
     .where(whereClause)
+    .orderBy(...orderBy)
     .limit(limit)
     .offset(offset);
 
@@ -600,6 +638,10 @@ export const getWeeklyTimesheetsByEmployee = async (
   status?: string,
   page: number = 1,
   limit: number = 10,
+  /** When set, this employee's card is sorted to the top of the result list */
+  prioritizeEmployeeId?: number,
+  /** When true, filter to only employees with the Technician role (roleId = 3) */
+  allTechnicians?: boolean,
 ) => {
   const startDateStr = weekStartDate;
   const weekStartUTC = new Date(weekStartDate + "T00:00:00Z");
@@ -624,6 +666,20 @@ export const getWeeklyTimesheetsByEmployee = async (
   if (departmentId) {
     whereConditions.push(eq(employees.departmentId, departmentId));
     employeeWhereConditions.push(eq(employees.departmentId, departmentId));
+  }
+
+  // allTechnicians: restrict to employees whose user has the Technician role (roleId = 3),
+  // but always include the prioritized employee (the manager themselves)
+  if (allTechnicians) {
+    const technicianRoleId = 3;
+    const techCondition = prioritizeEmployeeId !== undefined
+      ? or(
+          eq(employees.id, prioritizeEmployeeId),
+          sql`EXISTS (SELECT 1 FROM auth.user_roles ur WHERE ur.user_id = ${employees.userId} AND ur.role_id = ${technicianRoleId})`,
+        )!
+      : sql`EXISTS (SELECT 1 FROM auth.user_roles ur WHERE ur.user_id = ${employees.userId} AND ur.role_id = ${technicianRoleId})`;
+    whereConditions.push(techCondition);
+    employeeWhereConditions.push(techCondition);
   }
 
   if (status) {
@@ -897,6 +953,15 @@ export const getWeeklyTimesheetsByEmployee = async (
       doubleTime: emp.totals.doubleTime.toFixed(1),
     },
   }));
+
+  // Sort: own employee card first, then alphabetically by name
+  formattedData.sort((a: any, b: any) => {
+    const aIsOwn = prioritizeEmployeeId !== undefined && a.employeeInfo.id === prioritizeEmployeeId;
+    const bIsOwn = prioritizeEmployeeId !== undefined && b.employeeInfo.id === prioritizeEmployeeId;
+    if (aIsOwn && !bIsOwn) return -1;
+    if (!aIsOwn && bIsOwn) return 1;
+    return (a.employeeInfo.fullName ?? "").localeCompare(b.employeeInfo.fullName ?? "");
+  });
 
   const total = formattedData.length;
   const paginatedData = formattedData.slice(offset, offset + limit);
@@ -1543,6 +1608,55 @@ export const logManualTime = async (data: {
       createdBy: data.createdBy ?? null,
     })
     .returning();
+
+  // If CA violations were detected, create a compliance case in the Team module
+  if (caViolations.length > 0 && data.employeeId != null) {
+    try {
+      const { employeeViolationHistory, employeeComplianceCases } = await import(
+        "../drizzle/schema/compliance.schema.js"
+      );
+      const { organizations } = await import("../drizzle/schema/client.schema.js");
+      const { generateCaseNumber } = await import("./compliance.service.js");
+
+      const [orgRow] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .limit(1);
+
+      const violationDesc = caViolations.join(" | ");
+      const sheetDate = data.sheetDate;
+
+      // Violation history row
+      await db.insert(employeeViolationHistory).values({
+        organizationId: orgRow?.id ?? null,
+        employeeId: data.employeeId,
+        violationType: "timesheet",
+        violationDate: sheetDate,
+        description: violationDesc,
+        severity: "medium",
+        isResolved: false,
+        createdBy: data.createdBy ?? null,
+      });
+
+      // Compliance case shown in Team → Compliance table
+      const caseNumber = await generateCaseNumber();
+      await db.insert(employeeComplianceCases).values({
+        caseNumber,
+        organizationId: orgRow?.id ?? null,
+        employeeId: data.employeeId,
+        jobId: data.jobId ?? null,
+        type: "timesheet",
+        severity: "medium",
+        status: "open",
+        title: `CA Labor Violation – Coverage Entry (${sheetDate})`,
+        description: violationDesc,
+        openedOn: sheetDate,
+        reportedBy: data.createdBy ?? null,
+      });
+    } catch (err) {
+      console.error("[CA Labor] Failed to record timesheet violation:", err);
+    }
+  }
 
   // Fetch updated timesheet row with job entries for the day
   const [updatedTimesheet] = await db

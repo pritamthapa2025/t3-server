@@ -18,22 +18,24 @@ if (!process.env.REDIS_URL) {
 
 // Create Redis instance
 const redis = new Redis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null, // Allow unlimited retries per request
+  // Fail fast: if Redis is down, reject the command immediately rather than
+  // queueing indefinitely. Auth middleware catches the error and falls back
+  // gracefully (treat token as not blacklisted).
+  maxRetriesPerRequest: 1,
   retryStrategy: (times) => {
-    // Retry with exponential backoff, max 3 retries
     if (times > 3) {
       return null; // Stop retrying after 3 attempts
     }
     return Math.min(times * 200, 2000); // 200ms, 400ms, 600ms, max 2000ms
   },
   enableReadyCheck: true,
-  lazyConnect: true, // Don't connect immediately - connect on first use
-  connectTimeout: 10000, // 10 seconds
-  commandTimeout: 5000, // 5 seconds
+  lazyConnect: true,
+  connectTimeout: 5000,
+  commandTimeout: 3000, // Fail commands quickly so auth doesn't hang
   keepAlive: 30000,
-  enableOfflineQueue: true, // Queue commands when offline
+  enableOfflineQueue: false, // Reject commands immediately when offline
   showFriendlyErrorStack: true,
-  enableAutoPipelining: false, // Disable to avoid pipelining issues
+  enableAutoPipelining: false,
 });
 
 redis.on("error", (err: Error) => {

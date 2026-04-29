@@ -28,6 +28,23 @@ export const getDispatchTasksQuerySchema = z.object({
     taskType: z
       .enum(["service", "pm", "install", "emergency", "survey"])
       .optional(),
+    /** Multi-select task type filter: ?taskTypes[]=service&taskTypes[]=pm */
+    "taskTypes[]": z
+      .union([
+        z.enum(["service", "pm", "install", "emergency", "survey"]),
+        z.array(z.enum(["service", "pm", "install", "emergency", "survey"])),
+      ])
+      .optional()
+      .transform((v) =>
+        v === undefined ? undefined : Array.isArray(v) ? v : [v],
+      ),
+    /** Multi-select technician filter by employee UUID: ?technicianEmployeeIds[]=<uuid> */
+    "technicianEmployeeIds[]": z
+      .union([uuidSchema, z.array(uuidSchema)])
+      .optional()
+      .transform((v) =>
+        v === undefined ? undefined : Array.isArray(v) ? v : [v],
+      ),
     priority: z.enum(["low", "medium", "high", "emergency"]).optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),

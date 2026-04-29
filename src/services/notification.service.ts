@@ -283,12 +283,14 @@ export class NotificationService {
   /**
    * Mark all notifications as read for user
    */
-  async markAllAsRead(userId: string): Promise<void> {
-    await this.repository.markAllAsRead(userId);
+  async markAllAsRead(userId: string): Promise<number> {
+    const updatedCount = await this.repository.markAllAsRead(userId);
 
     // Update unread count via Socket.IO
     const { updateUnreadCount } = await import("../config/socket.js");
     updateUnreadCount(userId, 0);
+
+    return updatedCount;
   }
 
   /**

@@ -212,9 +212,9 @@ export class NotificationRepository {
   /**
    * Mark all notifications as read for user
    */
-  async markAllAsRead(userId: string): Promise<void> {
+  async markAllAsRead(userId: string): Promise<number> {
     try {
-      await db
+      const result = await db
         .update(notifications)
         .set({ read: true, readAt: new Date() })
         .where(
@@ -223,7 +223,9 @@ export class NotificationRepository {
             eq(notifications.read, false),
             isNull(notifications.deletedAt)
           )
-        );
+        )
+        .returning({ id: notifications.id });
+      return result.length;
     } catch (error) {
       logger.error("Error marking all notifications as read:", error);
       throw error;

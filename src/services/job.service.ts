@@ -9,6 +9,8 @@ import {
   ilike,
   max,
   lte,
+  gt,
+  isNotNull,
   inArray,
   getTableColumns,
 } from "drizzle-orm";
@@ -44,7 +46,7 @@ import {
   assignmentHistory,
 } from "../drizzle/schema/fleet.schema.js";
 import { payrollTimesheetEntries } from "../drizzle/schema/payroll.schema.js";
-import { timesheets } from "../drizzle/schema/timesheet.schema.js";
+import { timesheets, timesheetJobEntries } from "../drizzle/schema/timesheet.schema.js";
 import {
   bidsTable,
   bidFinancialBreakdown,
@@ -5027,7 +5029,7 @@ export const getJobLaborCostTracking = async (jobId: string) => {
   let overtimeHours = 0;
   let doubleOTHours = 0;
 
-  // Use dispatch assignment logged hours as the primary actual source
+  // Accumulate dispatch assignment logged hours
   dispatchActualRows.forEach((row) => {
     const hrs = parseFloat(row.actualHours ?? "0");
     if (hrs <= 0) return;
@@ -5037,7 +5039,29 @@ export const getJobLaborCostTracking = async (jobId: string) => {
     actualCostTotal += hrs * rate;
   });
 
-  // ACTUAL COST SOURCE 2 (fallback): payroll_timesheet_entries if no dispatch hours logged
+  // ACTUAL COST SOURCE 2: timesheet_job_entries for this job
+  // (coverage entries + self-logged hours recorded via the Timesheets module)
+  // Always included — these are real worked hours that are not in dispatch_assignments.
+  const timesheetJobRows = await db
+    .select({
+      hours: timesheetJobEntries.hours,
+      hourlyRate: employees.hourlyRate,
+    })
+    .from(timesheetJobEntries)
+    .innerJoin(timesheets, eq(timesheetJobEntries.timesheetId, timesheets.id))
+    .leftJoin(employees, eq(timesheets.employeeId, employees.id))
+    .where(eq(timesheetJobEntries.jobId, jobId));
+
+  timesheetJobRows.forEach((row) => {
+    const hrs = parseFloat(String(row.hours ?? "0"));
+    if (hrs <= 0) return;
+    const rate = parseFloat(String(row.hourlyRate ?? "0"));
+    totalHours += hrs;
+    regularHours += hrs;
+    actualCostTotal += hrs * rate;
+  });
+
+  // ACTUAL COST SOURCE 3 (fallback): payroll_timesheet_entries if still no hours at all
   if (totalHours === 0) {
     const actualJobHours = await db
       .select({
@@ -5131,6 +5155,168 @@ export const getJobLaborCostTracking = async (jobId: string) => {
     overtimeHoursNumeric: parseFloat(overtimeHours.toFixed(2)),
     doubleOTHoursNumeric: parseFloat(doubleOTHours.toFixed(2)),
   };
+};
+
+// ============================
+// Job Actual Labor Entries
+// ============================
+
+/**
+ * Returns the combined list of actual labor hours for a job, merging:
+ *  - dispatch_assignments with logged hours (timeIn/timeOut/actualHours)
+ *  - timesheet_job_entries for the same job (coverage + manual hours)
+ * Each row is normalised to a common shape so the frontend can render a
+ * single unified table without knowing which table it came from.
+ */
+export const getJobActualLaborEntries = async (jobId: string) => {
+  // SOURCE 1: dispatch_assignments with actual_hours > 0
+  const dispatchRows = await db
+    .select({
+      id: dispatchAssignments.id,
+      technicianId: dispatchAssignments.technicianId,
+      technicianName: users.fullName,
+      positionName: positions.name,
+      timeIn: dispatchAssignments.timeIn,
+      timeOut: dispatchAssignments.timeOut,
+      breakMinutes: dispatchAssignments.breakMinutes,
+      actualHours: dispatchAssignments.actualHours,
+      hourlyRate: employees.hourlyRate,
+      notes: dispatchAssignments.logNotes,
+      taskStartTime: dispatchTasks.startTime,
+    })
+    .from(dispatchAssignments)
+    .innerJoin(
+      dispatchTasks,
+      and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchTasks.jobId, jobId),
+        eq(dispatchTasks.isDeleted, false),
+      ),
+    )
+    .leftJoin(employees, eq(dispatchAssignments.technicianId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(
+      and(
+        eq(dispatchAssignments.isDeleted, false),
+        isNotNull(dispatchAssignments.actualHours),
+        gt(sql`${dispatchAssignments.actualHours}::numeric`, sql`0`),
+      ),
+    )
+    .orderBy(asc(dispatchTasks.startTime));
+
+  // SOURCE 2: timesheet_job_entries for this job (coverage + self-logged hours)
+  const coverageRows = await db
+    .select({
+      id: timesheetJobEntries.id,
+      technicianEmployeeId: timesheets.employeeId,
+      technicianName: users.fullName,
+      positionName: positions.name,
+      timeIn: timesheetJobEntries.timeIn,
+      timeOut: timesheetJobEntries.timeOut,
+      breakMinutes: timesheetJobEntries.breakMinutes,
+      hours: timesheetJobEntries.hours,
+      hourlyRate: employees.hourlyRate,
+      notes: timesheetJobEntries.notes,
+      sheetDate: timesheets.sheetDate,
+      entryType: timesheetJobEntries.entryType,
+    })
+    .from(timesheetJobEntries)
+    .innerJoin(timesheets, eq(timesheetJobEntries.timesheetId, timesheets.id))
+    .leftJoin(employees, eq(timesheets.employeeId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .leftJoin(positions, eq(employees.positionId, positions.id))
+    .where(eq(timesheetJobEntries.jobId, jobId))
+    .orderBy(asc(timesheets.sheetDate));
+
+  // Helper — extract YYYY-MM-DD from a raw datetime or date string
+  const toDateStr = (raw: unknown): string => {
+    if (!raw) return "";
+    const s = String(raw);
+    return s.split(/[T ]/)[0] ?? "";
+  };
+
+  // Helper — build a full datetime string for clockIn/Out display
+  const toDatetime = (dateStr: string, hhmm: string | null | undefined): string => {
+    if (!hhmm) return "";
+    // If hhmm is already a full datetime, return as-is
+    if (hhmm.length > 8) return hhmm;
+    return `${dateStr}T${hhmm}:00`;
+  };
+
+  type UnifiedEntry = {
+    id: string;
+    jobId: string;
+    technicianId: string;
+    technicianName: string;
+    role: string;
+    clockIn: string;
+    clockOut: string;
+    breakMinutes: number;
+    regularHours: number;
+    overtimeHours: number;
+    doubleOtHours: number;
+    hourlyRate: number;
+    totalCost: number;
+    notes: string | null;
+    entryDate: string;
+    entryType: string;
+  };
+
+  const results: UnifiedEntry[] = [];
+
+  for (const row of dispatchRows) {
+    const actualHours = parseFloat(String(row.actualHours ?? "0"));
+    const rate = parseFloat(String(row.hourlyRate ?? "0"));
+    const entryDate = toDateStr(row.taskStartTime);
+    results.push({
+      id: row.id,
+      jobId,
+      technicianId: String(row.technicianId ?? ""),
+      technicianName: row.technicianName ?? "Unknown",
+      role: row.positionName ?? "Technician",
+      clockIn: toDatetime(entryDate, row.timeIn instanceof Date ? row.timeIn.toISOString() : row.timeIn),
+      clockOut: toDatetime(entryDate, row.timeOut instanceof Date ? row.timeOut.toISOString() : row.timeOut),
+      breakMinutes: row.breakMinutes ?? 0,
+      regularHours: actualHours,
+      overtimeHours: 0,
+      doubleOtHours: 0,
+      hourlyRate: rate,
+      totalCost: parseFloat((actualHours * rate).toFixed(2)),
+      notes: row.notes ?? null,
+      entryDate,
+      entryType: "dispatch",
+    });
+  }
+
+  for (const row of coverageRows) {
+    const hours = parseFloat(String(row.hours ?? "0"));
+    const rate = parseFloat(String(row.hourlyRate ?? "0"));
+    const entryDate = row.sheetDate ? String(row.sheetDate) : "";
+    results.push({
+      id: String(row.id),
+      jobId,
+      technicianId: String(row.technicianEmployeeId ?? ""),
+      technicianName: row.technicianName ?? "Unknown",
+      role: row.positionName ?? "Technician",
+      clockIn: toDatetime(entryDate, row.timeIn),
+      clockOut: toDatetime(entryDate, row.timeOut),
+      breakMinutes: row.breakMinutes ?? 0,
+      regularHours: hours,
+      overtimeHours: 0,
+      doubleOtHours: 0,
+      hourlyRate: rate,
+      totalCost: parseFloat((hours * rate).toFixed(2)),
+      notes: row.notes ?? null,
+      entryDate,
+      entryType: row.entryType ?? "coverage",
+    });
+  }
+
+  // Sort by entryDate descending (newest first)
+  results.sort((a, b) => b.entryDate.localeCompare(a.entryDate));
+
+  return results;
 };
 
 // ============================

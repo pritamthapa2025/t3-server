@@ -840,7 +840,7 @@ async function _notifyMaintenanceDue(
           priority: days === 3 ? "high" : "medium",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName: `${v.make} ${v.model} (${v.vehicleId})`,
             licensePlate: v.licensePlate,
             ...(v.nextServiceDue ? { dueDate: v.nextServiceDue } : {}),
@@ -914,7 +914,7 @@ export async function notifyMaintenanceOverdue(): Promise<CronResult> {
           priority: "high",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName,
             licensePlate: v.licensePlate ?? undefined,
             dueDate: v.nextServiceDue ?? undefined,
@@ -1047,7 +1047,7 @@ export async function notifySafetyInspectionAssignedDriverReminders(): Promise<C
             priority: nudges >= 2 ? "high" : "medium",
             data: {
               entityType: "Vehicle",
-              entityId: v.id,
+              entityId: v.vehicleId,
               entityName,
               licensePlate: v.licensePlate ?? undefined,
               dueDate: v.nextInspectionDue ?? undefined,
@@ -1088,7 +1088,7 @@ export async function notifySafetyInspectionAssignedDriverReminders(): Promise<C
             priority: "high",
             data: {
               entityType: "Vehicle",
-              entityId: v.id,
+              entityId: v.vehicleId,
               entityName,
               licensePlate: v.licensePlate ?? undefined,
               dueDate: v.nextInspectionDue ?? undefined,
@@ -1111,7 +1111,7 @@ export async function notifySafetyInspectionAssignedDriverReminders(): Promise<C
           priority: "high",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName,
             licensePlate: v.licensePlate ?? undefined,
             dueDate: v.nextInspectionDue ?? undefined,
@@ -1202,7 +1202,7 @@ export async function notifySafetyInspectionExpired(): Promise<CronResult> {
           priority: "high",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName,
             licensePlate: v.licensePlate ?? undefined,
             dueDate: v.nextInspectionDue ?? undefined,
@@ -1275,7 +1275,7 @@ export async function notifyVehicleRegistrationExpiring(): Promise<CronResult> {
           priority: "high",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName,
             licensePlate: v.licensePlate ?? undefined,
             dueDate: v.registrationExpiration ?? undefined,
@@ -1347,7 +1347,7 @@ export async function notifyVehicleInsuranceExpiring(): Promise<CronResult> {
           priority: "high",
           data: {
             entityType: "Vehicle",
-            entityId: v.id,
+            entityId: v.vehicleId,
             entityName,
             licensePlate: v.licensePlate ?? undefined,
             dueDate: v.insuranceExpiration ?? undefined,

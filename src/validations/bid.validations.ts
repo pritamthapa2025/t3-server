@@ -2062,72 +2062,33 @@ export const getBidDocumentsSchema = z.object({
     .optional(),
 });
 
-export const getBidDocumentTagsSchema = z.object({
+export const updateDocumentTagsSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
-  }),
-});
-
-export const getBidDocumentTagByIdSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
-    tagId: uuidSchema,
-  }),
-});
-
-export const createBidDocumentTagSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
+    documentId: uuidSchema,
   }),
   body: z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    tags: z.array(z.string().min(1).max(100)),
   }),
 });
 
-export const updateBidDocumentTagSchema = z.object({
+export const updateMediaTagsSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
-    tagId: uuidSchema,
+    mediaId: uuidSchema,
   }),
   body: z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+    tags: z.array(z.string().min(1).max(100)),
   }),
 });
 
-export const deleteBidDocumentTagSchema = z.object({
+export const updateWalkPhotoTagsSchema = z.object({
   params: z.object({
     bidId: uuidSchema,
-    tagId: uuidSchema,
+    walkPhotoId: uuidSchema,
   }),
-});
-
-export const getDocumentTagsSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
-    documentId: uuidSchema,
-  }),
-});
-
-export const linkDocumentTagSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
-    documentId: uuidSchema,
-  }),
-  body: z
-    .object({
-      tagId: uuidSchema.optional(),
-      tagName: z.string().min(1).max(100).optional(),
-    })
-    .refine((data) => data.tagId ?? data.tagName, {
-      message: "Either tagId or tagName is required",
-    }),
-});
-
-export const unlinkDocumentTagSchema = z.object({
-  params: z.object({
-    bidId: uuidSchema,
-    documentId: uuidSchema,
-    tagId: uuidSchema,
+  body: z.object({
+    tags: z.array(z.string().min(1).max(100)),
   }),
 });
 

@@ -29,6 +29,7 @@ import {
   bulkDeleteDispatchTasks,
   logHoursForAssignment,
   getAssignmentLoggedHours,
+  getAssignmentLoggedHoursForJob,
 } from "../services/dispatch.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -101,6 +102,23 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
       sortOrder,
     } = req.query;
 
+    // Array params sent as repeated keys: ?taskTypes[]=service&taskTypes[]=pm
+    const rawTaskTypes = req.query["taskTypes[]"];
+    const taskTypes: string[] | undefined =
+      rawTaskTypes === undefined
+        ? undefined
+        : Array.isArray(rawTaskTypes)
+          ? (rawTaskTypes as string[])
+          : [rawTaskTypes as string];
+
+    const rawTechnicianIds = req.query["technicianEmployeeIds[]"];
+    const technicianEmployeeIds: string[] | undefined =
+      rawTechnicianIds === undefined
+        ? undefined
+        : Array.isArray(rawTechnicianIds)
+          ? (rawTechnicianIds as string[])
+          : [rawTechnicianIds as string];
+
     const offset = (page - 1) * limit;
 
     const filters: any = {};
@@ -109,6 +127,8 @@ export const getDispatchTasksHandler = async (req: Request, res: Response) => {
     if (jobId) filters.jobId = jobId as string;
     if (status) filters.status = status as string;
     if (taskType) filters.taskType = taskType as string;
+    if (taskTypes?.length) filters.taskTypes = taskTypes;
+    if (technicianEmployeeIds?.length) filters.technicianEmployeeIds = technicianEmployeeIds;
     if (priority) filters.priority = priority as string;
     if (startDate) filters.startDate = startDate as string;
     if (endDate) filters.endDate = endDate as string;
@@ -621,7 +641,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
 ) => {
   try {
     const technicianId = asSingleString(req.params.technicianId);
-    const { date, startDate, endDate, status, jobId } = req.query;
+    const { date, startDate, endDate, status, jobId, excludeCovered } = req.query;
 
     if (!technicianId) {
       return res.status(400).json({
@@ -636,6 +656,7 @@ export const getAssignmentsByTechnicianIdHandler = async (
     if (endDate) filters.endDate = endDate as string;
     if (status) filters.status = status as string;
     if (jobId) filters.jobId = jobId as string;
+    if (excludeCovered === "true") filters.excludeCovered = true;
 
     const assignments = await getAssignmentsByTechnicianId(
       parseInt(technicianId),
@@ -893,6 +914,37 @@ export const logHoursHandler = async (req: Request, res: Response) => {
     return res
       .status(isBlockedError ? 403 : 500)
       .json({ success: false, message });
+  }
+};
+
+// ===========================================================================
+// Get All Logged Hours for Job — GET /jobs/:jobId/logged-hours
+// Returns every assignment-log row for every task in the job in one query.
+// ===========================================================================
+
+export const getJobLoggedHoursHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const jobId = asSingleString(req.params.jobId);
+    if (!jobId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Job ID is required" });
+    }
+
+    const rows = await getAssignmentLoggedHoursForJob(jobId);
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+    });
+  } catch (error) {
+    logger.logApiError("Error fetching logged hours for job", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 

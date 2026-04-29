@@ -111,6 +111,12 @@ export const getClients = async (
         whereCondition;
     }
 
+    if (filters?.isDirect !== undefined) {
+      whereCondition =
+        and(whereCondition, eq(organizations.isDirect, filters.isDirect)) ??
+        whereCondition;
+    }
+
     // view_assigned: Technicians only see clients that have jobs they're team members of
     if (options?.ownEmployeeId !== undefined) {
       whereCondition =

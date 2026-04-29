@@ -3,6 +3,7 @@ import {
   dispatchTasks,
   dispatchAssignments,
 } from "../drizzle/schema/dispatch.schema.js";
+import { timesheetJobEntries } from "../drizzle/schema/timesheet.schema.js";
 import { vehicles } from "../drizzle/schema/fleet.schema.js";
 import { jobs } from "../drizzle/schema/jobs.schema.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
@@ -28,6 +29,8 @@ import {
   ilike,
   or,
   inArray,
+  notInArray,
+  isNotNull,
   getTableColumns,
   sql,
 } from "drizzle-orm";
@@ -67,7 +70,11 @@ export const getDispatchTasks = async (
     jobId?: string;
     status?: string;
     taskType?: string;
+    /** Multi-select: filter by one or more task types */
+    taskTypes?: string[];
     priority?: string;
+    /** Multi-select: filter by one or more technician employee UUIDs */
+    technicianEmployeeIds?: string[];
     startDate?: string;
     endDate?: string;
     sortBy?: string;
@@ -80,7 +87,9 @@ export const getDispatchTasks = async (
     jobId,
     status,
     taskType,
+    taskTypes,
     priority,
+    technicianEmployeeIds,
     startDate,
     endDate,
     sortBy = "createdAt",
@@ -92,7 +101,12 @@ export const getDispatchTasks = async (
     eq(dispatchTasks.isDeleted, false),
     ...(jobId ? [eq(dispatchTasks.jobId, jobId)] : []),
     ...(status ? [eq(dispatchTasks.status, status as any)] : []),
-    ...(taskType ? [eq(dispatchTasks.taskType, taskType as any)] : []),
+    // Single taskType (legacy) takes precedence; multi-select taskTypes used otherwise
+    ...(taskType
+      ? [eq(dispatchTasks.taskType, taskType as any)]
+      : taskTypes && taskTypes.length > 0
+        ? [inArray(dispatchTasks.taskType, taskTypes as any[])]
+        : []),
     ...(priority ? [eq(dispatchTasks.priority, priority as any)] : []),
     ...(startDate
       ? [gte(dispatchTasks.startTime, naiveDT(`${startDate}T00:00:00`))]
@@ -116,6 +130,22 @@ export const getDispatchTasks = async (
   if (options?.ownEmployeeId !== undefined) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM org.dispatch_assignments da WHERE da.task_id = ${dispatchTasks.id} AND da.technician_id = ${options.ownEmployeeId} AND da.is_deleted = false)`,
+    );
+  }
+
+  // Multi-select technician filter: tasks must have at least one of the selected technicians assigned
+  if (technicianEmployeeIds && technicianEmployeeIds.length > 0) {
+    conditions.push(
+      sql`EXISTS (
+        SELECT 1 FROM org.dispatch_assignments da
+        INNER JOIN org.employees e ON e.id = da.technician_id
+        WHERE da.task_id = ${dispatchTasks.id}
+          AND e.user_id = ANY(ARRAY[${sql.join(
+            technicianEmployeeIds.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )}])
+          AND da.is_deleted = false
+      )`,
     );
   }
 
@@ -972,6 +1002,7 @@ export const getAssignmentsByTechnicianId = async (
     endDate?: string;
     status?: string;
     jobId?: string;
+    excludeCovered?: boolean;
   },
 ) => {
   const conditions = [
@@ -1007,6 +1038,29 @@ export const getAssignmentsByTechnicianId = async (
       conditions.push(
         lte(dispatchTasks.startTime, naiveDT(`${filters.endDate}T23:59:59`)),
       );
+    }
+  }
+
+  // Exclude assignments that are already covered by a timesheet coverage entry
+  if (filters?.excludeCovered) {
+    const coveredRows = await db
+      .select({ id: timesheetJobEntries.coveredForDispatchAssignmentId })
+      .from(timesheetJobEntries)
+      .where(
+        and(
+          isNotNull(timesheetJobEntries.coveredForDispatchAssignmentId),
+          ...(filters.jobId
+            ? [eq(timesheetJobEntries.jobId, filters.jobId)]
+            : []),
+        ),
+      );
+
+    const coveredIds = coveredRows
+      .map((r) => r.id)
+      .filter(Boolean) as string[];
+
+    if (coveredIds.length > 0) {
+      conditions.push(notInArray(dispatchAssignments.id, coveredIds));
     }
   }
 
@@ -1523,27 +1577,57 @@ export const logHoursForAssignment = async (
     }
   }
 
-  // Record violation in compliance history if flagged
+  // Record violation in compliance history + create a compliance case if flagged
   if (caLaborViolation && existing.technicianId != null) {
     try {
-      const { employeeViolationHistory } = await import(
+      const { employeeViolationHistory, employeeComplianceCases } = await import(
         "../drizzle/schema/compliance.schema.js"
       );
       const { organizations } = await import("../drizzle/schema/client.schema.js");
+      const { generateCaseNumber } = await import("./compliance.service.js");
+
       const [orgRow] = await db
         .select({ id: organizations.id })
         .from(organizations)
         .limit(1);
 
+      // Resolve jobId from the task linked to this assignment
+      const [taskRow] = await db
+        .select({ jobId: dispatchTasks.jobId, title: dispatchTasks.title })
+        .from(dispatchTasks)
+        .innerJoin(dispatchAssignments, eq(dispatchAssignments.taskId, dispatchTasks.id))
+        .where(eq(dispatchAssignments.id, assignmentId))
+        .limit(1);
+
+      const violationDesc = caViolationDetails ?? "CA labor law violation";
+      const taskTitle = taskRow?.title ? ` – ${taskRow.title}` : "";
+
+      // 1. Violation history row
       await db.insert(employeeViolationHistory).values({
         organizationId: orgRow?.id ?? null,
         employeeId: existing.technicianId,
         violationType: "timesheet",
         violationDate: workDate as string,
-        description: caViolationDetails ?? "CA labor law violation",
+        description: violationDesc,
         severity: "medium",
         isResolved: false,
         createdBy: loggedBy,
+      });
+
+      // 2. Compliance case (shown in Team → Compliance table)
+      const caseNumber = await generateCaseNumber();
+      await db.insert(employeeComplianceCases).values({
+        caseNumber,
+        organizationId: orgRow?.id ?? null,
+        employeeId: existing.technicianId,
+        jobId: taskRow?.jobId ?? null,
+        type: "timesheet",
+        severity: "medium",
+        status: "open",
+        title: `CA Labor Violation${taskTitle} (${workDate})`,
+        description: violationDesc,
+        openedOn: workDate as string,
+        reportedBy: loggedBy,
       });
     } catch (err) {
       console.error("[CA Labor] Failed to record violation:", err);
@@ -1669,6 +1753,48 @@ export const getAssignmentLoggedHours = async (taskId: string) => {
         eq(dispatchAssignments.isDeleted, false),
       ),
     )
+    .orderBy(asc(dispatchAssignments.createdAt));
+
+  return rows;
+};
+
+/** Single query returning ALL logged-hours rows for every task in a job.
+ *  Replaces the N separate getAssignmentLoggedHours calls. */
+export const getAssignmentLoggedHoursForJob = async (jobId: string) => {
+  const rows = await db
+    .select({
+      id: dispatchAssignments.id,
+      taskId: dispatchAssignments.taskId,
+      technicianId: dispatchAssignments.technicianId,
+      status: dispatchAssignments.status,
+      role: dispatchAssignments.role,
+      timeIn: dispatchAssignments.timeIn,
+      timeOut: dispatchAssignments.timeOut,
+      actualHours: dispatchAssignments.actualHours,
+      logNotes: dispatchAssignments.logNotes,
+      loggedAt: dispatchAssignments.loggedAt,
+      loggedBy: dispatchAssignments.loggedBy,
+      breakTaken: dispatchAssignments.breakTaken,
+      breakStartTime: dispatchAssignments.breakStartTime,
+      breakMinutes: dispatchAssignments.breakMinutes,
+      mediaAttachments: dispatchAssignments.mediaAttachments,
+      caLaborViolation: dispatchAssignments.caLaborViolation,
+      caViolationDetails: dispatchAssignments.caViolationDetails,
+      technicianName: users.fullName,
+      employeeIdStr: employees.employeeId,
+    })
+    .from(dispatchAssignments)
+    .innerJoin(
+      dispatchTasks,
+      and(
+        eq(dispatchAssignments.taskId, dispatchTasks.id),
+        eq(dispatchTasks.jobId, jobId),
+        eq(dispatchTasks.isDeleted, false),
+      ),
+    )
+    .leftJoin(employees, eq(dispatchAssignments.technicianId, employees.id))
+    .leftJoin(users, eq(employees.userId, users.id))
+    .where(eq(dispatchAssignments.isDeleted, false))
     .orderBy(asc(dispatchAssignments.createdAt));
 
   return rows;
