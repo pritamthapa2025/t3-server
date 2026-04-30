@@ -1,0 +1,1 @@
+ALTER TABLE "org"."positions" ADD COLUMN "is_field_role" boolean DEFAULT false NOT NULL;

@@ -14,6 +14,10 @@ export const getPositionsGroupedSchema = z.object({
       .transform((val) => (val ? parseInt(val, 10) : 5))
       .pipe(z.number().int().positive("Limit must be a positive number").max(50, "Maximum 50 departments per page")),
     search: z.string().optional(),
+    fieldRoleOnly: z
+      .string()
+      .optional()
+      .transform((val) => val === "true"),
   }),
 });
 
@@ -79,6 +83,7 @@ export const createPositionSchema = z.object({
       .max(2000, "Notes are too long (maximum 2000 characters)")
       .optional(),
     isActive: z.boolean().default(true).optional(),
+    isFieldRole: z.boolean().default(false).optional(),
     sortOrder: z
       .number()
       .int("Sort order must be a whole number")
@@ -131,6 +136,7 @@ export const updatePositionSchema = z.object({
         .optional()
         .nullable(),
       isActive: z.boolean().optional(),
+      isFieldRole: z.boolean().optional(),
       sortOrder: z
         .number()
         .int("Sort order must be a whole number")
@@ -147,6 +153,7 @@ export const updatePositionSchema = z.object({
         data.currency !== undefined ||
         data.notes !== undefined ||
         data.isActive !== undefined ||
+        data.isFieldRole !== undefined ||
         data.sortOrder !== undefined,
       {
         message: "At least one field must be provided to update the position",

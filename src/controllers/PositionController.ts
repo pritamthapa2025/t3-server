@@ -67,6 +67,7 @@ export const createPositionHandler = async (req: Request, res: Response) => {
       currency,
       notes,
       isActive,
+      isFieldRole,
       sortOrder,
     } = req.body;
 
@@ -98,6 +99,7 @@ export const createPositionHandler = async (req: Request, res: Response) => {
       currency,
       notes,
       isActive,
+      isFieldRole,
       sortOrder,
     });
     logger.info("Position created successfully");
@@ -140,6 +142,7 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
       currency,
       notes,
       isActive,
+      isFieldRole,
       sortOrder,
     } = req.body;
 
@@ -183,6 +186,7 @@ export const updatePositionHandler = async (req: Request, res: Response) => {
       currency,
       notes,
       isActive,
+      isFieldRole,
       sortOrder,
     });
     if (!position) {
@@ -239,8 +243,9 @@ export const getPositionsGroupedHandler = async (req: Request, res: Response) =>
     const page  = parseInt(req.query.page  as string) || 1;
     const limit = parseInt(req.query.limit as string) || 5;
     const search = req.query.search as string | undefined;
+    const fieldRoleOnly = req.query.fieldRoleOnly === "true";
 
-    const result = await getPositionsGrouped(page, limit, search);
+    const result = await getPositionsGrouped(page, limit, search, fieldRoleOnly);
 
     logger.info("Grouped positions fetched successfully");
     return res.status(200).json({

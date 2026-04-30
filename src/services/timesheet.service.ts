@@ -1512,6 +1512,7 @@ export const logManualTime = async (data: {
   breakMinutes: number;
   entryType: "manual" | "coverage";
   notes?: string;
+  mediaUrls?: string[];
   coveredForEmployeeId?: number;              // employee ID of the person being covered for
   coveredForDispatchAssignmentId?: string;    // UUID of the specific dispatch assignment being covered
   createdBy?: string;     // user UUID of the person submitting
@@ -1579,15 +1580,11 @@ export const logManualTime = async (data: {
     timesheetId = inserted!.id;
   }
 
-  // --- Insert job entry record ---
-  const caViolations = checkCaCompliance(
-    parseFloat(
-      existing
-        ? (parseFloat(existing.totalHours || "0") + newHours).toFixed(2)
-        : newHours.toFixed(2),
-    ),
-    (existing?.breakMinutes || 0) + data.breakMinutes,
-  );
+  // --- CA compliance — evaluated per individual shift, not cumulative daily total.
+  // A short new shift (e.g. 2h) must not be flagged because earlier shifts pushed the
+  // day total over 5h. CA §512 applies to a continuous work period, so each logged
+  // shift is checked independently.
+  const caViolations = checkCaCompliance(newHours, data.breakMinutes);
 
   const [jobEntry] = await db
     .insert(timesheetJobEntries)
@@ -1602,6 +1599,7 @@ export const logManualTime = async (data: {
       notes: data.notes ?? null,
       coveredForEmployeeId: data.coveredForEmployeeId ?? null,
       coveredForDispatchAssignmentId: data.coveredForDispatchAssignmentId ?? null,
+      mediaUrls: data.mediaUrls?.filter((u) => typeof u === "string" && u.length > 0) ?? [],
       breakTaken: data.breakMinutes > 0,
       caLaborViolation: caViolations.length > 0,
       caViolationDetails: caViolations.length > 0 ? caViolations.join(" | ") : null,

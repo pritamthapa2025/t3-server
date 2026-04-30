@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
 import {
   getTimesheetsHandler,
   createTimesheetHandler,
@@ -18,7 +19,13 @@ import {
   updateTimesheetJobEntryHandler,
   getMyHistoryHandler,
   getCoverageEntriesForJobHandler,
+  uploadTimesheetMediaHandler,
 } from "../../controllers/TimesheetController.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+});
 import { authenticate } from "../../middleware/auth.js";
 import {
   authorizeFeature,
@@ -160,6 +167,14 @@ router.get(
   "/timesheets/jobs/:jobId/coverage-entries",
   authorizeAnyFeature("timesheet", ["view_own_timesheets", "view_others_timesheets"]),
   getCoverageEntriesForJobHandler,
+);
+
+// Media upload for timesheet entries
+router.post(
+  "/timesheets/upload-media",
+  authorizeAnyFeature("timesheet", ["view_own_timesheets", "create_timesheet_entry"]),
+  upload.single("file"),
+  uploadTimesheetMediaHandler,
 );
 
 export default router;

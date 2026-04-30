@@ -45,6 +45,7 @@ const positionPayBandSchema = z.object({
     .string()
     .max(500, "Notes are too long (maximum 500 characters)")
     .optional(),
+  isFieldRole: z.boolean().optional(),
 });
 
 // Create department validation
@@ -111,6 +112,7 @@ const updatePositionPayBandSchema = z.object({
     .string()
     .max(500, "Notes are too long (maximum 500 characters)")
     .optional(),
+  isFieldRole: z.boolean().optional(),
 });
 
 // Update department validation

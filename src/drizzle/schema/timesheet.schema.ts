@@ -127,6 +127,9 @@ export const timesheetJobEntries = org.table(
     // The specific dispatch assignment being covered (links to dispatch_assignments.id)
     coveredForDispatchAssignmentId: uuid("covered_for_dispatch_assignment_id").references(() => dispatchAssignments.id, { onDelete: "set null" }),
 
+    // Media attachments (uploaded to DO Spaces, public URLs stored here)
+    mediaUrls: text("media_urls").array().default([]),
+
     // CA labor law compliance flags (mirrors dispatch_assignments pattern)
     caLaborViolation: boolean("ca_labor_violation").notNull().default(false),
     caViolationDetails: text("ca_violation_details"),

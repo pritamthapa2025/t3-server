@@ -1552,30 +1552,9 @@ export const logHoursForAssignment = async (
     }
   }
 
-  // Rule 2: Daily total > 8 hours with no break across all shifts
-  // (checked post-upsert via timesheet total — flagged server-side)
-  if (!breakTaken && existing.technicianId != null) {
-    // Get current day total from timesheets
-    const { timesheets } = await import("../drizzle/schema/timesheet.schema.js");
-    const [dayRow] = await db
-      .select({ totalHours: timesheets.totalHours })
-      .from(timesheets)
-      .where(
-        and(
-          eq(timesheets.employeeId, existing.technicianId),
-          eq(timesheets.sheetDate, workDate as string),
-          eq(timesheets.isDeleted, false),
-        ),
-      )
-      .limit(1);
-
-    const currentDayTotal = parseFloat(dayRow?.totalHours ?? "0");
-    if (currentDayTotal + shiftNetHours > 8 && !caLaborViolation) {
-      caLaborViolation = true;
-      caViolationDetails =
-        "Total hours for the day exceed 8 hours without a recorded meal break (CA Lab. Code §512).";
-    }
-  }
+  // Note: cumulative daily total checks are intentionally omitted here.
+  // CA §512 meal break obligations apply per continuous work period (individual shift).
+  // Flagging a 2h shift because other shifts pushed the day total over 5h is incorrect.
 
   // Record violation in compliance history + create a compliance case if flagged
   if (caLaborViolation && existing.technicianId != null) {

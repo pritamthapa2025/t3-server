@@ -146,11 +146,14 @@ export const getEmployees = async (
         departmentName: departments.name,
         positionId: positions.id,
         positionName: positions.name,
+        roleName: roles.name,
       })
       .from(employees)
       .leftJoin(users, eq(employees.userId, users.id))
       .leftJoin(departments, eq(employees.departmentId, departments.id))
       .leftJoin(positions, eq(employees.positionId, positions.id))
+      .leftJoin(userRoles, eq(userRoles.userId, users.id))
+      .leftJoin(roles, eq(roles.id, userRoles.roleId))
       .where(whereClause)
       .limit(limit)
       .offset(offset),
@@ -206,25 +209,16 @@ export const getEmployees = async (
         overallRating = "Pending";
       }
 
-      // Determine portal role (this might need to be added to your schema)
-      // For now, using position as a proxy for portal role
-      let portalRole = "Office Staff"; // default
-      if (emp.positionName) {
-        if (
-          emp.positionName.toLowerCase().includes("director") ||
-          emp.positionName.toLowerCase().includes("admin")
-        ) {
-          portalRole = "Administrator";
-        } else if (
-          emp.positionName.toLowerCase().includes("manager") ||
-          emp.positionName.toLowerCase().includes("supervisor")
-        ) {
-          portalRole = "Manager";
-        } else if (
-          (emp.positionName ?? "").includes("Technician") ||
-          (emp.positionName ?? "").includes("Engineer")
-        ) {
+      // Determine portal role from the actual user role in DB
+      let portalRole = "Executive"; // default to Executive for any unrecognised role
+      if (emp.roleName) {
+        const rn = emp.roleName.toLowerCase();
+        if (rn === "technician") {
           portalRole = "Technician";
+        } else if (rn === "manager") {
+          portalRole = "Manager";
+        } else if (rn === "executive") {
+          portalRole = "Executive";
         }
       }
 
@@ -340,25 +334,15 @@ export const getEmployeeById = async (id: number) => {
 
     if (roleResult) {
       roleId = roleResult.roleId;
-      // Determine portal role based on role name
-      const roleNameLower = roleResult.roleName.toLowerCase();
-      if (
-        roleNameLower.includes("director") ||
-        roleNameLower.includes("admin")
-      ) {
-        portalRole = "Administrator";
-      } else if (
-        roleNameLower.includes("manager") ||
-        roleNameLower.includes("supervisor")
-      ) {
-        portalRole = "Manager";
-      } else if (
-        roleResult.roleName === "Technician" ||
-        roleResult.roleName === "Engineer"
-      ) {
+      const rn = roleResult.roleName.toLowerCase();
+      if (rn === "technician") {
         portalRole = "Technician";
+      } else if (rn === "manager") {
+        portalRole = "Manager";
+      } else if (rn === "executive") {
+        portalRole = "Executive";
       } else {
-        portalRole = "Office Staff";
+        portalRole = "Executive"; // default to Executive for any unrecognised role
       }
     }
   }

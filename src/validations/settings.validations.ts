@@ -154,10 +154,21 @@ export const updateOperatingExpenseDefaultsSchema = z.object({
  * ============================================================================
  */
 
+const JOB_TYPE_VALUES = [
+  "general",
+  "plan_spec",
+  "design_build",
+  "service",
+  "preventative_maintenance",
+  "survey",
+] as const;
+
 export const createProposalBasisTemplateSchema = z.object({
   body: z.object({
     label: z.string().min(1).max(255),
-    template: z.string(),
+    jobType: z.enum(JOB_TYPE_VALUES).optional().nullable(),
+    items: z.array(z.string().max(2000)).max(200).optional(),
+    template: z.string().optional(),
     sortOrder: z.number().int().optional(),
     isActive: z.boolean().optional(),
   }),
@@ -166,6 +177,8 @@ export const createProposalBasisTemplateSchema = z.object({
 export const updateProposalBasisTemplateSchema = z.object({
   body: z.object({
     label: z.string().max(255).optional(),
+    jobType: z.enum(JOB_TYPE_VALUES).optional().nullable(),
+    items: z.array(z.string().max(2000)).max(200).optional(),
     template: z.string().optional(),
     sortOrder: z.number().int().optional(),
     isActive: z.boolean().optional(),

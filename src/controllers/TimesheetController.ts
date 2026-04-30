@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { uploadToSpaces } from "../services/storage.service.js";
 import {
   getTimesheets,
   getTimesheetById,
@@ -657,7 +658,7 @@ export const logTimeHandler = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    const { employeeId: bodyEmployeeId, jobId, sheetDate, timeIn, timeOut, breakMinutes, entryType, notes, coveredForEmployeeId, coveredForDispatchAssignmentId } = req.body;
+    const { employeeId: bodyEmployeeId, jobId, sheetDate, timeIn, timeOut, breakMinutes, entryType, notes, mediaUrls } = req.body;
 
     // Determine whose timesheet to log against
     let targetEmployeeId: number;
@@ -677,15 +678,14 @@ export const logTimeHandler = async (req: Request, res: Response) => {
 
     const result = await logManualTime({
       employeeId: targetEmployeeId,
-      jobId: jobId ?? undefined,
+      ...(jobId !== undefined && jobId !== null ? { jobId } : {}),
       sheetDate,
       timeIn,
       timeOut,
       breakMinutes: breakMinutes ?? 0,
       entryType: entryType ?? "manual",
-      notes: notes ?? undefined,
-      coveredForEmployeeId: coveredForEmployeeId ?? undefined,
-      coveredForDispatchAssignmentId: coveredForDispatchAssignmentId ?? undefined,
+      ...(notes !== undefined && notes !== null ? { notes } : {}),
+      ...(Array.isArray(mediaUrls) ? { mediaUrls } : {}),
       createdBy: currentUser.id,
     });
 
@@ -839,5 +839,43 @@ export const bulkDeleteTimesheetsHandler = async (req: Request, res: Response) =
   } catch (error) {
     logger.logApiError("Bulk delete timesheets error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ===========================================================================
+// Media upload
+// ===========================================================================
+
+/**
+ * POST /api/v1/org/timesheets/upload-media
+ * Accepts a single file (multipart/form-data field "file"),
+ * uploads it to DigitalOcean Spaces under "timesheet-media/",
+ * and returns the public URL.
+ */
+export const uploadTimesheetMediaHandler = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) {
+      return res.status(400).json({ success: false, message: "No file provided. Send a file in the 'file' field." });
+    }
+
+    const result = await uploadToSpaces(file.buffer, file.originalname, "timesheet-media");
+
+    return res.status(200).json({
+      success: true,
+      message: "File uploaded successfully",
+      url: result.url,
+      filePath: result.filePath,
+    });
+  } catch (error: any) {
+    logger.logApiError("Timesheet media upload error", error, req);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to upload file",
+    });
   }
 };

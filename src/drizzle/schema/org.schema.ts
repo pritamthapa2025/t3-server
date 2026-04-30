@@ -78,6 +78,9 @@ export const positions = org.table(
 
     notes: text("notes"),
 
+    // Field/labor role flag — true = visible in bid labor position dropdown
+    isFieldRole: boolean("is_field_role").default(false).notNull(),
+
     // Status & ordering
     isActive: boolean("is_active").default(true).notNull(),
     sortOrder: integer("sort_order"),

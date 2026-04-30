@@ -456,6 +456,18 @@ export interface QuotePDFData {
   termsParagraph: string;
   exclusionsBody: string;
   warrantyBody: string;
+
+  // Rep / signature (optional — only rendered when present)
+  pmRepEmail: string;
+  pmRepPhone: string;
+  signatureImageUrl: string;
+  hasPmRepDetails: boolean;
+
+  // Footer lines
+  /** Line 1: client company | contact name | client address | bid # */
+  clientFooterLine: string;
+  /** Line 2: issuer company | CA License # | phone | email */
+  companyFooterLine: string;
 }
 
 /**
@@ -605,6 +617,7 @@ export type GeneralSettingsForInvoicePdf = {
   city?: string | null;
   state?: string | null;
   zipCode?: string | null;
+  licenseNumber?: string | null;
 };
 
 /**
@@ -621,6 +634,7 @@ export const issuerCompanyFromGeneralSettings = (
   zipCode: string;
   phone: string;
   email: string;
+  licenseNumber: string;
 } => {
   const g = general;
   return {
@@ -631,6 +645,7 @@ export const issuerCompanyFromGeneralSettings = (
     zipCode: (g?.zipCode ?? "").trim(),
     phone: (g?.phone ?? "").trim(),
     email: (g?.email ?? "").trim(),
+    licenseNumber: (g?.licenseNumber ?? "").trim(),
   };
 };
 
@@ -1078,6 +1093,10 @@ export const prepareQuoteDataForPDF = (
     officePhone?: string;
     /** Settings → General — drives company name, company email, office line, footer. */
     issuer?: QuotePdfIssuerSettings;
+    /** PM rep contact details for signature block (all optional). */
+    pmRepEmail?: string;
+    pmRepPhone?: string;
+    signatureImageUrl?: string;
   },
   typeSpecificData?: Record<string, any> | null,
   typeSpecificSecondary?: {
@@ -1580,10 +1599,13 @@ export const prepareQuoteDataForPDF = (
     "";
 
   const paymentTermsRaw = bid.paymentTerms?.trim() || "";
+  const expirationStr = endDate
+    ? ` and will expire on ${fmtDate(endDate)}`
+    : "";
   const termsParagraph = escHtml(
     paymentTermsRaw
-      ? `Payment terms: ${paymentTermsRaw}. This quote is valid for 30 days from the date of issue.`
-      : "Payment is due within 30 days of invoice. This quote is valid for 30 days from the date of issue.",
+      ? `Payment terms: ${paymentTermsRaw}. This quotation is valid for 30 days from the date of issue${expirationStr}.`
+      : `This quotation is valid for 30 days from the date of issue${expirationStr}.`,
   );
 
   const exclusionsRaw = bid.exclusions?.trim() || "";
@@ -1592,12 +1614,48 @@ export const prepareQuoteDataForPDF = (
     : buildExclusionsHtmlForQuote("");
 
   const warrantyRaw = bid.warrantyDetails?.trim() || "";
-  const warrantyBody = escHtml(
-    warrantyRaw || "Standard warranty applies. See contract for details.",
-  );
+  const DEFAULT_WARRANTY =
+    `T3 Mechanical, Inc. warrants all material and equipment furnished and work performed for a period of one (1) year from the date of substantial completion.\n\n` +
+    `These warranties do not cover:\n` +
+    `• Damage caused by misuse, neglect, or failure to maintain the system per manufacturer recommendations\n` +
+    `• Normal wear and tear\n` +
+    `• Work performed or modifications made by others not authorized by T3 Mechanical, Inc.\n` +
+    `• Damage from acts of God, accidents, or power disturbances beyond T3 Mechanical's control\n` +
+    `• Equipment or materials not supplied by T3 Mechanical, Inc.\n\n` +
+    `THESE WARRANTIES ARE IN LIEU OF ALL OTHER WARRANTIES, EXPRESSED OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT SHALL T3 MECHANICAL BE LIABLE FOR INCIDENTAL OR CONSEQUENTIAL DAMAGES.`;
+  const warrantyBody = escHtml(warrantyRaw || DEFAULT_WARRANTY);
 
   const quoteWorkItems = buildQuoteProposalTableItems(bid);
   const hasWorkDescriptionRows = quoteWorkItems.length > 0;
+
+  // Rep contact / signature
+  const pmRepEmail = options?.pmRepEmail?.trim() || "";
+  const pmRepPhone = options?.pmRepPhone?.trim() || "";
+  const signatureImageUrl = options?.signatureImageUrl?.trim() || "";
+  const hasPmRepDetails = Boolean(pmRepEmail || pmRepPhone || signatureImageUrl);
+
+  // Footer line 1: client info
+  const clientFooterLine =
+    [
+      companyNameResolved !== "—" ? companyNameResolved : null,
+      primaryContact?.fullName?.trim() || null,
+      clientAddress || null,
+      bid.bidNumber ? `Bid #${bid.bidNumber}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ") || "—";
+
+  // Footer line 2: issuer / company info
+  const licenseNumber = issuer?.licenseNumber?.trim() || "";
+  const companyFooterLine =
+    [
+      companyNameResolved !== "—" ? companyNameResolved : null,
+      licenseNumber ? `CA License #${licenseNumber}` : null,
+      officePhoneResolved || null,
+      companyEmailResolved !== "—" ? companyEmailResolved : null,
+    ]
+      .filter(Boolean)
+      .join(" | ") || "—";
 
   return {
     date: fmtDate(createdDate),
@@ -1724,6 +1782,13 @@ export const prepareQuoteDataForPDF = (
     termsParagraph,
     exclusionsBody,
     warrantyBody,
+
+    pmRepEmail,
+    pmRepPhone,
+    signatureImageUrl,
+    hasPmRepDetails,
+    clientFooterLine,
+    companyFooterLine,
   };
 };
 
@@ -1744,7 +1809,8 @@ export const generateQuotePDF = async (
     const browser = await getBrowser();
     page = await browser.newPage();
 
-    // Letter at 96 CSS px/in so layout matches ~6.5″ content width with 1″ PDF margins.
+    // Letter at 96 CSS px/in. No Puppeteer side margins — the quote-container
+    // CSS controls left/right gutters via padding so margins don't double up.
     await page.setViewport({
       width: 816,
       height: 1056,
@@ -1781,7 +1847,10 @@ export const generateQuotePDF = async (
       format: (options.format ?? "Letter") as "A4" | "Letter",
       printBackground: true,
       margin: {
-        ...DEFAULT_LETTER_MARGINS,
+        top: "0",
+        bottom: "0",
+        left: "0",
+        right: "0",
         ...options.margin,
       },
       displayHeaderFooter: options.displayHeaderFooter ?? false,

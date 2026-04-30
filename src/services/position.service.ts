@@ -74,6 +74,7 @@ export const createPosition = async (data: {
   currency?: string;
   notes?: string;
   isActive?: boolean;
+  isFieldRole?: boolean;
   sortOrder?: number | null;
 }) => {
   const [position] = await db
@@ -87,6 +88,7 @@ export const createPosition = async (data: {
       currency: data.currency || "USD",
       notes: data.notes || null,
       isActive: data.isActive ?? true,
+      isFieldRole: data.isFieldRole ?? false,
       sortOrder: data.sortOrder || null,
       isDeleted: false,
     })
@@ -108,6 +110,7 @@ export const updatePosition = async (
     currency?: string;
     notes?: string | null;
     isActive?: boolean;
+    isFieldRole?: boolean;
     sortOrder?: number | null;
   },
 ) => {
@@ -124,6 +127,7 @@ export const updatePosition = async (
   if (data.currency !== undefined) updateData.currency = data.currency;
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.isFieldRole !== undefined) updateData.isFieldRole = data.isFieldRole;
   if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
 
   const [position] = await db
@@ -148,6 +152,7 @@ export const getPositionsGrouped = async (
   page: number,
   limit: number,
   search?: string,
+  fieldRoleOnly?: boolean,
 ) => {
   const offset = (page - 1) * limit;
   const searchFilter = search ? `%${search.toLowerCase()}%` : null;
@@ -163,10 +168,11 @@ export const getPositionsGrouped = async (
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
-              'id',      p.id,
-              'name',    p.name,
-              'payRate', p.pay_rate,
-              'payType', p.pay_type
+              'id',           p.id,
+              'name',         p.name,
+              'payRate',      p.pay_rate,
+              'payType',      p.pay_type,
+              'isFieldRole',  p.is_field_role
             ) ORDER BY p.name ASC
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'::json
@@ -177,8 +183,10 @@ export const getPositionsGrouped = async (
         AND p.is_deleted    = false
         AND p.is_active     = true
         ${searchFilter ? sql`AND LOWER(p.name) LIKE ${searchFilter}` : sql``}
+        ${fieldRoleOnly ? sql`AND p.is_field_role = true` : sql``}
       WHERE d.is_deleted = false
       GROUP BY d.id, d.name
+      ${fieldRoleOnly ? sql`HAVING COUNT(p.id) > 0` : sql``}
 
       UNION ALL
 
@@ -190,10 +198,11 @@ export const getPositionsGrouped = async (
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
-              'id',      p.id,
-              'name',    p.name,
-              'payRate', p.pay_rate,
-              'payType', p.pay_type
+              'id',           p.id,
+              'name',         p.name,
+              'payRate',      p.pay_rate,
+              'payType',      p.pay_type,
+              'isFieldRole',  p.is_field_role
             ) ORDER BY p.name ASC
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'::json
@@ -203,6 +212,7 @@ export const getPositionsGrouped = async (
         AND p.is_deleted    = false
         AND p.is_active     = true
         ${searchFilter ? sql`AND LOWER(p.name) LIKE ${searchFilter}` : sql``}
+        ${fieldRoleOnly ? sql`AND p.is_field_role = true` : sql``}
       HAVING COUNT(p.id) > 0
     ),
     total_count AS (

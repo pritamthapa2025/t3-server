@@ -127,6 +127,7 @@ export const getDepartments = async (
         payRate: positions.payRate,
         payType: positions.payType,
         currency: positions.currency,
+        isFieldRole: positions.isFieldRole,
       })
       .from(positions)
       .where(
@@ -158,6 +159,7 @@ export const getDepartments = async (
       payRate: string | null;
       payType: string | null;
       currency: string | null;
+      isFieldRole: boolean;
     }[]
   >();
   for (const row of allDeptPositions) {
@@ -575,6 +577,7 @@ export const getDepartmentById = async (id: number) => {
         payRate: positions.payRate,
         payType: positions.payType,
         currency: positions.currency,
+        isFieldRole: positions.isFieldRole,
       })
       .from(positions)
       .where(
@@ -695,6 +698,7 @@ export const getDepartmentById = async (id: number) => {
       description: pos.description || "",
       payType,
       payAmount,
+      isFieldRole: pos.isFieldRole ?? false,
     };
   });
 
@@ -863,6 +867,7 @@ export const createDepartment = async (data: {
     payType: string;
     payRate: number;
     notes?: string;
+    isFieldRole?: boolean;
   }>;
 }) => {
   // Use a database transaction to ensure atomicity
@@ -898,6 +903,7 @@ export const createDepartment = async (data: {
         payType: band.payType,
         currency: "USD",
         isActive: true,
+        isFieldRole: band.isFieldRole ?? false,
         isDeleted: false,
       }));
 
@@ -946,6 +952,7 @@ export const updateDepartment = async (
       payType: string;
       payRate: number;
       notes?: string;
+      isFieldRole?: boolean;
     }>;
   },
 ) => {
@@ -1014,15 +1021,17 @@ export const updateDepartment = async (
       for (const band of data.positionPayBands) {
         if (band.id) {
           // Update existing position
+          const updateSet: Record<string, unknown> = {
+            name: band.positionTitle,
+            description: band.notes || null,
+            payRate: String(band.payRate),
+            payType: band.payType,
+            updatedAt: new Date(),
+          };
+          if (band.isFieldRole !== undefined) updateSet.isFieldRole = band.isFieldRole;
           await tx
             .update(positions)
-            .set({
-              name: band.positionTitle,
-              description: band.notes || null,
-              payRate: String(band.payRate),
-              payType: band.payType,
-              updatedAt: new Date(),
-            })
+            .set(updateSet)
             .where(eq(positions.id, band.id));
           // Sync labor_rate_templates.defaultCostRate with position pay rate
           await tx
@@ -1044,6 +1053,7 @@ export const updateDepartment = async (
               payType: band.payType,
               currency: "USD",
               isActive: true,
+              isFieldRole: band.isFieldRole ?? false,
               isDeleted: false,
             })
             .returning();

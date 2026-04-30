@@ -1,0 +1,1 @@
+ALTER TABLE "org"."timesheet_job_entries" ADD COLUMN "media_urls" text[] DEFAULT '{}';

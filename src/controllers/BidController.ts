@@ -150,6 +150,19 @@ async function quotePdfIssuerOptions() {
   return { issuer: issuerCompanyFromGeneralSettings(general) };
 }
 
+/** Merge issuer options with the requesting user's contact details for the signature block. */
+function withRequesterDetails(
+  issuerOpts: { issuer: ReturnType<typeof issuerCompanyFromGeneralSettings> },
+  req: Request,
+): Parameters<typeof prepareQuoteDataForPDF>[5] {
+  const principal = req.authPrincipal;
+  return {
+    ...issuerOpts,
+    pmRepEmail: (principal?.email ?? req.user?.email ?? "").trim(),
+    pmRepPhone: (principal?.phone ?? "").trim(),
+  };
+}
+
 // ============================
 // Main Bid Operations
 // ============================
@@ -5363,7 +5376,10 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = await quotePdfIssuerOptions();
+    const quoteIssuerOpts = withRequesterDetails(
+      await quotePdfIssuerOptions(),
+      req,
+    );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -5449,7 +5465,10 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = await quotePdfIssuerOptions();
+    const quoteIssuerOpts = withRequesterDetails(
+      await quotePdfIssuerOptions(),
+      req,
+    );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -5568,7 +5587,10 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = await quotePdfIssuerOptions();
+    const quoteIssuerOpts = withRequesterDetails(
+      await quotePdfIssuerOptions(),
+      req,
+    );
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -5670,7 +5692,10 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
     const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
       await loadQuotePdfTypeData(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = await quotePdfIssuerOptions();
+    const quoteIssuerOpts = withRequesterDetails(
+      await quotePdfIssuerOptions(),
+      req,
+    );
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const primaryContact =

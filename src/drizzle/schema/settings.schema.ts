@@ -8,7 +8,9 @@ import {
   integer,
   numeric,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { positions } from "./org.schema.js";
 import { users } from "./auth.schema.js";
 // Settings use auth schema (system-wide, not per-organization)
@@ -240,8 +242,16 @@ export const proposalBasisTemplates = auth.table(
     id: uuid("id").defaultRandom().primaryKey(),
 
     // Template Details
-    label: varchar("label", { length: 255 }).notNull(), // "RFP and Plans"
-    template: text("template").notNull(), // "This proposal was based on Client's RFP and plans dated [DATE]"
+    label: varchar("label", { length: 255 }).notNull(),
+    /** Job type this template applies to (null = applies to all job types) */
+    jobType: varchar("job_type", { length: 100 }),
+    /** Ordered list of proposal basis line items */
+    items: jsonb("items")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Legacy single-body text field — kept for backward compat */
+    template: text("template").notNull().default(""),
 
     // Ordering
     sortOrder: integer("sort_order").default(0),
@@ -260,6 +270,7 @@ export const proposalBasisTemplates = auth.table(
     index("idx_proposal_basis_active").on(table.isActive),
     index("idx_proposal_basis_deleted").on(table.isDeleted),
     index("idx_proposal_basis_sort").on(table.sortOrder),
+    index("idx_proposal_basis_job_type").on(table.jobType),
   ],
 );
 
