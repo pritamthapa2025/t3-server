@@ -19,3 +19,24 @@ export const verifyToken = (token: string): JwtPayload | null => {
     return null;
   }
 };
+
+/** Sign an arbitrary payload with a custom expiry using the validated JWT_SECRET. */
+export const signPayload = (
+  payload: Record<string, unknown>,
+  expiresIn: string,
+): string => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn } as SignOptions);
+};
+
+/**
+ * Verify a token and return its decoded payload.
+ * Throws a JsonWebTokenError / TokenExpiredError on failure
+ * (callers are expected to have a try/catch).
+ */
+export const verifyPayload = (token: string): JwtPayload => {
+  const decoded = jwt.verify(token, JWT_SECRET);
+  if (typeof decoded === "string") {
+    throw new Error("Unexpected string payload in JWT");
+  }
+  return decoded;
+};

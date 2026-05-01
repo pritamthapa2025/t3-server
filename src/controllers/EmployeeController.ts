@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import { signPayload } from "../utils/jwt.js";
 import { STALE_DATA, staleDataResponse } from "../utils/optimistic-lock.js";
 import {
   getEmployees,
@@ -521,14 +521,13 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
     // Send password setup email if new user was created
     if (createdUser) {
       // Generate secure token for password setup (valid for 24 hours)
-      const setupToken = jwt.sign(
+      const setupToken = signPayload(
         {
           email: createdUser.email,
           purpose: "new-user-password-setup",
           userId: createdUser.id,
         },
-        process.env.JWT_SECRET || "",
-        { expiresIn: "24h" },
+        "24h",
       );
 
       // Send password setup email to the new user

@@ -1,8 +1,7 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
-import jwt from "jsonwebtoken";
 import { comparePassword, hashPassword } from "../utils/hash.js";
-import { generateToken, verifyToken } from "../utils/jwt.js";
+import { generateToken, verifyToken, signPayload, verifyPayload } from "../utils/jwt.js";
 
 import {
   generate2FACode,
@@ -447,14 +446,13 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
     }
 
     // Generate a short-lived verification token (10 minutes)
-    const verificationToken = jwt.sign(
+    const verificationToken = signPayload(
       {
         email: user.email,
         userId: user.id,
         purpose: "password-reset-token-verified",
       },
-      process.env.JWT_SECRET || "",
-      { expiresIn: "10m" }
+      "10m"
     );
 
     // Delete the OTP since it's been verified (prevent reuse)
@@ -484,10 +482,7 @@ export const confirmPasswordResetHandler = async (
 
   try {
     // Verify the verification token
-    const decoded = jwt.verify(
-      verificationToken,
-      process.env.JWT_SECRET || ""
-    ) as {
+    const decoded = verifyPayload(verificationToken) as {
       email: string;
       purpose: string;
       userId: string;
@@ -835,7 +830,7 @@ export const setupNewPasswordHandler = async (req: Request, res: Response) => {
 
   try {
     // Verify the setup token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "") as {
+    const decoded = verifyPayload(token) as {
       email: string;
       purpose: string;
       userId: string;
