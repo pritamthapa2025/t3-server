@@ -32,7 +32,8 @@ import {
   getPrimaryBankAccount,
   updateBankAccount,
 } from "../services/bankAccount.service.js";
-import { uploadToSpaces } from "../services/storage.service.js";
+import { uploadToSpaces, deleteFromSpaces } from "../services/storage.service.js";
+import { invalidateUserAuthCache } from "../middleware/auth.js";
 import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -177,7 +178,10 @@ export const getUnassignedDriversHandler = async (
   try {
     const search = typeof req.query.search === "string" ? req.query.search : "";
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
+    const limit = Math.min(
+      50,
+      Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20),
+    );
 
     const result = await getUnassignedDrivers({ search, page, limit });
     logger.info("Unassigned drivers fetched successfully");
@@ -245,6 +249,181 @@ export const getEmployeeJobsAndDispatchHandler = async (
     });
   } catch (error) {
     logger.logApiError("Error fetching employee jobs and dispatch", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+const QUOTE_SIGNATURE_UPLOAD_FOLDER = "quote-signatures";
+
+async function persistQuoteSignatureForEmployee(
+  employeeId: number,
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({
+      success: false,
+      message: "signatureImage file is required.",
+    });
+    return;
+  }
+
+  let uploadResult: { url: string };
+  try {
+    uploadResult = await uploadToSpaces(
+      file.buffer,
+      file.originalname,
+      QUOTE_SIGNATURE_UPLOAD_FOLDER,
+    );
+  } catch (uploadError: unknown) {
+    logger.logApiError("Quote signature upload error", uploadError, req);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload signature image. Please try again.",
+    });
+    return;
+  }
+
+  try {
+    const updated = await updateEmployee(employeeId, {
+      signature: uploadResult.url,
+    });
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+      return;
+    }
+    const linkedUser = await getEmployeeById(employeeId);
+    if (linkedUser?.user?.id) {
+      invalidateUserAuthCache(linkedUser.user.id);
+    }
+    logger.info("Quote signature saved", { employeeId });
+    res.status(200).json({
+      success: true,
+      data: {
+        employeeId,
+        signature: uploadResult.url,
+        quoteSignatureUrl: uploadResult.url,
+      },
+    });
+  } catch (dbError: unknown) {
+    logger.logApiError("Quote signature DB update error", dbError, req);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
+
+export const deleteMyQuoteSignatureHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: "Authentication required" });
+    }
+
+    const ctx = await getUserRoleWithContext(userId);
+    const employeeId = ctx?.employeeId;
+    if (employeeId == null) {
+      return res.status(403).json({
+        success: false,
+        message: "No employee profile is linked to this account.",
+      });
+    }
+
+    const employee = await getEmployeeById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    const existingUrl = (employee as { signature?: string | null }).signature
+      ?? (employee.user as { signature?: string | null } | null)?.signature
+      ?? null;
+
+    if (existingUrl) {
+      try {
+        await deleteFromSpaces(existingUrl);
+      } catch (storageErr) {
+        logger.logApiError("Failed to delete signature from storage (continuing)", storageErr, req);
+      }
+    }
+
+    await updateEmployee(employeeId, { signature: null });
+    invalidateUserAuthCache(userId);
+
+    logger.info("Quote signature deleted", { employeeId });
+    return res.status(200).json({ success: true, message: "Quote signature removed." });
+  } catch (error: unknown) {
+    logger.logApiError("Error deleting own quote signature", error, req);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const postMyQuoteSignatureHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const ctx = await getUserRoleWithContext(userId);
+    const employeeId = ctx?.employeeId;
+    if (employeeId == null) {
+      return res.status(403).json({
+        success: false,
+        message: "No employee profile is linked to this account.",
+      });
+    }
+
+    await persistQuoteSignatureForEmployee(employeeId, req, res);
+  } catch (error: unknown) {
+    logger.logApiError("Error saving own quote signature", error, req);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const postEmployeeQuoteSignatureHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID provided",
+      });
+    }
+
+    const existing = await getEmployeeById(id);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    await persistQuoteSignatureForEmployee(id, req, res);
+  } catch (error: unknown) {
+    logger.logApiError("Error saving employee quote signature", error, req);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -447,6 +626,7 @@ export const createEmployeeHandler = async (req: Request, res: Response) => {
     // New users receive profilePicture on createUser. Explicit userId + file: persist here.
     if (uploadedFileUrl && !createdUser) {
       await updateUser(finalUserId, { profilePicture: uploadedFileUrl });
+      invalidateUserAuthCache(finalUserId);
     }
 
     // Assign role to user if roleId is provided
@@ -774,6 +954,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
     if (Object.keys(userUpdateData).length > 0) {
       try {
         await updateUser(userId, userUpdateData);
+        invalidateUserAuthCache(userId);
       } catch (userError: any) {
         logger.logApiError("Failed to update user", userError, req);
         return res.status(500).json({
@@ -826,6 +1007,7 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
     if (roleId !== undefined && roleId !== null) {
       try {
         await assignRoleToUser(userId, roleId);
+        invalidateUserAuthCache(userId);
       } catch (roleError: any) {
         logger.logApiError("Failed to assign role to user", roleError, req);
         // Don't fail the entire update if only role assignment fails

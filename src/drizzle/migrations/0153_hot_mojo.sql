@@ -1,0 +1,1 @@
+ALTER TABLE "org"."bids" DROP COLUMN "quote_pdf_callout";

@@ -1,0 +1,1 @@
+ALTER TABLE "org"."positions" ADD COLUMN "labor_preset_role" varchar(20);

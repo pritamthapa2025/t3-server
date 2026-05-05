@@ -336,6 +336,9 @@ export interface QuotePDFData {
   /** Plan-spec only: “based on Plans…” narrative (shown in type section, not work table). */
   planSpecProposalSummary: string;
   hasPlanSpecProposalSummary: boolean;
+  /** Optional per-bid callout (italic red banner on PDF). */
+  quotePdfCalloutHtml: string;
+  hasQuotePdfCallout: boolean;
   /** Single footer line from Settings → General (name • address • phone • email). */
   quoteFooterLine: string;
   workItems: Array<{ index: number; description: string }>;
@@ -348,6 +351,11 @@ export interface QuotePDFData {
   hasOperatingExpenses: boolean;
   totalAmount: string;
   expirationDate: string;
+
+  /** Optional add-on line items (bid_alternates); not included in base total. */
+  alternateRows: Array<{ index: number; description: string }>;
+  hasAlternates: boolean;
+  alternatesSubtotal: string;
 
   // Job type discriminators for template {{#if}} blocks
   isGeneral: boolean;
@@ -461,6 +469,9 @@ export interface QuotePDFData {
   pmRepEmail: string;
   pmRepPhone: string;
   signatureImageUrl: string;
+  /** Separate from `signatureImageUrl` — custom PDF `{{#if}}` has no `{{else}}`; use two flags. */
+  hasQuoteSignatureImage: boolean;
+  showQuoteSignatureNameFallback: boolean;
   hasPmRepDetails: boolean;
 
   // Footer lines
@@ -502,7 +513,7 @@ export const generateInvoicePDF = async (
       timeout: 30000,
     });
 
-    // Match quote PDF: fonts + remote logo must be ready before print.
+    // Fonts ready; wait for invoice logo only if present (template may omit logo).
     try {
       await page.evaluate(
         () =>
@@ -515,12 +526,13 @@ export const generateInvoicePDF = async (
       await page.waitForFunction(
         `(() => {
           const img = document.querySelector("img.company-logo");
-          return Boolean(img && img.complete && img.naturalWidth > 0);
+          if (!img) return true;
+          return Boolean(img.complete && img.naturalWidth > 0);
         })()`,
         { timeout: 20000 },
       );
     } catch {
-      // Continue; PDF still generates if CDN blocked or no logo node
+      // Continue; PDF still generates if CDN blocked or broken image
     }
 
     const pdfOptions = {
@@ -945,6 +957,77 @@ function resolveTotal(
   return Number(breakdown?.totalPrice || 0).toFixed(2);
 }
 
+/** US-style currency for quote PDF (e.g. 1,234.56) */
+function formatUsdForQuote(amount: string | number): string {
+  const n =
+    typeof amount === "string" ? Number.parseFloat(amount) : Number(amount);
+  if (!Number.isFinite(n)) {
+    return (0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Line total for a bid alternate (matches dashboard: use totalPrice when > 0, else qty × unit × markup).
+ */
+function alternateLineTotalForQuote(alt: {
+  totalPrice?: string | number | null;
+  quantity?: string | number | null;
+  unitPrice?: string | number | null;
+  markup?: string | number | null;
+}): number {
+  const stored = Number(alt.totalPrice ?? 0);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  const qty = Number(alt.quantity ?? 0);
+  const unit = Number(alt.unitPrice ?? 0);
+  const markup = 1 + Number(alt.markup ?? 0) / 100;
+  const computed = qty * unit * markup;
+  return Number.isFinite(computed) ? computed : 0;
+}
+
+function buildAlternatesForQuotePdf(
+  rows:
+    | Array<{
+        description?: string | null;
+        quantity?: string | number | null;
+        unitPrice?: string | number | null;
+        markup?: string | number | null;
+        totalPrice?: string | number | null;
+      }>
+    | null
+    | undefined,
+): {
+  alternateRows: Array<{ index: number; description: string }>;
+  hasAlternates: boolean;
+  alternatesSubtotal: string;
+} {
+  const list = rows?.length ? rows : [];
+  let sum = 0;
+  const alternateRows = list.map((alt, i) => {
+    const line = alternateLineTotalForQuote(alt);
+    sum += line;
+    const plain = stripHtmlToPlainText(String(alt.description ?? "").trim());
+    const description = plain
+      ? escHtml(plain).replace(/\r?\n/g, "<br/>")
+      : "—";
+    return {
+      index: i + 1,
+      description,
+    };
+  });
+  return {
+    alternateRows,
+    hasAlternates: alternateRows.length > 0,
+    alternatesSubtotal: formatUsdForQuote(sum.toFixed(2)),
+  };
+}
+
 /** Build a simple checklist HTML for included services */
 function buildChecklistHtml(items: string[]): string {
   if (items.length === 0) return "";
@@ -1066,6 +1149,8 @@ export const prepareQuoteDataForPDF = (
     paymentTerms?: string | null;
     exclusions?: string | null;
     warrantyDetails?: string | null;
+    /** Optional italic callout on quote PDF (any job type). */
+    quotePdfCallout?: string | null;
   },
   organization: {
     name?: string | null;
@@ -1097,6 +1182,14 @@ export const prepareQuoteDataForPDF = (
     pmRepEmail?: string;
     pmRepPhone?: string;
     signatureImageUrl?: string;
+    /** Rows from `bid_alternates` (optional add-ons for the quote PDF). */
+    bidAlternates?: Array<{
+      description?: string | null;
+      quantity?: string | number | null;
+      unitPrice?: string | number | null;
+      markup?: string | number | null;
+      totalPrice?: string | number | null;
+    }>;
   },
   typeSpecificData?: Record<string, any> | null,
   typeSpecificSecondary?: {
@@ -1196,6 +1289,16 @@ export const prepareQuoteDataForPDF = (
   const hasPlanSpecProposalSummary = planSpecProposalSummary.trim().length > 0;
   const planSpecProposalSummarySafe = escHtml(planSpecProposalSummary);
 
+  const quotePdfCalloutRaw = (bid as { quotePdfCallout?: string | null })
+    .quotePdfCallout;
+  const quotePdfCalloutPlain = quotePdfCalloutRaw?.trim()
+    ? stripHtmlToPlainText(String(quotePdfCalloutRaw).trim())
+    : "";
+  const hasQuotePdfCallout = quotePdfCalloutPlain.length > 0;
+  const quotePdfCalloutHtml = hasQuotePdfCallout
+    ? escHtml(quotePdfCalloutPlain)
+    : "";
+
   // Standard financial breakdown fields
   const materialsCost = financialBreakdown?.materialsEquipment
     ? Number(financialBreakdown.materialsEquipment).toFixed(2)
@@ -1214,10 +1317,8 @@ export const prepareQuoteDataForPDF = (
     Number(financialBreakdown.operatingExpenses) > 0,
   );
 
-  const totalAmount = resolveTotal(
-    jobType,
-    financialBreakdown as any,
-    typeData,
+  const totalAmount = formatUsdForQuote(
+    resolveTotal(jobType, financialBreakdown as any, typeData),
   );
 
   // ── Plan Spec fields ──────────────────────────────────────────────────────
@@ -1628,10 +1729,21 @@ export const prepareQuoteDataForPDF = (
   const quoteWorkItems = buildQuoteProposalTableItems(bid);
   const hasWorkDescriptionRows = quoteWorkItems.length > 0;
 
+  const { alternateRows, hasAlternates, alternatesSubtotal } =
+    buildAlternatesForQuotePdf(options?.bidAlternates);
+
   // Rep contact / signature
   const pmRepEmail = options?.pmRepEmail?.trim() || "";
   const pmRepPhone = options?.pmRepPhone?.trim() || "";
   const signatureImageUrl = options?.signatureImageUrl?.trim() || "";
+  const hasQuoteSignatureImage = Boolean(signatureImageUrl);
+  const showQuoteSignatureNameFallback = !hasQuoteSignatureImage;
+  const repDisplayNameRaw = (
+    bid.assignedToName ??
+    bid.createdByName ??
+    "—"
+  ).toString();
+  const repDisplayNameTrimmed = repDisplayNameRaw.trim() || "—";
   const hasPmRepDetails = Boolean(pmRepEmail || pmRepPhone || signatureImageUrl);
 
   // Footer line 1: client info
@@ -1660,7 +1772,7 @@ export const prepareQuoteDataForPDF = (
   return {
     date: fmtDate(createdDate),
     quoteNumber: bid.bidNumber,
-    pmRepName: bid.assignedToName ?? bid.createdByName ?? "—",
+    pmRepName: repDisplayNameTrimmed,
     officeAddress: officeAddressResolved,
     officePhone: officePhoneResolved,
     companyName: companyNameResolved,
@@ -1671,6 +1783,8 @@ export const prepareQuoteDataForPDF = (
     clientAddress: clientAddress || "—",
     planSpecProposalSummary: planSpecProposalSummarySafe,
     hasPlanSpecProposalSummary,
+    quotePdfCalloutHtml,
+    hasQuotePdfCallout,
     quoteFooterLine,
     workItems: quoteWorkItems,
     hasWorkDescriptionRows,
@@ -1681,6 +1795,10 @@ export const prepareQuoteDataForPDF = (
     hasOperatingExpenses,
     totalAmount,
     expirationDate: endDate ? fmtDate(endDate) : "—",
+
+    alternateRows,
+    hasAlternates,
+    alternatesSubtotal,
 
     // Type discriminators
     isGeneral: jobType === "general",
@@ -1786,6 +1904,8 @@ export const prepareQuoteDataForPDF = (
     pmRepEmail,
     pmRepPhone,
     signatureImageUrl,
+    hasQuoteSignatureImage,
+    showQuoteSignatureNameFallback,
     hasPmRepDetails,
     clientFooterLine,
     companyFooterLine,
@@ -1838,6 +1958,14 @@ export const generateQuotePDF = async (
           return Boolean(img && img.complete && img.naturalWidth > 0);
         })()`,
         { timeout: 20000 },
+      );
+      await page.waitForFunction(
+        `(() => {
+          const img = document.querySelector("img.signature-img");
+          if (!img) return true;
+          return Boolean(img.complete && img.naturalWidth > 0);
+        })()`,
+        { timeout: 15000 },
       );
     } catch {
       // Continue; PDF still generates without logo if CDN blocked

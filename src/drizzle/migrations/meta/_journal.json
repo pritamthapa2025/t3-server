@@ -1051,6 +1051,34 @@
       "when": 1777543340988,
       "tag": "0149_round_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1777885113758,
+      "tag": "0150_far_lionheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1777982456107,
+      "tag": "0151_brave_ghost_rider",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1777984078516,
+      "tag": "0152_watery_bastion",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1777994195270,
+      "tag": "0153_hot_mojo",
+      "breakpoints": true
     }
   ]
 }

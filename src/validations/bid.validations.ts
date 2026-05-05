@@ -314,6 +314,21 @@ export const createBidSchema = z.object({
         )
         .optional(),
 
+      alternates: z
+        .array(
+          z.object({
+            id: uuidSchema.optional(),
+            description: z.string(),
+            quantity: z.union([z.string(), z.number()]),
+            unitPrice: z.union([z.string(), z.number()]),
+            markup: z.union([z.string(), z.number()]).optional(),
+            totalPrice: z.union([z.string(), z.number()]),
+            notes: z.string().optional(),
+            sortOrder: z.number().int().optional(),
+          }),
+        )
+        .optional(),
+
       laborAndTravel: z
         .object({
           labor: z.array(
@@ -789,6 +804,21 @@ export const updateBidSchema = z.object({
           markup: z.string().optional(),
           totalCost: z.string(),
           totalPrice: z.string().optional(),
+        }),
+      )
+      .optional(),
+
+    alternates: z
+      .array(
+        z.object({
+          id: uuidSchema.optional(),
+          description: z.string(),
+          quantity: z.union([z.string(), z.number()]),
+          unitPrice: z.union([z.string(), z.number()]),
+          markup: z.union([z.string(), z.number()]).optional(),
+          totalPrice: z.union([z.string(), z.number()]),
+          notes: z.string().optional(),
+          sortOrder: z.number().int().optional(),
         }),
       )
       .optional(),

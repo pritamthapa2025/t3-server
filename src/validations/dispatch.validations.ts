@@ -222,6 +222,18 @@ export const logHoursForAssignmentSchema = z.object({
         message: "breakStartTime must be after or equal to timeIn",
         path: ["breakStartTime"],
       },
+    )
+    .refine(
+      (data) => {
+        if (!data.breakTaken) return true;
+        const mins = data.breakMinutes ?? 30;
+        return mins >= 30;
+      },
+      {
+        message:
+          "Meal break must be at least 30 minutes to satisfy CA Labor Code §512.",
+        path: ["breakMinutes"],
+      },
     ),
 });
 

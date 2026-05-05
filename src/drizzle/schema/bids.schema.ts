@@ -291,6 +291,37 @@ export const bidMaterials = org.table(
 );
 
 /**
+ * Bid Alternates Table
+ * One-to-many optional add-on line items for each bid.
+ * These render below the base bid total in the quote PDF and are NOT
+ * included in the base bid cost / price calculations.
+ */
+export const bidAlternates = org.table(
+  "bid_alternates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bidId: uuid("bid_id")
+      .notNull()
+      .references(() => bidsTable.id, { onDelete: "cascade" }),
+
+    description: text("description").notNull(),
+    quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull(),
+    unitPrice: numeric("unit_price", { precision: 15, scale: 2 }).notNull(),
+    markup: numeric("markup", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    totalPrice: numeric("total_price", { precision: 15, scale: 2 }).notNull(),
+    notes: text("notes"),
+    sortOrder: integer("sort_order").notNull().default(0),
+
+    isDeleted: boolean("is_deleted").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("idx_bid_alternates_bid_id").on(table.bidId)],
+);
+
+/**
  * Bid Labor Table
  * One-to-many labor entries for each bid
  */

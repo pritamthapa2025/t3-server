@@ -134,6 +134,11 @@ import {
   getBidDesignBuildFiles,
   createBidDesignBuildFile,
   deleteBidDesignBuildFile,
+  getBidAlternates,
+  getBidAlternateById,
+  createBidAlternate,
+  updateBidAlternate,
+  deleteBidAlternate,
 } from "../services/bid.service.js";
 import { appendJobHistoryForBid } from "../services/job.service.js";
 import { getOrganizationById } from "../services/client.service.js";
@@ -144,22 +149,28 @@ import {
 } from "../services/pdf.service.js";
 import { getGeneralSettings } from "../services/settings.service.js";
 import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service.js";
+import { getQuoteSignatureByUserId } from "../services/employee.service.js";
 
 async function quotePdfIssuerOptions() {
   const general = await getGeneralSettings();
   return { issuer: issuerCompanyFromGeneralSettings(general) };
 }
 
-/** Merge issuer options with the requesting user's contact details for the signature block. */
-function withRequesterDetails(
+/** Merge issuer options with the requesting user's contact details (incl. signature) for the PDF block. */
+async function withRequesterDetails(
   issuerOpts: { issuer: ReturnType<typeof issuerCompanyFromGeneralSettings> },
   req: Request,
-): Parameters<typeof prepareQuoteDataForPDF>[5] {
+): Promise<Parameters<typeof prepareQuoteDataForPDF>[5]> {
   const principal = req.authPrincipal;
+  const userId = principal?.id ?? req.user?.id;
+  const signatureImageUrl = userId
+    ? ((await getQuoteSignatureByUserId(userId).catch(() => null)) ?? "")
+    : "";
   return {
     ...issuerOpts,
     pmRepEmail: (principal?.email ?? req.user?.email ?? "").trim(),
     pmRepPhone: (principal?.phone ?? "").trim(),
+    signatureImageUrl,
   };
 }
 
@@ -428,6 +439,7 @@ export const createBidHandler = async (req: Request, res: Response) => {
       financialBreakdown,
       operatingExpenses,
       materials,
+      alternates,
       laborAndTravel,
       surveyData,
       planSpecData,
@@ -489,6 +501,25 @@ export const createBidHandler = async (req: Request, res: Response) => {
           bidId: bid.id,
         });
         createdRecords.materials.push(createdMaterial);
+      }
+    }
+
+    // Create alternates if provided
+    if (alternates && Array.isArray(alternates) && alternates.length > 0) {
+      createdRecords.alternates = [];
+      for (let i = 0; i < alternates.length; i++) {
+        const alt = alternates[i];
+        const createdAlt = await createBidAlternate({
+          bidId: bid.id,
+          description: alt.description,
+          quantity: String(alt.quantity ?? "1"),
+          unitPrice: String(alt.unitPrice ?? "0"),
+          markup: String(alt.markup ?? "0"),
+          totalPrice: String(alt.totalPrice ?? "0"),
+          notes: alt.notes ?? undefined,
+          sortOrder: alt.sortOrder ?? i,
+        });
+        createdRecords.alternates.push(createdAlt);
       }
     }
 
@@ -850,6 +881,7 @@ export const updateBidHandler = async (req: Request, res: Response) => {
       financialBreakdown,
       operatingExpenses,
       materials,
+      alternates,
       laborAndTravel,
       surveyData,
       planSpecData,
@@ -963,6 +995,35 @@ export const updateBidHandler = async (req: Request, res: Response) => {
           });
           if (created) updatedRecords.materials.push(created);
         }
+      }
+    }
+
+    // Update alternates if provided.
+    // Strategy: delete all existing alternates for this bid then re-insert from the
+    // incoming array. This is the simplest approach since the client always sends
+    // the complete ordered list (matching how proposal basis items work).
+    if (alternates && Array.isArray(alternates)) {
+      // Soft-delete all existing alternates for this bid
+      const existingAlternates = await getBidAlternates(id!);
+      for (const existing of existingAlternates) {
+        await deleteBidAlternate(existing.id);
+      }
+
+      // Insert the incoming alternates
+      updatedRecords.alternates = [];
+      for (let i = 0; i < alternates.length; i++) {
+        const alt = alternates[i];
+        const created = await createBidAlternate({
+          bidId: id!,
+          description: alt.description,
+          quantity: String(alt.quantity ?? "1"),
+          unitPrice: String(alt.unitPrice ?? "0"),
+          markup: String(alt.markup ?? "0"),
+          totalPrice: String(alt.totalPrice ?? "0"),
+          notes: alt.notes ?? undefined,
+          sortOrder: alt.sortOrder ?? i,
+        });
+        if (created) updatedRecords.alternates.push(created);
       }
     }
 
@@ -5339,6 +5400,19 @@ async function loadQuotePdfTypeData(
   };
 }
 
+/** Financial + job-type data and bid alternates for quote PDF (parallel fetch). */
+async function loadQuotePdfBundle(
+  bidId: string,
+  organizationId: string,
+  jobType: string | null | undefined,
+) {
+  const [typeBundle, bidAlternates] = await Promise.all([
+    loadQuotePdfTypeData(bidId, organizationId, jobType),
+    getBidAlternates(bidId),
+  ]);
+  return { ...typeBundle, bidAlternates };
+}
+
 /**
  * Download quote (bid) as PDF
  * GET /bids/:id/pdf
@@ -5373,13 +5447,17 @@ export const downloadBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
-      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
+    const {
+      financialBreakdown,
+      typeSpecificData,
+      typeSpecificSecondary,
+      bidAlternates,
+    } = await loadQuotePdfBundle(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = withRequesterDetails(
-      await quotePdfIssuerOptions(),
-      req,
-    );
+    const quoteIssuerOpts = {
+      ...(await withRequesterDetails(await quotePdfIssuerOptions(), req)),
+      bidAlternates,
+    };
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -5462,13 +5540,17 @@ export const previewBidQuotePDF = async (req: Request, res: Response) => {
       });
     }
 
-    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
-      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
+    const {
+      financialBreakdown,
+      typeSpecificData,
+      typeSpecificSecondary,
+      bidAlternates,
+    } = await loadQuotePdfBundle(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = withRequesterDetails(
-      await quotePdfIssuerOptions(),
-      req,
-    );
+    const quoteIssuerOpts = {
+      ...(await withRequesterDetails(await quotePdfIssuerOptions(), req)),
+      bidAlternates,
+    };
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const contactForQuote =
@@ -5584,13 +5666,17 @@ export const sendQuoteEmail = async (req: Request, res: Response) => {
     const primaryContact = allRecipients[0]!;
     const ccEmails = allRecipients.slice(1).map((r) => r.email);
 
-    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
-      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
+    const {
+      financialBreakdown,
+      typeSpecificData,
+      typeSpecificSecondary,
+      bidAlternates,
+    } = await loadQuotePdfBundle(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = withRequesterDetails(
-      await quotePdfIssuerOptions(),
-      req,
-    );
+    const quoteIssuerOpts = {
+      ...(await withRequesterDetails(await quotePdfIssuerOptions(), req)),
+      bidAlternates,
+    };
 
     const pdfData = prepareQuoteDataForPDF(
       bid,
@@ -5689,13 +5775,17 @@ export const sendQuoteEmailTest = async (req: Request, res: Response) => {
       });
     }
 
-    const { financialBreakdown, typeSpecificData, typeSpecificSecondary } =
-      await loadQuotePdfTypeData(id, organizationId, bid.jobType);
+    const {
+      financialBreakdown,
+      typeSpecificData,
+      typeSpecificSecondary,
+      bidAlternates,
+    } = await loadQuotePdfBundle(id, organizationId, bid.jobType);
 
-    const quoteIssuerOpts = withRequesterDetails(
-      await quotePdfIssuerOptions(),
-      req,
-    );
+    const quoteIssuerOpts = {
+      ...(await withRequesterDetails(await quotePdfIssuerOptions(), req)),
+      bidAlternates,
+    };
 
     // Use bid's primary contact if available, else fall back to organization's primary contact
     const primaryContact =
@@ -6112,6 +6202,137 @@ export const deleteBidDesignBuildFileHandler = async (
     });
   } catch (error) {
     logger.logApiError("Bid design build file delete error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+// ============================
+// Bid Alternates Handlers
+// ============================
+
+export const getBidAlternatesHandler = async (req: Request, res: Response) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const alternates = await getBidAlternates(bidId!);
+    return res.status(200).json({ success: true, data: alternates });
+  } catch (error) {
+    logger.logApiError("Get bid alternates error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getBidAlternateByIdHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "alternateId"])) return;
+    const alternateId = asSingleString(req.params.alternateId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const alternate = await getBidAlternateById(alternateId!);
+    if (!alternate)
+      return res
+        .status(404)
+        .json({ success: false, message: "Alternate not found" });
+
+    return res.status(200).json({ success: true, data: alternate });
+  } catch (error) {
+    logger.logApiError("Get bid alternate by id error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const createBidAlternateHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId"])) return;
+    const bidId = asSingleString(req.params.bidId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const { description, quantity, unitPrice, markup, totalPrice, notes, sortOrder } =
+      req.body;
+
+    const alternate = await createBidAlternate({
+      bidId: bidId!,
+      description,
+      quantity: String(quantity ?? "1"),
+      unitPrice: String(unitPrice ?? "0"),
+      markup: String(markup ?? "0"),
+      totalPrice: String(totalPrice ?? "0"),
+      notes,
+      sortOrder,
+    });
+
+    return res.status(201).json({ success: true, data: alternate });
+  } catch (error) {
+    logger.logApiError("Create bid alternate error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const updateBidAlternateHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "alternateId"])) return;
+    const alternateId = asSingleString(req.params.alternateId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const updated = await updateBidAlternate(alternateId!, req.body);
+    if (!updated)
+      return res
+        .status(404)
+        .json({ success: false, message: "Alternate not found" });
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    logger.logApiError("Update bid alternate error", error, req);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const deleteBidAlternateHandler = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!validateParams(req, res, ["bidId", "alternateId"])) return;
+    const alternateId = asSingleString(req.params.alternateId);
+    const userId = validateUserAccess(req, res);
+    if (!userId) return;
+
+    const deleted = await deleteBidAlternate(alternateId!);
+    if (!deleted)
+      return res
+        .status(404)
+        .json({ success: false, message: "Alternate not found" });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Alternate deleted successfully" });
+  } catch (error) {
+    logger.logApiError("Delete bid alternate error", error, req);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });

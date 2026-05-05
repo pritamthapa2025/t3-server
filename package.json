@@ -21,6 +21,7 @@
     "seed:notification-rules": "tsx src/drizzle/seed/notificationRules.seed.ts",
     "seed:bid-default-tags": "tsx src/drizzle/seed/bidDocumentDefaultTags.seed.ts",
     "seed:reset-notifications": "tsx src/drizzle/seed/resetNotifications.ts",
+    "seed:field-crew": "tsx src/drizzle/seed/fieldCrew.seed.ts",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx node_modules/drizzle-kit/bin.cjs migrate",
     "db:verify": "tsx scripts/verify-migration.ts",

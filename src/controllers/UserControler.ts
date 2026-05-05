@@ -15,6 +15,7 @@ import {
   validateUniqueFields,
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
+import { invalidateUserAuthCache } from "../middleware/auth.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -303,6 +304,8 @@ export const updateUserHandler = async (req: Request, res: Response) => {
         message: "User not found",
       });
     }
+
+    invalidateUserAuthCache(userId);
 
     logger.info("User updated successfully");
     return res.status(200).json({

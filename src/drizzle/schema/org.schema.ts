@@ -81,6 +81,14 @@ export const positions = org.table(
     // Field/labor role flag — true = visible in bid labor position dropdown
     isFieldRole: boolean("is_field_role").default(false).notNull(),
 
+    /**
+     * Bid default labor preset slot.
+     * Null = regular position (not seeded on new bids).
+     * One of: 'foreman' | 'journeyman' | 'apprentice'
+     * Unique partial index enforces at most one position per slot.
+     */
+    laborPresetRole: varchar("labor_preset_role", { length: 20 }),
+
     // Status & ordering
     isActive: boolean("is_active").default(true).notNull(),
     sortOrder: integer("sort_order"),
@@ -138,6 +146,9 @@ export const employees = org.table(
     violations: integer("violations").default(0), // number of violations
     note: jsonb("note"),
     status: employeeStatusEnum("status").notNull().default("available"),
+
+    /** Public URL of signature image for quote PDFs (assigned rep). */
+    signature: text("signature"),
 
     /** Set when assigned driver ignores safety inspection reminders (B14); cleared on compliant inspection. */
     timesheetBlockedSafetyInspection: boolean(

@@ -37,5 +37,13 @@ WHERE data_type = 'timestamp with time zone'
 
 ## Documentation
 
+- **[docs/README.md](docs/README.md)** — documentation index and **repository layout** (start here)
+- [docs/admin/user-roles-and-permissions-reference.md](docs/admin/user-roles-and-permissions-reference.md)
+- [docs/admin/system-administrator-guide.md](docs/admin/system-administrator-guide.md)
+- [docs/technical/database-schema-and-erd.md](docs/technical/database-schema-and-erd.md)
+- [docs/technical/api-reference.md](docs/technical/api-reference.md)
+- [docs/technical/environment-variables.md](docs/technical/environment-variables.md)
 - [docs/server-pdf-setup.md](docs/server-pdf-setup.md)
 - [docs/bids-erd.md](docs/bids-erd.md)
+
+**Frontend (sibling checkout):** `C:\Users\ASCE\Desktop\t3-frontend\t3-frontend\docs\README.md`

@@ -683,8 +683,9 @@ export async function notifyDispatchTimeLogReminder(): Promise<CronResult> {
 
 /**
  * Weekly timesheet email — fires Monday morning (8am).
- * For each active employee, pulls their 7 prior-week org.timesheets rows and
- * sends a summary email with a link to confirm.
+ * For each active employee whose auth role is Technician or Manager, pulls their
+ * 7 prior-week org.timesheets rows and sends a summary notification (email if
+ * rules are configured).
  */
 export async function sendWeeklyTimesheetEmail(): Promise<CronResult> {
   let processed = 0;
@@ -715,10 +716,13 @@ export async function sendWeeklyTimesheetEmail(): Promise<CronResult> {
       })
       .from(employees)
       .innerJoin(users, eq(employees.userId, users.id))
+      .innerJoin(userRoles, eq(users.id, userRoles.userId))
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
       .where(
         and(
           eq(employees.isDeleted, false),
           not(inArray(employees.status as any, ["terminated", "suspended"])),
+          inArray(roles.name, ["Technician", "Manager"]),
         ),
       );
 

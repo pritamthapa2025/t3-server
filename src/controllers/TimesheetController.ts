@@ -658,7 +658,21 @@ export const logTimeHandler = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    const { employeeId: bodyEmployeeId, jobId, sheetDate, timeIn, timeOut, breakMinutes, entryType, notes, mediaUrls } = req.body;
+    const {
+      employeeId: bodyEmployeeId,
+      jobId,
+      sheetDate,
+      timeIn,
+      timeOut,
+      breakMinutes,
+      breakStartTime,
+      break2Taken,
+      break2StartTime,
+      break2Minutes,
+      entryType,
+      notes,
+      mediaUrls,
+    } = req.body;
 
     // Determine whose timesheet to log against
     let targetEmployeeId: number;
@@ -683,6 +697,10 @@ export const logTimeHandler = async (req: Request, res: Response) => {
       timeIn,
       timeOut,
       breakMinutes: breakMinutes ?? 0,
+      ...(breakStartTime != null ? { breakStartTime } : {}),
+      break2Taken: break2Taken ?? false,
+      break2Minutes: break2Minutes ?? 0,
+      ...(break2StartTime != null ? { break2StartTime } : {}),
       entryType: entryType ?? "manual",
       ...(notes !== undefined && notes !== null ? { notes } : {}),
       ...(Array.isArray(mediaUrls) ? { mediaUrls } : {}),
@@ -706,6 +724,9 @@ export const logTimeHandler = async (req: Request, res: Response) => {
   } catch (error: any) {
     if (error?.message?.includes("blocked")) {
       return res.status(403).json({ success: false, message: error.message });
+    }
+    if (error?.message?.includes("Daily total would exceed")) {
+      return res.status(400).json({ success: false, message: error.message });
     }
     logger.logApiError("Log time error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
@@ -791,7 +812,11 @@ export const updateTimesheetJobEntryHandler = async (req: Request, res: Response
       `TimesheetJobEntry updated: entryId=${entryId}, by=${currentUser.id}`,
     );
     return res.status(200).json({ success: true, data: updated });
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Daily total would exceed")) {
+      return res.status(400).json({ success: false, message });
+    }
     logger.logApiError("Update timesheet job entry error", error, req);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }

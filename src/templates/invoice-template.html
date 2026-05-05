@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -30,7 +30,7 @@
           sans-serif;
         color: #1a1a1a;
         background: #ffffff;
-        line-height: 1.6;
+        line-height: 1.55;
         font-size: 13px;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -44,20 +44,31 @@
         padding: 14px 12px 18px;
       }
 
-      /* Header Section */
+      /* Company plain text top-left; logo top-right */
       .header {
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 50px;
-        margin-bottom: 35px;
-        padding-bottom: 25px;
-        border-bottom: 2px solid #e5e7eb;
+        gap: 28px;
+        align-items: start;
+        margin-bottom: 18px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .header-logo-col {
+        text-align: right;
+        align-self: start;
+      }
+
+      .company-logo {
+        max-width: 200px;
+        height: auto;
       }
 
       .company-info h1 {
         font-size: 20px;
         font-weight: 800;
-        margin-bottom: 14px;
+        margin-bottom: 10px;
         color: #1a1a1a;
         letter-spacing: -0.3px;
       }
@@ -70,37 +81,25 @@
         font-weight: 400;
       }
 
-      .header-logo-col {
-        text-align: right;
-        align-self: start;
-      }
-
-      .company-logo {
-        max-width: 180px;
-        height: auto;
-      }
-
-      /* Invoice Title */
       .invoice-title {
-        font-size: 36px;
+        font-size: 34px;
         font-weight: 800;
-        margin-bottom: 35px;
+        margin-bottom: 18px;
         color: #1a1a1a;
         letter-spacing: -0.5px;
       }
 
-      /* Bill To Section */
       .bill-to-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 80px;
-        margin-bottom: 30px;
+        gap: 34px;
+        margin-bottom: 16px;
       }
 
       .bill-to h2 {
         font-size: 13px;
         font-weight: 700;
-        margin-bottom: 14px;
+        margin-bottom: 10px;
         text-transform: uppercase;
         letter-spacing: 1px;
         color: #1a1a1a;
@@ -114,6 +113,7 @@
         font-weight: 400;
       }
 
+      /* Right column: labels right-aligned, values left-aligned */
       .invoice-meta {
         text-align: right;
       }
@@ -121,8 +121,8 @@
       .meta-row {
         display: flex;
         justify-content: flex-end;
-        gap: 25px;
-        margin-bottom: 10px;
+        gap: 20px;
+        margin-bottom: 8px;
         font-size: 13px;
         align-items: baseline;
       }
@@ -130,7 +130,7 @@
       .meta-label {
         font-weight: 700;
         text-align: right;
-        min-width: 110px;
+        min-width: 100px;
         color: #1a1a1a;
         text-transform: uppercase;
         font-size: 12px;
@@ -139,19 +139,19 @@
 
       .meta-value {
         text-align: left;
-        min-width: 130px;
+        min-width: 140px;
         color: #374151;
         font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
 
-      /* PO Section */
       .po-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 80px;
-        margin-bottom: 30px;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #d1d5db;
+        gap: 34px;
+        margin-bottom: 16px;
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
       }
 
       .po-item {
@@ -180,28 +180,29 @@
         cursor: help;
       }
 
-      /* Items Table */
       .items-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 35px;
-        border: 1px solid #d1d5db;
+        margin-bottom: 16px;
+        border: 1px solid #e5e7eb;
         border-radius: 4px;
         overflow: hidden;
       }
 
+      /* Light gray banner, dark uppercase header text */
       .items-table thead {
-        background: #6b7280;
+        background: #e8eaed;
       }
 
       .items-table th {
-        padding: 14px 16px;
+        padding: 12px 16px;
         text-align: left;
         font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
-        color: white;
+        color: #1a1a1a;
         letter-spacing: 0.8px;
+        border-bottom: 1px solid #d1d5db;
       }
 
       .items-table th:first-child {
@@ -217,14 +218,11 @@
         font-size: 13px;
         border-bottom: 1px solid #e5e7eb;
         color: #374151;
+        background: #ffffff;
       }
 
       .items-table tbody tr:last-child td {
         border-bottom: none;
-      }
-
-      .items-table tbody tr:hover {
-        background: #f9fafb;
       }
 
       .items-table td:first-child {
@@ -243,232 +241,6 @@
         font-weight: 700;
         color: #1a1a1a;
         white-space: nowrap;
-        font-variant-numeric: tabular-nums;
-      }
-
-      /* Balance Due */
-      .balance-section {
-        text-align: right;
-        margin-bottom: 60px;
-        padding-top: 20px;
-      }
-
-      .balance-row {
-        display: flex;
-        justify-content: flex-end;
-        align-items: baseline;
-        gap: 20px;
-        font-size: 28px;
-        font-weight: 800;
-        color: #1a1a1a;
-        letter-spacing: -0.5px;
-      }
-
-      .balance-label {
-        font-size: 18px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #374151;
-      }
-
-      .balance-row .dollar {
-        font-size: 32px;
-        font-weight: 800;
-        color: #1a1a1a;
-      }
-
-      .balance-amount {
-        font-size: 36px;
-        font-weight: 800;
-        color: #1a1a1a;
-        font-variant-numeric: tabular-nums;
-      }
-
-      /* Remit Payment */
-      .remit-payment {
-        text-align: center;
-        font-size: 11px;
-        margin-top: 50px;
-        padding-top: 20px;
-        border-top: 1px solid #d1d5db;
-        color: #6b7280;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-      }
-
-      /* Print Styles */
-      @media print {
-        body {
-          margin: 0;
-          padding: 0;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-
-        .invoice-container {
-          padding: 10px 8px 14px;
-          margin: 0;
-        }
-
-        @page {
-          margin: 0;
-          size: letter;
-        }
-
-        .items-table tbody tr:hover {
-          background: transparent;
-        }
-      }
-    </style>
-    <!-- Theme overrides -->
-    <style>
-      :root {
-        --ink: #0f172a;
-        --muted: #475569;
-        --muted-2: #64748b;
-        --line: #e5e7eb;
-        --wash: #f8fafc;
-        --radius: 10px;
-      }
-
-      body {
-        color: var(--ink);
-        line-height: 1.55;
-      }
-
-      .invoice-container {
-        padding: 12px 10px 16px;
-      }
-
-      /* Header */
-      .header {
-        gap: 28px;
-        margin-bottom: 18px;
-        padding-bottom: 14px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .company-logo {
-        max-width: 200px;
-      }
-
-      .company-info h1 {
-        font-size: 20px;
-        font-weight: 800;
-        margin-bottom: 10px;
-        color: var(--ink);
-        letter-spacing: -0.3px;
-      }
-
-      .company-info p {
-        color: var(--muted);
-      }
-
-      /* Title */
-      .invoice-title {
-        font-size: 34px;
-        font-weight: 900;
-        letter-spacing: -0.6px;
-        margin-bottom: 18px;
-      }
-
-      /* Bill To + Meta — plain, no card */
-      .bill-to-section {
-        gap: 34px;
-        margin-bottom: 16px;
-        padding: 0;
-        border: none;
-        border-radius: 0;
-        background: transparent;
-      }
-
-      .bill-to h2 {
-        color: var(--ink);
-        margin-bottom: 10px;
-      }
-
-      .bill-to p {
-        color: var(--muted);
-      }
-
-      .invoice-meta {
-        text-align: left;
-      }
-
-      .meta-row {
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 8px;
-      }
-
-      .meta-label {
-        color: var(--muted-2);
-        min-width: 110px;
-      }
-
-      .meta-value {
-        color: var(--ink);
-        font-weight: 800;
-        min-width: 0;
-        font-variant-numeric: tabular-nums;
-      }
-
-      /* PO — plain separator only, no card */
-      .po-section {
-        gap: 16px;
-        margin-bottom: 16px;
-        padding: 12px 0;
-        border: none;
-        border-radius: 0;
-        background: transparent;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .po-item strong {
-        color: var(--muted-2);
-      }
-
-      .po-item > span {
-        color: var(--ink);
-        font-weight: 600;
-      }
-
-      /* Items table — gray header, no row banding */
-      .items-table {
-        border-color: var(--line);
-        border-radius: var(--radius);
-        margin-bottom: 16px;
-      }
-
-      .items-table thead {
-        background: #4b5563;
-      }
-
-      .items-table th {
-        font-weight: 700;
-        letter-spacing: 1px;
-      }
-
-      .items-table td {
-        border-bottom-color: var(--line);
-        color: var(--muted);
-        background: #ffffff;
-      }
-
-      .items-table tbody tr:hover {
-        background: #ffffff;
-      }
-
-      .items-table td:nth-child(2) {
-        color: var(--ink);
-      }
-
-      /* Amount cell: $ pinned left, number tabular right */
-      .items-table td:last-child {
-        color: var(--ink);
-        padding: 14px 16px;
       }
 
       .amount-wrap {
@@ -482,7 +254,7 @@
         flex: 0 0 auto;
         padding-right: 5px;
         font-weight: 700;
-        color: var(--ink);
+        color: #1a1a1a;
       }
 
       .amount-num {
@@ -490,60 +262,85 @@
         text-align: right;
         font-variant-numeric: tabular-nums;
         font-weight: 700;
-        color: var(--ink);
+        color: #1a1a1a;
         min-width: 72px;
       }
 
-      /* Balance */
       .balance-section {
-        margin-bottom: 24px;
-        padding-top: 0;
-        display: flex;
-        justify-content: flex-end;
+        text-align: right;
+        margin-bottom: 28px;
+        padding-top: 8px;
       }
 
       .balance-row {
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        background: var(--wash);
-        padding: 14px 16px;
-        gap: 12px;
+        display: inline-flex;
+        justify-content: flex-end;
+        align-items: baseline;
+        gap: 10px;
+        font-size: 22px;
+        font-weight: 400;
+        color: #1a1a1a;
+        letter-spacing: -0.3px;
       }
 
       .balance-label {
-        color: var(--muted-2);
+        font-size: 18px;
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #1a1a1a;
       }
 
-      .balance-row .dollar,
+      .balance-row .dollar {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1a1a1a;
+      }
+
       .balance-amount {
-        color: var(--ink);
+        font-size: 26px;
+        font-weight: 800;
+        color: #1a1a1a;
+        font-variant-numeric: tabular-nums;
       }
 
-      /* Remit */
       .remit-payment {
-        border-top-color: var(--line);
-        color: var(--muted-2);
-        margin-top: 18px;
-        padding-top: 14px;
+        text-align: center;
+        font-size: 11px;
+        margin-top: 36px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+        color: #4b5563;
+        font-weight: 500;
+        letter-spacing: 0.02em;
       }
 
-      /* Print tweaks */
       @media print {
+        body {
+          margin: 0;
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
         .invoice-container {
           padding: 15mm 20mm;
+          margin: 0;
         }
+
+        @page {
+          margin: 0;
+          size: letter;
+        }
+
         .items-table td {
           background: #ffffff !important;
-        }
-        .balance-row {
-          background: #ffffff;
         }
       }
     </style>
   </head>
   <body>
     <div class="invoice-container">
-      <!-- Header -->
       <div class="header">
         <div class="company-info">
           {{#if companyName}}<h1>{{companyName}}</h1>{{/if}}
@@ -561,10 +358,8 @@
         </div>
       </div>
 
-      <!-- Invoice Title -->
       <div class="invoice-title">INVOICE</div>
 
-      <!-- Bill To Section -->
       <div class="bill-to-section">
         <div class="bill-to">
           <h2>Bill To</h2>
@@ -590,14 +385,9 @@
             <span class="meta-label">TERMS</span>
             <span class="meta-value">{{paymentTerms}}</span>
           </div>
-          <div class="meta-row">
-            <span class="meta-label">DUE DATE</span>
-            <span class="meta-value">{{dueDate}}</span>
-          </div>
         </div>
       </div>
 
-      <!-- PO Section -->
       <div class="po-section">
         <div class="po-item">
           <strong
@@ -606,12 +396,11 @@
           <span>{{poNumber}}</span>
         </div>
         <div class="po-item">
-          <strong>SERVICE</strong>
+          <strong>SERVICE ISSUE</strong>
           <span>{{jobName}}</span>
         </div>
       </div>
 
-      <!-- Items Table -->
       <table class="items-table">
         <thead>
           <tr>
@@ -636,7 +425,6 @@
         </tbody>
       </table>
 
-      <!-- Balance Due -->
       <div class="balance-section">
         <div class="balance-row">
           <span class="balance-label">BALANCE DUE</span>
@@ -645,9 +433,8 @@
         </div>
       </div>
 
-      <!-- Remit Payment -->
       <div class="remit-payment">
-        REMIT PAYMENT TO {{companyAddress}}{{#if companyLocationLine}}, {{companyLocationLine}}{{/if}}
+        REMIT PAYMENT TO 650 NUTTMAN ST, STE 113, SANTA CLARA, CA 95054
       </div>
     </div>
   </body>

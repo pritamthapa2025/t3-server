@@ -23,6 +23,7 @@ import {
   bidsTable,
   bidFinancialBreakdown,
   bidMaterials,
+  bidAlternates,
   bidLabor,
   bidTravel,
   bidOperatingExpenses,
@@ -2220,6 +2221,135 @@ export const deleteBidMaterial = async (
 };
 
 // ============================
+// Bid Alternates Operations
+// ============================
+
+/**
+ * Canonical decimal string for `bid_alternates` numeric columns / API responses.
+ * Parses and re-formats so values like "063.25" become "63.25" (no spurious leading zeros).
+ */
+function normalizeAlternateNumericString(
+  value: string | number | null | undefined,
+): string {
+  if (value === null || value === undefined) return "0.00";
+  const trimmed = String(value).trim();
+  if (trimmed === "") return "0.00";
+  const n = Number.parseFloat(trimmed.replace(/,/g, ""));
+  if (!Number.isFinite(n)) return "0.00";
+  return n.toFixed(2);
+}
+
+type BidAlternateSelect = typeof bidAlternates.$inferSelect;
+
+function mapAlternateRowForResponse(row: BidAlternateSelect): BidAlternateSelect {
+  return {
+    ...row,
+    quantity: normalizeAlternateNumericString(row.quantity),
+    unitPrice: normalizeAlternateNumericString(row.unitPrice),
+    markup: normalizeAlternateNumericString(row.markup),
+    totalPrice: normalizeAlternateNumericString(row.totalPrice),
+  };
+}
+
+export const getBidAlternates = async (bidId: string) => {
+  const alternates = await db
+    .select()
+    .from(bidAlternates)
+    .where(
+      and(eq(bidAlternates.bidId, bidId), eq(bidAlternates.isDeleted, false)),
+    )
+    .orderBy(bidAlternates.sortOrder, bidAlternates.createdAt);
+  return alternates.map(mapAlternateRowForResponse);
+};
+
+export const getBidAlternateById = async (alternateId: string) => {
+  const [alternate] = await db
+    .select()
+    .from(bidAlternates)
+    .where(
+      and(
+        eq(bidAlternates.id, alternateId),
+        eq(bidAlternates.isDeleted, false),
+      ),
+    );
+  return alternate ? mapAlternateRowForResponse(alternate) : null;
+};
+
+export const createBidAlternate = async (data: {
+  bidId: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  markup: string;
+  totalPrice: string;
+  notes?: string;
+  sortOrder?: number;
+}) => {
+  const quantity = normalizeAlternateNumericString(data.quantity);
+  const unitPrice = normalizeAlternateNumericString(data.unitPrice);
+  const markup = normalizeAlternateNumericString(data.markup ?? "0");
+  const totalPrice = normalizeAlternateNumericString(data.totalPrice);
+  const [alternate] = await db
+    .insert(bidAlternates)
+    .values({
+      bidId: data.bidId,
+      description: data.description,
+      quantity,
+      unitPrice,
+      markup,
+      totalPrice,
+      notes: data.notes ?? null,
+      sortOrder: data.sortOrder ?? 0,
+    })
+    .returning();
+  return alternate ? mapAlternateRowForResponse(alternate) : alternate;
+};
+
+export const updateBidAlternate = async (
+  id: string,
+  data: Partial<{
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    markup: string;
+    totalPrice: string;
+    notes: string;
+    sortOrder: number;
+  }>,
+) => {
+  const setPayload: Record<string, unknown> = {
+    ...data,
+    updatedAt: new Date(),
+  };
+  if (data.quantity !== undefined) {
+    setPayload.quantity = normalizeAlternateNumericString(data.quantity);
+  }
+  if (data.unitPrice !== undefined) {
+    setPayload.unitPrice = normalizeAlternateNumericString(data.unitPrice);
+  }
+  if (data.markup !== undefined) {
+    setPayload.markup = normalizeAlternateNumericString(data.markup);
+  }
+  if (data.totalPrice !== undefined) {
+    setPayload.totalPrice = normalizeAlternateNumericString(data.totalPrice);
+  }
+  const [alternate] = await db
+    .update(bidAlternates)
+    .set(setPayload as Partial<typeof data> & { updatedAt: Date })
+    .where(and(eq(bidAlternates.id, id), eq(bidAlternates.isDeleted, false)))
+    .returning();
+  return alternate ? mapAlternateRowForResponse(alternate) : null;
+};
+
+export const deleteBidAlternate = async (id: string) => {
+  const [alternate] = await db
+    .delete(bidAlternates)
+    .where(eq(bidAlternates.id, id))
+    .returning();
+  return alternate ?? null;
+};
+
+// ============================
 // Labor Operations
 // ============================
 
@@ -3611,6 +3741,7 @@ export const getBidWithAllData = async (id: string) => {
   const [
     financialBreakdown,
     materials,
+    alternates,
     labor,
     surveyData,
     planSpecData,
@@ -3629,6 +3760,7 @@ export const getBidWithAllData = async (id: string) => {
   ] = await Promise.all([
     getBidFinancialBreakdown(id, organizationId),
     getBidMaterials(id, organizationId),
+    getBidAlternates(id),
     getBidLabor(id),
     getBidSurveyData(id, organizationId),
     getBidPlanSpecData(id, organizationId),
@@ -3655,6 +3787,7 @@ export const getBidWithAllData = async (id: string) => {
     bid,
     financialBreakdown,
     materials,
+    alternates,
     labor,
     travel,
     documents,

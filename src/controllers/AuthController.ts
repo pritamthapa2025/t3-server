@@ -1,7 +1,12 @@
 import type { Request, Response } from "express";
 import { asSingleString } from "../utils/request-helpers.js";
 import { comparePassword, hashPassword } from "../utils/hash.js";
-import { generateToken, verifyToken, signPayload, verifyPayload } from "../utils/jwt.js";
+import {
+  generateToken,
+  verifyToken,
+  signPayload,
+  verifyPayload,
+} from "../utils/jwt.js";
 
 import {
   generate2FACode,
@@ -35,8 +40,6 @@ import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { logger } from "../utils/logger.js";
 import { ErrorMessages } from "../utils/error-messages.js";
 
-
-
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -60,7 +63,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
     if (deviceToken) {
       const trustedUserId = await validateDeviceToken(deviceToken);
-      
+
       if (trustedUserId === user.id) {
         const profile = await getMeProfileBundle(user.id);
         if (!profile) {
@@ -90,6 +93,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
                 employeeId: profile.employeeCode ?? null,
                 timesheetBlockedForSafetyInspection:
                   profile.timesheetBlockedForSafetyInspection === true,
+                quoteSignatureUrl: profile.quoteSignatureUrl ?? null,
               }),
             },
             trustedDevice: true,
@@ -177,7 +181,8 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
     if (result === "invalid") {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired 2FA code. Please request a new code if needed.",
+        message:
+          "Invalid or expired 2FA code. Please request a new code if needed.",
       });
     }
 
@@ -185,7 +190,8 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired 2FA code. Please request a new code if needed.",
+        message:
+          "Invalid or expired 2FA code. Please request a new code if needed.",
       });
     }
 
@@ -193,7 +199,8 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
     if (!profile) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired 2FA code. Please request a new code if needed.",
+        message:
+          "Invalid or expired 2FA code. Please request a new code if needed.",
       });
     }
 
@@ -209,7 +216,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           user.id,
           deviceToken,
           req,
-          30
+          30,
         ); // 30 days
 
         // Set secure httpOnly cookie with device token
@@ -220,7 +227,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
           path: "/",
         };
-        
+
         res.cookie("device_token", deviceToken, cookieOptions);
 
         deviceTokenSet = true;
@@ -250,6 +257,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
             employeeId: profile.employeeCode ?? null,
             timesheetBlockedForSafetyInspection:
               profile.timesheetBlockedForSafetyInspection === true,
+            quoteSignatureUrl: profile.quoteSignatureUrl ?? null,
           }),
         },
         deviceRemembered: deviceTokenSet,
@@ -311,8 +319,7 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const row =
-      req.authPrincipal ?? (await getMeProfileBundle(req.user.id));
+    const row = req.authPrincipal ?? (await getMeProfileBundle(req.user.id));
     if (!row) {
       return res.status(404).json({
         success: false,
@@ -341,6 +348,7 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
               employeeId: row.employeeCode ?? null,
               timesheetBlockedForSafetyInspection:
                 row.timesheetBlockedForSafetyInspection === true,
+              quoteSignatureUrl: row.quoteSignatureUrl ?? null,
             }
           : {}),
       },
@@ -355,7 +363,7 @@ export const getCurrentUserHandler = async (req: Request, res: Response) => {
 
 export const requestPasswordResetHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const { email } = req.body;
 
@@ -366,7 +374,8 @@ export const requestPasswordResetHandler = async (
     if (!user) {
       return res.status(200).json({
         success: true,
-        message: "If this email is registered, a password reset OTP has been sent.",
+        message:
+          "If this email is registered, a password reset OTP has been sent.",
       });
     }
 
@@ -384,23 +393,35 @@ export const requestPasswordResetHandler = async (
     void (async () => {
       try {
         const { db: dbConn } = await import("../config/db.js");
-        const { users: usersTable } = await import("../drizzle/schema/auth.schema.js");
+        const { users: usersTable } =
+          await import("../drizzle/schema/auth.schema.js");
         const { eq: eqFn } = await import("drizzle-orm");
-        const [fullUser] = await dbConn.select({ phone: usersTable.phone }).from(usersTable).where(eqFn(usersTable.id, user.id)).limit(1);
+        const [fullUser] = await dbConn
+          .select({ phone: usersTable.phone })
+          .from(usersTable)
+          .where(eqFn(usersTable.id, user.id))
+          .limit(1);
         if (fullUser?.phone) {
-          const { NotificationSMSService } = await import("../services/notification-sms.service.js");
+          const { NotificationSMSService } =
+            await import("../services/notification-sms.service.js");
           const smsSvc = new NotificationSMSService();
-          await smsSvc.sendRaw(fullUser.phone, `[T3 Mechanical] Your password reset code is: ${resetOTP}\nExpires in 10 minutes. Do not share this code.`);
+          await smsSvc.sendRaw(
+            fullUser.phone,
+            `[T3 Mechanical] Your password reset code is: ${resetOTP}\nExpires in 10 minutes. Do not share this code.`,
+          );
         }
       } catch (err: any) {
-        logger.warn("Failed to send password reset SMS: " + (err?.message || String(err)));
+        logger.warn(
+          "Failed to send password reset SMS: " + (err?.message || String(err)),
+        );
       }
     })();
 
     logger.info("Password reset OTP sent to email");
     return res.status(200).json({
       success: true,
-      message: "If this email is registered, a password reset OTP has been sent.",
+      message:
+        "If this email is registered, a password reset OTP has been sent.",
     });
   } catch (err) {
     logger.logApiError("Request password reset error", err, req);
@@ -426,15 +447,21 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the reset OTP using the same key format as request
-    const otpResult: OTPVerifyResult = await verify2FACode(`reset_${email}`, otpString);
+    const otpResult: OTPVerifyResult = await verify2FACode(
+      `reset_${email}`,
+      otpString,
+    );
     if (otpResult === "locked") {
       return res.status(400).json({
         success: false,
-        message: "Too many failed attempts. Please request a new password reset OTP.",
+        message:
+          "Too many failed attempts. Please request a new password reset OTP.",
       });
     }
     if (otpResult === "invalid") {
-      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Find user by email
@@ -452,7 +479,7 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
         userId: user.id,
         purpose: "password-reset-token-verified",
       },
-      "10m"
+      "10m",
     );
 
     // Delete the OTP since it's been verified (prevent reuse)
@@ -476,7 +503,7 @@ export const verifyResetTokenHandler = async (req: Request, res: Response) => {
 
 export const confirmPasswordResetHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const { verificationToken, newPassword } = req.body;
 
@@ -522,16 +549,25 @@ export const confirmPasswordResetHandler = async (
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
       try {
-        const { NotificationService } = await import("../services/notification.service.js");
+        const { NotificationService } =
+          await import("../services/notification.service.js");
         await new NotificationService().triggerNotification({
           type: "password_changed",
           category: "system",
           priority: "medium",
           triggeredBy: user.id,
-          data: { userId: user.id, entityType: "Employee", entityId: user.id, entityName: user.fullName || user.email },
+          data: {
+            userId: user.id,
+            entityType: "Employee",
+            entityId: user.id,
+            entityName: user.fullName || user.email,
+          },
         });
       } catch (err: any) {
-        logger.warn("Failed to send password_changed notification: " + (err?.message || String(err)));
+        logger.warn(
+          "Failed to send password_changed notification: " +
+            (err?.message || String(err)),
+        );
       }
     })();
 
@@ -581,15 +617,21 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the reset OTP using the same key format as request
-    const otpResult: OTPVerifyResult = await verify2FACode(`reset_${email}`, otpString);
+    const otpResult: OTPVerifyResult = await verify2FACode(
+      `reset_${email}`,
+      otpString,
+    );
     if (otpResult === "locked") {
       return res.status(400).json({
         success: false,
-        message: "Too many failed attempts. Please request a new password reset OTP.",
+        message:
+          "Too many failed attempts. Please request a new password reset OTP.",
       });
     }
     if (otpResult === "invalid") {
-      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Find user by email
@@ -620,7 +662,7 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
 
 export const resendPasswordResetOTPHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const { email } = req.body;
 
@@ -631,7 +673,8 @@ export const resendPasswordResetOTPHandler = async (
     if (!user) {
       return res.status(200).json({
         success: true,
-        message: "If this email is registered, a new password reset OTP has been sent.",
+        message:
+          "If this email is registered, a new password reset OTP has been sent.",
       });
     }
 
@@ -652,7 +695,8 @@ export const resendPasswordResetOTPHandler = async (
     logger.info("New password reset OTP sent to email");
     return res.status(200).json({
       success: true,
-      message: "If this email is registered, a new password reset OTP has been sent.",
+      message:
+        "If this email is registered, a new password reset OTP has been sent.",
     });
   } catch (err) {
     logger.logApiError("Resend password reset OTP error", err, req);
@@ -664,7 +708,7 @@ export const resendPasswordResetOTPHandler = async (
 
 export const requestChangePasswordHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   if (!req.user?.id) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
@@ -733,7 +777,10 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
     }
 
     // Verify the change password OTP
-    const otpResult: OTPVerifyResult = await verify2FACode(`change_${user.email}`, otpString);
+    const otpResult: OTPVerifyResult = await verify2FACode(
+      `change_${user.email}`,
+      otpString,
+    );
     if (otpResult === "locked") {
       return res.status(400).json({
         success: false,
@@ -741,7 +788,9 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
       });
     }
     if (otpResult === "invalid") {
-      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
     }
 
     // Hash the new password
@@ -753,16 +802,25 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
       try {
-        const { NotificationService } = await import("../services/notification.service.js");
+        const { NotificationService } =
+          await import("../services/notification.service.js");
         await new NotificationService().triggerNotification({
           type: "password_changed",
           category: "system",
           priority: "medium",
           triggeredBy: userId,
-          data: { userId, entityType: "Employee", entityId: userId, entityName: user.fullName || user.email },
+          data: {
+            userId,
+            entityType: "Employee",
+            entityId: userId,
+            entityName: user.fullName || user.email,
+          },
         });
       } catch (err: any) {
-        logger.warn("Failed to send password_changed notification: " + (err?.message || String(err)));
+        logger.warn(
+          "Failed to send password_changed notification: " +
+            (err?.message || String(err)),
+        );
       }
     })();
 
@@ -780,7 +838,7 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
 
 export const resendChangePasswordOTPHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   if (!req.user?.id) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
@@ -941,7 +999,7 @@ export const getTrustedDevicesHandler = async (req: Request, res: Response) => {
 
 export const revokeTrustedDeviceHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!req.user?.id) {
@@ -985,7 +1043,7 @@ export const revokeTrustedDeviceHandler = async (
 
 export const revokeAllTrustedDevicesHandler = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     if (!req.user?.id) {
@@ -1028,7 +1086,10 @@ export const logoutHandler = async (req: Request, res: Response) => {
       const decoded = verifyToken(token);
       if (decoded?.jti && decoded.exp) {
         await blacklistToken(decoded.jti, decoded.exp).catch((err) => {
-          logger.warn("Failed to blacklist token on logout: " + (err?.message ?? String(err)));
+          logger.warn(
+            "Failed to blacklist token on logout: " +
+              (err?.message ?? String(err)),
+          );
         });
       }
     }
@@ -1046,4 +1107,3 @@ export const logoutHandler = async (req: Request, res: Response) => {
     });
   }
 };
-

@@ -37,21 +37,40 @@ export const updateGeneralSettingsSchema = z.object({
  * ============================================================================
  */
 
+/** JSON numbers or numeric strings (Postgres numeric serialization, form inputs). */
+function laborOptionalNumber(opts: { min: number; int?: boolean }) {
+  const base = opts.int
+    ? z.number().int().min(opts.min).optional()
+    : z.number().min(opts.min).optional();
+
+  return z.preprocess((val: unknown) => {
+    if (val === undefined || val === null || val === "") return undefined;
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+    if (typeof val === "string") {
+      const t = val.trim().replace(/,/g, "");
+      if (t === "") return undefined;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : val;
+    }
+    return val;
+  }, base);
+}
+
 export const updateLaborRateTemplateSchema = z.object({
   body: z.object({
-    defaultDays: z.number().int().min(1).optional(),
-    defaultHoursPerDay: z.number().min(0).optional(),
-    defaultCostRate: z.number().min(0).optional(),
-    defaultBillableRate: z.number().min(0).optional(),
+    defaultDays: laborOptionalNumber({ min: 1, int: true }),
+    defaultHoursPerDay: laborOptionalNumber({ min: 0 }),
+    defaultCostRate: laborOptionalNumber({ min: 0 }),
+    defaultBillableRate: laborOptionalNumber({ min: 0 }),
   }),
 });
 
 export const bulkUpdateLaborRatesSchema = z.object({
   body: z.object({
-    defaultDays: z.number().int().min(1).optional(),
-    defaultHoursPerDay: z.number().min(0).optional(),
-    defaultCostRate: z.number().min(0).optional(),
-    defaultBillableRate: z.number().min(0).optional(),
+    defaultDays: laborOptionalNumber({ min: 1, int: true }),
+    defaultHoursPerDay: laborOptionalNumber({ min: 0 }),
+    defaultCostRate: laborOptionalNumber({ min: 0 }),
+    defaultBillableRate: laborOptionalNumber({ min: 0 }),
   }),
 });
 

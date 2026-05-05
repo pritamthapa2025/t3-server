@@ -386,6 +386,40 @@ export const deleteTimesheet = async (id: number, deletedBy: string) => {
   return timesheet || null;
 };
 
+/** Max net hours on one calendar day per employee (`timesheets.total_hours`). */
+export const MAX_DAILY_LOGGED_NET_HOURS = 24;
+
+/**
+ * Throws if adding `additionalNetHours` would push the employee's net total for
+ * `sheetDate` above {@link MAX_DAILY_LOGGED_NET_HOURS}. Non-positive deltas are allowed
+ * (edits/deletes that reduce the day).
+ */
+export async function assertDailyNetHoursCap(
+  employeeId: number,
+  sheetDate: string,
+  additionalNetHours: number,
+): Promise<void> {
+  if (additionalNetHours <= 0) return;
+  const [row] = await db
+    .select({ totalHours: timesheets.totalHours })
+    .from(timesheets)
+    .where(
+      and(
+        eq(timesheets.employeeId, employeeId),
+        eq(timesheets.sheetDate, sheetDate),
+        eq(timesheets.isDeleted, false),
+      ),
+    )
+    .limit(1);
+  const current = parseFloat(String(row?.totalHours ?? "0")) || 0;
+  const projected = current + additionalNetHours;
+  if (projected - MAX_DAILY_LOGGED_NET_HOURS > 1e-6) {
+    throw new Error(
+      `Daily total would exceed ${MAX_DAILY_LOGGED_NET_HOURS} hours for this date. Current total is ${current.toFixed(2)}h; this change would add ${additionalNetHours.toFixed(2)}h.`,
+    );
+  }
+}
+
 /**
  * Atomically add hours to a daily timesheet row (upsert).
  * Called by dispatch.service after every shift log / edit / delete.
@@ -398,6 +432,7 @@ export const upsertTimesheetFromDispatch = async (
   addedBreakMinutes: number,
 ) => {
   await assertEmployeeNotTimesheetBlockedForSafetyInspection(employeeId);
+  await assertDailyNetHoursCap(employeeId, workDate, addedNetHours);
 
   const REGULAR_HOURS = 8;
 
@@ -1473,7 +1508,8 @@ function checkCaCompliance(
 ): string[] {
   const violations: string[] = [];
   const MEAL_BREAK_THRESHOLD_1 = 5;
-  const MEAL_BREAK_THRESHOLD_2 = 10;
+  /** Second meal required when gross shift exceeds this many hours (product: 8h, matches UI). */
+  const MEAL_BREAK_THRESHOLD_2 = 8;
   const MIN_MEAL_BREAK_MINUTES = 30;
 
   if (
@@ -1490,7 +1526,7 @@ function checkCaCompliance(
     totalBreakMinutesForDay < MIN_MEAL_BREAK_MINUTES * 2
   ) {
     violations.push(
-      `Second meal break violation: ${totalHoursForDay.toFixed(1)}h worked — second 30-min meal break required after 10 hours.`,
+      `Second meal break violation: ${totalHoursForDay.toFixed(1)}h worked — second 30-min meal break required after 8 hours.`,
     );
   }
 
@@ -1506,23 +1542,31 @@ function checkCaCompliance(
 export const logManualTime = async (data: {
   employeeId: number;
   jobId?: string;
-  sheetDate: string;      // YYYY-MM-DD
-  timeIn: string;         // HH:MM 24h
-  timeOut: string;        // HH:MM 24h
-  breakMinutes: number;
+  sheetDate: string;       // YYYY-MM-DD
+  timeIn: string;          // HH:MM 24h
+  timeOut: string;         // HH:MM 24h
+  breakMinutes: number;    // first meal break duration
+  breakStartTime?: string; // HH:MM — when first break started
+  break2Taken?: boolean;
+  break2Minutes?: number;  // second meal break duration (shifts > 8 h)
+  break2StartTime?: string;
   entryType: "manual" | "coverage";
   notes?: string;
   mediaUrls?: string[];
-  coveredForEmployeeId?: number;              // employee ID of the person being covered for
-  coveredForDispatchAssignmentId?: string;    // UUID of the specific dispatch assignment being covered
-  createdBy?: string;     // user UUID of the person submitting
+  coveredForEmployeeId?: number;
+  coveredForDispatchAssignmentId?: string;
+  createdBy?: string;
 }) => {
   await assertEmployeeNotTimesheetBlockedForSafetyInspection(data.employeeId);
 
+  const totalBreakMinutes = data.breakMinutes + (data.break2Taken ? (data.break2Minutes ?? 0) : 0);
+
   // Calculate net hours from clock times
   const rawMinutes = hhmmToMinutes(data.timeOut) - hhmmToMinutes(data.timeIn);
-  const netMinutes = Math.max(0, rawMinutes - data.breakMinutes);
+  const netMinutes = Math.max(0, rawMinutes - totalBreakMinutes);
   const newHours = parseFloat((netMinutes / 60).toFixed(2));
+
+  await assertDailyNetHoursCap(data.employeeId, data.sheetDate, newHours);
 
   const REGULAR_HOURS = 8;
 
@@ -1547,7 +1591,7 @@ export const logManualTime = async (data: {
 
   if (existing) {
     const newTotal = parseFloat(existing.totalHours || "0") + newHours;
-    const newBreak = (existing.breakMinutes || 0) + data.breakMinutes;
+    const newBreak = (existing.breakMinutes || 0) + totalBreakMinutes;
     const newOt = Math.max(0, newTotal - REGULAR_HOURS);
 
     await db
@@ -1568,7 +1612,7 @@ export const logManualTime = async (data: {
       .values({
         employeeId: data.employeeId,
         sheetDate: data.sheetDate,
-        breakMinutes: data.breakMinutes,
+        breakMinutes: totalBreakMinutes,
         totalHours: newHours.toFixed(2),
         overtimeHours: newOt.toFixed(2),
         status: "pending",
@@ -1581,10 +1625,8 @@ export const logManualTime = async (data: {
   }
 
   // --- CA compliance — evaluated per individual shift, not cumulative daily total.
-  // A short new shift (e.g. 2h) must not be flagged because earlier shifts pushed the
-  // day total over 5h. CA §512 applies to a continuous work period, so each logged
-  // shift is checked independently.
-  const caViolations = checkCaCompliance(newHours, data.breakMinutes);
+  // Pass total break minutes (first + second break) so both are counted against the threshold.
+  const caViolations = checkCaCompliance(newHours, totalBreakMinutes);
 
   const [jobEntry] = await db
     .insert(timesheetJobEntries)
@@ -1593,14 +1635,18 @@ export const logManualTime = async (data: {
       jobId: data.jobId ?? null,
       timeIn: data.timeIn,
       timeOut: data.timeOut,
+      breakTaken: data.breakMinutes > 0,
       breakMinutes: data.breakMinutes,
+      breakStartTime: data.breakStartTime ?? null,
+      break2Taken: data.break2Taken ?? false,
+      break2Minutes: data.break2Minutes ?? 0,
+      break2StartTime: data.break2StartTime ?? null,
       hours: newHours.toFixed(2),
       entryType: data.entryType,
       notes: data.notes ?? null,
       coveredForEmployeeId: data.coveredForEmployeeId ?? null,
       coveredForDispatchAssignmentId: data.coveredForDispatchAssignmentId ?? null,
       mediaUrls: data.mediaUrls?.filter((u) => typeof u === "string" && u.length > 0) ?? [],
-      breakTaken: data.breakMinutes > 0,
       caLaborViolation: caViolations.length > 0,
       caViolationDetails: caViolations.length > 0 ? caViolations.join(" | ") : null,
       createdBy: data.createdBy ?? null,
@@ -1952,6 +1998,24 @@ export const updateTimesheetJobEntry = async (
   const newHours = parseFloat((netMinutes / 60).toFixed(2));
   const oldHours = parseFloat(String(existing.hours) || "0");
   const hoursDelta = newHours - oldHours;
+
+  if (hoursDelta !== 0) {
+    const [parentForCap] = await db
+      .select({
+        employeeId: timesheets.employeeId,
+        sheetDate: timesheets.sheetDate,
+      })
+      .from(timesheets)
+      .where(eq(timesheets.id, existing.timesheetId))
+      .limit(1);
+    if (parentForCap?.employeeId != null && parentForCap.sheetDate) {
+      await assertDailyNetHoursCap(
+        parentForCap.employeeId,
+        String(parentForCap.sheetDate),
+        hoursDelta,
+      );
+    }
+  }
 
   const [updated] = await db
     .update(timesheetJobEntries)

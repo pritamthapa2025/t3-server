@@ -168,11 +168,12 @@ export const getPositionsGrouped = async (
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
-              'id',           p.id,
-              'name',         p.name,
-              'payRate',      p.pay_rate,
-              'payType',      p.pay_type,
-              'isFieldRole',  p.is_field_role
+              'id',              p.id,
+              'name',            p.name,
+              'payRate',         p.pay_rate,
+              'payType',         p.pay_type,
+              'isFieldRole',     p.is_field_role,
+              'laborPresetRole', p.labor_preset_role
             ) ORDER BY p.name ASC
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'::json
@@ -198,11 +199,12 @@ export const getPositionsGrouped = async (
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
-              'id',           p.id,
-              'name',         p.name,
-              'payRate',      p.pay_rate,
-              'payType',      p.pay_type,
-              'isFieldRole',  p.is_field_role
+              'id',              p.id,
+              'name',            p.name,
+              'payRate',         p.pay_rate,
+              'payType',         p.pay_type,
+              'isFieldRole',     p.is_field_role,
+              'laborPresetRole', p.labor_preset_role
             ) ORDER BY p.name ASC
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'::json

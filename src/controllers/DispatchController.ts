@@ -911,8 +911,9 @@ export const logHoursHandler = async (req: Request, res: Response) => {
     logger.logApiError("Error logging hours for assignment", error, req);
     const message = error instanceof Error ? error.message : "Internal server error";
     const isBlockedError = message.includes("safety inspection");
+    const isDailyCap = message.includes("Daily total would exceed");
     return res
-      .status(isBlockedError ? 403 : 500)
+      .status(isBlockedError ? 403 : isDailyCap ? 400 : 500)
       .json({ success: false, message });
   }
 };

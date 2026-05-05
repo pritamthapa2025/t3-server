@@ -388,6 +388,16 @@ export const logTimeSchema = z.object({
       coveredForEmployeeId: z.number().int().positive("Covered-for employee ID must be a positive integer").optional(),
       // The specific dispatch assignment UUID being covered
       coveredForDispatchAssignmentId: z.string().uuid("Invalid dispatch assignment ID").optional(),
+      // Break start time for CA §512 compliance timing
+      breakStartTime: z.string().regex(/^\d{2}:\d{2}$/, "breakStartTime must be HH:MM").optional(),
+      // Second meal break — required for shifts > 8 h (CA Labor Code §512, product rule)
+      break2Taken: z.boolean().optional(),
+      break2StartTime: z.string().regex(/^\d{2}:\d{2}$/, "break2StartTime must be HH:MM").optional(),
+      break2Minutes: z
+        .union([z.number().int(), z.string()])
+        .transform((val) => (typeof val === "string" ? parseInt(val, 10) : val))
+        .pipe(z.number().int().min(0))
+        .optional(),
     })
     .refine(
       (data) => {
@@ -396,7 +406,24 @@ export const logTimeSchema = z.object({
         return outH * 60 + outM > inH * 60 + inM;
       },
       { message: "Time Out must be after Time In", path: ["timeOut"] },
-    ),
+    )
+    .superRefine((data, ctx) => {
+      if (data.breakMinutes > 0 && data.breakMinutes < 30) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Meal break must be at least 30 minutes to satisfy CA Labor Code §512.",
+          path: ["breakMinutes"],
+        });
+      }
+      const b2 = data.break2Minutes ?? 0;
+      if (b2 > 0 && b2 < 30) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Second meal break must be at least 30 minutes to satisfy CA Labor Code §512.",
+          path: ["break2Minutes"],
+        });
+      }
+    }),
 });
 
 /**
@@ -431,7 +458,17 @@ export const updateJobEntryBodySchema = z.object({
         return outH * 60 + outM > inH * 60 + inM;
       },
       { message: "Time Out must be after Time In", path: ["timeOut"] },
-    ),
+    )
+    .superRefine((data, ctx) => {
+      if (data.breakMinutes > 0 && data.breakMinutes < 30) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Meal break must be at least 30 minutes to satisfy CA Labor Code §512.",
+          path: ["breakMinutes"],
+        });
+      }
+    }),
 });
 
 /**

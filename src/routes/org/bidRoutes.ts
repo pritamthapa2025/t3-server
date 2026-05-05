@@ -94,6 +94,11 @@ import {
   createBidDesignBuildFilesHandler,
   deleteBidDesignBuildFileHandler,
   getBidVersionInfoHandler,
+  getBidAlternatesHandler,
+  getBidAlternateByIdHandler,
+  createBidAlternateHandler,
+  updateBidAlternateHandler,
+  deleteBidAlternateHandler,
 } from "../../controllers/BidController.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
@@ -776,6 +781,33 @@ router.post(
   authorizeFeature("bids", "bulk_delete"),
   validate(bulkDeleteUuidSchema),
   bulkDeleteBidsHandler,
+);
+
+// Bid Alternates (optional add-ons, stored in bid_alternates table)
+router.get(
+  "/bids/:bidId/alternates",
+  authorizeModule("bids"),
+  getBidAlternatesHandler,
+);
+router.get(
+  "/bids/:bidId/alternates/:alternateId",
+  authorizeModule("bids"),
+  getBidAlternateByIdHandler,
+);
+router.post(
+  "/bids/:bidId/alternates",
+  authorizeFeature("bids", "create"),
+  createBidAlternateHandler,
+);
+router.put(
+  "/bids/:bidId/alternates/:alternateId",
+  authorizeFeature("bids", "edit"),
+  updateBidAlternateHandler,
+);
+router.delete(
+  "/bids/:bidId/alternates/:alternateId",
+  authorizeFeature("bids", "delete"),
+  deleteBidAlternateHandler,
 );
 
 export default router;

@@ -112,7 +112,15 @@ export const timesheetJobEntries = org.table(
     timeIn: varchar("time_in", { length: 10 }),
     timeOut: varchar("time_out", { length: 10 }),
 
+    // First meal break (CA Labor Code §512 — shifts > 5 h)
+    breakTaken: boolean("break_taken").notNull().default(false),
     breakMinutes: integer("break_minutes").default(0),
+    breakStartTime: varchar("break_start_time", { length: 10 }),   // HH:MM
+
+    // Second meal break (CA Labor Code §512 — shifts > 8 h, product rule)
+    break2Taken: boolean("break2_taken").default(false),
+    break2Minutes: integer("break2_minutes").default(0),
+    break2StartTime: varchar("break2_start_time", { length: 10 }), // HH:MM
 
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
 
@@ -130,10 +138,9 @@ export const timesheetJobEntries = org.table(
     // Media attachments (uploaded to DO Spaces, public URLs stored here)
     mediaUrls: text("media_urls").array().default([]),
 
-    // CA labor law compliance flags (mirrors dispatch_assignments pattern)
+    // CA labor law compliance flags
     caLaborViolation: boolean("ca_labor_violation").notNull().default(false),
     caViolationDetails: text("ca_violation_details"),
-    breakTaken: boolean("break_taken").notNull().default(false),
 
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow(),

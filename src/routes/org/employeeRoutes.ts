@@ -7,6 +7,9 @@ import {
   getEmployeeByIdHandler,
   getEmployeeJobsAndDispatchHandler,
   updateEmployeeHandler,
+  postMyQuoteSignatureHandler,
+  deleteMyQuoteSignatureHandler,
+  postEmployeeQuoteSignatureHandler,
   deleteEmployeeHandler,
   getEmployeeKPIsHandler,
   getInspectorsHandler,
@@ -57,7 +60,24 @@ const upload = multer({
       cb(new Error("Only image files are allowed"));
     }
   },
-}).single("profilePicture"); // Handle the profilePicture field
+}).fields([
+  { name: "profilePicture", maxCount: 1 },
+  { name: "signatureImage", maxCount: 1 },
+]);
+
+const uploadQuoteSignatureImage = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && file.mimetype !== "image/svg+xml") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+}).single("signatureImage");
 
 // Multer error handler middleware
 const handleMulterError = (err: any, req: any, res: any, next: any) => {
@@ -110,6 +130,43 @@ router.route("/employees/bulk-delete").post(
   authorizeFeature("team", "bulk_delete"),
   validate(bulkDeleteIntSchema),
   bulkDeleteEmployeesHandler,
+);
+
+router.post(
+  "/employees/me/quote-signature",
+  (req, res, next) => {
+    if (!req.headers["content-type"]?.includes("multipart/form-data")) {
+      return res.status(400).json({
+        success: false,
+        message: "Multipart form-data with field signatureImage is required.",
+      });
+    }
+    uploadQuoteSignatureImage(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      next();
+    });
+  },
+  postMyQuoteSignatureHandler,
+);
+
+router.delete("/employees/me/quote-signature", deleteMyQuoteSignatureHandler);
+
+router.post(
+  "/employees/:id/quote-signature",
+  managerOrAbove,
+  (req, res, next) => {
+    if (!req.headers["content-type"]?.includes("multipart/form-data")) {
+      return res.status(400).json({
+        success: false,
+        message: "Multipart form-data with field signatureImage is required.",
+      });
+    }
+    uploadQuoteSignatureImage(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      next();
+    });
+  },
+  postEmployeeQuoteSignatureHandler,
 );
 
 router

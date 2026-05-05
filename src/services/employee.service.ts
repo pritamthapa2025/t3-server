@@ -663,10 +663,26 @@ export const getEmployeeById = async (id: number) => {
     // Recent activity
     activityLog: recentActivity,
 
+    // Quote PDF — image URL stored on employee row
+    signature: employee.signature ?? null,
+
     // Metadata
     createdAt: employee.createdAt,
     updatedAt: employee.updatedAt,
   };
+};
+
+/** Signature image URL for quote PDF (assigned rep), from `org.employees.signature`. */
+export const getQuoteSignatureByUserId = async (
+  userId: string,
+): Promise<string | null> => {
+  const [row] = await db
+    .select({ signature: employees.signature })
+    .from(employees)
+    .where(and(eq(employees.userId, userId), eq(employees.isDeleted, false)))
+    .limit(1);
+  const s = row?.signature?.trim();
+  return s || null;
 };
 
 /** `employee_id` display string is unique including soft-deleted employees. */
@@ -802,6 +818,8 @@ export const createEmployee = async (data: {
   positionId?: number;
   reportsTo?: string;
   startDate?: Date;
+  /** Public URL of signature image for quote PDFs. */
+  signature?: string | null;
 }) => {
   let payType: string | null = null;
   let hourlyRate: string | null = null;
@@ -826,6 +844,9 @@ export const createEmployee = async (data: {
         startDate: data.startDate || null,
         payType: payType ?? undefined,
         hourlyRate: hourlyRate ?? undefined,
+        ...(data.signature?.trim()
+          ? { signature: data.signature.trim() }
+          : {}),
       })
       .returning();
     if (!row) throw new Error("Failed to create employee");
@@ -865,6 +886,7 @@ export const updateEmployee = async (
     startDate?: Date | null;
     endDate?: Date | null;
     note?: unknown;
+    signature?: string | null;
   },
   clientUpdatedAt?: string,
 ) => {
@@ -889,6 +911,7 @@ export const updateEmployee = async (
     payType?: string | null;
     hourlyRate?: string | null;
     note?: unknown;
+    signature?: string | null;
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -924,6 +947,9 @@ export const updateEmployee = async (
   }
   if (data.note !== undefined) {
     updateData.note = data.note;
+  }
+  if (data.signature !== undefined) {
+    updateData.signature = data.signature?.trim() || null;
   }
 
   const [employee] = await db

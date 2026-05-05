@@ -472,3 +472,14 @@ export const authenticate = async (
     });
   }
 };
+
+/**
+ * Clear cached principal for a user so the next authenticated request refetches
+ * from DB (e.g. after profile photo or name change). Otherwise GET /auth/me can
+ * return stale data for AUTH_CACHE_TTL (default 5 minutes).
+ */
+export function invalidateUserAuthCache(userId: string): void {
+  if (CACHE_ENABLED) {
+    authCache.delete(userId);
+  }
+}

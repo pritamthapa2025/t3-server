@@ -184,7 +184,7 @@ router.get("/notify-dispatch-log-reminder", (_req: Request, res: Response) => {
 
 /**
  * GET /api/v1/cron/send-weekly-timesheet-email
- * Send Monday morning weekly timesheet snapshot email to all active employees.
+ * Send Monday morning weekly timesheet snapshot to active Technician and Manager employees only.
  * Schedule: Monday 08:00.
  *
  * Returns 202 immediately; notifications run in the background. Use logs for outcomes.

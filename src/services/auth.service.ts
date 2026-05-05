@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { users, userRoles, roles } from "../drizzle/schema/auth.schema.js";
 import { employees } from "../drizzle/schema/org.schema.js";
@@ -87,11 +87,15 @@ export const getMeProfileBundle = async (userId: string) => {
       employeeCode: employees.employeeId,
       timesheetBlockedForSafetyInspection:
         employees.timesheetBlockedSafetyInspection,
+      quoteSignatureUrl: employees.signature,
     })
     .from(users)
     .leftJoin(userRoles, eq(users.id, userRoles.userId))
     .leftJoin(roles, eq(userRoles.roleId, roles.id))
-    .leftJoin(employees, eq(users.id, employees.userId))
+    .leftJoin(
+      employees,
+      and(eq(users.id, employees.userId), eq(employees.isDeleted, false)),
+    )
     .where(eq(users.id, userId))
     .limit(1);
 
@@ -166,12 +170,14 @@ export const getEmployeeByUserId = async (
 ): Promise<{ id: number; employeeId: string | null } | null> => {
   try {
     const [employee] = await db
-      .select({ 
-        id: employees.id, 
-        employeeId: employees.employeeId 
+      .select({
+        id: employees.id,
+        employeeId: employees.employeeId,
       })
       .from(employees)
-      .where(eq(employees.userId, userId))
+      .where(
+        and(eq(employees.userId, userId), eq(employees.isDeleted, false)),
+      )
       .limit(1);
 
     return employee || null;
