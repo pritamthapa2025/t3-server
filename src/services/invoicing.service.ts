@@ -428,15 +428,20 @@ export const getInvoices = async (
     whereConditions.push(lte(invoices.dueDate, options.dueDateEnd));
   }
 
-  // Scope by organization (tenant), client org, bid, and/or single job — intersect job ID sets
+  // Scope by client org, CRM organization filter, bid, and/or single job — intersect job ID sets
+  //
+  // Important: `options.clientId` is the *client (customer) organization* UUID on bids.
+  // Query `organizationId` is often the *logged-in user's / tenant* org from the UI, which
+  // does not appear on `bids.organizationId`. Intersecting those produced an empty job set
+  // (no invoices) or callers omitted `clientId` when tenant id was missing and returned
+  // every invoice. When `clientId` is present, scope jobs by that client only; otherwise
+  // fall back to `organizationId` (same job-resolution helper — used for org-wide lists).
   let scopedJobIds: string[] | null = null;
-  if (organizationId) {
-    scopedJobIds = await getJobIdsForOrganization(organizationId);
-    if (scopedJobIds.length === 0) return emptyPage;
-  }
   if (options?.clientId) {
-    const clientJobs = await getJobIdsForOrganization(options.clientId);
-    scopedJobIds = intersectJobIds(scopedJobIds, clientJobs);
+    scopedJobIds = await getJobIdsForOrganization(options.clientId);
+    if (scopedJobIds.length === 0) return emptyPage;
+  } else if (organizationId) {
+    scopedJobIds = await getJobIdsForOrganization(organizationId);
     if (scopedJobIds.length === 0) return emptyPage;
   }
   if (options?.bidId) {
