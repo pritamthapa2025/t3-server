@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import compression from "compression";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
@@ -8,6 +9,7 @@ import { fileURLToPath } from "url";
 import index from "./routes/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { globalLimiter } from "./middleware/rateLimiter.js";
+import { cacheHeaders } from "./middleware/cacheHeaders.js";
 
 dotenv.config();
 
@@ -21,6 +23,9 @@ const app: Express = express();
 // instead of the proxy's IP, while ignoring attacker-injected headers
 // further down the chain.
 app.set("trust proxy", 1);
+
+// Gzip/deflate compression for all API responses — reduces payload size significantly
+app.use(compression());
 
 // Security headers — must come before CORS and routes
 app.use(
@@ -75,6 +80,8 @@ app.get("/health", (req, res) => {
 });
 
 
+// Apply cache-control headers to all API routes
+app.use("/api/v1", cacheHeaders);
 app.use("/api/v1", index);
 
 // Error handling middleware (must be last)

@@ -54,6 +54,7 @@
     "@types/uuid": "^10.0.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "database-error": "^2.0.2",
@@ -81,6 +82,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@typescript-eslint/eslint-plugin": "^8.19.0",
     "@typescript-eslint/parser": "^8.19.0",
     "drizzle-kit": "^0.31.6",
