@@ -20,6 +20,9 @@ importers:
       '@types/bcrypt':
         specifier: ^6.0.0
         version: 6.0.0
+      '@types/compression':
+        specifier: ^1.8.1
+        version: 1.8.1
       '@types/cookie-parser':
         specifier: ^1.4.10
         version: 1.4.10(@types/express@5.0.6)
@@ -132,9 +135,6 @@ importers:
         specifier: ^4.1.13
         version: 4.3.6
     devDependencies:
-      '@types/compression':
-        specifier: ^1.8.1
-        version: 1.8.1
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.19.0
         version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.39.2)(typescript@5.9.3))(eslint@9.39.2)(typescript@5.9.3)
