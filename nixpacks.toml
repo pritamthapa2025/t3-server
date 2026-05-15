@@ -8,4 +8,6 @@ nixPkgs = ["...", "chromium"]
 
 # Optional: skip Puppeteer's Chrome download since we use Nix Chromium (saves build time)
 [variables]
+# Node 18 is EOL for many SDKs (e.g. AWS); use an active LTS for runtime + production builds
+NIXPACKS_NODE_VERSION = "22"
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
