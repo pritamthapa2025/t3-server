@@ -39,6 +39,11 @@ import {
 import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { logger } from "../utils/logger.js";
 import { ErrorMessages } from "../utils/error-messages.js";
+import {
+  setAccessTokenCookie,
+  clearAccessTokenCookie,
+  getAccessTokenFromRequest,
+} from "../utils/authCookie.js";
 
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
@@ -75,6 +80,7 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
         const token = generateToken(user.id);
         await updateUserLastLogin(user.id);
+        setAccessTokenCookie(res, token);
 
         logger.info("Login successful via trusted device", { userId: user.id });
         return res.status(200).json({
@@ -206,6 +212,7 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id);
     await updateUserLastLogin(user.id);
+    setAccessTokenCookie(res, token);
 
     // Handle "Remember Device" functionality
     let deviceTokenSet = false;
@@ -1079,10 +1086,9 @@ export const revokeAllTrustedDevicesHandler = async (
 export const logoutHandler = async (req: Request, res: Response) => {
   try {
     // Blacklist the JWT so it cannot be reused even within its 7-day window.
-    // The logout route has no authenticate middleware, so we extract the token manually.
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7).trim();
+    // Read from cookie OR Bearer header (same dual-source logic as authenticate).
+    const token = getAccessTokenFromRequest(req);
+    if (token) {
       const decoded = verifyToken(token);
       if (decoded?.jti && decoded.exp) {
         await blacklistToken(decoded.jti, decoded.exp).catch((err) => {
@@ -1094,6 +1100,7 @@ export const logoutHandler = async (req: Request, res: Response) => {
       }
     }
 
+    clearAccessTokenCookie(res);
     logger.info("User logged out successfully");
     return res.status(200).json({
       success: true,

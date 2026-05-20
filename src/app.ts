@@ -56,8 +56,17 @@ app.use(
       process.env.CLIENT_URL_Old,
     ].filter((url): url is string => Boolean(url)),
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
   }),
 );
+
+// Block dangerous HTTP methods that are not needed by this API
+app.use((req, res, next) => {
+  if (req.method === "TRACE" || req.method === "CONNECT") {
+    return res.status(405).json({ success: false, message: "Method Not Allowed" });
+  }
+  return next();
+});
 
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));

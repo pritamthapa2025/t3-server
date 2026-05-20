@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { uploadToSpaces } from "./storage.service.js";
 import { parseProposalBasisTextToItems } from "../utils/proposal-basis-storage.js";
+import { sanitizeText } from "../utils/sanitize-html.js";
 
 // Get current directory for template path (works from dist/ or src/)
 const __filename = fileURLToPath(import.meta.url);
@@ -207,7 +208,9 @@ const renderTemplate = (
     for (const key of keys) {
       value = value?.[key];
     }
-    return value !== undefined && value !== null ? String(value) : "";
+    if (value === undefined || value === null) return "";
+    // Sanitize every user-supplied string to prevent script injection via Puppeteer
+    return sanitizeText(String(value));
   });
 
   return rendered;

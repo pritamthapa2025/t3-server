@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { verifyToken } from "../utils/jwt.js";
 import { getUserByIdForAuth } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
+import { parse as parseCookies } from "cookie";
 import type { Notification } from "../types/notification.types.js";
 import { SOCKET_EVENTS } from "../types/notification.types.js";
 
@@ -30,7 +31,17 @@ export async function setupSocketIO(httpServer: any): Promise<Server> {
   // Accept token from: auth object, query string, or headers (Authorization: Bearer / token / x-auth-token)
   io.use(async (socket, next) => {
     try {
+      // 1. HttpOnly cookie (most secure — sent automatically by the browser)
+      const cookieHeader = socket.handshake.headers?.cookie;
+      const cookieToken =
+        typeof cookieHeader === "string"
+          ? parseCookies(cookieHeader)["access_token"]
+          : undefined;
+
+      // 2. auth object token (Phase A fallback from socket-client)
       const authToken = socket.handshake.auth?.token;
+
+      // 3. Query string / header tokens (legacy fallback)
       const queryToken =
         typeof socket.handshake.query?.token === "string"
           ? socket.handshake.query.token
@@ -47,7 +58,7 @@ export async function setupSocketIO(httpServer: any): Promise<Server> {
           ? (headers.token ?? headers["x-auth-token"])
           : undefined);
 
-      const token = authToken ?? queryToken ?? headerToken;
+      const token = cookieToken ?? authToken ?? queryToken ?? headerToken;
 
       if (!token) {
         logger.warn("Socket.IO: Connection attempt without token");

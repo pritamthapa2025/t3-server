@@ -7,6 +7,7 @@ import {
   type AuthMeProfileRow,
 } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
+import { getAccessTokenFromRequest } from "../utils/authCookie.js";
 
 // Timeout wrapper for database queries to prevent hanging
 const withTimeout = <T>(
@@ -282,26 +283,16 @@ export const authenticate = async (
   (req as any).__authProcessed = true;
 
   try {
-    // Extract token from Authorization header
-    const authHeader = req.headers.authorization;
+    // Extract token from HttpOnly cookie (preferred) or Authorization: Bearer header
+    const token = getAccessTokenFromRequest(req);
 
-    if (!authHeader) {
+    if (!token) {
       return res.status(401).json({
         success: false,
         message:
           "Authorization denied. Please provide a valid authentication token.",
       });
     }
-
-    const parts = authHeader.split(" ");
-    if (parts.length !== 2 || parts[0] !== "Bearer" || !parts[1]) {
-      return res.status(401).json({
-        success: false,
-        message: "Authorization denied. Invalid token format.",
-      });
-    }
-
-    const token = parts[1].trim();
 
     // Verify the token
     const decoded = verifyToken(token);
