@@ -21,6 +21,7 @@ This guide lists environment variables read by **t3-server** (`C:\Users\ASCE\Des
 |----------|---------|---------|
 | `PORT` | `4000` | HTTP listen port (`src/server.ts`). Align `NEXT_PUBLIC_API_URL` on the frontend with this value. |
 | `NODE_ENV` | — | `production` enables stricter cookies, HSTS (`src/app.ts`), and controls error detail in JSON (`src/middleware/errorHandler.ts`). |
+| `GLOBAL_RATE_LIMIT_MAX` | `2000` | Max HTTP requests per client IP per 15 minutes (`src/middleware/rateLimiter.ts`). Use `2000` in production; raise on staging only for load tests (e.g. `50000`–`100000`). Invalid or non-positive values fall back to `2000`. |
 
 ---
 

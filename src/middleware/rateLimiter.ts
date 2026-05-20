@@ -5,10 +5,20 @@ const json429 = (retryAfter: number) => ({
   message: `Too many requests. Please try again after ${retryAfter} seconds.`,
 });
 
+const parsedGlobalLimit = Number.parseInt(
+  process.env.GLOBAL_RATE_LIMIT_MAX ?? "",
+  10,
+);
+/** Requests per IP per 15 minutes. Override via GLOBAL_RATE_LIMIT_MAX (e.g. staging load tests). */
+export const GLOBAL_RATE_LIMIT =
+  Number.isFinite(parsedGlobalLimit) && parsedGlobalLimit > 0
+    ? parsedGlobalLimit
+    : 2000;
+
 /** Global fallback — applied to every route */
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 2000,
+  limit: GLOBAL_RATE_LIMIT,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   handler: (req, res, _next, _options) => {
