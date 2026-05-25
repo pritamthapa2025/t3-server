@@ -182,6 +182,35 @@ const checkJobAssignedAccess = async (
   return true;
 };
 
+/** Field logs and job notes: any user with view_jobs may access any existing job. */
+const ensureJobExists = async (
+  res: Response,
+  jobId: string,
+): Promise<boolean> => {
+  const job = await getJobById(jobId);
+  if (!job) {
+    res.status(404).json({ success: false, message: "Job not found" });
+    return false;
+  }
+  return true;
+};
+
+const assertCanEditFieldLog = (
+  req: Request,
+  res: Response,
+  log: { submittedBy: string },
+  userId: string,
+): boolean => {
+  if (req.userAccessLevel === "edit_own" && log.submittedBy !== userId) {
+    res.status(403).json({
+      success: false,
+      message: "You can only edit your own field logs",
+    });
+    return false;
+  }
+  return true;
+};
+
 // ============================
 // Main Job Operations
 // ============================
@@ -4728,7 +4757,7 @@ export const getJobLogsHandler = async (req: Request, res: Response) => {
     const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
-    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+    if (!(await ensureJobExists(res, jobId!))) return;
 
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
@@ -4753,7 +4782,7 @@ export const createJobLogHandler = async (req: Request, res: Response) => {
     const jobId = asSingleString(req.params.jobId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
-    if (!(await checkJobAssignedAccess(req, res, jobId!))) return;
+    if (!(await ensureJobExists(res, jobId!))) return;
 
     const log = await createJobLog({
       ...req.body,
@@ -4811,6 +4840,12 @@ export const updateJobLogHandler = async (req: Request, res: Response) => {
     const userId = validateUserAccess(req, res);
     if (!userId) return;
 
+    const existing = await getJobLogById(logId!);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Log not found" });
+    }
+    if (!assertCanEditFieldLog(req, res, existing, userId)) return;
+
     const log = await updateJobLog(logId!, req.body);
     if (!log)
       return res.status(404).json({ success: false, message: "Log not found" });
@@ -4838,6 +4873,12 @@ export const deleteJobLogHandler = async (req: Request, res: Response) => {
     const logId = asSingleString(req.params.logId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    const existing = await getJobLogById(logId!);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Log not found" });
+    }
+    if (!assertCanEditFieldLog(req, res, existing, userId)) return;
 
     const log = await deleteJobLog(logId!);
     if (!log)
@@ -4869,6 +4910,12 @@ export const addJobLogMediaHandler = async (req: Request, res: Response) => {
     const logId = asSingleString(req.params.logId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    const existing = await getJobLogById(logId!);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Log not found" });
+    }
+    if (!assertCanEditFieldLog(req, res, existing, userId)) return;
 
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
@@ -4920,9 +4967,16 @@ export const addJobLogMediaHandler = async (req: Request, res: Response) => {
 export const deleteJobLogMediaHandler = async (req: Request, res: Response) => {
   try {
     if (!validateParams(req, res, ["jobId", "logId", "mediaId"])) return;
+    const logId = asSingleString(req.params.logId);
     const mediaId = asSingleString(req.params.mediaId);
     const userId = validateUserAccess(req, res);
     if (!userId) return;
+
+    const existing = await getJobLogById(logId!);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Log not found" });
+    }
+    if (!assertCanEditFieldLog(req, res, existing, userId)) return;
 
     const media = await deleteJobLogMedia(mediaId!);
     if (!media)

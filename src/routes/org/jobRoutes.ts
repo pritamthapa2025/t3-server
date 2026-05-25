@@ -355,6 +355,12 @@ const viewExpenses = authorizeAnyFeature("jobs", [
 const addExpense = authorizeFeature("jobs", "add_expense");
 const approveExpenses = authorizeFeature("jobs", "approve_expenses");
 const uploadPhotos = authorizeFeature("jobs", "upload_photos");
+const createFieldLog = authorizeFeature("jobs", "create_field_log");
+const editFieldLog = authorizeAnyFeature("jobs", [
+  "edit_field_log",
+  "edit_job",
+  "edit",
+]);
 
 // Main Job Routes
 
@@ -861,16 +867,16 @@ const uploadLogMedia = multer({
 router
   .route("/jobs/:jobId/logs")
   .get(viewJobs, validate(getJobLogsSchema), getJobLogsHandler)
-  .post(viewJobs, validate(createJobLogSchema), createJobLogHandler);
+  .post(createFieldLog, validate(createJobLogSchema), createJobLogHandler);
 
 router
   .route("/jobs/:jobId/logs/:logId")
   .get(viewJobs, validate(getJobLogByIdSchema), getJobLogByIdHandler)
-  .put(viewJobs, validate(updateJobLogSchema), updateJobLogHandler)
-  .delete(editJob, validate(deleteJobLogSchema), deleteJobLogHandler);
+  .put(editFieldLog, validate(updateJobLogSchema), updateJobLogHandler)
+  .delete(editFieldLog, validate(deleteJobLogSchema), deleteJobLogHandler);
 
 router.route("/jobs/:jobId/logs/:logId/media").post(
-  viewJobs,
+  editFieldLog,
   (req, res, next) => {
     uploadLogMedia.array("media", 10)(req, res, (err) => {
       if (err) return handleMulterError(err, req, res, next);
@@ -883,6 +889,6 @@ router.route("/jobs/:jobId/logs/:logId/media").post(
 
 router
   .route("/jobs/:jobId/logs/:logId/media/:mediaId")
-  .delete(editJob, validate(deleteJobLogMediaSchema), deleteJobLogMediaHandler);
+  .delete(editFieldLog, validate(deleteJobLogMediaSchema), deleteJobLogMediaHandler);
 
 export default router;
