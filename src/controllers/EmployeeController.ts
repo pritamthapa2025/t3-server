@@ -34,6 +34,7 @@ import {
 } from "../services/bankAccount.service.js";
 import { uploadToSpaces, deleteFromSpaces } from "../services/storage.service.js";
 import { invalidateUserAuthCache } from "../middleware/auth.js";
+import { revokeAllUserSessions } from "../utils/userSessionStore.js";
 import { sendNewUserPasswordSetupEmail } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -939,6 +940,13 @@ export const updateEmployeeHandler = async (req: Request, res: Response) => {
           message: "Employee not found",
         });
       }
+    }
+
+    // When suspending an employee, disable their user account and revoke all sessions.
+    if (status === "suspended") {
+      await updateUser(userId, { isActive: false });
+      invalidateUserAuthCache(userId);
+      await revokeAllUserSessions(userId);
     }
 
     // Update user data if any user fields are provided

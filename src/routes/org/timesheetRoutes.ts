@@ -1,5 +1,16 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import { createFileFilter } from "../../utils/fileValidation.js";
+
+const ALLOWED_TIMESHEET_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+]);
 import {
   getTimesheetsHandler,
   createTimesheetHandler,
@@ -25,6 +36,7 @@ import {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: createFileFilter(ALLOWED_TIMESHEET_MEDIA_TYPES),
 });
 import { authenticate } from "../../middleware/auth.js";
 import {

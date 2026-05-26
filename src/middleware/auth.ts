@@ -1,6 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../utils/jwt.js";
-import { isTokenBlacklisted } from "../utils/tokenBlacklist.js";
+import {
+  blacklistToken,
+  isTokenBlacklisted,
+} from "../utils/tokenBlacklist.js";
 import {
   getMeProfileBundle,
   mapProfileToAuthGate,
@@ -8,6 +11,10 @@ import {
 } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
 import { getAccessTokenFromRequest } from "../utils/authCookie.js";
+import {
+  touchSession,
+  isSessionIdle,
+} from "../utils/sessionActivity.js";
 
 // Timeout wrapper for database queries to prevent hanging
 const withTimeout = <T>(
@@ -420,6 +427,28 @@ export const authenticate = async (
         success: false,
         message: "Authorization denied. User not found.",
       });
+    }
+
+    // Idle timeout enforcement (web sessions only; mobile has no idle timeout).
+    // Runs after user load so we don't waste Redis calls on invalid tokens.
+    if (jti) {
+      const deviceType =
+        (decoded as { deviceType?: string }).deviceType ?? "web";
+      if (deviceType === "web") {
+        const idle = await isSessionIdle(jti);
+        if (idle) {
+          // Blacklist so subsequent requests also fail fast without hitting Redis idle check.
+          await blacklistToken(jti, decoded.exp!).catch(() => {});
+          return res.status(401).json({
+            success: false,
+            code: "session_idle_expired",
+            message:
+              "Session expired due to inactivity. Please log in again.",
+          });
+        }
+      }
+      // Slide the idle window forward (both web and mobile keep the key fresh).
+      await touchSession(jti);
     }
 
     if (!principal.isActive) {

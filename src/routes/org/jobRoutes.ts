@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import { ALLOWED_DOCUMENT_TYPES, createFileFilter } from "../../utils/fileValidation.js";
 import {
   getJobsHandler,
   getJobByIdHandler,
@@ -197,10 +198,7 @@ const uploadJobDocuments = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
     files: 20,
   },
-  fileFilter: (req, file, cb) => {
-    // Accept all file types for documents
-    cb(null, true);
-  },
+  fileFilter: createFileFilter(ALLOWED_DOCUMENT_TYPES),
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
 
 // Multer for single receipt upload (job expenses)

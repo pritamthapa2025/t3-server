@@ -6,8 +6,16 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is not set");
 }
 
-export const generateToken = (userId: string, expiresIn: string = "7d") => {
-  return jwt.sign({ userId, jti: randomUUID() }, JWT_SECRET, { expiresIn } as SignOptions);
+export const generateToken = (
+  userId: string,
+  deviceType: "web" | "mobile" = "web",
+  expiresIn: string = "12h",
+) => {
+  return jwt.sign(
+    { userId, jti: randomUUID(), deviceType },
+    JWT_SECRET,
+    { expiresIn } as SignOptions,
+  );
 };
 
 export const verifyToken = (token: string): JwtPayload | null => {

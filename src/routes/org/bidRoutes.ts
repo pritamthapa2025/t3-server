@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import { ALLOWED_DOCUMENT_TYPES, createFileFilter } from "../../utils/fileValidation.js";
 import {
   getBidsHandler,
   getBidByIdHandler,
@@ -196,10 +197,7 @@ const uploadBidDocuments = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
     files: 20,
   },
-  fileFilter: (req, file, cb) => {
-    // Accept all file types for documents
-    cb(null, true);
-  },
+  fileFilter: createFileFilter(ALLOWED_DOCUMENT_TYPES),
 }).any(); // Accept any files - controller will handle document_0, document_1, etc. pattern
 
 // Combined multer for create bid: documents (5MB, any type) + media + walk_photo_* (50MB, images/video/audio)
@@ -236,8 +234,8 @@ const uploadBidDocumentsAndMedia = multer({
         );
       }
     } else {
-      // document_* and anything else: accept all types
-      cb(null, true);
+      // document_* fields: apply MIME allowlist
+      createFileFilter(ALLOWED_DOCUMENT_TYPES)(req, file, cb);
     }
   },
 }).any();
@@ -284,9 +282,7 @@ const uploadBidFiles = multer({
     fileSize: 20 * 1024 * 1024, // 20MB limit per file
     files: 20,
   },
-  fileFilter: (req, file, cb) => {
-    cb(null, true);
-  },
+  fileFilter: createFileFilter(ALLOWED_DOCUMENT_TYPES),
 });
 
 // Multer error handler middleware

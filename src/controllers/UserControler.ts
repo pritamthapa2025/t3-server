@@ -16,6 +16,7 @@ import {
   buildConflictResponse,
 } from "../utils/validation-helpers.js";
 import { invalidateUserAuthCache } from "../middleware/auth.js";
+import { revokeAllUserSessions } from "../utils/userSessionStore.js";
 
 export const getUsersHandler = async (req: Request, res: Response) => {
   try {
@@ -306,6 +307,11 @@ export const updateUserHandler = async (req: Request, res: Response) => {
     }
 
     invalidateUserAuthCache(userId);
+
+    // When an admin disables a user, revoke all their active sessions immediately.
+    if (isActive === false) {
+      await revokeAllUserSessions(userId);
+    }
 
     logger.info("User updated successfully");
     return res.status(200).json({

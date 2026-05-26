@@ -1,6 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "../config/db.js";
 import { roles, userRoles } from "../drizzle/schema/auth.schema.js";
+import { revokeAllUserSessions } from "../utils/userSessionStore.js";
 
 /**
  * Get role by ID
@@ -54,6 +55,9 @@ export const assignRoleToUser = async (userId: string, roleId: number) => {
         .where(eq(userRoles.userId, userId))
         .returning();
 
+      // Revoke all active sessions so the new role permissions take effect immediately.
+      await revokeAllUserSessions(userId);
+
       return userRole;
     }
 
@@ -65,6 +69,10 @@ export const assignRoleToUser = async (userId: string, roleId: number) => {
         roleId,
       })
       .returning();
+
+    // Revoke all active sessions after role assignment so the new role
+    // permissions take effect on the next login.
+    await revokeAllUserSessions(userId);
 
     return userRole;
   } catch (error: any) {

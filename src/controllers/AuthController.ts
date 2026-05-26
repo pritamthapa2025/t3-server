@@ -37,6 +37,15 @@ import {
   updateUserLastLogin,
 } from "../services/auth.service.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
+import {
+  touchSession,
+  removeSessionActivity,
+} from "../utils/sessionActivity.js";
+import {
+  registerSession,
+  removeSession,
+  revokeAllUserSessions,
+} from "../utils/userSessionStore.js";
 import { logger } from "../utils/logger.js";
 import { ErrorMessages } from "../utils/error-messages.js";
 import {
@@ -47,7 +56,9 @@ import {
 
 export const loginUserHandler = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, deviceType = "web" } = req.body;
+    const resolvedDeviceType: "web" | "mobile" =
+      deviceType === "mobile" ? "mobile" : "web";
 
     const user = await getUserByEmail(email);
     if (!user) {
@@ -78,7 +89,14 @@ export const loginUserHandler = async (req: Request, res: Response) => {
           });
         }
 
-        const token = generateToken(user.id);
+        const token = generateToken(user.id, resolvedDeviceType);
+        const decoded = verifyToken(token);
+        if (decoded?.jti && decoded.exp) {
+          await Promise.allSettled([
+            touchSession(decoded.jti),
+            registerSession(user.id, decoded.jti, decoded.exp),
+          ]);
+        }
         await updateUserLastLogin(user.id);
         setAccessTokenCookie(res, token);
 
@@ -139,7 +157,9 @@ export const loginUserHandler = async (req: Request, res: Response) => {
 
 export const verify2FAHandler = async (req: Request, res: Response) => {
   try {
-    const { email, code, rememberDevice } = req.body;
+    const { email, code, rememberDevice, deviceType = "web" } = req.body;
+    const resolvedDeviceType: "web" | "mobile" =
+      deviceType === "mobile" ? "mobile" : "web";
 
     // Ensure code is a string and trim any whitespace
     const codeString = String(code).trim();
@@ -210,7 +230,14 @@ export const verify2FAHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const token = generateToken(user.id);
+    const token = generateToken(user.id, resolvedDeviceType);
+    const decodedNew = verifyToken(token);
+    if (decodedNew?.jti && decodedNew.exp) {
+      await Promise.allSettled([
+        touchSession(decodedNew.jti),
+        registerSession(user.id, decodedNew.jti, decodedNew.exp),
+      ]);
+    }
     await updateUserLastLogin(user.id);
     setAccessTokenCookie(res, token);
 
@@ -552,6 +579,8 @@ export const confirmPasswordResetHandler = async (
 
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
+    // Revoke all active sessions — forces re-login on every device after password change.
+    await revokeAllUserSessions(user.id);
 
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
@@ -654,6 +683,8 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
 
     // Update the password in the database
     await updatePassword(user.id, hashedPassword);
+    // Revoke all active sessions — forces re-login on every device after password reset.
+    await revokeAllUserSessions(user.id);
 
     logger.info("Password reset successfully");
     return res
@@ -805,6 +836,8 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
 
     // Update the password in the database
     await updatePassword(userId, hashedPassword);
+    // Revoke all active sessions — forces re-login on every device after password change.
+    await revokeAllUserSessions(userId);
 
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
@@ -1085,18 +1118,18 @@ export const revokeAllTrustedDevicesHandler = async (
 
 export const logoutHandler = async (req: Request, res: Response) => {
   try {
-    // Blacklist the JWT so it cannot be reused even within its 7-day window.
+    // Blacklist the JWT so it cannot be reused even within its 12-hour window.
     // Read from cookie OR Bearer header (same dual-source logic as authenticate).
     const token = getAccessTokenFromRequest(req);
     if (token) {
       const decoded = verifyToken(token);
       if (decoded?.jti && decoded.exp) {
-        await blacklistToken(decoded.jti, decoded.exp).catch((err) => {
-          logger.warn(
-            "Failed to blacklist token on logout: " +
-              (err?.message ?? String(err)),
-          );
-        });
+        const userId = (decoded as { userId?: string }).userId;
+        await Promise.allSettled([
+          blacklistToken(decoded.jti, decoded.exp),
+          removeSessionActivity(decoded.jti),
+          ...(userId ? [removeSession(userId, decoded.jti)] : []),
+        ]);
       }
     }
 

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import { ALLOWED_DOCUMENT_TYPES, createFileFilter } from "../../utils/fileValidation.js";
 import {
   getPropertiesHandler,
   getPropertyByIdHandler,
@@ -44,10 +45,7 @@ const uploadDocument = multer({
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit for documents
   },
-  fileFilter: (req, file, cb) => {
-    // Accept all file types for documents
-    cb(null, true);
-  },
+  fileFilter: createFileFilter(ALLOWED_DOCUMENT_TYPES),
 }).single("document"); // Handle the document field
 
 // Multer error handler middleware

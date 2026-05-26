@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import { ALLOWED_DOCUMENT_TYPES, createFileFilter } from "../../utils/fileValidation.js";
 import {
   getDispatchTasksHandler,
   getDispatchTaskByIdHandler,
@@ -54,7 +55,7 @@ const uploadDispatchAttachments = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
     files: 10,
   },
-  fileFilter: (_req, _file, cb) => cb(null, true),
+  fileFilter: createFileFilter(ALLOWED_DOCUMENT_TYPES),
 }).any();
 
 const handleMulterError = (err: any, req: any, res: any, next: any) => {

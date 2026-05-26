@@ -15,7 +15,7 @@ const COOKIE_OPTIONS = {
   // SameSite=Strict is safe when frontend and API share the same site/domain.
   // Change to "none" (+ secure:true) only if they are on different domains.
   sameSite: "strict" as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days — matches JWT exp
+  maxAge: 12 * 60 * 60 * 1000, // 12 hours — matches JWT exp
   path: "/",
 };
 

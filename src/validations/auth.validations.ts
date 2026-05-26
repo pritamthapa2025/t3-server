@@ -10,6 +10,7 @@ export const loginSchema = z.object({
       .trim()
       .toLowerCase(),
     password: z.string().min(1, "Password is required and cannot be empty"),
+    deviceType: z.enum(["web", "mobile"]).optional().default("web"),
   }),
 });
 
