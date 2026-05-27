@@ -91,18 +91,6 @@ app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use(cookieParser());
 
-// Loader.io domain verification (load testing)
-const LOADERIO_VERIFICATION_TOKEN = "loaderio-646901c30d35ad302f824914ace8232f";
-app.get(`/${LOADERIO_VERIFICATION_TOKEN}.txt`, (_req, res) => {
-  res.type("text/plain").send(LOADERIO_VERIFICATION_TOKEN);
-});
-app.get(`/${LOADERIO_VERIFICATION_TOKEN}.html`, (_req, res) => {
-  res.type("text/html").send(LOADERIO_VERIFICATION_TOKEN);
-});
-app.get(`/${LOADERIO_VERIFICATION_TOKEN}/`, (_req, res) => {
-  res.type("text/plain").send(LOADERIO_VERIFICATION_TOKEN);
-});
-
 app.use(globalLimiter);
 
 // Serve static assets (e.g. email logo images)
