@@ -19,7 +19,6 @@
     "seed:features": "tsx src/drizzle/seed/featurePermissions.seed.ts",
     "seed:reset": "tsx src/drizzle/seed/resetAndReseed.ts",
     "seed:notification-rules": "tsx src/drizzle/seed/notificationRules.seed.ts",
-    "seed:bid-default-tags": "tsx src/drizzle/seed/bidDocumentDefaultTags.seed.ts",
     "seed:reset-notifications": "tsx src/drizzle/seed/resetNotifications.ts",
     "seed:field-crew": "tsx src/drizzle/seed/fieldCrew.seed.ts",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",

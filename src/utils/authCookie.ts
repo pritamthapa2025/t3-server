@@ -9,12 +9,15 @@ import type { Request, Response } from "express";
 
 const COOKIE_NAME = "access_token";
 
+const isProduction = process.env.NODE_ENV === "production";
+
+// In production, the frontend and backend are on different domains, so
+// SameSite must be "none" (with Secure:true) to allow cross-domain cookie
+// sending. In development both run on localhost so "lax" is fine.
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  // SameSite=Strict is safe when frontend and API share the same site/domain.
-  // Change to "none" (+ secure:true) only if they are on different domains.
-  sameSite: "strict" as const,
+  secure: isProduction,
+  sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
   maxAge: 12 * 60 * 60 * 1000, // 12 hours — matches JWT exp
   path: "/",
 };
@@ -30,8 +33,8 @@ export function setAccessTokenCookie(res: Response, token: string): void {
 export function clearAccessTokenCookie(res: Response): void {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict" as const,
+    secure: isProduction,
+    sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
     path: "/",
   });
 }
