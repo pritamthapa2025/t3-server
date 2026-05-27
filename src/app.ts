@@ -27,7 +27,26 @@ app.set("trust proxy", 1);
 // Gzip/deflate compression for all API responses — reduces payload size significantly
 app.use(compression());
 
-// Security headers — must come before CORS and routes
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  process.env.CLIENT_URL || "http://localhost:3000",
+  process.env.CLIENT_URL_Old,
+].filter((url): url is string => Boolean(url));
+
+const CORS_OPTIONS = {
+  origin: ALLOWED_ORIGINS,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
+  exposedHeaders: ["Set-Cookie"],
+};
+
+// Handle OPTIONS preflight BEFORE helmet so security headers don't interfere.
+// This ensures the browser receives CORS headers on preflight even if a
+// subsequent middleware would otherwise block the response.
+app.options("*", cors(CORS_OPTIONS));
+
+// Security headers — must come before routes but after the preflight handler
 app.use(
   helmet({
     // Allow same-origin framing only (EasyPanel dashboard, etc.)
@@ -45,22 +64,12 @@ app.use(
     strictTransportSecurity: process.env.NODE_ENV === "production"
       ? { maxAge: 31536000, includeSubDomains: true }
       : false,
+    // Allow cross-origin fetch (Axios) — CORP same-origin blocks API responses
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      process.env.CLIENT_URL || "http://localhost:3000",
-      process.env.CLIENT_URL_Old,
-    ].filter((url): url is string => Boolean(url)),
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
-    exposedHeaders: ["Set-Cookie"],
-  }),
-);
+app.use(cors(CORS_OPTIONS));
 
 // Block dangerous HTTP methods that are not needed by this API
 app.use((req, res, next) => {
