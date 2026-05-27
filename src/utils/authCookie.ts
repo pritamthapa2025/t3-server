@@ -9,15 +9,13 @@ import type { Request, Response } from "express";
 
 const COOKIE_NAME = "access_token";
 
-const isProduction = process.env.NODE_ENV === "production";
-
-// In production, the frontend and backend are on different domains, so
-// SameSite must be "none" (with Secure:true) to allow cross-domain cookie
-// sending. In development both run on localhost so "lax" is fine.
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: isProduction,
-  sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+  secure: process.env.NODE_ENV === "production",
+  // SameSite=Strict is safe because the Next.js frontend proxies all API calls
+  // to the backend server-side, so the browser only ever sends cookies to the
+  // same origin (the frontend host). No cross-origin cookie sending is needed.
+  sameSite: "strict" as const,
   maxAge: 12 * 60 * 60 * 1000, // 12 hours — matches JWT exp
   path: "/",
 };
@@ -33,8 +31,8 @@ export function setAccessTokenCookie(res: Response, token: string): void {
 export function clearAccessTokenCookie(res: Response): void {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
     path: "/",
   });
 }
