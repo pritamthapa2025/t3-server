@@ -10,7 +10,10 @@ import {
   type AuthMeProfileRow,
 } from "../services/auth.service.js";
 import { logger } from "../utils/logger.js";
-import { getAccessTokenFromRequest } from "../utils/authCookie.js";
+import {
+  getAccessTokenFromRequest,
+  clearAccessTokenCookie,
+} from "../utils/authCookie.js";
 import {
   touchSession,
   isSessionIdle,
@@ -304,6 +307,8 @@ export const authenticate = async (
     // Verify the token
     const decoded = verifyToken(token);
     if (!decoded) {
+      // Clear any stale cookie so the browser stops sending a dead token.
+      clearAccessTokenCookie(res);
       return res.status(401).json({
         success: false,
         message: "Authorization denied. Invalid or expired token.",
@@ -409,6 +414,10 @@ export const authenticate = async (
         loadPrincipal(),
       ]);
       if (revoked) {
+        // Proactively clear the dead cookie so the browser stops sending it.
+        // Without this the stale cookie would be replayed on every refresh until
+        // the browser naturally expires it, relying solely on Redis being reachable.
+        clearAccessTokenCookie(res);
         return res.status(401).json({
           success: false,
           message: "Authorization denied. Token has been revoked.",

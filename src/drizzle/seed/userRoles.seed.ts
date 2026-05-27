@@ -10,7 +10,7 @@ export const seedUserRoles = async () => {
     const adminUser = await db
       .select()
       .from(users)
-      .where(eq(users.email, "tools@quixta.in"))
+      .where(eq(users.email, "pritam.thapa@quixta.in"))
       .limit(1);
     const executiveRole = await db
       .select()
@@ -20,7 +20,7 @@ export const seedUserRoles = async () => {
 
     if (!adminUser[0] || !executiveRole[0]) {
       throw new Error(
-        "Admin user or Executive role not found. Please ensure they're seeded first."
+        "Admin user or Executive role not found. Please ensure they're seeded first.",
       );
     }
 

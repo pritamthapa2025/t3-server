@@ -5,14 +5,14 @@ import { hashPassword } from "../../utils/hash.js"; // Hashing utility for passw
 
 export const seedUsers = async () => {
   try {
-    const hashedPassword = await hashPassword("password");
+    const hashedPassword = await hashPassword("password@t3");
 
     await db
       .insert(users)
       .values([
         {
           fullName: "Admin",
-          email: "tools@quixta.in",
+          email: "pritam.thapa@quixta.in",
           passwordHash: hashedPassword,
           isActive: true,
         },

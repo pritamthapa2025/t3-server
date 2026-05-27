@@ -24,9 +24,16 @@ export function setAccessTokenCookie(res: Response, token: string): void {
   res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
 }
 
-/** Clear the HttpOnly access_token cookie on logout. */
+/** Clear the HttpOnly access_token cookie on logout.
+ *  Passes the same attributes used during setAccessTokenCookie so all browsers
+ *  (especially Chrome/Firefox Secure-cookie enforcement) honour the deletion. */
 export function clearAccessTokenCookie(res: Response): void {
-  res.clearCookie(COOKIE_NAME, { path: "/" });
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
+    path: "/",
+  });
 }
 
 /**

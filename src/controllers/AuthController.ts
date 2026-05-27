@@ -48,6 +48,7 @@ import {
 } from "../utils/userSessionStore.js";
 import { logger } from "../utils/logger.js";
 import { ErrorMessages } from "../utils/error-messages.js";
+import { invalidateUserAuthCache } from "../middleware/auth.js";
 import {
   setAccessTokenCookie,
   clearAccessTokenCookie,
@@ -581,6 +582,7 @@ export const confirmPasswordResetHandler = async (
     await updatePassword(user.id, hashedPassword);
     // Revoke all active sessions — forces re-login on every device after password change.
     await revokeAllUserSessions(user.id);
+    invalidateUserAuthCache(user.id);
 
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
@@ -685,6 +687,7 @@ export const resetPasswordHandler = async (req: Request, res: Response) => {
     await updatePassword(user.id, hashedPassword);
     // Revoke all active sessions — forces re-login on every device after password reset.
     await revokeAllUserSessions(user.id);
+    invalidateUserAuthCache(user.id);
 
     logger.info("Password reset successfully");
     return res
@@ -838,6 +841,7 @@ export const changePasswordHandler = async (req: Request, res: Response) => {
     await updatePassword(userId, hashedPassword);
     // Revoke all active sessions — forces re-login on every device after password change.
     await revokeAllUserSessions(userId);
+    invalidateUserAuthCache(userId);
 
     // Fire password_changed notification (Email + Push) fire-and-forget
     void (async () => {
@@ -1130,6 +1134,11 @@ export const logoutHandler = async (req: Request, res: Response) => {
           removeSessionActivity(decoded.jti),
           ...(userId ? [removeSession(userId, decoded.jti)] : []),
         ]);
+        // Evict the in-memory auth cache so any subsequent request with the
+        // same userId (e.g. from another tab) fetches fresh data from the DB.
+        if (userId) {
+          invalidateUserAuthCache(userId);
+        }
       }
     }
 
