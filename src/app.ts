@@ -49,7 +49,7 @@ const CORS_OPTIONS = {
 // Handle OPTIONS preflight BEFORE helmet so security headers don't interfere.
 // This ensures the browser receives CORS headers on preflight even if a
 // subsequent middleware would otherwise block the response.
-app.options("*", cors(CORS_OPTIONS));
+app.options(/(.*)/, cors(CORS_OPTIONS));
 
 // Security headers — must come before routes but after the preflight handler
 app.use(
