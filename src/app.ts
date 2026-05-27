@@ -29,7 +29,7 @@ app.use(compression());
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
-  process.env.CLIENT_URL || "http://localhost:3000",
+  process.env.CLIENT_URL,
   process.env.CLIENT_URL_Old,
 ].filter((url): url is string => Boolean(url));
 
@@ -37,7 +37,12 @@ const CORS_OPTIONS = {
   origin: ALLOWED_ORIGINS,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Cookie",
+    "X-Requested-With",
+  ],
   exposedHeaders: ["Set-Cookie"],
 };
 
@@ -61,9 +66,10 @@ app.use(
       },
     },
     // HSTS: enforce HTTPS for 1 year in production
-    strictTransportSecurity: process.env.NODE_ENV === "production"
-      ? { maxAge: 31536000, includeSubDomains: true }
-      : false,
+    strictTransportSecurity:
+      process.env.NODE_ENV === "production"
+        ? { maxAge: 31536000, includeSubDomains: true }
+        : false,
     // Allow cross-origin fetch (Axios) — CORP same-origin blocks API responses
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
@@ -74,7 +80,9 @@ app.use(cors(CORS_OPTIONS));
 // Block dangerous HTTP methods that are not needed by this API
 app.use((req, res, next) => {
   if (req.method === "TRACE" || req.method === "CONNECT") {
-    return res.status(405).json({ success: false, message: "Method Not Allowed" });
+    return res
+      .status(405)
+      .json({ success: false, message: "Method Not Allowed" });
   }
   return next();
 });
@@ -84,8 +92,7 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use(cookieParser());
 
 // Loader.io domain verification (load testing)
-const LOADERIO_VERIFICATION_TOKEN =
-  "loaderio-646901c30d35ad302f824914ace8232f";
+const LOADERIO_VERIFICATION_TOKEN = "loaderio-646901c30d35ad302f824914ace8232f";
 app.get(`/${LOADERIO_VERIFICATION_TOKEN}.txt`, (_req, res) => {
   res.type("text/plain").send(LOADERIO_VERIFICATION_TOKEN);
 });
@@ -112,7 +119,6 @@ app.get("/health", (req, res) => {
     uptime: Math.floor(process.uptime()),
   });
 });
-
 
 // Apply cache-control headers to all API routes
 app.use("/api/v1", cacheHeaders);
