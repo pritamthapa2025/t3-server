@@ -1,11 +1,9 @@
 import {
-  TransactionalEmailsApi,
-  TransactionalEmailsApiApiKeys,
-  SendSmtpEmail,
-} from "@getbrevo/brevo";
+  getBrevoClient,
+  sendTransactionalEmail,
+} from "./brevo-client.js";
 import { logger } from "../utils/logger.js";
 
-const apiKey = process.env.BREVO_API_KEY;
 const senderEmail = process.env.BREVO_SENDER_EMAIL || "noreply@example.com";
 const senderName = process.env.BREVO_SENDER_NAME || "T3 Mechanical";
 
@@ -27,22 +25,19 @@ const emailStyles = `
   .footer { background: #F7F7F7; padding: 20px 32px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #E2E8F0; }
 `;
 
-function getTransactionalApi(): TransactionalEmailsApi | null {
-  if (!apiKey) {
+function isEmailEnabled(): boolean {
+  if (!getBrevoClient()) {
     logger.warn("BREVO_API_KEY not set - email sending disabled");
-    return null;
+    return false;
   }
-  const api = new TransactionalEmailsApi();
-  api.setApiKey(TransactionalEmailsApiApiKeys.apiKey, apiKey);
-  return api;
+  return true;
 }
 
 /**
  * Send 2FA verification code to user email
  */
 export async function send2FACode(email: string, code: string): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -69,13 +64,12 @@ export async function send2FACode(email: string, code: string): Promise<void> {
 </body>
 </html>`;
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = `Your T3 Mechanical verification code: ${code}`;
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email }];
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject: `Your T3 Mechanical verification code: ${code}`,
+    htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email }],
+  });
 }
 
 /**
@@ -85,8 +79,7 @@ export async function sendPasswordResetOTP(
   email: string,
   otp: string,
 ): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -113,13 +106,12 @@ export async function sendPasswordResetOTP(
 </body>
 </html>`;
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = "Reset your T3 Mechanical password";
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email }];
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject: "Reset your T3 Mechanical password",
+    htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email }],
+  });
 }
 
 /**
@@ -129,8 +121,7 @@ export async function sendChangePasswordOTP(
   email: string,
   otp: string,
 ): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -157,13 +148,12 @@ export async function sendChangePasswordOTP(
 </body>
 </html>`;
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = "Confirm your password change – T3 Mechanical";
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email }];
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject: "Confirm your password change – T3 Mechanical",
+    htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email }],
+  });
 }
 
 /**
@@ -174,8 +164,7 @@ export async function sendNewUserPasswordSetupEmail(
   fullName: string,
   setupToken: string,
 ): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
   const setupUrl = process.env.CLIENT_URL || "http://localhost:3000";
   const link = `${setupUrl}/set-password?token=${encodeURIComponent(setupToken)}`;
@@ -206,13 +195,12 @@ export async function sendNewUserPasswordSetupEmail(
 </body>
 </html>`;
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = "Welcome to T3 Mechanical – set up your account";
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email }];
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject: "Welcome to T3 Mechanical – set up your account",
+    htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email }],
+  });
 }
 
 export type InvoiceEmailAttachment = {
@@ -232,28 +220,28 @@ export async function sendInvoiceEmail(
   cc?: string[],
   bcc?: string[],
 ): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = subject;
-  sendSmtpEmail.htmlContent = messageBody
-    ? `${messageBody}<br/><br/>${htmlContent}`
-    : htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email: toEmail }];
-  if (cc?.length) sendSmtpEmail.cc = cc.map((email) => ({ email }));
-  if (bcc?.length) sendSmtpEmail.bcc = bcc.map((email) => ({ email }));
-  if (pdfAttachment) {
-    sendSmtpEmail.attachment = [
-      {
-        name: pdfAttachment.filename,
-        content: pdfAttachment.content.toString("base64"),
-      },
-    ];
-  }
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject,
+    htmlContent: messageBody
+      ? `${messageBody}<br/><br/>${htmlContent}`
+      : htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: toEmail }],
+    ...(cc?.length ? { cc: cc.map((email) => ({ email })) } : {}),
+    ...(bcc?.length ? { bcc: bcc.map((email) => ({ email })) } : {}),
+    ...(pdfAttachment
+      ? {
+          attachment: [
+            {
+              name: pdfAttachment.filename,
+              content: pdfAttachment.content.toString("base64"),
+            },
+          ],
+        }
+      : {}),
+  });
 }
 
 /**
@@ -267,28 +255,28 @@ export async function sendQuoteEmail(
   cc?: string[],
   bcc?: string[],
 ): Promise<void> {
-  const api = getTransactionalApi();
-  if (!api) return;
+  if (!isEmailEnabled()) return;
 
   const htmlContent =
     messageBody ||
     "<p>Please find your quote attached. Contact us if you have any questions.</p>";
 
-  const sendSmtpEmail = new SendSmtpEmail();
-  sendSmtpEmail.subject = subject;
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-  sendSmtpEmail.to = [{ email: toEmail }];
-  if (cc?.length) sendSmtpEmail.cc = cc.map((email) => ({ email }));
-  if (bcc?.length) sendSmtpEmail.bcc = bcc.map((email) => ({ email }));
-  if (pdfAttachment) {
-    sendSmtpEmail.attachment = [
-      {
-        name: pdfAttachment.filename,
-        content: pdfAttachment.content.toString("base64"),
-      },
-    ];
-  }
-
-  await api.sendTransacEmail(sendSmtpEmail);
+  await sendTransactionalEmail({
+    subject,
+    htmlContent,
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: toEmail }],
+    ...(cc?.length ? { cc: cc.map((email) => ({ email })) } : {}),
+    ...(bcc?.length ? { bcc: bcc.map((email) => ({ email })) } : {}),
+    ...(pdfAttachment
+      ? {
+          attachment: [
+            {
+              name: pdfAttachment.filename,
+              content: pdfAttachment.content.toString("base64"),
+            },
+          ],
+        }
+      : {}),
+  });
 }

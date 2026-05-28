@@ -1,4 +1,7 @@
-import * as brevo from "@getbrevo/brevo";
+import {
+  getBrevoClient,
+  sendTransactionalEmail,
+} from "./brevo-client.js";
 import { logger } from "../utils/logger.js";
 import type {
   Notification,
@@ -19,13 +22,7 @@ if (!apiKey) {
   );
 }
 
-// Initialize Brevo API client
-let apiInstance: brevo.TransactionalEmailsApi | null = null;
-
-if (apiKey) {
-  apiInstance = new brevo.TransactionalEmailsApi();
-  apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
-}
+const brevoEnabled = Boolean(apiKey);
 
 export class NotificationEmailService {
   private toTitleCaseLabel(label: string): string {
@@ -72,7 +69,7 @@ export class NotificationEmailService {
     recipientName: string,
     notification: Notification,
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!apiInstance) {
+    if (!brevoEnabled || !getBrevoClient()) {
       logger.warn("Brevo API not initialized. Skipping email notification.");
       return { success: false, error: "Email service not configured" };
     }
@@ -106,15 +103,12 @@ export class NotificationEmailService {
 
       const htmlContent = this.generateEmailHTML(templateData);
 
-      const sendSmtpEmail = new brevo.SendSmtpEmail();
-      sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-      sendSmtpEmail.to = [{ email: recipientEmail, name: recipientName }];
-      sendSmtpEmail.subject = `[T3 Mechanical] ${notification.title}`;
-      sendSmtpEmail.htmlContent = htmlContent;
-
-      const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
-      const messageId =
-        response.body?.messageId || response.body?.["messageId"];
+      const messageId = await sendTransactionalEmail({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: recipientEmail, name: recipientName }],
+        subject: `[T3 Mechanical] ${notification.title}`,
+        htmlContent,
+      });
 
       logger.info(
         `✅ Email sent successfully to ${recipientEmail} (MessageId: ${messageId})`,
@@ -295,7 +289,7 @@ export class NotificationEmailService {
       additionalInfo?: Record<string, string>;
     },
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!apiInstance) {
+    if (!brevoEnabled || !getBrevoClient()) {
       logger.warn("Brevo API not initialized. Skipping direct email.");
       return { success: false, error: "Email service not configured" };
     }
@@ -314,14 +308,12 @@ export class NotificationEmailService {
       };
 
       const htmlContent = this.generateEmailHTML(templateData);
-      const sendSmtpEmail = new brevo.SendSmtpEmail();
-      sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-      sendSmtpEmail.to = [{ email: recipientEmail, name: recipientName }];
-      sendSmtpEmail.subject = `[T3 Mechanical] ${title}`;
-      sendSmtpEmail.htmlContent = htmlContent;
-
-      const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
-      const messageId = response.body?.messageId || response.body?.["messageId"];
+      const messageId = await sendTransactionalEmail({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: recipientEmail, name: recipientName }],
+        subject: `[T3 Mechanical] ${title}`,
+        htmlContent,
+      });
 
       logger.info(`✅ Direct email sent to ${recipientEmail} (MessageId: ${messageId})`);
       return { success: true, messageId: messageId as string };
@@ -374,7 +366,7 @@ export class NotificationEmailService {
     actionUrl?: string;
     actionLabel?: string;
   }): Promise<{ sent: number; errors: number }> {
-    if (!apiInstance) {
+    if (!brevoEnabled || !getBrevoClient()) {
       logger.warn("Brevo API not initialized. Skipping digest email.");
       return { sent: 0, errors: 0 };
     }
@@ -395,13 +387,12 @@ export class NotificationEmailService {
           ...(params.actionLabel ? { actionLabel: params.actionLabel } : {}),
         });
 
-        const sendSmtpEmail = new brevo.SendSmtpEmail();
-        sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-        sendSmtpEmail.to = [{ email: recipient.email, name: recipient.name }];
-        sendSmtpEmail.subject = `[T3 Mechanical] ${params.title}`;
-        sendSmtpEmail.htmlContent = htmlContent;
-
-        await apiInstance.sendTransacEmail(sendSmtpEmail);
+        await sendTransactionalEmail({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: recipient.email, name: recipient.name }],
+          subject: `[T3 Mechanical] ${params.title}`,
+          htmlContent,
+        });
         logger.info(`✅ Digest email sent to ${recipient.email}`);
         sent++;
       } catch (error: any) {
